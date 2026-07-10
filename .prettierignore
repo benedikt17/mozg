@@ -1,0 +1,9 @@
+.next
+node_modules
+coverage
+pnpm-lock.yaml
+ARCHITECTURE.md
+AGENTS.md
+CHANGELOG.md
+STAGE-1A-SPEC.md
+docs/adr/README.md
