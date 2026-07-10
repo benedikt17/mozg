@@ -51,12 +51,12 @@ select is(
   'role helper is SECURITY DEFINER'
 );
 select ok(
-  (select array_to_string(proconfig, ',') like '%search_path=pg_catalog, public%'
+  (select array_to_string(proconfig, ',') = 'search_path=pg_catalog'
    from pg_proc where oid = 'public.is_workspace_member(uuid)'::regprocedure),
   'membership helper has a fixed safe search_path'
 );
 select ok(
-  (select array_to_string(proconfig, ',') like '%search_path=pg_catalog, public%'
+  (select array_to_string(proconfig, ',') = 'search_path=pg_catalog'
    from pg_proc where oid = 'public.has_workspace_role(uuid,text[])'::regprocedure),
   'role helper has a fixed safe search_path'
 );

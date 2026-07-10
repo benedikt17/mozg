@@ -41,7 +41,7 @@ returns boolean
 language sql
 stable
 security definer
-set search_path = pg_catalog, public
+set search_path = pg_catalog
 as $$
   select exists (
     select 1
@@ -59,7 +59,7 @@ returns boolean
 language sql
 stable
 security definer
-set search_path = pg_catalog, public
+set search_path = pg_catalog
 as $$
   select exists (
     select 1
@@ -74,7 +74,7 @@ create function public.guard_workspace_membership()
 returns trigger
 language plpgsql
 security definer
-set search_path = pg_catalog, public
+set search_path = pg_catalog
 as $$
 begin
   if tg_op = 'UPDATE' and new.workspace_id <> old.workspace_id then
