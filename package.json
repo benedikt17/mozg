@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:markdown": "vitest run tests/markdown-roundtrip",
-    "test:rls": "vitest run tests/rls",
+    "test:rls": "supabase test db tests/rls/workspaces-members.test.sql",
     "supabase": "supabase"
   },
   "dependencies": {
