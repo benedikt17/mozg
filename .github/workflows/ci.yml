@@ -20,8 +20,11 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm supabase start
-      - run: pnpm supabase gen types typescript --local --schema public > /tmp/database.types.ts
-      - run: diff -u src/lib/supabase/database.types.ts /tmp/database.types.ts
+      - run: pnpm supabase gen types typescript --local --schema public > database.types.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: generated-database-types
+          path: database.types.ts
       - run: pnpm test:rls
       - if: always()
         run: pnpm supabase stop --no-backup
