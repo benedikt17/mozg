@@ -81,6 +81,7 @@ select results_eq(
 select throws_ok(
   $$ update public.workspaces set name = 'anonymous write' where id = '20000000-0000-0000-0000-000000000001' $$,
   '42501',
+  null,
   'anonymous write is rejected by table privileges'
 );
 reset role;
@@ -157,11 +158,13 @@ select results_eq(
 select throws_ok(
   $$ update public.workspaces set name = 'editor write' where id = '20000000-0000-0000-0000-000000000001' $$,
   '42501',
+  null,
   'editor workspace update is rejected by RLS'
 );
 select throws_ok(
   $$ update public.workspace_members set role = 'owner' where workspace_id = '20000000-0000-0000-0000-000000000001' and user_id = '10000000-0000-0000-0000-000000000002' $$,
   '42501',
+  null,
   'editor cannot promote itself to owner'
 );
 reset role;
@@ -176,11 +179,13 @@ select results_eq(
 select throws_ok(
   $$ update public.workspaces set name = 'viewer write' where id = '20000000-0000-0000-0000-000000000001' $$,
   '42501',
+  null,
   'viewer workspace update is rejected by RLS'
 );
 select throws_ok(
   $$ update public.workspace_members set role = 'editor' where workspace_id = '20000000-0000-0000-0000-000000000001' and user_id = '10000000-0000-0000-0000-000000000003' $$,
   '42501',
+  null,
   'viewer cannot change its role'
 );
 reset role;
@@ -205,6 +210,7 @@ select results_eq(
 select throws_ok(
   $$ insert into public.workspace_members (workspace_id, user_id, role) values ('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000004', 'owner') $$,
   '42501',
+  null,
   'outsider cannot join itself to a workspace'
 );
 reset role;
