@@ -22,6 +22,11 @@ values
   ('10000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'outsider@example.test', '', now(), '{}', '{}', now(), now()),
   ('10000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'member@example.test', '', now(), '{}', '{}', now(), now());
 
+-- Bootstrap behavior is covered separately in projects-notes-bootstrap.test.sql.
+-- Remove automatic personal workspaces so this foundation test retains its
+-- original isolated fixture and assertions.
+delete from public.workspaces;
+
 insert into public.workspaces (id, name)
 values
   ('20000000-0000-0000-0000-000000000001', 'Primary workspace'),

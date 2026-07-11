@@ -9,6 +9,106 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      notes: {
+        Row: {
+          archived_at: string | null
+          content_md: string
+          created_at: string
+          daily_date: string | null
+          id: string
+          is_daily: boolean
+          project_id: string
+          search_tsv: unknown
+          share_token: string | null
+          title: string
+          updated_at: string
+          version: number
+          workspace_id: string
+        }
+        Insert: {
+          archived_at?: string | null
+          content_md?: string
+          created_at?: string
+          daily_date?: string | null
+          id?: string
+          is_daily?: boolean
+          project_id: string
+          search_tsv?: unknown
+          share_token?: string | null
+          title: string
+          updated_at?: string
+          version?: number
+          workspace_id: string
+        }
+        Update: {
+          archived_at?: string | null
+          content_md?: string
+          created_at?: string
+          daily_date?: string | null
+          id?: string
+          is_daily?: boolean
+          project_id?: string
+          search_tsv?: unknown
+          share_token?: string | null
+          title?: string
+          updated_at?: string
+          version?: number
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notes_workspace_id_project_id_fkey"
+            columns: ["workspace_id", "project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["workspace_id", "id"]
+          },
+        ]
+      }
+      projects: {
+        Row: {
+          archived_at: string | null
+          color: string | null
+          created_at: string
+          emoji: string | null
+          id: string
+          name: string
+          sort_order: number
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          archived_at?: string | null
+          color?: string | null
+          created_at?: string
+          emoji?: string | null
+          id?: string
+          name: string
+          sort_order?: number
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          archived_at?: string | null
+          color?: string | null
+          created_at?: string
+          emoji?: string | null
+          id?: string
+          name?: string
+          sort_order?: number
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "projects_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workspace_members: {
         Row: {
           created_at: string
