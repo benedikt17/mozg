@@ -1,6 +1,6 @@
 # Markdown pipeline
 
-`MarkdownDocument` is an MDAST `Root` with typed wiki-link metadata in `root.data.wikiLinks`. The metadata lets the serializer distinguish semantic wiki-links from escaped literal brackets. It is a derived, in-memory representation; persisted note content remains Markdown.
+`MarkdownDocument` is an MDAST `Root` with structural `wikiLink` nodes and typed discovery metadata in `root.data.wikiLinks`. Both are derived, in-memory representations; persisted note content remains Markdown.
 
 ## Canonicalization
 
@@ -23,3 +23,7 @@ Only a list item with one valid final `^task-<uuid>` marker is a task reference.
 ## Wiki-links
 
 `[[Title]]` is extracted outside fenced and inline code. Escaped links and empty or nested-bracket targets are ignored. Titles are trimmed for lookup while `raw` preserves the matched source.
+
+During parsing, semantic wiki-links are protected by deterministic, input-unique placeholders and then materialized as typed `wikiLink` nodes. The serializer emits only those structural nodes as wiki syntax. It never performs title matching or textual replacement, so identical escaped literals, repeated links, punctuation and code remain unambiguous.
+
+`root.data.wikiLinks` is discovery metadata captured from the source. It is intentionally ignored during serialization: structural nodes are the serialization authority. If callers edit or reconstruct the tree, they must edit or recreate `wikiLink` nodes; stale metadata can never restore a link or modify unrelated text.
