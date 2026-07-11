@@ -15,13 +15,45 @@ export type PrototypeProject = {
   name: string;
   emoji: string;
   color: string;
+  archived: boolean;
 };
 
 export const initialProjects: PrototypeProject[] = [
-  { id: "lukomorye", name: "Лукоморье", emoji: "🌲", color: "#47735b" },
-  { id: "product", name: "Продукт", emoji: "◫", color: "#6677a8" },
-  { id: "personal", name: "Личное", emoji: "⌂", color: "#a46f55" },
-  { id: "empty", name: "Новый замысел", emoji: "◇", color: "#8a829c" },
+  {
+    id: "lukomorye",
+    name: "Лукоморье",
+    emoji: "🌲",
+    color: "#47735b",
+    archived: false,
+  },
+  {
+    id: "product",
+    name: "Продукт",
+    emoji: "◫",
+    color: "#6677a8",
+    archived: false,
+  },
+  {
+    id: "personal",
+    name: "Личное",
+    emoji: "⌂",
+    color: "#a46f55",
+    archived: false,
+  },
+  {
+    id: "empty",
+    name: "Новый замысел",
+    emoji: "◇",
+    color: "#8a829c",
+    archived: false,
+  },
+  {
+    id: "old-site",
+    name: "Старый сайт",
+    emoji: "□",
+    color: "#868686",
+    archived: true,
+  },
 ];
 
 export const initialNotes: PrototypeNote[] = [

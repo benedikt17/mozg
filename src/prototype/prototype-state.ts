@@ -1,6 +1,7 @@
 import type {
   ProjectArea,
   PrototypeNote,
+  PrototypeProject,
   Section,
 } from "@/prototype/mock-data";
 
@@ -12,6 +13,7 @@ export type PrototypeState = {
   noteId: string;
   area: ProjectArea;
   notes: PrototypeNote[];
+  projects: PrototypeProject[];
   sidebarCollapsed: boolean;
   searchOpen: boolean;
   mobileView: MobileView;
@@ -21,7 +23,9 @@ export type PrototypeAction =
   | { type: "section"; section: Section }
   | { type: "project"; projectId: string }
   | { type: "area"; area: ProjectArea }
-  | { type: "note"; noteId: string }
+  | { type: "open-note"; noteId: string }
+  | { type: "create-project" }
+  | { type: "restore-project"; projectId: string }
   | { type: "create-note" }
   | { type: "edit-note"; field: "title" | "body"; value: string }
   | { type: "archive-note"; noteId: string }
@@ -30,14 +34,22 @@ export type PrototypeAction =
   | { type: "search"; open: boolean }
   | { type: "mobile-view"; view: MobileView };
 
+export const MAX_VISIBLE_SEARCH_RESULTS = 8;
+
+export function visibleSearchResults<T>(results: T[]): T[] {
+  return results.slice(0, MAX_VISIBLE_SEARCH_RESULTS);
+}
+
 export const initialPrototypeState = (
   notes: PrototypeNote[],
+  projects: PrototypeProject[],
 ): PrototypeState => ({
   section: "projects",
   projectId: "lukomorye",
   noteId: "roadmap",
   area: "notes",
   notes,
+  projects,
   sidebarCollapsed: false,
   searchOpen: false,
   mobileView: "navigation",
@@ -61,18 +73,59 @@ export function prototypeReducer(
         noteId: first?.id ?? "",
         area: "notes",
         mobileView: "list",
+        searchOpen: false,
       };
     }
     case "area":
-      return { ...state, area: action.area };
-    case "note":
       return {
         ...state,
-        noteId: action.noteId,
+        area: action.area,
+        mobileView: action.area === "notes" ? "list" : "editor",
+      };
+    case "open-note": {
+      const note = state.notes.find(
+        (candidate) => candidate.id === action.noteId,
+      );
+      if (!note || note.archived) return state;
+      return {
+        ...state,
+        projectId: note.projectId,
+        noteId: note.id,
         section: "projects",
         area: "notes",
         searchOpen: false,
         mobileView: "editor",
+      };
+    }
+    case "create-project": {
+      const id = `project-${state.projects.length + 1}`;
+      return {
+        ...state,
+        projects: [
+          ...state.projects,
+          {
+            id,
+            name: "Временный проект",
+            emoji: "+",
+            color: "#747474",
+            archived: false,
+          },
+        ],
+        projectId: id,
+        noteId: "",
+        section: "projects",
+        area: "notes",
+        mobileView: "list",
+      };
+    }
+    case "restore-project":
+      return {
+        ...state,
+        projects: state.projects.map((project) =>
+          project.id === action.projectId
+            ? { ...project, archived: false }
+            : project,
+        ),
       };
     case "create-note": {
       const id = `mock-${state.notes.length + 1}`;

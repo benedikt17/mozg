@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useReducer, useState } from "react";
+import "@/prototype/prototype-shell.css";
 import {
   inboxItems,
   initialNotes,
@@ -9,6 +10,7 @@ import {
 import {
   initialPrototypeState,
   prototypeReducer,
+  visibleSearchResults,
 } from "@/prototype/prototype-state";
 
 const navItems = [
@@ -21,15 +23,14 @@ const navItems = [
 export function PrototypeShell() {
   const [state, dispatch] = useReducer(
     prototypeReducer,
-    initialNotes,
-    initialPrototypeState,
+    initialPrototypeState(initialNotes, initialProjects),
   );
-  const [projects, setProjects] = useState(initialProjects);
   const [filter, setFilter] = useState("");
   const [search, setSearch] = useState("");
   const [selectedResult, setSelectedResult] = useState(0);
   const [processed, setProcessed] = useState<string[]>([]);
 
+  const projects = state.projects.filter((project) => !project.archived);
   const activeProject =
     projects.find((project) => project.id === state.projectId) ?? projects[0];
   const activeNote = state.notes.find((note) => note.id === state.noteId);
@@ -65,11 +66,16 @@ export function PrototypeShell() {
       }));
     return [...notes, ...matchingProjects];
   }, [projects, search, state.notes]);
+  const visibleResults = useMemo(
+    () => visibleSearchResults(searchResults),
+    [searchResults],
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
+        setSelectedResult(0);
         dispatch({ type: "search", open: true });
       }
       if (!state.searchOpen) return;
@@ -77,31 +83,26 @@ export function PrototypeShell() {
       if (event.key === "ArrowDown") {
         event.preventDefault();
         setSelectedResult((value) =>
-          Math.min(value + 1, searchResults.length - 1),
+          Math.min(value + 1, Math.max(visibleResults.length - 1, 0)),
         );
       }
       if (event.key === "ArrowUp") {
         event.preventDefault();
         setSelectedResult((value) => Math.max(value - 1, 0));
       }
-      if (event.key === "Enter" && searchResults[selectedResult]) {
-        const result = searchResults[selectedResult];
+      if (event.key === "Enter" && visibleResults[selectedResult]) {
+        const result = visibleResults[selectedResult];
         if (result.type === "Заметка")
-          dispatch({ type: "note", noteId: result.id });
+          dispatch({ type: "open-note", noteId: result.id });
         else dispatch({ type: "project", projectId: result.id });
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [searchResults, selectedResult, state.searchOpen]);
+  }, [visibleResults, selectedResult, state.searchOpen]);
 
   const createProject = () => {
-    const id = `project-${projects.length + 1}`;
-    setProjects((items) => [
-      ...items,
-      { id, name: "Временный проект", emoji: "+", color: "#747474" },
-    ]);
-    dispatch({ type: "project", projectId: id });
+    dispatch({ type: "create-project" });
   };
 
   return (
@@ -133,11 +134,14 @@ export function PrototypeShell() {
               <button
                 className={state.section === item.id ? "active" : ""}
                 key={item.id}
-                onClick={() =>
-                  item.id === "search"
-                    ? dispatch({ type: "search", open: true })
-                    : dispatch({ type: "section", section: item.id })
-                }
+                onClick={() => {
+                  if (item.id === "search") {
+                    setSelectedResult(0);
+                    dispatch({ type: "search", open: true });
+                  } else {
+                    dispatch({ type: "section", section: item.id });
+                  }
+                }}
               >
                 <span className="nav-icon">{item.icon}</span>
                 {!state.sidebarCollapsed && (
@@ -209,7 +213,7 @@ export function PrototypeShell() {
               onFilter={setFilter}
               onArea={(area) => dispatch({ type: "area", area })}
               onCreate={() => dispatch({ type: "create-note" })}
-              onOpen={(noteId) => dispatch({ type: "note", noteId })}
+              onOpen={(noteId) => dispatch({ type: "open-note", noteId })}
             />
           ) : (
             <GlobalSection
@@ -220,8 +224,12 @@ export function PrototypeShell() {
               onOpenProject={(projectId) =>
                 dispatch({ type: "project", projectId })
               }
-              onOpenNote={(noteId) => dispatch({ type: "note", noteId })}
+              onOpenNote={(noteId) => dispatch({ type: "open-note", noteId })}
               onRestore={(noteId) => dispatch({ type: "restore-note", noteId })}
+              projects={state.projects}
+              onRestoreProject={(projectId) =>
+                dispatch({ type: "restore-project", projectId })
+              }
             />
           )}
         </section>
@@ -261,7 +269,7 @@ export function PrototypeShell() {
       {state.searchOpen && (
         <CommandPalette
           query={search}
-          results={searchResults}
+          results={visibleResults}
           selected={selectedResult}
           onQuery={(value) => {
             setSearch(value);
@@ -270,7 +278,7 @@ export function PrototypeShell() {
           onClose={() => dispatch({ type: "search", open: false })}
           onSelect={(result) =>
             result.type === "Заметка"
-              ? dispatch({ type: "note", noteId: result.id })
+              ? dispatch({ type: "open-note", noteId: result.id })
               : dispatch({ type: "project", projectId: result.id })
           }
         />
@@ -324,7 +332,7 @@ function ProjectPane({
       {area === "notes" && (
         <>
           <button className="new-note" onClick={onCreate}>
-            <span>＋</span> Новая заметка <kbd>N</kbd>
+            <span>＋</span> Новая заметка
           </button>
           <label className="note-filter">
             ⌕
@@ -488,19 +496,23 @@ function CanvasMock({ projectName }: { projectName: string }) {
 function GlobalSection({
   section,
   notes,
+  projects,
   processed,
   onProcessed,
   onOpenProject,
   onOpenNote,
   onRestore,
+  onRestoreProject,
 }: {
   section: "inbox" | "today" | "archive";
   notes: typeof initialNotes;
+  projects: typeof initialProjects;
   processed: string[];
   onProcessed: (id: string) => void;
   onOpenProject: (id: string) => void;
   onOpenNote: (id: string) => void;
   onRestore: (id: string) => void;
+  onRestoreProject: (id: string) => void;
 }) {
   if (section === "inbox")
     return (
@@ -591,13 +603,19 @@ function GlobalSection({
           </div>
         )}
         <h3>Проекты</h3>
-        <article>
-          <div>
-            <strong>Старый сайт</strong>
-            <span>Архивирован 18 мая</span>
-          </div>
-          <button>Восстановить</button>
-        </article>
+        {projects
+          .filter((project) => project.archived)
+          .map((project) => (
+            <article key={project.id}>
+              <div>
+                <strong>{project.name}</strong>
+                <span>Архивирован 18 мая</span>
+              </div>
+              <button onClick={() => onRestoreProject(project.id)}>
+                Восстановить
+              </button>
+            </article>
+          ))}
       </div>
     </>
   );
@@ -679,7 +697,7 @@ function CommandPalette({
         </label>
         <div>
           {results.length ? (
-            results.slice(0, 8).map((result, index) => (
+            results.map((result, index) => (
               <button
                 className={selected === index ? "active" : ""}
                 key={`${result.type}-${result.id}`}
