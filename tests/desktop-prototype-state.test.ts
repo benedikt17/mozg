@@ -3,8 +3,10 @@ import type { DesktopPrototypeState } from "@/prototype/desktop-state";
 import {
   ALL_AREAS,
   desktopPrototypeReducer,
+  getCommandResults,
   getTasksForLane,
   getVisibleOverviewTasks,
+  getVisibleTaskList,
   initialDesktopPrototypeState,
 } from "@/prototype/desktop-state";
 
@@ -22,6 +24,19 @@ function freshState(): DesktopPrototypeState {
       linkedDocumentIds: [...task.linkedDocumentIds],
       subtasks: task.subtasks.map((subtask) => ({ ...subtask })),
     })),
+    documents: initialDesktopPrototypeState.documents.map((document) => ({
+      ...document,
+      content: [...document.content],
+      linkedTaskIds: [...document.linkedTaskIds],
+      backlinks: [...document.backlinks],
+    })),
+    canvases: initialDesktopPrototypeState.canvases.map((canvas) => ({
+      ...canvas,
+      objects: canvas.objects.map((object) => ({ ...object })),
+    })),
+    inboxItems: initialDesktopPrototypeState.inboxItems.map((item) => ({
+      ...item,
+    })),
     filters: { ...initialDesktopPrototypeState.filters },
     selectedAiProposalIds: [
       ...initialDesktopPrototypeState.selectedAiProposalIds,
@@ -30,16 +45,13 @@ function freshState(): DesktopPrototypeState {
   };
 }
 
-describe("desktop prototype state", () => {
-  it("switches projects, preserves the active section, and clears foreign task selection", () => {
+describe("desktop structural prototype state", () => {
+  it("switches projects from the rail and resets project-specific selections", () => {
     let state = freshState();
-    state = desktopPrototypeReducer(state, {
-      type: "switch-section",
-      section: "tasks",
-    });
     state = desktopPrototypeReducer(state, {
       type: "select-task",
       taskId: "luko-characters-map",
+      section: "overview",
     });
     state = desktopPrototypeReducer(state, {
       type: "switch-section",
@@ -54,35 +66,207 @@ describe("desktop prototype state", () => {
     expect(state.activeProjectId).toBe("ammonit");
     expect(state.activeSection).toBe("knowledge");
     expect(state.selectedTaskId).toBeNull();
-    expect(state.rightPanel).toBeNull();
+    expect(state.selectedDocumentId).toBe("doc-a-index");
+    expect(state.selectedDocumentFolder).toBe("Исследование");
+    expect(state.contextPanel).toBeNull();
     expect(state.filters.milestoneId).toBe("ammonit-research");
   });
 
-  it("switches sections without opening production tools", () => {
+  it("switches sections and closes the shared context slot", () => {
     let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "select-task",
+      taskId: "luko-first-scene",
+      section: "overview",
+    });
+
     state = desktopPrototypeReducer(state, {
       type: "switch-section",
       section: "canvases",
     });
 
     expect(state.activeSection).toBe("canvases");
-    expect(state.rightPanel).toBeNull();
+    expect(state.contextPanel).toBeNull();
   });
 
-  it("selects a task, opens the details panel, and closes it", () => {
+  it("opens AI without forcing the active section back to Overview", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "switch-section",
+      section: "knowledge",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "select-document",
+      documentId: "doc-l-baba-yaga",
+    });
+    state = desktopPrototypeReducer(state, { type: "open-ai-panel" });
+
+    expect(state.activeSection).toBe("knowledge");
+    expect(state.selectedDocumentId).toBe("doc-l-baba-yaga");
+    expect(state.contextPanel).toEqual({ kind: "ai" });
+  });
+
+  it("keeps only one context panel active at a time", () => {
     let state = freshState();
     state = desktopPrototypeReducer(state, {
       type: "select-task",
       taskId: "luko-first-scene",
+      section: "tasks",
+    });
+    expect(state.contextPanel).toEqual({
+      kind: "task",
+      taskId: "luko-first-scene",
     });
 
-    expect(state.selectedTaskId).toBe("luko-first-scene");
-    expect(state.activeSection).toBe("overview");
-    expect(state.rightPanel).toBe("task");
+    state = desktopPrototypeReducer(state, { type: "open-ai-panel" });
+    expect(state.contextPanel).toEqual({ kind: "ai" });
 
-    state = desktopPrototypeReducer(state, { type: "close-right-panel" });
-    expect(state.rightPanel).toBeNull();
-    expect(state.selectedTaskId).toBe("luko-first-scene");
+    state = desktopPrototypeReducer(state, {
+      type: "select-canvas-object",
+      canvasId: "canvas-l-characters",
+      objectId: "obj-nastenka",
+    });
+    expect(state.contextPanel).toEqual({
+      kind: "canvas-inspector",
+      canvasId: "canvas-l-characters",
+      objectId: "obj-nastenka",
+    });
+  });
+
+  it("selects a document and opens document context", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "select-document",
+      documentId: "doc-l-magic",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "open-document-context",
+    });
+
+    expect(state.activeSection).toBe("knowledge");
+    expect(state.selectedDocumentId).toBe("doc-l-magic");
+    expect(state.selectedDocumentFolder).toBe("Мир");
+    expect(state.contextPanel).toEqual({
+      kind: "document-context",
+      documentId: "doc-l-magic",
+    });
+  });
+
+  it("selects a task from Tasks and reuses the existing task details model", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "switch-section",
+      section: "tasks",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "select-task",
+      taskId: "luko-world-rules",
+      section: "tasks",
+    });
+
+    expect(state.activeSection).toBe("tasks");
+    expect(state.selectedTaskId).toBe("luko-world-rules");
+    expect(state.contextPanel).toEqual({
+      kind: "task",
+      taskId: "luko-world-rules",
+    });
+  });
+
+  it("shares starred task state between Overview and Tasks", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "toggle-task-star",
+      taskId: "luko-first-scene",
+    });
+
+    expect(
+      getVisibleOverviewTasks(state).find(
+        (task) => task.id === "luko-first-scene",
+      )?.starred,
+    ).toBe(true);
+
+    state = desktopPrototypeReducer(state, {
+      type: "switch-section",
+      section: "tasks",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "set-task-filter",
+      filter: "important",
+    });
+
+    expect(
+      getVisibleTaskList(state).some((task) => task.id === "luko-first-scene"),
+    ).toBe(true);
+  });
+
+  it("selects a canvas and opens a mock object inspector", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "select-canvas",
+      canvasId: "canvas-l-plot",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "select-canvas-object",
+      canvasId: "canvas-l-plot",
+      objectId: "obj-choice",
+    });
+
+    expect(state.activeSection).toBe("canvases");
+    expect(state.selectedCanvasId).toBe("canvas-l-plot");
+    expect(state.selectedCanvasObjectId).toBe("obj-choice");
+    expect(state.contextPanel).toEqual({
+      kind: "canvas-inspector",
+      canvasId: "canvas-l-plot",
+      objectId: "obj-choice",
+    });
+  });
+
+  it("selects an Inbox item and opens item details", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "set-inbox-filter",
+      filter: "audio",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "select-inbox-item",
+      itemId: "inbox-l-audio",
+    });
+
+    expect(state.activeSection).toBe("inbox");
+    expect(state.inboxFilter).toBe("audio");
+    expect(state.selectedInboxItemId).toBe("inbox-l-audio");
+    expect(state.contextPanel).toEqual({
+      kind: "inbox-item",
+      itemId: "inbox-l-audio",
+    });
+  });
+
+  it("opens a cross-project task from the command palette and synchronizes project filters", () => {
+    let state = freshState();
+    const result = getCommandResults(state, "Разложить находки").find(
+      (item) => item.kind === "task",
+    );
+
+    expect(result).toBeDefined();
+    if (!result) return;
+
+    state = desktopPrototypeReducer(state, {
+      type: "activate-command-result",
+      result,
+    });
+
+    expect(state.activeProjectId).toBe("ammonit");
+    expect(state.activeSection).toBe("tasks");
+    expect(state.selectedTaskId).toBe("ammonit-index");
+    expect(state.filters).toMatchObject({
+      area: ALL_AREAS,
+      milestoneId: "ammonit-research",
+      starredOnly: false,
+    });
+    expect(state.contextPanel).toEqual({
+      kind: "task",
+      taskId: "ammonit-index",
+    });
   });
 
   it("moves a task between Overview lanes without changing a production status", () => {
@@ -107,7 +291,7 @@ describe("desktop prototype state", () => {
     expect(nowTasks[0]?.starred).toBe(true);
   });
 
-  it("filters by area, milestone and starred-only toggle", () => {
+  it("filters Overview by area, milestone and starred-only toggle", () => {
     let state = freshState();
     state = desktopPrototypeReducer(state, {
       type: "set-area-filter",
@@ -137,33 +321,6 @@ describe("desktop prototype state", () => {
     );
   });
 
-  it("opens and closes the AI panel while preserving selected task context", () => {
-    let state = freshState();
-    state = desktopPrototypeReducer(state, {
-      type: "select-task",
-      taskId: "luko-world-rules",
-    });
-    state = desktopPrototypeReducer(state, { type: "open-ai-panel" });
-
-    expect(state.selectedTaskId).toBe("luko-world-rules");
-    expect(state.rightPanel).toBe("ai");
-
-    state = desktopPrototypeReducer(state, { type: "close-ai-panel" });
-    expect(state.rightPanel).toBeNull();
-  });
-
-  it("keeps AI and task details mutually exclusive", () => {
-    let state = freshState();
-    state = desktopPrototypeReducer(state, { type: "open-ai-panel" });
-    expect(state.rightPanel).toBe("ai");
-
-    state = desktopPrototypeReducer(state, {
-      type: "select-task",
-      taskId: "luko-characters-map",
-    });
-    expect(state.rightPanel).toBe("task");
-  });
-
   it("confirms selected AI proposals and applies visible mock updates", () => {
     let state = freshState();
     const initialTaskCount = state.tasks.length;
@@ -187,13 +344,22 @@ describe("desktop prototype state", () => {
     expect(state.selectedAiProposalIds).toEqual([]);
   });
 
-  it("opens and closes the command palette state", () => {
+  it("opens and closes the command palette and context panel state", () => {
     let state = freshState();
     state = desktopPrototypeReducer(state, { type: "open-command-palette" });
     expect(state.commandPaletteOpen).toBe(true);
 
     state = desktopPrototypeReducer(state, { type: "close-command-palette" });
     expect(state.commandPaletteOpen).toBe(false);
+
+    state = desktopPrototypeReducer(state, {
+      type: "select-task",
+      taskId: "luko-first-scene",
+      section: "overview",
+    });
+    state = desktopPrototypeReducer(state, { type: "close-context-panel" });
+    expect(state.contextPanel).toBeNull();
+    expect(state.selectedTaskId).toBe("luko-first-scene");
   });
 
   it("quickly creates a task in the active project and opens details", () => {
@@ -206,6 +372,9 @@ describe("desktop prototype state", () => {
       overviewLane: "now",
     });
     expect(state.selectedTaskId).toBe("mock-task-1");
-    expect(state.rightPanel).toBe("task");
+    expect(state.contextPanel).toEqual({
+      kind: "task",
+      taskId: "mock-task-1",
+    });
   });
 });

@@ -3,6 +3,11 @@ export type ProjectSection =
 
 export type OverviewLane = "now" | "next" | "later" | "done";
 
+export type TaskFilter =
+  "all" | "today" | "important" | "upcoming" | "completed";
+
+export type InboxFilter = "all" | "text" | "links" | "files" | "audio";
+
 export type PrototypeProject = {
   id: string;
   name: string;
@@ -37,6 +42,46 @@ export type PrototypeTask = {
   notes?: string;
 };
 
+export type PrototypeDocument = {
+  id: string;
+  projectId: string;
+  folder: string;
+  title: string;
+  excerpt: string;
+  content: string[];
+  linkedTaskIds: string[];
+  backlinks: string[];
+};
+
+export type CanvasObjectType = "note" | "shape" | "link";
+
+export type PrototypeCanvasObject = {
+  id: string;
+  type: CanvasObjectType;
+  title: string;
+  body: string;
+  x: number;
+  y: number;
+};
+
+export type PrototypeCanvas = {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string;
+  objects: PrototypeCanvasObject[];
+};
+
+export type PrototypeInboxItem = {
+  id: string;
+  projectId: string;
+  kind: Exclude<InboxFilter, "all">;
+  title: string;
+  preview: string;
+  source: string;
+  capturedAt: string;
+};
+
 export type AiProposal = {
   id: string;
   title: string;
@@ -57,28 +102,27 @@ export const projectSections: {
   {
     id: "overview",
     label: "Обзор",
-    description: "Движение проекта, ближайшие задачи и текущий рубеж.",
+    description: "Рубеж, активные задачи и короткое состояние проекта.",
   },
   {
     id: "knowledge",
     label: "Знания",
-    description: "Дерево документов, вкладки, Markdown и wiki-связи.",
+    description: "Дерево документов, открытая заметка и контекст связей.",
   },
   {
     id: "tasks",
     label: "Задачи",
-    description:
-      "Фильтры, список задач и детальная работа с выбранной задачей.",
+    description: "Единый список задач с простыми рабочими фильтрами.",
   },
   {
     id: "canvases",
     label: "Холсты",
-    description: "Список холстов и рабочее пространство tldraw.",
+    description: "Пространство схем, объектов и отношений проекта.",
   },
   {
     id: "inbox",
     label: "Входящие",
-    description: "Место для быстрых захватов. Детальный workflow отложен.",
+    description: "Захваченные материалы до превращения в знания или задачи.",
   },
 ];
 
@@ -107,6 +151,37 @@ export const overviewLanes: {
     label: "Готово",
     hint: "Недавно завершённое, без всей истории проекта.",
   },
+];
+
+export const taskFilters: {
+  id: TaskFilter;
+  label: string;
+  description: string;
+}[] = [
+  { id: "all", label: "Все", description: "Все задачи проекта." },
+  { id: "today", label: "Сегодня", description: "Текущая активная работа." },
+  { id: "important", label: "Важные", description: "Отмеченные звездой." },
+  {
+    id: "upcoming",
+    label: "Предстоящие",
+    description: "Следующие и отложенные задачи.",
+  },
+  {
+    id: "completed",
+    label: "Завершённые",
+    description: "Недавно закрытые задачи.",
+  },
+];
+
+export const inboxFilters: {
+  id: InboxFilter;
+  label: string;
+}[] = [
+  { id: "all", label: "Все" },
+  { id: "text", label: "Текст" },
+  { id: "links", label: "Ссылки" },
+  { id: "files", label: "Файлы" },
+  { id: "audio", label: "Аудио" },
 ];
 
 export const initialProjects: PrototypeProject[] = [
@@ -181,7 +256,7 @@ export const initialTasks: PrototypeTask[] = [
     area: "Персонажи",
     milestoneId: "lukomorie-alpha",
     dueDate: "18 июл",
-    linkedDocumentIds: ["doc-l-characters", "doc-l-conflicts"],
+    linkedDocumentIds: ["doc-l-nastenka", "doc-l-baba-yaga"],
     subtasks: [
       {
         id: "luko-characters-map-1",
@@ -211,7 +286,7 @@ export const initialTasks: PrototypeTask[] = [
     area: "Сценарии",
     milestoneId: "lukomorie-alpha",
     dueDate: "19 июл",
-    linkedDocumentIds: ["doc-l-scene-1"],
+    linkedDocumentIds: ["doc-l-first-chapter"],
     subtasks: [
       {
         id: "luko-first-scene-1",
@@ -235,7 +310,7 @@ export const initialTasks: PrototypeTask[] = [
     area: "Мир",
     milestoneId: "lukomorie-world",
     dueDate: "22 июл",
-    linkedDocumentIds: ["doc-l-world", "doc-l-map"],
+    linkedDocumentIds: ["doc-l-geography", "doc-l-magic"],
     subtasks: [
       {
         id: "luko-world-rules-1",
@@ -257,9 +332,13 @@ export const initialTasks: PrototypeTask[] = [
     starred: false,
     area: "Визуальная разработка",
     milestoneId: "lukomorie-alpha",
-    linkedDocumentIds: ["doc-l-visual"],
+    linkedDocumentIds: ["doc-l-scenes"],
     subtasks: [
-      { id: "luko-shot-list-1", title: "Отобрать 12 референсов", done: true },
+      {
+        id: "luko-shot-list-1",
+        title: "Отобрать 12 референсов",
+        done: true,
+      },
       {
         id: "luko-shot-list-2",
         title: "Разнести по настроению и функции",
@@ -290,23 +369,6 @@ export const initialTasks: PrototypeTask[] = [
     ],
   },
   {
-    id: "luko-plot-thread",
-    projectId: "lukomorie",
-    title: "Проверить, где теряется сюжетная причина путешествия",
-    overviewLane: "later",
-    starred: true,
-    area: "Сюжет",
-    milestoneId: "lukomorie-world",
-    linkedDocumentIds: ["doc-l-plot"],
-    subtasks: [
-      {
-        id: "luko-plot-thread-1",
-        title: "Собрать все упоминания причины",
-        done: false,
-      },
-    ],
-  },
-  {
     id: "luko-brief-done",
     projectId: "lukomorie",
     title: "Свести brief по текущей версии проекта",
@@ -315,29 +377,12 @@ export const initialTasks: PrototypeTask[] = [
     area: "Производство",
     milestoneId: "lukomorie-alpha",
     dueDate: "15 июл",
-    linkedDocumentIds: ["doc-l-brief"],
+    linkedDocumentIds: ["doc-l-production"],
     subtasks: [
       { id: "luko-brief-done-1", title: "Собрать цели", done: true },
       {
         id: "luko-brief-done-2",
         title: "Убрать черновые формулировки",
-        done: true,
-      },
-    ],
-  },
-  {
-    id: "luko-names-done",
-    projectId: "lukomorie",
-    title: "Разобрать черновой список имён",
-    overviewLane: "done",
-    starred: false,
-    area: "Персонажи",
-    milestoneId: "lukomorie-alpha",
-    linkedDocumentIds: ["doc-l-names"],
-    subtasks: [
-      {
-        id: "luko-names-done-1",
-        title: "Оставить рабочие варианты",
         done: true,
       },
     ],
@@ -358,7 +403,11 @@ export const initialTasks: PrototypeTask[] = [
         title: "Отделить источники от выводов",
         done: false,
       },
-      { id: "ammonit-index-2", title: "Пометить спорные места", done: false },
+      {
+        id: "ammonit-index-2",
+        title: "Пометить спорные места",
+        done: false,
+      },
     ],
   },
   {
@@ -376,19 +425,6 @@ export const initialTasks: PrototypeTask[] = [
         title: "Сократить до пяти вопросов",
         done: false,
       },
-    ],
-  },
-  {
-    id: "ammonit-summary",
-    projectId: "ammonit",
-    title: "Собрать короткое резюме исследования",
-    overviewLane: "done",
-    starred: false,
-    area: "Исследование",
-    milestoneId: "ammonit-research",
-    linkedDocumentIds: ["doc-a-summary"],
-    subtasks: [
-      { id: "ammonit-summary-1", title: "Проверить формулировки", done: true },
     ],
   },
   {
@@ -415,32 +451,6 @@ export const initialTasks: PrototypeTask[] = [
     ],
   },
   {
-    id: "voice-check",
-    projectId: "voice-studio",
-    title: "Проверить микрофон и шум комнаты",
-    overviewLane: "next",
-    starred: false,
-    area: "Запись",
-    milestoneId: "voice-demo",
-    linkedDocumentIds: [],
-    subtasks: [
-      { id: "voice-check-1", title: "Сделать тестовую запись", done: false },
-    ],
-  },
-  {
-    id: "voice-demo-done",
-    projectId: "voice-studio",
-    title: "Выбрать рабочий темп речи",
-    overviewLane: "done",
-    starred: false,
-    area: "Практика",
-    milestoneId: "voice-demo",
-    linkedDocumentIds: ["doc-v-tempo"],
-    subtasks: [
-      { id: "voice-demo-done-1", title: "Прослушать три варианта", done: true },
-    ],
-  },
-  {
     id: "personal-calendar",
     projectId: "personal",
     title: "Убрать лишние обещания из календаря",
@@ -448,7 +458,7 @@ export const initialTasks: PrototypeTask[] = [
     starred: true,
     area: "Неделя",
     milestoneId: "personal-week",
-    linkedDocumentIds: [],
+    linkedDocumentIds: ["doc-p-week"],
     subtasks: [
       {
         id: "personal-calendar-1",
@@ -462,35 +472,364 @@ export const initialTasks: PrototypeTask[] = [
       },
     ],
   },
+];
+
+export const initialDocuments: PrototypeDocument[] = [
   {
-    id: "personal-note",
+    id: "doc-l-nastenka",
+    projectId: "lukomorie",
+    folder: "Персонажи",
+    title: "Настенька",
+    excerpt: "Главная точка зрения первой главы и её активная цель.",
+    content: [
+      "# Настенька",
+      "Главная героиня не должна быть просто наблюдателем. В первой главе она принимает решение, которое запускает путешествие.",
+      "- хочет сохранить связь с домом;",
+      "- боится, что мир окажется набором чужих правил;",
+      "- действует быстрее, чем успевает всё понять.",
+    ],
+    linkedTaskIds: ["luko-characters-map", "luko-first-scene"],
+    backlinks: ["Баба Яга", "Первая глава"],
+  },
+  {
+    id: "doc-l-baba-yaga",
+    projectId: "lukomorie",
+    folder: "Персонажи",
+    title: "Баба Яга",
+    excerpt: "Не злодей, а строгий проводник с собственной ценой помощи.",
+    content: [
+      "# Баба Яга",
+      "Важна не страшность персонажа, а контракт: помощь всегда меняет маршрут героя.",
+      "Связь с Кощеем должна выглядеть как старый спор, а не экспозиция.",
+    ],
+    linkedTaskIds: ["luko-characters-map"],
+    backlinks: ["Кощей", "Правила магии"],
+  },
+  {
+    id: "doc-l-koschei",
+    projectId: "lukomorie",
+    folder: "Персонажи",
+    title: "Кощей",
+    excerpt: "Антагонист, который защищает неподвижность мира.",
+    content: [
+      "# Кощей",
+      "Главный конфликт строится вокруг страха изменений. Его бессмертие — не сила, а архитектурная проблема мира.",
+    ],
+    linkedTaskIds: ["luko-characters-map"],
+    backlinks: ["Баба Яга", "Правила магии"],
+  },
+  {
+    id: "doc-l-geography",
+    projectId: "lukomorie",
+    folder: "Мир",
+    title: "География",
+    excerpt: "Острова, переходы и правила расстояний.",
+    content: [
+      "# География",
+      "Карта должна помогать сценам, а не становиться энциклопедией. Каждый переход между островами требует причины.",
+    ],
+    linkedTaskIds: ["luko-world-rules"],
+    backlinks: ["Правила магии"],
+  },
+  {
+    id: "doc-l-magic",
+    projectId: "lukomorie",
+    folder: "Мир",
+    title: "Правила магии",
+    excerpt: "Три ограничения, которые нельзя нарушать ради удобства сцены.",
+    content: [
+      "# Правила магии",
+      "Магия работает только как обмен: время, память или маршрут. Это правило должно быть видно в действии.",
+    ],
+    linkedTaskIds: ["luko-world-rules"],
+    backlinks: ["География", "Кощей"],
+  },
+  {
+    id: "doc-l-first-chapter",
+    projectId: "lukomorie",
+    folder: "Сценарии",
+    title: "Первая глава",
+    excerpt: "Черновая структура первой главы.",
+    content: [
+      "# Первая глава",
+      "Открываем не описанием мира, а ситуацией выбора. Экспозицию распаковываем через последствия.",
+    ],
+    linkedTaskIds: ["luko-first-scene"],
+    backlinks: ["Настенька", "Сцены"],
+  },
+  {
+    id: "doc-l-scenes",
+    projectId: "lukomorie",
+    folder: "Сценарии",
+    title: "Сцены",
+    excerpt: "Рабочий список сцен и визуальных ориентиров.",
+    content: [
+      "# Сцены",
+      "Каждая сцена должна отвечать на вопрос: что изменилось после неё?",
+    ],
+    linkedTaskIds: ["luko-shot-list"],
+    backlinks: ["Первая глава"],
+  },
+  {
+    id: "doc-l-production",
+    projectId: "lukomorie",
+    folder: "Производство",
+    title: "Минимальный цикл",
+    excerpt: "Как не распухнуть до бесконечного планирования.",
+    content: [
+      "# Минимальный цикл",
+      "На один рабочий цикл берём только то, что можно проверить видимым результатом.",
+    ],
+    linkedTaskIds: ["luko-production-plan", "luko-brief-done"],
+    backlinks: ["Первая глава"],
+  },
+  {
+    id: "doc-a-index",
+    projectId: "ammonit",
+    folder: "Исследование",
+    title: "Индекс находок",
+    excerpt: "Темы, источники и спорные места.",
+    content: ["# Индекс находок", "Сначала факты, потом гипотезы."],
+    linkedTaskIds: ["ammonit-index"],
+    backlinks: ["Вопросы интервью"],
+  },
+  {
+    id: "doc-a-questions",
+    projectId: "ammonit",
+    folder: "Исследование",
+    title: "Вопросы интервью",
+    excerpt: "Короткий список вопросов для следующего разговора.",
+    content: [
+      "# Вопросы интервью",
+      "Оставить только вопросы, которые меняют вывод.",
+    ],
+    linkedTaskIds: ["ammonit-interview"],
+    backlinks: ["Индекс находок"],
+  },
+  {
+    id: "doc-v-script",
+    projectId: "voice-studio",
+    folder: "Сценарии",
+    title: "Демо-сценарий",
+    excerpt: "Двухминутный прогон для записи.",
+    content: ["# Демо-сценарий", "Текст должен держаться на темпе и паузах."],
+    linkedTaskIds: ["voice-script"],
+    backlinks: [],
+  },
+  {
+    id: "doc-p-week",
     projectId: "personal",
-    title: "Собрать короткий список бытовых дел",
-    overviewLane: "next",
-    starred: false,
-    area: "Дом",
-    milestoneId: "personal-week",
-    linkedDocumentIds: ["doc-p-week"],
-    subtasks: [
+    folder: "Неделя",
+    title: "План недели",
+    excerpt: "Реальные обязательства без лишних обещаний.",
+    content: ["# План недели", "Оставить только то, что действительно нужно."],
+    linkedTaskIds: ["personal-calendar"],
+    backlinks: [],
+  },
+];
+
+export const initialCanvases: PrototypeCanvas[] = [
+  {
+    id: "canvas-l-characters",
+    projectId: "lukomorie",
+    title: "Персонажи",
+    description: "Связи, цели и конфликты ключевых фигур.",
+    objects: [
       {
-        id: "personal-note-1",
-        title: "Отделить срочное от желательного",
-        done: false,
+        id: "obj-nastenka",
+        type: "note",
+        title: "Настенька",
+        body: "Активное решение запускает первую главу.",
+        x: 16,
+        y: 18,
+      },
+      {
+        id: "obj-baba-yaga",
+        type: "shape",
+        title: "Баба Яга",
+        body: "Помощь как контракт, а не подарок.",
+        x: 50,
+        y: 32,
+      },
+      {
+        id: "obj-koschei",
+        type: "note",
+        title: "Кощей",
+        body: "Защищает неподвижность мира.",
+        x: 32,
+        y: 62,
       },
     ],
   },
   {
-    id: "personal-done",
-    projectId: "personal",
-    title: "Закрыть старые напоминания",
-    overviewLane: "done",
-    starred: false,
-    area: "Неделя",
-    milestoneId: "personal-week",
-    linkedDocumentIds: [],
-    subtasks: [
-      { id: "personal-done-1", title: "Удалить неактуальное", done: true },
+    id: "canvas-l-plot",
+    projectId: "lukomorie",
+    title: "Сюжет",
+    description: "Причины, последствия и узкие места первой главы.",
+    objects: [
+      {
+        id: "obj-choice",
+        type: "shape",
+        title: "Первый выбор",
+        body: "Сцена начинается с действия.",
+        x: 18,
+        y: 24,
+      },
+      {
+        id: "obj-cost",
+        type: "note",
+        title: "Цена перехода",
+        body: "Каждый переход что-то забирает.",
+        x: 56,
+        y: 48,
+      },
     ],
+  },
+  {
+    id: "canvas-l-relations",
+    projectId: "lukomorie",
+    title: "Отношения",
+    description: "Кто на кого влияет в первой главе.",
+    objects: [
+      {
+        id: "obj-mentor",
+        type: "link",
+        title: "Наставник ↔ герой",
+        body: "Напряжение должно быть видно в сценах.",
+        x: 42,
+        y: 38,
+      },
+    ],
+  },
+  {
+    id: "canvas-l-production",
+    projectId: "lukomorie",
+    title: "Производство",
+    description: "Минимальный цикл от заметки до проверяемого результата.",
+    objects: [
+      {
+        id: "obj-cycle",
+        type: "shape",
+        title: "Цикл",
+        body: "Заметка → задача → сцена → проверка.",
+        x: 30,
+        y: 36,
+      },
+    ],
+  },
+  {
+    id: "canvas-a-research",
+    projectId: "ammonit",
+    title: "Исследование",
+    description: "Карта источников и вопросов.",
+    objects: [
+      {
+        id: "obj-source",
+        type: "note",
+        title: "Источник",
+        body: "Факт отдельно от вывода.",
+        x: 24,
+        y: 30,
+      },
+    ],
+  },
+  {
+    id: "canvas-v-demo",
+    projectId: "voice-studio",
+    title: "Демо",
+    description: "Темп, паузы и структура записи.",
+    objects: [
+      {
+        id: "obj-tempo",
+        type: "shape",
+        title: "Темп",
+        body: "Пауза важнее скорости.",
+        x: 36,
+        y: 44,
+      },
+    ],
+  },
+  {
+    id: "canvas-p-week",
+    projectId: "personal",
+    title: "Неделя",
+    description: "Лёгкая карта обязательств.",
+    objects: [
+      {
+        id: "obj-week",
+        type: "note",
+        title: "Неделя",
+        body: "Убрать лишнее.",
+        x: 34,
+        y: 34,
+      },
+    ],
+  },
+];
+
+export const initialInboxItems: PrototypeInboxItem[] = [
+  {
+    id: "inbox-l-text",
+    projectId: "lukomorie",
+    kind: "text",
+    title: "Фраза для первой сцены",
+    preview: "Открыть главу с решения, а не с карты мира.",
+    source: "Быстрый текст",
+    capturedAt: "Сегодня 10:20",
+  },
+  {
+    id: "inbox-l-link",
+    projectId: "lukomorie",
+    kind: "links",
+    title: "Референс островной деревни",
+    preview: "URL с визуальными ориентирами для первой локации.",
+    source: "Ссылка",
+    capturedAt: "Вчера 18:40",
+  },
+  {
+    id: "inbox-l-file",
+    projectId: "lukomorie",
+    kind: "files",
+    title: "Черновой PDF с именами",
+    preview: "Нужно разобрать на персонажей и топонимы.",
+    source: "Файл",
+    capturedAt: "12 июл 21:15",
+  },
+  {
+    id: "inbox-l-audio",
+    projectId: "lukomorie",
+    kind: "audio",
+    title: "Голосовая мысль про Кощея",
+    preview: "Идея: бессмертие как страх изменений.",
+    source: "Аудио",
+    capturedAt: "12 июл 09:30",
+  },
+  {
+    id: "inbox-a-text",
+    projectId: "ammonit",
+    kind: "text",
+    title: "Вопрос про источник",
+    preview: "Проверить, где впервые встречается спорная формулировка.",
+    source: "Быстрый текст",
+    capturedAt: "Сегодня 11:05",
+  },
+  {
+    id: "inbox-v-audio",
+    projectId: "voice-studio",
+    kind: "audio",
+    title: "Пробная интонация",
+    preview: "Сравнить спокойный и энергичный вариант.",
+    source: "Аудио",
+    capturedAt: "Вчера 22:10",
+  },
+  {
+    id: "inbox-p-link",
+    projectId: "personal",
+    kind: "links",
+    title: "Список бытовых дел",
+    preview: "Разобрать, что действительно нужно на этой неделе.",
+    source: "Ссылка",
+    capturedAt: "Сегодня 08:45",
   },
 ];
 

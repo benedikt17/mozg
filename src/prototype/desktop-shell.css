@@ -1,6 +1,8 @@
 @scope (.desktop-prototype) {
-  .desktop-prototype {
+  :scope {
     min-height: 100vh;
+    display: grid;
+    grid-template-columns: 196px minmax(0, 1fr);
     background: #f4f5f7;
     color: #18181b;
     font-family:
@@ -11,6 +13,7 @@
       BlinkMacSystemFont,
       "Segoe UI",
       sans-serif;
+    overflow-x: hidden;
   }
 
   button,
@@ -33,230 +36,290 @@
     cursor: pointer;
   }
 
-  .prototype-banner {
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #18181b;
-    color: #fafafa;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-  }
-
-  .desktop-header {
+  .project-rail {
     position: sticky;
     top: 0;
-    z-index: 20;
-    border-bottom: 1px solid #d4d4d8;
-    background: #f8fafc;
-    box-shadow: 0 12px 30px rgba(24, 24, 27, 0.06);
+    height: 100vh;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    border-right: 1px solid #d4d4d8;
+    background: #fafafa;
   }
 
-  .project-tabs,
-  .section-row {
-    display: flex;
-    align-items: stretch;
+  .prototype-banner {
+    display: grid;
+    place-items: center;
+    height: 28px;
+    background: #18181b;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+  }
+
+  .rail-heading,
+  .tool-sidebar header {
+    display: grid;
+    gap: 4px;
+    padding: 16px;
+  }
+
+  .rail-heading span,
+  .tool-sidebar header span,
+  .project-summary span,
+  .section-title span,
+  .document-page > span,
+  .canvas-toolbar span,
+  .context-panel header span {
+    color: #71717a;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .rail-heading strong,
+  .tool-sidebar header strong {
+    font-size: 15px;
+  }
+
+  .project-list,
+  .vertical-menu {
+    display: grid;
+    align-content: start;
     gap: 6px;
-    max-width: 1900px;
-    margin: 0 auto;
-    padding: 0 24px;
+    overflow: auto;
+    padding: 0 10px 12px;
   }
 
-  .project-tabs {
-    min-height: 48px;
-    padding-top: 8px;
-    overflow-x: auto;
+  .project-list button,
+  .vertical-menu button {
+    display: grid;
+    gap: 4px;
+    border-radius: 8px;
+    padding: 10px;
+    text-align: left;
   }
 
-  .project-tabs button {
-    min-width: 132px;
-    border-bottom: 0;
-    border-radius: 7px 7px 0 0;
-    padding: 10px 16px;
+  .project-list button span,
+  .vertical-menu button span,
+  .task-row span,
+  .task-hit-area span,
+  .inbox-item p,
+  .inbox-item small,
+  .document-tabs button,
+  .project-summary p,
+  .section-title p,
+  .panel-block p,
+  .proposal-row small {
     color: #52525b;
-    font-weight: 650;
-    white-space: nowrap;
   }
 
-  .project-tabs button:hover,
-  .section-tabs button:hover,
-  .global-tools button:hover {
-    border-color: #a1a1aa;
-    color: #18181b;
+  .project-list button span,
+  .vertical-menu button span {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 12px;
+    line-height: 1.35;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 
-  .project-tabs button.active {
-    background: #ffffff;
-    color: #111827;
-    border-color: #71717a;
-    box-shadow:
-      inset 0 3px 0 #4338ca,
-      0 6px 18px rgba(67, 56, 202, 0.1);
-  }
-
-  .project-tabs .create-project {
-    min-width: 154px;
-    color: #4338ca;
-    border-style: dashed;
-  }
-
-  .section-row {
-    min-height: 46px;
-    justify-content: space-between;
-    border-top: 1px solid #e4e4e7;
-  }
-
-  .section-tabs,
-  .global-tools {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    overflow-x: auto;
-  }
-
-  .section-tabs button,
-  .global-tools button {
-    border-radius: 6px;
-    padding: 8px 12px;
-    color: #52525b;
-    font-weight: 620;
-    white-space: nowrap;
-  }
-
-  .section-tabs button.active,
-  .global-tools button.active {
+  .project-list button.active,
+  .vertical-menu button.active,
+  .tree-group button.active,
+  .section-navigation button.active,
+  .header-tools button.active,
+  .document-tabs button.active,
+  .overview-controls button.active,
+  .wide-toggle.active,
+  .command-results button.active {
     border-color: #4338ca;
     background: #eef2ff;
     color: #312e81;
-    box-shadow: inset 0 0 0 1px rgba(67, 56, 202, 0.18);
   }
 
-  .desktop-workspace {
+  .create-project {
+    margin: 10px;
+    border-style: dashed;
+    border-radius: 8px;
+    padding: 10px;
+    color: #4338ca;
+    font-weight: 700;
+  }
+
+  .project-workspace {
+    min-width: 0;
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 60px minmax(0, 1fr);
+  }
+
+  .application-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: grid;
+    grid-template-columns: minmax(160px, 220px) minmax(0, 1fr) auto;
+    align-items: center;
     gap: 16px;
-    max-width: 1900px;
-    margin: 0 auto;
-    padding: 20px 24px 32px;
+    border-bottom: 1px solid #d4d4d8;
+    background: #ffffff;
+    padding: 0 18px;
   }
 
-  .desktop-workspace.has-right-panel {
-    grid-template-columns: minmax(0, 1fr) 360px;
+  .header-project {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
   }
 
-  .workspace-main {
+  .header-project span {
+    color: #71717a;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .header-project strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .section-navigation,
+  .header-tools,
+  .document-tabs,
+  .workspace-footer,
+  .canvas-toolbar > div:last-child {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     min-width: 0;
   }
 
-  .project-overview {
-    display: grid;
-    gap: 16px;
+  .section-navigation {
+    overflow-x: auto;
   }
 
-  .project-heading,
-  .milestone-summary,
-  .overview-controls,
-  .placeholder-section,
-  .right-panel,
-  .command-palette {
-    border: 1px solid #d4d4d8;
-    background: #ffffff;
-    box-shadow: 0 10px 26px rgba(24, 24, 27, 0.05);
-  }
-
-  .project-heading {
-    display: grid;
-    grid-template-columns: minmax(220px, 340px) minmax(0, 1fr);
-    align-items: end;
-    gap: 24px;
-    border-radius: 8px;
-    padding: 18px 20px;
-  }
-
-  .project-heading span,
-  .milestone-summary span,
-  .placeholder-section > span,
-  .right-panel header span {
-    display: block;
-    margin-bottom: 5px;
-    color: #71717a;
-    font-size: 12px;
-    font-weight: 750;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-
-  .project-heading h1,
-  .placeholder-section h1 {
-    margin: 0;
-    color: #111827;
-    font-size: 28px;
-    line-height: 1.12;
-  }
-
-  .project-heading p,
-  .milestone-summary p,
-  .placeholder-section p,
-  .board-column header p,
-  .panel-block p,
-  .ai-context dd,
-  .ai-context dt {
-    margin: 0;
-    color: #52525b;
-    line-height: 1.45;
-  }
-
-  .milestone-summary {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 300px;
-    gap: 20px;
-    align-items: center;
-    border-radius: 8px;
-    padding: 18px 20px;
-  }
-
-  .milestone-summary h2 {
-    margin: 0 0 8px;
-    font-size: 20px;
-    line-height: 1.2;
-  }
-
-  .milestone-progress {
-    display: grid;
-    gap: 12px;
-    padding-left: 18px;
-    border-left: 1px solid #e4e4e7;
-  }
-
-  .milestone-progress strong {
-    font-size: 17px;
-  }
-
-  .milestone-progress div {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .milestone-progress button,
+  .section-navigation button,
+  .header-tools button,
+  .document-tabs button,
+  .workspace-footer button,
+  .canvas-toolbar button,
   .overview-controls button,
+  .progress-box button,
   .task-card-actions button,
-  .done-link,
-  .right-panel button,
+  .task-card-actions select,
+  .context-panel button,
   .command-palette button {
-    border-radius: 6px;
+    border-radius: 7px;
     padding: 8px 10px;
-    font-weight: 650;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .section-workspace {
+    min-width: 0;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    overflow: hidden;
+  }
+
+  .section-workspace.has-tool-sidebar {
+    grid-template-columns: 230px minmax(0, 1fr);
+  }
+
+  .section-workspace.has-context-panel {
+    grid-template-columns: minmax(0, 1fr) 350px;
+  }
+
+  .section-workspace.has-tool-sidebar.has-context-panel {
+    grid-template-columns: 230px minmax(0, 1fr) 350px;
+  }
+
+  .tool-sidebar {
+    min-width: 0;
+    border-right: 1px solid #d4d4d8;
+    background: #f8fafc;
+    overflow: auto;
+  }
+
+  .main-workspace {
+    min-width: 0;
+    overflow: auto;
+    padding: 16px;
+  }
+
+  .context-panel {
+    min-width: 0;
+    border-left: 1px solid #d4d4d8;
+    background: #ffffff;
+    overflow: auto;
+    padding: 14px;
+  }
+
+  .context-panel header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid #e4e4e7;
+    padding-bottom: 12px;
+  }
+
+  .context-panel h2,
+  .section-title h1,
+  .project-summary h1,
+  .document-page h1,
+  .canvas-toolbar h1 {
+    margin: 0;
+  }
+
+  .overview-workspace,
+  .document-workspace,
+  .task-list-workspace,
+  .inbox-workspace {
+    display: grid;
+    gap: 14px;
+  }
+
+  .project-summary {
+    display: grid;
+    grid-template-columns: minmax(170px, 260px) minmax(0, 1fr) 250px;
+    gap: 14px;
+    border: 1px solid #d4d4d8;
+    border-radius: 10px;
+    background: #ffffff;
+    padding: 16px;
+  }
+
+  .project-summary h1 {
+    font-size: 24px;
+  }
+
+  .project-summary h2 {
+    margin: 0 0 8px;
+    font-size: 18px;
+  }
+
+  .progress-box {
+    display: grid;
+    align-content: center;
+    gap: 10px;
+    border-left: 1px solid #e4e4e7;
+    padding-left: 16px;
   }
 
   .overview-controls {
     display: flex;
+    flex-wrap: wrap;
     align-items: end;
     gap: 10px;
-    flex-wrap: wrap;
-    border-radius: 8px;
+    border: 1px solid #d4d4d8;
+    border-radius: 10px;
+    background: #ffffff;
     padding: 12px;
   }
 
@@ -271,35 +334,23 @@
   }
 
   .overview-controls select,
-  .task-card-actions select,
   .field input,
   .field select,
-  .field textarea {
+  .field textarea,
+  .task-card-actions select {
     min-height: 36px;
-    border-radius: 6px;
+    border-radius: 7px;
     padding: 7px 9px;
-    font-weight: 520;
   }
 
   .overview-controls select {
-    min-width: 190px;
-  }
-
-  .overview-controls .toggle.active,
-  .wide-toggle.active {
-    border-color: #4338ca;
-    background: #eef2ff;
-    color: #312e81;
+    min-width: 180px;
   }
 
   .primary-action {
     border-color: #4338ca;
     background: #4338ca;
     color: #ffffff;
-  }
-
-  .primary-action:hover {
-    background: #3730a3;
   }
 
   .primary-action:disabled {
@@ -310,19 +361,21 @@
   }
 
   .overview-board {
+    min-width: 0;
     display: grid;
     grid-template-columns: repeat(4, minmax(230px, 1fr));
     gap: 12px;
-    min-width: 0;
+    overflow-x: auto;
+    padding-bottom: 6px;
   }
 
   .board-column {
-    min-width: 0;
+    min-width: 230px;
     display: grid;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: auto minmax(120px, 1fr) auto;
     gap: 10px;
     border: 1px solid #d4d4d8;
-    border-radius: 8px;
+    border-radius: 10px;
     background: #f8fafc;
     padding: 10px;
   }
@@ -330,161 +383,266 @@
   .board-column header {
     display: flex;
     justify-content: space-between;
-    gap: 12px;
-    min-height: 70px;
+    gap: 10px;
   }
 
   .board-column h3 {
-    margin: 0 0 5px;
+    margin: 0 0 4px;
     font-size: 16px;
   }
 
   .board-column header span {
     display: grid;
     place-items: center;
-    min-width: 28px;
-    height: 28px;
+    min-width: 26px;
+    height: 26px;
     border-radius: 999px;
     background: #e4e4e7;
-    color: #27272a;
-    font-size: 13px;
     font-weight: 800;
   }
 
-  .task-stack {
+  .task-stack,
+  .task-list,
+  .inbox-grid,
+  .panel-stack,
+  .panel-block {
     display: grid;
     align-content: start;
-    gap: 9px;
+    gap: 10px;
+  }
+
+  .task-card,
+  .task-row,
+  .inbox-item,
+  .document-page,
+  .section-title,
+  .empty-section {
+    border: 1px solid #d4d4d8;
+    border-radius: 10px;
+    background: #ffffff;
   }
 
   .task-card {
     display: grid;
-    gap: 9px;
-    border: 1px solid #d4d4d8;
-    border-radius: 7px;
-    background: #ffffff;
-    padding: 12px;
-  }
-
-  .task-card.selected {
-    border-color: #4338ca;
-    box-shadow:
-      inset 4px 0 0 #4338ca,
-      0 8px 20px rgba(67, 56, 202, 0.1);
+    gap: 8px;
+    padding: 10px;
   }
 
   .task-hit-area {
     display: grid;
-    gap: 8px;
-    width: 100%;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 5px 8px;
     border: 0;
-    padding: 0;
     background: transparent;
+    padding: 0;
     text-align: left;
   }
 
-  .task-title-row {
-    display: grid;
-    grid-template-columns: 18px minmax(0, 1fr);
-    gap: 6px;
-    align-items: start;
-  }
-
-  .task-title-row strong {
-    font-size: 15px;
-    line-height: 1.35;
-  }
-
-  .star {
-    color: #a1a1aa;
+  .task-hit-area strong {
+    grid-column: 2;
     font-size: 14px;
     line-height: 1.3;
   }
 
-  .star.active {
-    color: #b45309;
-  }
-
-  .task-meta-row {
-    display: flex;
-    gap: 5px;
-    flex-wrap: wrap;
-  }
-
-  .task-meta-row span,
-  .document-pill {
+  .task-hit-area span:not(.star) {
     border-radius: 999px;
     background: #f4f4f5;
-    color: #52525b;
-    padding: 4px 7px;
-    font-size: 12px;
+    padding: 3px 6px;
+    font-size: 11px;
     font-weight: 700;
+  }
+
+  .star,
+  .star-button {
+    color: #a1a1aa;
+  }
+
+  .star.active,
+  .star-button.active {
+    color: #b45309;
   }
 
   .task-card-actions {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     gap: 8px;
-    align-items: end;
-    border-top: 1px solid #f4f4f5;
-    padding-top: 8px;
   }
 
-  .task-card-actions button,
-  .task-card-actions select {
-    min-height: 34px;
-    padding: 5px 8px;
-    font-size: 12px;
+  .muted-action,
+  .empty-state {
+    color: #52525b;
   }
 
-  .lane-empty {
-    border: 1px dashed #d4d4d8;
-    border-radius: 7px;
-    padding: 14px;
+  .tree-group {
+    display: grid;
+    gap: 5px;
+    padding: 0 10px 12px;
+  }
+
+  .tree-group h3 {
+    margin: 12px 4px 4px;
     color: #71717a;
-    font-size: 13px;
-    line-height: 1.45;
+    font-size: 12px;
+    text-transform: uppercase;
   }
 
-  .done-link {
-    width: 100%;
-    color: #4338ca;
+  .tree-group button {
+    border-radius: 7px;
+    padding: 8px 10px;
+    text-align: left;
   }
 
-  .right-panel {
-    position: sticky;
-    top: 114px;
-    align-self: start;
-    max-height: calc(100vh - 134px);
-    overflow: auto;
+  .document-tabs {
+    overflow-x: auto;
+  }
+
+  .document-page {
+    min-height: 430px;
+    padding: 28px;
+  }
+
+  .document-page h1 {
+    margin-top: 6px;
+    font-size: 30px;
+  }
+
+  .document-page p {
+    max-width: 780px;
+    color: #27272a;
+    font-size: 16px;
+    line-height: 1.65;
+  }
+
+  .section-title,
+  .empty-section {
+    padding: 18px;
+  }
+
+  .task-list {
+    max-width: 920px;
+  }
+
+  .task-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .task-row > button:first-child,
+  .inbox-item button {
+    display: grid;
+    gap: 5px;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    text-align: left;
+  }
+
+  .star-button {
+    width: 42px;
     border-radius: 8px;
+    font-size: 18px;
+  }
+
+  .canvas-workspace {
+    min-width: 720px;
+    display: grid;
+    grid-template-rows: auto minmax(520px, 1fr);
+    gap: 12px;
+  }
+
+  .canvas-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border: 1px solid #d4d4d8;
+    border-radius: 10px;
+    background: #ffffff;
+    padding: 12px 14px;
+  }
+
+  .canvas-surface {
+    position: relative;
+    min-height: 560px;
+    overflow: auto;
+    border: 1px solid #d4d4d8;
+    border-radius: 12px;
+    background:
+      linear-gradient(#eef2f7 1px, transparent 1px),
+      linear-gradient(90deg, #eef2f7 1px, transparent 1px), #ffffff;
+    background-size: 28px 28px;
+  }
+
+  .canvas-object {
+    position: absolute;
+    width: 210px;
+    display: grid;
+    gap: 6px;
+    border-radius: 12px;
+    padding: 14px;
+    text-align: left;
+    transform: translate(-50%, -50%);
+  }
+
+  .canvas-object.note {
+    background: #fff7ed;
+    border-color: #fed7aa;
+  }
+
+  .canvas-object.shape {
+    background: #eef2ff;
+    border-color: #c7d2fe;
+  }
+
+  .canvas-object.link {
+    background: #ecfdf5;
+    border-color: #bbf7d0;
+  }
+
+  .canvas-object.active {
+    outline: 3px solid rgba(67, 56, 202, 0.22);
+  }
+
+  .canvas-line {
+    position: absolute;
+    height: 2px;
+    background: #94a3b8;
+    transform-origin: left center;
+  }
+
+  .line-one {
+    left: 28%;
+    top: 28%;
+    width: 240px;
+    transform: rotate(18deg);
+  }
+
+  .line-two {
+    left: 38%;
+    top: 58%;
+    width: 210px;
+    transform: rotate(-26deg);
+  }
+
+  .inbox-grid {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+
+  .inbox-item button {
+    width: 100%;
     padding: 14px;
   }
 
-  .right-panel header {
-    display: flex;
-    align-items: start;
-    justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 14px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid #e4e4e7;
-  }
-
-  .right-panel h2 {
-    margin: 0;
-    font-size: 20px;
-  }
-
-  .right-panel header button {
-    padding: 7px 9px;
-  }
-
-  .field,
-  .panel-block,
-  .wide-toggle,
-  .ai-context {
-    margin-top: 12px;
+  .inbox-item span {
+    width: fit-content;
+    border-radius: 999px;
+    background: #f4f4f5;
+    color: #52525b;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: 800;
   }
 
   .field textarea {
@@ -496,8 +654,6 @@
   }
 
   .panel-block {
-    display: grid;
-    gap: 8px;
     border-top: 1px solid #e4e4e7;
     padding-top: 12px;
   }
@@ -517,91 +673,40 @@
     line-height: 1.4;
   }
 
-  .subtask-row input,
-  .proposal-row input {
-    margin-top: 3px;
-  }
-
   .proposal-row {
     border: 1px solid #e4e4e7;
-    border-radius: 7px;
-    padding: 9px;
+    border-radius: 8px;
     background: #fafafa;
-  }
-
-  .proposal-row strong,
-  .proposal-row small {
-    display: block;
-  }
-
-  .proposal-row small {
-    margin-top: 3px;
-    color: #71717a;
-  }
-
-  .ai-context {
-    display: grid;
-    gap: 8px;
-    margin-bottom: 12px;
-  }
-
-  .ai-context div {
-    display: grid;
-    gap: 2px;
-    border: 1px solid #e4e4e7;
-    border-radius: 7px;
     padding: 9px;
-    background: #fafafa;
   }
 
-  .ai-context dt {
-    font-size: 11px;
+  .document-pill {
+    width: fit-content;
+    border-radius: 999px;
+    background: #f4f4f5;
+    color: #52525b;
+    padding: 4px 8px;
+    font-size: 12px;
     font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-
-  .ai-context dd {
-    font-weight: 650;
-  }
-
-  .confirm-ai {
-    margin-top: 4px;
-  }
-
-  .placeholder-section {
-    max-width: 860px;
-    border-radius: 8px;
-    padding: 24px;
-  }
-
-  .placeholder-section > p {
-    max-width: 620px;
-    margin-top: 10px;
-  }
-
-  .placeholder-section div {
-    margin-top: 24px;
-    border: 1px solid #e4e4e7;
-    border-radius: 8px;
-    background: #f8fafc;
-    padding: 16px;
   }
 
   .command-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 40;
+    z-index: 50;
     display: grid;
     place-items: start center;
-    padding-top: 92px;
+    padding-top: 88px;
     background: rgba(24, 24, 27, 0.28);
   }
 
   .command-palette {
-    width: min(680px, calc(100vw - 32px));
+    width: min(720px, calc(100vw - 32px));
     overflow: hidden;
-    border-radius: 9px;
+    border: 1px solid #d4d4d8;
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 24px 80px rgba(24, 24, 27, 0.22);
   }
 
   .command-palette label {
@@ -609,20 +714,15 @@
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 10px;
     align-items: center;
-    padding: 12px;
     border-bottom: 1px solid #e4e4e7;
-  }
-
-  .command-palette label span {
-    color: #71717a;
-    font-weight: 750;
+    padding: 12px;
   }
 
   .command-palette input {
     min-height: 38px;
     border: 0;
     outline: none;
-    font-size: 17px;
+    font-size: 16px;
   }
 
   .command-results {
@@ -633,132 +733,108 @@
 
   .command-results button {
     display: grid;
-    grid-template-columns: 70px minmax(0, 1fr);
+    grid-template-columns: 86px minmax(0, 1fr);
     gap: 4px 12px;
     width: 100%;
     border: 0;
-    border-radius: 7px;
     background: transparent;
-    padding: 10px;
     text-align: left;
-  }
-
-  .command-results button.active,
-  .command-results button:hover {
-    background: #eef2ff;
   }
 
   .command-results button span {
     grid-row: span 2;
     color: #71717a;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-
-  .command-results button strong {
-    font-size: 14px;
-  }
-
-  .command-results button small,
-  .command-empty span {
-    color: #71717a;
-  }
-
-  .command-empty {
-    display: grid;
-    gap: 4px;
-    padding: 22px;
-    text-align: center;
   }
 
   .command-palette footer {
-    display: flex;
-    gap: 12px;
-    justify-content: flex-end;
     border-top: 1px solid #e4e4e7;
-    padding: 9px 12px;
+    padding: 10px 12px;
     color: #71717a;
     font-size: 12px;
     font-weight: 700;
+    text-align: right;
   }
 
-  @media (min-width: 2100px) {
-    .project-tabs,
-    .section-row,
-    .desktop-workspace {
-      max-width: 2160px;
+  @media (min-width: 2200px) {
+    :scope {
+      grid-template-columns: 204px minmax(0, 1fr);
     }
 
-    .desktop-workspace.has-right-panel {
+    .section-workspace.has-tool-sidebar {
+      grid-template-columns: 240px minmax(0, 1fr);
+    }
+
+    .section-workspace.has-context-panel {
       grid-template-columns: minmax(0, 1fr) 380px;
     }
-  }
 
-  @media (max-width: 1320px) {
-    .desktop-workspace {
-      padding-inline: 16px;
-    }
-
-    .desktop-workspace.has-right-panel {
-      grid-template-columns: minmax(0, 1fr) 330px;
-    }
-
-    .overview-board {
-      grid-template-columns: repeat(4, minmax(210px, 1fr));
-      gap: 10px;
-    }
-
-    .task-card-actions {
-      grid-template-columns: 1fr;
+    .section-workspace.has-tool-sidebar.has-context-panel {
+      grid-template-columns: 240px minmax(0, 1fr) 380px;
     }
   }
 
-  @media (max-width: 1120px) {
-    .desktop-workspace.has-right-panel {
+  @media (max-width: 1360px) {
+    :scope {
+      grid-template-columns: 184px minmax(0, 1fr);
+    }
+
+    .section-workspace.has-tool-sidebar {
+      grid-template-columns: 210px minmax(0, 1fr);
+    }
+
+    .section-workspace.has-context-panel,
+    .section-workspace.has-tool-sidebar.has-context-panel {
       grid-template-columns: minmax(0, 1fr);
     }
 
-    .right-panel {
-      position: static;
-      max-height: none;
+    .tool-sidebar {
+      min-height: 170px;
+      border-right: 0;
+      border-bottom: 1px solid #d4d4d8;
     }
 
-    .overview-board {
-      overflow-x: auto;
-      grid-template-columns: repeat(4, minmax(240px, 1fr));
-      padding-bottom: 4px;
+    .section-workspace.has-tool-sidebar {
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .context-panel {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 30;
+      width: min(390px, calc(100vw - 48px));
+      max-height: calc(100vh - 112px);
+      border: 1px solid #d4d4d8;
+      border-radius: 12px;
+      box-shadow: 0 20px 70px rgba(24, 24, 27, 0.2);
     }
   }
 
-  @media (max-width: 860px) {
-    .project-tabs,
-    .section-row {
-      padding-inline: 10px;
-    }
-
-    .section-row {
-      display: grid;
-      gap: 8px;
+  @media (max-width: 1100px) {
+    .application-header {
+      grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
+      height: auto;
+      min-height: 64px;
       padding-block: 8px;
     }
 
-    .project-heading,
-    .milestone-summary {
+    .header-tools {
+      grid-column: 2;
+      justify-content: flex-end;
+    }
+
+    .project-summary {
       grid-template-columns: 1fr;
     }
 
-    .milestone-progress {
-      padding-left: 0;
+    .progress-box {
       border-left: 0;
       border-top: 1px solid #e4e4e7;
+      padding-left: 0;
       padding-top: 12px;
-    }
-
-    .overview-board {
-      grid-template-columns: 1fr;
-      overflow: visible;
     }
   }
 }
