@@ -1,6 +1,29 @@
 "use client";
 
 import { useEffect, useMemo, useReducer, useState } from "react";
+import {
+  Archive,
+  ArrowLeft,
+  Bold,
+  CalendarDays,
+  CheckSquare2,
+  Code2,
+  FileImage,
+  FileText,
+  Folder,
+  Inbox,
+  Italic,
+  Link2,
+  List,
+  Mic2,
+  MoreHorizontal,
+  PanelLeftClose,
+  Plus,
+  Search,
+  Settings2,
+  Workflow,
+  X,
+} from "lucide-react";
 import "@/prototype/prototype-shell.css";
 import {
   inboxItems,
@@ -14,10 +37,10 @@ import {
 } from "@/prototype/prototype-state";
 
 const navItems = [
-  { id: "inbox", icon: "⌄", label: "Входящие", count: "4" },
-  { id: "today", icon: "□", label: "Сегодня", count: "3" },
-  { id: "search", icon: "⌕", label: "Поиск", count: "⌘K" },
-  { id: "archive", icon: "▱", label: "Архив", count: "" },
+  { id: "inbox", icon: Inbox, label: "Входящие", count: "4" },
+  { id: "today", icon: CalendarDays, label: "Сегодня", count: "3" },
+  { id: "search", icon: Search, label: "Поиск", count: "⌘K" },
+  { id: "archive", icon: Archive, label: "Архив", count: "" },
 ] as const;
 
 export function PrototypeShell() {
@@ -29,6 +52,7 @@ export function PrototypeShell() {
   const [search, setSearch] = useState("");
   const [selectedResult, setSelectedResult] = useState(0);
   const [processed, setProcessed] = useState<string[]>([]);
+  const [selectedInboxId, setSelectedInboxId] = useState("i1");
 
   const projects = state.projects.filter((project) => !project.archived);
   const activeProject =
@@ -115,7 +139,7 @@ export function PrototypeShell() {
       >
         <aside className="prototype-sidebar">
           <header className="workspace-header">
-            <div className="workspace-mark">Л</div>
+            <div className="workspace-mark">L</div>
             {!state.sidebarCollapsed && (
               <div>
                 <strong>Личная мастерская</strong>
@@ -126,7 +150,7 @@ export function PrototypeShell() {
               aria-label="Свернуть боковую панель"
               onClick={() => dispatch({ type: "toggle-sidebar" })}
             >
-              ⇤
+              <PanelLeftClose size={17} />
             </button>
           </header>
           <nav aria-label="Главная навигация">
@@ -143,7 +167,7 @@ export function PrototypeShell() {
                   }
                 }}
               >
-                <span className="nav-icon">{item.icon}</span>
+                <item.icon className="nav-icon" size={17} strokeWidth={1.8} />
                 {!state.sidebarCollapsed && (
                   <>
                     <span>{item.label}</span>
@@ -158,7 +182,7 @@ export function PrototypeShell() {
               <div className="section-label">
                 <span>Проекты</span>
                 <button aria-label="Создать проект" onClick={createProject}>
-                  ＋
+                  <Plus size={16} />
                 </button>
               </div>
               {projects.map((project) => (
@@ -190,7 +214,9 @@ export function PrototypeShell() {
                 <small>Настройки · Mock</small>
               </div>
             )}
-            <button>···</button>
+            <button aria-label="Настройки">
+              <Settings2 size={16} />
+            </button>
           </footer>
         </aside>
 
@@ -201,7 +227,7 @@ export function PrototypeShell() {
               dispatch({ type: "mobile-view", view: "navigation" })
             }
           >
-            ← Меню
+            <ArrowLeft size={17} /> Меню
           </button>
           {state.section === "projects" ? (
             <ProjectPane
@@ -220,10 +246,8 @@ export function PrototypeShell() {
               section={state.section}
               notes={state.notes}
               processed={processed}
-              onProcessed={(id) => setProcessed((items) => [...items, id])}
-              onOpenProject={(projectId) =>
-                dispatch({ type: "project", projectId })
-              }
+              selectedInboxId={selectedInboxId}
+              onSelectInbox={setSelectedInboxId}
               onOpenNote={(noteId) => dispatch({ type: "open-note", noteId })}
               onRestore={(noteId) => dispatch({ type: "restore-note", noteId })}
               projects={state.projects}
@@ -239,7 +263,7 @@ export function PrototypeShell() {
             className="mobile-back"
             onClick={() => dispatch({ type: "mobile-view", view: "list" })}
           >
-            ← К списку
+            <ArrowLeft size={17} /> К списку
           </button>
           {state.section === "projects" &&
           state.area === "notes" &&
@@ -261,6 +285,14 @@ export function PrototypeShell() {
             <TasksMock projectName={activeProject.name} />
           ) : state.section === "projects" && state.area === "canvas" ? (
             <CanvasMock projectName={activeProject.name} />
+          ) : state.section === "inbox" ? (
+            <InboxDetail
+              item={inboxItems.find((item) => item.id === selectedInboxId)}
+              onProcessed={(id) => setProcessed((items) => [...items, id])}
+              onAssign={() =>
+                dispatch({ type: "project", projectId: "lukomorye" })
+              }
+            />
           ) : (
             <SectionDetail section={state.section} />
           )}
@@ -316,7 +348,9 @@ function ProjectPane({
           <span className="eyebrow">{project.emoji} Проект</span>
           <h1>{project.name}</h1>
         </div>
-        <button className="quiet-button">•••</button>
+        <button className="quiet-button" aria-label="Действия проекта">
+          <MoreHorizontal size={18} />
+        </button>
       </header>
       <div className="area-tabs">
         {(["notes", "tasks", "canvas"] as const).map((id) => (
@@ -332,10 +366,10 @@ function ProjectPane({
       {area === "notes" && (
         <>
           <button className="new-note" onClick={onCreate}>
-            <span>＋</span> Новая заметка
+            <Plus size={17} /> Новая заметка
           </button>
           <label className="note-filter">
-            ⌕
+            <Search size={15} />
             <input
               aria-label="Фильтр заметок"
               value={filter}
@@ -395,26 +429,42 @@ function EditorMock({
           <span>{note.title}</span>
         </div>
         <div>
-          <span className="saved">● Сохранено локально</span>
+          <span className="saved">
+            <CheckSquare2 size={14} /> Сохранено локально
+          </span>
           <button title="Архивировать" onClick={onArchive}>
             Архивировать
           </button>
-          <button>•••</button>
+          <button aria-label="Дополнительные действия">
+            <MoreHorizontal size={17} />
+          </button>
         </div>
       </header>
       <div className="toolbar" aria-label="Панель форматирования">
-        <button title="Заголовок">H</button>
+        <button title="Заголовок">
+          <span className="type-icon">H1</span>
+        </button>
         <button title="Жирный">
-          <b>B</b>
+          <Bold size={16} />
         </button>
         <button title="Курсив">
-          <i>I</i>
+          <Italic size={16} />
         </button>
-        <button title="Список">≡</button>
-        <button title="Задача">☑</button>
-        <button title="Код">&lt;/&gt;</button>
-        <button title="Ссылка">↗</button>
-        <button title="Wiki-ссылка">[[]]</button>
+        <button title="Список">
+          <List size={16} />
+        </button>
+        <button title="Задача">
+          <CheckSquare2 size={16} />
+        </button>
+        <button title="Код">
+          <Code2 size={16} />
+        </button>
+        <button title="Ссылка">
+          <Link2 size={16} />
+        </button>
+        <button title="Wiki-ссылка">
+          <span className="type-icon">[[]]</span>
+        </button>
       </div>
       <article className="editor-paper">
         <input
@@ -440,23 +490,54 @@ function EditorMock({
 }
 
 function TasksMock({ projectName }: { projectName: string }) {
+  const groups = [
+    {
+      title: "Сегодня",
+      tasks: [
+        "Согласовать мобильную навигацию",
+        "Проверить Inbox master-detail",
+      ],
+    },
+    {
+      title: "Предстоящие",
+      tasks: ["Обсудить ширину редактора", "Проверить планшетный breakpoint"],
+    },
+    { title: "Завершённые", tasks: ["Собрать первый кликабельный сценарий"] },
+  ];
   return (
     <div className="mock-area">
-      <span className="eyebrow">{projectName} · визуальный mock</span>
-      <h2>Задачи проекта</h2>
-      <p>
-        Проверьте, удобно ли воспринимать задачи как отдельную область проекта.
-      </p>
-      {[
-        "Согласовать мобильную навигацию",
-        "Проверить пустые состояния",
-        "Обсудить ширину редактора",
-      ].map((task, index) => (
-        <label className="mock-task" key={task}>
-          <input type="checkbox" defaultChecked={index === 1} />
-          <span>{task}</span>
-          <small>{index === 0 ? "Сегодня" : "На неделе"}</small>
-        </label>
+      <header className="workspace-title">
+        <div>
+          <span className="eyebrow">{projectName}</span>
+          <h2>Задачи</h2>
+          <p>Рабочий фокус проекта без отрыва от заметок.</p>
+        </div>
+        <button className="primary-action">
+          <Plus size={16} /> Добавить задачу
+        </button>
+      </header>
+      {groups.map((group, groupIndex) => (
+        <section className="task-group" key={group.title}>
+          <h3>
+            {group.title}
+            <span>{group.tasks.length}</span>
+          </h3>
+          {group.tasks.map((task, index) => (
+            <label className="mock-task" key={task}>
+              <input type="checkbox" defaultChecked={groupIndex === 2} />
+              <span>{task}</span>
+              <small>
+                {groupIndex === 0
+                  ? index === 0
+                    ? "Высокий"
+                    : "Сегодня"
+                  : groupIndex === 1
+                    ? "На неделе"
+                    : "Готово"}
+              </small>
+            </label>
+          ))}
+        </section>
       ))}
     </div>
   );
@@ -465,8 +546,19 @@ function CanvasMock({ projectName }: { projectName: string }) {
   return (
     <div className="canvas-mock">
       <header>
-        <span className="eyebrow">{projectName} · визуальный mock</span>
-        <h2>Холст идей</h2>
+        <div>
+          <span className="eyebrow">{projectName}</span>
+          <h2>Холст идей</h2>
+        </div>
+        <div className="canvas-tools">
+          <button>
+            <Plus size={16} />
+          </button>
+          <button>
+            <Workflow size={16} />
+          </button>
+          <span>82%</span>
+        </div>
       </header>
       <div className="canvas-board">
         <div className="canvas-node one">
@@ -493,13 +585,81 @@ function CanvasMock({ projectName }: { projectName: string }) {
   );
 }
 
+function inboxIcon(kind: string, size: number) {
+  if (kind === "Голос") return <Mic2 size={size} />;
+  if (kind === "Изображение") return <FileImage size={size} />;
+  if (kind === "Ссылка") return <Link2 size={size} />;
+  return <FileText size={size} />;
+}
+
+function InboxDetail({
+  item,
+  onProcessed,
+  onAssign,
+}: {
+  item: (typeof inboxItems)[number] | undefined;
+  onProcessed: (id: string) => void;
+  onAssign: () => void;
+}) {
+  if (!item) {
+    return (
+      <div className="detail-empty">
+        <CheckSquare2 size={30} />
+        <h2>Входящие разобраны</h2>
+        <p>Новые быстрые захваты появятся здесь.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="inbox-detail">
+      <header className="detail-header">
+        <span className="detail-type">
+          {inboxIcon(item.kind, 16)} {item.kind}
+        </span>
+        <button aria-label="Дополнительные действия">
+          <MoreHorizontal size={18} />
+        </button>
+      </header>
+      <article>
+        <div className="capture-icon">{inboxIcon(item.kind, 24)}</div>
+        <p className="detail-kicker">Захвачено сегодня, 10:42</p>
+        <h2>{item.title}</h2>
+        <p className="capture-copy">
+          {item.kind === "Голос"
+            ? "Нужно проверить, насколько быстро голосовая мысль превращается в понятный следующий шаг. Длительность записи — 1:24."
+            : item.kind === "Изображение"
+              ? "Фотография доски после планирования. Сохранить контекст и связать с проектом до конца дня."
+              : item.kind === "Ссылка"
+                ? "Материал о системах навигации для инструментов, в которых пользователь проводит весь рабочий день."
+                : "Связать ежедневную заметку с Today и показывать незавершённые пункты без ощущения отдельного таск-менеджера."}
+        </p>
+        <div className="capture-meta">
+          <span>Источник · Быстрый захват</span>
+          <span>Без проекта</span>
+        </div>
+        <div className="detail-actions">
+          <button className="primary-action" onClick={onAssign}>
+            <Folder size={16} /> Назначить в проект
+          </button>
+          <button>
+            <FileText size={16} /> Превратить в заметку
+          </button>
+          <button onClick={() => onProcessed(item.id)}>
+            <CheckSquare2 size={16} /> Обработано
+          </button>
+        </div>
+      </article>
+    </div>
+  );
+}
+
 function GlobalSection({
   section,
   notes,
   projects,
   processed,
-  onProcessed,
-  onOpenProject,
+  selectedInboxId,
+  onSelectInbox,
   onOpenNote,
   onRestore,
   onRestoreProject,
@@ -508,8 +668,8 @@ function GlobalSection({
   notes: typeof initialNotes;
   projects: typeof initialProjects;
   processed: string[];
-  onProcessed: (id: string) => void;
-  onOpenProject: (id: string) => void;
+  selectedInboxId: string;
+  onSelectInbox: (id: string) => void;
   onOpenNote: (id: string) => void;
   onRestore: (id: string) => void;
   onRestoreProject: (id: string) => void;
@@ -527,23 +687,21 @@ function GlobalSection({
         <div className="inbox-list">
           {inboxItems
             .filter((item) => !processed.includes(item.id))
-            .map((item) => (
-              <article key={item.id}>
-                <i>{item.icon}</i>
-                <div>
-                  <small>{item.kind}</small>
-                  <strong>{item.title}</strong>
+            .map((item) => {
+              return (
+                <button
+                  className={`inbox-row ${selectedInboxId === item.id ? "active" : ""}`}
+                  key={item.id}
+                  onClick={() => onSelectInbox(item.id)}
+                >
+                  <span className="inbox-kind">{inboxIcon(item.kind, 17)}</span>
                   <span>
-                    <button onClick={() => onOpenProject("lukomorye")}>
-                      В Лукоморье
-                    </button>
-                    <button onClick={() => onProcessed(item.id)}>
-                      Обработано
-                    </button>
+                    <small>{item.kind}</small>
+                    <strong>{item.title}</strong>
                   </span>
-                </div>
-              </article>
-            ))}
+                </button>
+              );
+            })}
         </div>
       </>
     );
@@ -626,31 +784,82 @@ function SectionDetail({
 }: {
   section: "inbox" | "today" | "archive" | "projects";
 }) {
-  const copy =
-    section === "inbox"
-      ? [
-          "Входящие",
-          "Выберите элемент, чтобы разобрать его, или сразу назначьте проект.",
-        ]
-      : section === "today"
-        ? [
-            "День в фокусе",
-            "Ежедневная заметка, ближайшие задачи и необработанные входящие собраны рядом.",
-          ]
-        : section === "archive"
-          ? [
-              "Спокойный архив",
-              "Здесь нет физического удаления: любой mock-объект можно вернуть.",
-            ]
-          : [
-              "Выберите заметку",
-              "Откройте заметку из списка или создайте новую одним кликом.",
-            ];
+  if (section === "today")
+    return (
+      <div className="today-workspace">
+        <header>
+          <span className="eyebrow">Четверг, 11 июля</span>
+          <h2>Доброе утро</h2>
+          <p>Три главных действия и контекст дня — в одном месте.</p>
+        </header>
+        <section className="daily-note">
+          <div>
+            <CalendarDays size={18} />
+            <span>Ежедневная заметка</span>
+          </div>
+          <h3>Что сделает сегодняшний день удачным?</h3>
+          <p>
+            Согласовать направление интерфейса и оставить пространство для
+            глубокой работы.
+          </p>
+        </section>
+        <div className="today-columns">
+          <section>
+            <h3>
+              В фокусе <span>3</span>
+            </h3>
+            {[
+              "Согласовать прототип",
+              "Ответить по структуре проектов",
+              "Разобрать входящие",
+            ].map((task) => (
+              <label key={task}>
+                <input type="checkbox" />
+                <span>{task}</span>
+              </label>
+            ))}
+          </section>
+          <section>
+            <h3>Недавние заметки</h3>
+            <button>
+              <FileText size={16} />
+              <span>
+                Исследование редактора<small>Лукоморье · вчера</small>
+              </span>
+            </button>
+            <button>
+              <FileText size={16} />
+              <span>
+                Сценарий первого запуска<small>Продукт · сегодня</small>
+              </span>
+            </button>
+          </section>
+        </div>
+      </div>
+    );
+  if (section === "archive")
+    return (
+      <div className="archive-detail">
+        <Archive size={28} />
+        <span className="eyebrow">Безопасное хранение</span>
+        <h2>Ничего не удаляется навсегда</h2>
+        <p>
+          Архив сохраняет контекст работы и позволяет вернуть заметку или проект
+          в один клик.
+        </p>
+        <div>
+          <span>1</span>
+          <small>заметка</small>
+          <span>1</span>
+          <small>проект</small>
+        </div>
+      </div>
+    );
   return (
-    <div className="section-detail">
-      <span>◌</span>
-      <h2>{copy[0]}</h2>
-      <p>{copy[1]}</p>
+    <div className="detail-empty">
+      <FileText size={30} />
+      <h2>Выберите заметку</h2>
+      <p>Откройте заметку из списка или создайте новую одним кликом.</p>
     </div>
   );
 }
@@ -686,14 +895,20 @@ function CommandPalette({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <label>
-          ⌕
+          <Search size={20} />
           <input
             autoFocus
             value={query}
             onChange={(event) => onQuery(event.target.value)}
             placeholder="Найти заметку или проект…"
           />
-          <kbd>Esc</kbd>
+          <button
+            className="palette-close"
+            onClick={onClose}
+            aria-label="Закрыть"
+          >
+            <X size={17} />
+          </button>
         </label>
         <div>
           {results.length ? (
@@ -703,7 +918,13 @@ function CommandPalette({
                 key={`${result.type}-${result.id}`}
                 onClick={() => onSelect(result)}
               >
-                <i>{result.type === "Заметка" ? "≡" : "◇"}</i>
+                <i>
+                  {result.type === "Заметка" ? (
+                    <FileText size={17} />
+                  ) : (
+                    <Folder size={17} />
+                  )}
+                </i>
                 <span>
                   <strong>{result.title}</strong>
                   <small>
