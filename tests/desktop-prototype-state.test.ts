@@ -133,6 +133,39 @@ describe("desktop structural prototype state", () => {
     });
   });
 
+  it("restores the previous contextual panel after AI is closed", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "select-task",
+      taskId: "luko-first-scene",
+      section: "tasks",
+    });
+    state = desktopPrototypeReducer(state, { type: "open-ai-panel" });
+
+    expect(state.contextPanel).toEqual({ kind: "ai" });
+    expect(state.contextPanelBeforeAi).toEqual({
+      kind: "task",
+      taskId: "luko-first-scene",
+    });
+
+    state = desktopPrototypeReducer(state, { type: "close-ai-panel" });
+
+    expect(state.contextPanel).toEqual({
+      kind: "task",
+      taskId: "luko-first-scene",
+    });
+    expect(state.contextPanelBeforeAi).toBeNull();
+  });
+
+  it("closes AI to an empty context slot when no previous panel existed", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, { type: "open-ai-panel" });
+    state = desktopPrototypeReducer(state, { type: "close-ai-panel" });
+
+    expect(state.contextPanel).toBeNull();
+    expect(state.contextPanelBeforeAi).toBeNull();
+  });
+
   it("selects a document and opens document context", () => {
     let state = freshState();
     state = desktopPrototypeReducer(state, {
@@ -266,6 +299,28 @@ describe("desktop structural prototype state", () => {
     expect(state.contextPanel).toEqual({
       kind: "task",
       taskId: "ammonit-index",
+    });
+  });
+
+  it("opens an Inbox item from command palette search", () => {
+    let state = freshState();
+    const result = getCommandResults(state, "Голосовая мысль").find(
+      (item) => item.kind === "inbox",
+    );
+
+    expect(result).toBeDefined();
+    if (!result) return;
+
+    state = desktopPrototypeReducer(state, {
+      type: "activate-command-result",
+      result,
+    });
+
+    expect(state.activeSection).toBe("inbox");
+    expect(state.selectedInboxItemId).toBe("inbox-l-audio");
+    expect(state.contextPanel).toEqual({
+      kind: "inbox-item",
+      itemId: "inbox-l-audio",
     });
   });
 

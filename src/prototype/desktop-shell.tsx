@@ -40,6 +40,14 @@ import {
   type DesktopPrototypeAction,
   type DesktopPrototypeState,
 } from "@/prototype/desktop-state";
+import {
+  ContextPanelSection,
+  IconButton,
+  MetadataLine,
+  PrototypeButton,
+  ToolSidebarItem,
+  WorkspaceHeader,
+} from "@/prototype/desktop-ui";
 import "./desktop-shell.css";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
@@ -49,6 +57,15 @@ const laneLabels: Record<OverviewLane, string> = {
   next: "Дальше",
   later: "Позже",
   done: "Готово",
+};
+
+const commandKindLabels: Record<CommandResult["kind"], string> = {
+  project: "Проект",
+  section: "Раздел",
+  task: "Задача",
+  document: "Документ",
+  canvas: "Холст",
+  inbox: "Входящее",
 };
 
 export function DesktopPrototypeShell(): React.JSX.Element {
@@ -119,33 +136,34 @@ function ProjectRail({
 }): React.JSX.Element {
   return (
     <aside className="project-rail" aria-label="Проекты">
-      <div className="prototype-banner">MOCK</div>
-      <div className="rail-heading">
-        <span>Проекты</span>
-        <strong>Рабочая область</strong>
+      <div className="rail-brand">
+        <span className="rail-brand-mark">M</span>
+        <strong>mozg</strong>
       </div>
       <nav className="project-list" aria-label="Выбор проекта">
         {state.projects.map((project) => (
-          <button
-            className={project.id === state.activeProjectId ? "active" : ""}
+          <PrototypeButton
+            active={project.id === state.activeProjectId}
+            className="project-row"
             key={project.id}
             onClick={() =>
               dispatch({ type: "switch-project", projectId: project.id })
             }
-            type="button"
+            title={project.description}
+            variant="ghost"
           >
+            <span className="project-row-indicator" />
             <strong>{project.name}</strong>
-            <span>{project.description}</span>
-          </button>
+          </PrototypeButton>
         ))}
       </nav>
-      <button
+      <PrototypeButton
         className="create-project"
         onClick={() => dispatch({ type: "create-project" })}
-        type="button"
+        variant="quiet"
       >
         + Создать проект
-      </button>
+      </PrototypeButton>
     </aside>
   );
 }
@@ -161,39 +179,40 @@ function ApplicationHeader({
   return (
     <header className="application-header">
       <div className="header-project">
-        <span>Проект</span>
         <strong>{activeProject.name}</strong>
+        <MetadataLine>{activeProject.description}</MetadataLine>
       </div>
       <nav className="section-navigation" aria-label="Разделы проекта">
         {projectSections.map((section) => (
-          <button
-            className={state.activeSection === section.id ? "active" : ""}
+          <PrototypeButton
+            active={state.activeSection === section.id}
+            className="section-nav-item"
             key={section.id}
             onClick={() =>
               dispatch({ type: "switch-section", section: section.id })
             }
             title={section.description}
-            type="button"
+            variant="ghost"
           >
             {section.label}
-          </button>
+          </PrototypeButton>
         ))}
       </nav>
       <div className="header-tools" aria-label="Глобальные инструменты">
-        <button
+        <PrototypeButton
           onClick={() => dispatch({ type: "open-command-palette" })}
-          type="button"
+          variant="quiet"
         >
           Поиск
-        </button>
-        <button
-          className={state.contextPanel?.kind === "ai" ? "active" : ""}
+        </PrototypeButton>
+        <PrototypeButton
+          active={state.contextPanel?.kind === "ai"}
           onClick={() => dispatch({ type: "open-ai-panel" })}
-          type="button"
+          variant="quiet"
         >
           AI
-        </button>
-        <button type="button">Профиль</button>
+        </PrototypeButton>
+        <PrototypeButton variant="quiet">Профиль</PrototypeButton>
       </div>
     </header>
   );
@@ -278,7 +297,6 @@ function OverviewWorkspace({
   state: DesktopPrototypeState;
   dispatch: Dispatch;
 }): React.JSX.Element {
-  const activeProject = getActiveProject(state);
   const activeMilestone = getActiveMilestone(state);
   const progress = getMilestoneProgress(state);
   const areas = getProjectAreas(state);
@@ -287,12 +305,7 @@ function OverviewWorkspace({
     <div className="overview-workspace">
       <section className="project-summary">
         <div>
-          <span>Активный проект</span>
-          <h1>{activeProject.name}</h1>
-          <p>{activeProject.description}</p>
-        </div>
-        <div>
-          <span>Текущий рубеж</span>
+          <span className="ui-eyebrow">Ближайшая цель</span>
           <h2>{activeMilestone.title}</h2>
           <p>{activeMilestone.description}</p>
         </div>
@@ -300,14 +313,14 @@ function OverviewWorkspace({
           <strong>
             {progress.completed} из {progress.total} задач завершено
           </strong>
-          <button
+          <PrototypeButton
             onClick={() =>
               dispatch({ type: "switch-section", section: "tasks" })
             }
-            type="button"
+            variant="quiet"
           >
             Открыть задачи
-          </button>
+          </PrototypeButton>
         </div>
       </section>
       <section className="overview-controls" aria-label="Фильтры обзора">
@@ -346,20 +359,19 @@ function OverviewWorkspace({
             ))}
           </select>
         </label>
-        <button
-          className={state.filters.starredOnly ? "active" : ""}
+        <PrototypeButton
+          active={state.filters.starredOnly}
           onClick={() => dispatch({ type: "toggle-starred-filter" })}
-          type="button"
+          variant="quiet"
         >
           Только важные
-        </button>
-        <button
-          className="primary-action"
+        </PrototypeButton>
+        <PrototypeButton
           onClick={() => dispatch({ type: "create-task" })}
-          type="button"
+          variant="primary"
         >
           + Создать задачу
-        </button>
+        </PrototypeButton>
       </section>
       <section className="overview-board" aria-label="Доска проекта">
         {overviewLanes.map((lane) => (
@@ -422,6 +434,14 @@ function TaskCard({
   const doneSubtasks = task.subtasks.filter((subtask) => subtask.done).length;
   return (
     <article className="task-card">
+      <IconButton
+        active={task.starred}
+        className="task-star-control"
+        icon={task.starred ? "★" : "☆"}
+        label={task.starred ? "Убрать из важных" : "Пометить важной"}
+        onClick={() => dispatch({ type: "toggle-task-star", taskId: task.id })}
+        variant="ghost"
+      />
       <button
         className="task-hit-area"
         onClick={() =>
@@ -433,44 +453,13 @@ function TaskCard({
         }
         type="button"
       >
-        <span className={task.starred ? "star active" : "star"}>★</span>
         <strong>{task.title}</strong>
-        <span>{task.area ?? "Общее"}</span>
-        <span>{task.dueDate ?? "без срока"}</span>
-        <span>{task.linkedDocumentIds.length} док.</span>
-        <span>
-          {doneSubtasks}/{task.subtasks.length || 0}
-        </span>
+        <MetadataLine>
+          {task.area ?? "Общее"} · {task.dueDate ?? "без срока"} ·{" "}
+          {task.linkedDocumentIds.length} док. · {doneSubtasks}/
+          {task.subtasks.length || 0}
+        </MetadataLine>
       </button>
-      <div className="task-card-actions">
-        <button
-          onClick={() =>
-            dispatch({ type: "toggle-task-star", taskId: task.id })
-          }
-          type="button"
-        >
-          {task.starred ? "Убрать ★" : "Важная"}
-        </button>
-        <label>
-          Переместить
-          <select
-            onChange={(event) =>
-              dispatch({
-                type: "move-task",
-                taskId: task.id,
-                overviewLane: event.target.value as OverviewLane,
-              })
-            }
-            value={task.overviewLane}
-          >
-            {overviewLanes.map((lane) => (
-              <option key={lane.id} value={lane.id}>
-                {lane.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
     </article>
   );
 }
@@ -496,18 +485,15 @@ function KnowledgeSidebar({
           {documents
             .filter((document) => document.folder === folder)
             .map((document) => (
-              <button
-                className={
-                  state.selectedDocumentId === document.id ? "active" : ""
-                }
+              <ToolSidebarItem
+                active={state.selectedDocumentId === document.id}
                 key={document.id}
                 onClick={() =>
                   dispatch({ type: "select-document", documentId: document.id })
                 }
-                type="button"
               >
                 {document.title}
-              </button>
+              </ToolSidebarItem>
             ))}
         </section>
       ))}
@@ -592,17 +578,16 @@ function TasksSidebar({
       </header>
       <nav className="vertical-menu">
         {taskFilters.map((filter) => (
-          <button
-            className={state.taskFilter === filter.id ? "active" : ""}
+          <ToolSidebarItem
+            active={state.taskFilter === filter.id}
             key={filter.id}
             onClick={() =>
               dispatch({ type: "set-task-filter", filter: filter.id })
             }
-            type="button"
           >
             <strong>{filter.label}</strong>
             <span>{filter.description}</span>
-          </button>
+          </ToolSidebarItem>
         ))}
       </nav>
     </aside>
@@ -622,11 +607,11 @@ function TasksWorkspace({
     taskFilters[0];
   return (
     <div className="task-list-workspace">
-      <header className="section-title">
-        <span>Список задач</span>
-        <h1>{currentFilter.label}</h1>
-        <p>{currentFilter.description}</p>
-      </header>
+      <WorkspaceHeader
+        description={currentFilter.description}
+        eyebrow="Список задач"
+        title={currentFilter.label}
+      />
       <div className="task-list">
         {tasks.map((task) => (
           <TaskListRow dispatch={dispatch} key={task.id} task={task} />
@@ -685,17 +670,16 @@ function CanvasesSidebar({
       </header>
       <nav className="vertical-menu">
         {canvases.map((canvas) => (
-          <button
-            className={state.selectedCanvasId === canvas.id ? "active" : ""}
+          <ToolSidebarItem
+            active={state.selectedCanvasId === canvas.id}
             key={canvas.id}
             onClick={() =>
               dispatch({ type: "select-canvas", canvasId: canvas.id })
             }
-            type="button"
           >
             <strong>{canvas.title}</strong>
             <span>{canvas.description}</span>
-          </button>
+          </ToolSidebarItem>
         ))}
       </nav>
     </aside>
@@ -773,16 +757,15 @@ function InboxSidebar({
       </header>
       <nav className="vertical-menu compact">
         {inboxFilters.map((filter) => (
-          <button
-            className={state.inboxFilter === filter.id ? "active" : ""}
+          <ToolSidebarItem
+            active={state.inboxFilter === filter.id}
             key={filter.id}
             onClick={() =>
               dispatch({ type: "set-inbox-filter", filter: filter.id })
             }
-            type="button"
           >
             {filter.label}
-          </button>
+          </ToolSidebarItem>
         ))}
       </nav>
     </aside>
@@ -799,11 +782,11 @@ function InboxWorkspace({
   const items = getVisibleInboxItems(state);
   return (
     <div className="inbox-workspace">
-      <header className="section-title">
-        <span>Захваты</span>
-        <h1>Входящие</h1>
-        <p>Структурный макет места, куда попадают быстрые материалы.</p>
-      </header>
+      <WorkspaceHeader
+        description="Структурный макет места, куда попадают быстрые материалы."
+        eyebrow="Захваты"
+        title="Входящие"
+      />
       <div className="inbox-grid">
         {items.map((item) => (
           <InboxItemCard dispatch={dispatch} item={item} key={item.id} />
@@ -852,12 +835,19 @@ function ContextPanelSlot({
           <span>Контекст</span>
           <h2>{contextTitle(contextPanel)}</h2>
         </div>
-        <button
-          onClick={() => dispatch({ type: "close-context-panel" })}
-          type="button"
+        <PrototypeButton
+          onClick={() =>
+            dispatch({
+              type:
+                contextPanel.kind === "ai"
+                  ? "close-ai-panel"
+                  : "close-context-panel",
+            })
+          }
+          variant="quiet"
         >
           Закрыть
-        </button>
+        </PrototypeButton>
       </header>
       {renderContextPanelContent(state, dispatch, contextPanel)}
     </aside>
@@ -976,8 +966,7 @@ function TaskDetailsPanel({
           ))}
         </select>
       </label>
-      <section className="panel-block">
-        <h3>Подзадачи</h3>
+      <ContextPanelSection title="Подзадачи">
         {task.subtasks.length > 0 ? (
           task.subtasks.map((subtask) => (
             <label className="subtask-row" key={subtask.id}>
@@ -998,7 +987,7 @@ function TaskDetailsPanel({
         ) : (
           <p>Подзадач пока нет.</p>
         )}
-      </section>
+      </ContextPanelSection>
       <label className="field">
         Заметки
         <textarea
@@ -1029,24 +1018,21 @@ function DocumentContextPanel({
     .filter((task): task is PrototypeTask => Boolean(task));
   return (
     <div className="panel-stack">
-      <section className="panel-block">
-        <h3>Backlinks</h3>
+      <ContextPanelSection title="Backlinks">
         {document.backlinks.map((backlink) => (
           <span className="document-pill" key={backlink}>
             {backlink}
           </span>
         ))}
-      </section>
-      <section className="panel-block">
-        <h3>Связанные задачи</h3>
+      </ContextPanelSection>
+      <ContextPanelSection title="Связанные задачи">
         {linkedTasks.map((task) => (
           <p key={task.id}>{task.title}</p>
         ))}
-      </section>
-      <section className="panel-block">
-        <h3>История</h3>
+      </ContextPanelSection>
+      <ContextPanelSection title="История">
         <p>Mock: документ открыт в структурном прототипе shell.</p>
-      </section>
+      </ContextPanelSection>
     </div>
   );
 }
@@ -1060,14 +1046,12 @@ function CanvasInspectorPanel({
 }): React.JSX.Element {
   return (
     <div className="panel-stack">
-      <section className="panel-block">
-        <h3>{objectTitle}</h3>
+      <ContextPanelSection title={objectTitle}>
         <p>{objectBody}</p>
-      </section>
-      <section className="panel-block">
-        <h3>Свойства</h3>
+      </ContextPanelSection>
+      <ContextPanelSection title="Свойства">
         <p>Тип, позиция и связи показаны как mock-инспектор.</p>
-      </section>
+      </ContextPanelSection>
     </div>
   );
 }
@@ -1079,16 +1063,14 @@ function InboxContextPanel({
 }): React.JSX.Element {
   return (
     <div className="panel-stack">
-      <section className="panel-block">
-        <h3>{item.title}</h3>
+      <ContextPanelSection title={item.title}>
         <p>{item.preview}</p>
-      </section>
-      <section className="panel-block">
-        <h3>Источник</h3>
+      </ContextPanelSection>
+      <ContextPanelSection title="Источник">
         <p>
           {item.source} · {item.capturedAt}
         </p>
-      </section>
+      </ContextPanelSection>
     </div>
   );
 }
@@ -1102,12 +1084,10 @@ function AiPanel({
 }): React.JSX.Element {
   return (
     <div className="panel-stack">
-      <section className="panel-block">
-        <h3>Текущий контекст</h3>
+      <ContextPanelSection title="Текущий контекст">
         <p>{getAiContextLabel(state)}</p>
-      </section>
-      <section className="panel-block">
-        <h3>Предложения</h3>
+      </ContextPanelSection>
+      <ContextPanelSection title="Предложения">
         {aiProposals.map((proposal) => (
           <label className="proposal-row" key={proposal.id}>
             <input
@@ -1126,22 +1106,20 @@ function AiPanel({
             </span>
           </label>
         ))}
-      </section>
-      <button
-        className="primary-action"
+      </ContextPanelSection>
+      <PrototypeButton
         disabled={state.selectedAiProposalIds.length === 0}
         onClick={() => dispatch({ type: "confirm-ai-proposals" })}
-        type="button"
+        variant="primary"
       >
         Применить выбранное
-      </button>
+      </PrototypeButton>
       {state.aiActivityLog.length > 0 ? (
-        <section className="panel-block">
-          <h3>Журнал</h3>
+        <ContextPanelSection title="Журнал">
           {state.aiActivityLog.map((entry) => (
             <p key={entry}>{entry}</p>
           ))}
-        </section>
+        </ContextPanelSection>
       ) : null}
     </div>
   );
@@ -1218,7 +1196,7 @@ function CommandPalette({
                 onMouseEnter={() => onIndexChange(index)}
                 type="button"
               >
-                <span>{result.kind}</span>
+                <span>{commandKindLabels[result.kind]}</span>
                 <strong>{result.title}</strong>
                 <small>{result.subtitle}</small>
               </button>

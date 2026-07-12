@@ -27,6 +27,11 @@ export type ContextPanelState =
   | { kind: "ai" }
   | null;
 
+export type RestorableContextPanelState = Exclude<
+  ContextPanelState,
+  { kind: "ai" } | null
+>;
+
 export type OverviewFilters = {
   area: string;
   milestoneId: string;
@@ -38,7 +43,8 @@ export type CommandResult =
   | { kind: "section"; id: ProjectSection; title: string; subtitle: string }
   | { kind: "task"; id: string; title: string; subtitle: string }
   | { kind: "document"; id: string; title: string; subtitle: string }
-  | { kind: "canvas"; id: string; title: string; subtitle: string };
+  | { kind: "canvas"; id: string; title: string; subtitle: string }
+  | { kind: "inbox"; id: string; title: string; subtitle: string };
 
 export type DesktopPrototypeState = {
   activeProjectId: string;
@@ -52,6 +58,7 @@ export type DesktopPrototypeState = {
   taskFilter: TaskFilter;
   inboxFilter: InboxFilter;
   contextPanel: ContextPanelState;
+  contextPanelBeforeAi: RestorableContextPanelState | null;
   commandPaletteOpen: boolean;
   projects: PrototypeProject[];
   milestones: PrototypeMilestone[];
@@ -115,6 +122,7 @@ export const initialDesktopPrototypeState: DesktopPrototypeState = {
   taskFilter: "all",
   inboxFilter: "all",
   contextPanel: null,
+  contextPanelBeforeAi: null,
   commandPaletteOpen: false,
   projects: initialProjects,
   milestones: initialMilestones,
@@ -415,12 +423,22 @@ export function getCommandResults(
       subtitle: `Холст · ${getProjectName(state, canvas.projectId)}`,
     }));
 
+  const inboxResults: CommandResult[] = state.inboxItems
+    .filter((item) => matches(item.title) || matches(item.preview))
+    .map((item) => ({
+      kind: "inbox",
+      id: item.id,
+      title: item.title,
+      subtitle: `Р’С…РѕРґСЏС‰РµРµ В· ${getProjectName(state, item.projectId)}`,
+    }));
+
   return visibleCommandResults([
     ...projectResults,
     ...sectionResults,
     ...taskResults,
     ...documentResults,
     ...canvasResults,
+    ...inboxResults,
   ]);
 }
 
@@ -512,6 +530,7 @@ function switchToProject(
     selectedCanvasObjectId: null,
     selectedInboxItemId: inboxItem?.id ?? null,
     contextPanel: null,
+    contextPanelBeforeAi: null,
     filters: filtersForProject(state, projectId),
     taskFilter: "all",
     inboxFilter: "all",
@@ -532,6 +551,7 @@ function activateCommandResult(
       ...state,
       activeSection: result.id,
       contextPanel: null,
+      contextPanelBeforeAi: null,
       commandPaletteOpen: false,
     };
   }
@@ -543,6 +563,7 @@ function activateCommandResult(
       activeSection: "tasks",
       selectedTaskId: task.id,
       contextPanel: { kind: "task", taskId: task.id },
+      contextPanelBeforeAi: null,
       filters: filtersForProject(state, task.projectId),
       commandPaletteOpen: false,
     };
@@ -556,23 +577,37 @@ function activateCommandResult(
       selectedDocumentId: document.id,
       selectedDocumentFolder: document.folder,
       contextPanel: { kind: "document-context", documentId: document.id },
+      contextPanelBeforeAi: null,
       commandPaletteOpen: false,
     };
   }
-  const canvas = getCanvasById(state, result.id);
-  if (!canvas) return state;
+  if (result.kind === "canvas") {
+    const canvas = getCanvasById(state, result.id);
+    if (!canvas) return state;
+    return {
+      ...switchToProject(state, canvas.projectId),
+      activeSection: "canvases",
+      selectedCanvasId: canvas.id,
+      selectedCanvasObjectId: canvas.objects[0]?.id ?? null,
+      contextPanel: canvas.objects[0]
+        ? {
+            kind: "canvas-inspector",
+            canvasId: canvas.id,
+            objectId: canvas.objects[0].id,
+          }
+        : null,
+      contextPanelBeforeAi: null,
+      commandPaletteOpen: false,
+    };
+  }
+  const item = getInboxItemById(state, result.id);
+  if (!item) return state;
   return {
-    ...switchToProject(state, canvas.projectId),
-    activeSection: "canvases",
-    selectedCanvasId: canvas.id,
-    selectedCanvasObjectId: canvas.objects[0]?.id ?? null,
-    contextPanel: canvas.objects[0]
-      ? {
-          kind: "canvas-inspector",
-          canvasId: canvas.id,
-          objectId: canvas.objects[0].id,
-        }
-      : null,
+    ...switchToProject(state, item.projectId),
+    activeSection: "inbox",
+    selectedInboxItemId: item.id,
+    contextPanel: { kind: "inbox-item", itemId: item.id },
+    contextPanelBeforeAi: null,
     commandPaletteOpen: false,
   };
 }
@@ -611,6 +646,7 @@ export function desktopPrototypeReducer(
         selectedCanvasObjectId: null,
         selectedInboxItemId: null,
         contextPanel: null,
+        contextPanelBeforeAi: null,
         filters: {
           area: ALL_AREAS,
           milestoneId: milestone.id,
@@ -624,6 +660,7 @@ export function desktopPrototypeReducer(
         ...state,
         activeSection: action.section,
         contextPanel: null,
+        contextPanelBeforeAi: null,
         commandPaletteOpen: false,
       };
     case "select-task": {
@@ -638,6 +675,7 @@ export function desktopPrototypeReducer(
         activeSection: action.section ?? nextState.activeSection,
         selectedTaskId: task.id,
         contextPanel: { kind: "task", taskId: task.id },
+        contextPanelBeforeAi: null,
         commandPaletteOpen: false,
       };
     }
@@ -645,6 +683,7 @@ export function desktopPrototypeReducer(
       return {
         ...state,
         contextPanel: null,
+        contextPanelBeforeAi: null,
         selectedAiProposalIds: [],
       };
     case "toggle-task-star":
@@ -724,6 +763,7 @@ export function desktopPrototypeReducer(
         tasks: [task, ...state.tasks],
         selectedTaskId: task.id,
         contextPanel: { kind: "task", taskId: task.id },
+        contextPanelBeforeAi: null,
         nextTaskNumber: state.nextTaskNumber + 1,
       };
     }
@@ -737,6 +777,7 @@ export function desktopPrototypeReducer(
         selectedDocumentId: document.id,
         selectedDocumentFolder: document.folder,
         contextPanel: null,
+        contextPanelBeforeAi: null,
         commandPaletteOpen: false,
       };
     }
@@ -748,6 +789,7 @@ export function desktopPrototypeReducer(
         activeSection: "knowledge",
         selectedDocumentId: documentId,
         contextPanel: { kind: "document-context", documentId },
+        contextPanelBeforeAi: null,
       };
     }
     case "select-canvas": {
@@ -760,6 +802,7 @@ export function desktopPrototypeReducer(
         selectedCanvasId: canvas.id,
         selectedCanvasObjectId: null,
         contextPanel: null,
+        contextPanelBeforeAi: null,
         commandPaletteOpen: false,
       };
     }
@@ -774,6 +817,7 @@ export function desktopPrototypeReducer(
           canvasId: action.canvasId,
           objectId: action.objectId,
         },
+        contextPanelBeforeAi: null,
       };
     }
     case "select-inbox-item": {
@@ -785,6 +829,7 @@ export function desktopPrototypeReducer(
         activeSection: "inbox",
         selectedInboxItemId: item.id,
         contextPanel: { kind: "inbox-item", itemId: item.id },
+        contextPanelBeforeAi: null,
         commandPaletteOpen: false,
       };
     }
@@ -792,13 +837,20 @@ export function desktopPrototypeReducer(
       return {
         ...state,
         contextPanel: { kind: "ai" },
+        contextPanelBeforeAi:
+          state.contextPanel && state.contextPanel.kind !== "ai"
+            ? state.contextPanel
+            : state.contextPanelBeforeAi,
         selectedAiProposalIds: [],
       };
     case "close-ai-panel":
       return {
         ...state,
         contextPanel:
-          state.contextPanel?.kind === "ai" ? null : state.contextPanel,
+          state.contextPanel?.kind === "ai"
+            ? state.contextPanelBeforeAi
+            : state.contextPanel,
+        contextPanelBeforeAi: null,
         selectedAiProposalIds: [],
       };
     case "toggle-ai-proposal":
