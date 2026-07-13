@@ -3,7 +3,6 @@ import {
   initialCanvases,
   initialDocuments,
   initialInboxItems,
-  initialMilestones,
   initialOverviewDirections,
   initialProjects,
   initialTasks,
@@ -14,7 +13,6 @@ import {
   type PrototypeCanvasObject,
   type PrototypeDocument,
   type PrototypeInboxItem,
-  type PrototypeMilestone,
   type PrototypeOverviewDirection,
   type PrototypeProject,
   type PrototypeTask,
@@ -34,12 +32,6 @@ export type RestorableContextPanelState = Exclude<
   ContextPanelState,
   { kind: "ai" } | null
 >;
-
-export type OverviewFilters = {
-  area: string;
-  milestoneId: string;
-  starredOnly: boolean;
-};
 
 export type KnowledgeContextMode =
   "outline" | "backlinks" | "outgoing" | "tasks" | "history";
@@ -92,13 +84,11 @@ export type DesktopPrototypeState = {
   contextPanelBeforeAi: RestorableContextPanelState | null;
   commandPaletteOpen: boolean;
   projects: PrototypeProject[];
-  milestones: PrototypeMilestone[];
   overviewDirections: PrototypeOverviewDirection[];
   tasks: PrototypeTask[];
   documents: PrototypeDocument[];
   canvases: PrototypeCanvas[];
   inboxItems: PrototypeInboxItem[];
-  filters: OverviewFilters;
   selectedAiProposalIds: string[];
   aiActivityLog: string[];
   nextProjectNumber: number;
@@ -137,9 +127,6 @@ export type DesktopPrototypeAction =
       title: string;
     }
   | { type: "set-task-signal"; taskId: string; signal: TaskSignal }
-  | { type: "set-area-filter"; area: string }
-  | { type: "set-milestone-filter"; milestoneId: string }
-  | { type: "toggle-starred-filter" }
   | { type: "set-task-filter"; filter: TaskFilter }
   | { type: "set-inbox-filter"; filter: InboxFilter }
   | { type: "create-task" }
@@ -166,8 +153,6 @@ export type DesktopPrototypeAction =
   | { type: "close-command-palette" }
   | { type: "activate-command-result"; result: CommandResult };
 
-export const ALL_AREAS = "all";
-export const ALL_MILESTONES = "all";
 export const MAX_VISIBLE_COMMAND_RESULTS = 10;
 
 const initialProjectId = "lukomorie";
@@ -223,17 +208,11 @@ export const initialDesktopPrototypeState: DesktopPrototypeState = {
   contextPanelBeforeAi: null,
   commandPaletteOpen: false,
   projects: initialProjects,
-  milestones: initialMilestones,
   overviewDirections: initialOverviewDirections,
   tasks: initialTasks,
   documents: initialDocuments,
   canvases: initialCanvases,
   inboxItems: initialInboxItems,
-  filters: {
-    area: ALL_AREAS,
-    milestoneId: "lukomorie-alpha",
-    starredOnly: false,
-  },
   selectedAiProposalIds: [],
   aiActivityLog: [],
   nextProjectNumber: 1,
@@ -246,15 +225,6 @@ export function getActiveProject(
   return (
     state.projects.find((project) => project.id === state.activeProjectId) ??
     state.projects[0]
-  );
-}
-
-export function getProjectMilestones(
-  state: DesktopPrototypeState,
-  projectId = state.activeProjectId,
-): PrototypeMilestone[] {
-  return state.milestones.filter(
-    (milestone) => milestone.projectId === projectId,
   );
 }
 
@@ -274,17 +244,6 @@ export function getOverviewDirectionById(
 ): PrototypeOverviewDirection | undefined {
   return state.overviewDirections.find(
     (direction) => direction.id === directionId,
-  );
-}
-
-export function getActiveMilestone(
-  state: DesktopPrototypeState,
-): PrototypeMilestone {
-  const projectMilestones = getProjectMilestones(state);
-  return (
-    projectMilestones.find(
-      (milestone) => milestone.id === state.filters.milestoneId,
-    ) ?? projectMilestones[0]
   );
 }
 
@@ -358,7 +317,7 @@ export function knowledgeFolderId(projectId: string, path: string[]): string {
 }
 
 export function getDocumentFolderPath(document: PrototypeDocument): string[] {
-  if (document.folderPath && document.folderPath.length > 0) {
+  if (document.folderPath !== undefined) {
     return document.folderPath;
   }
   const overridePath = documentFolderPathOverrides[document.id];
@@ -402,6 +361,7 @@ export function getKnowledgeTree(
   const documents = getProjectDocuments(state, projectId);
   const query = state.knowledgeSearchQuery.trim().toLocaleLowerCase("ru");
   const rootFolders = new Map<string, KnowledgeTreeNode>();
+  const rootDocuments: KnowledgeTreeNode[] = [];
   const childFolderMaps = new Map<string, Map<string, KnowledgeTreeNode>>();
   const matches = (document: PrototypeDocument): boolean => {
     if (!query) return true;
@@ -461,6 +421,16 @@ export function getKnowledgeTree(
   for (const document of documents) {
     if (!matches(document)) continue;
     const folderPath = getDocumentFolderPath(document);
+    if (folderPath.length === 0) {
+      rootDocuments.push({
+        kind: "document",
+        id: document.id,
+        title: document.title,
+        path: [document.title],
+        document,
+      });
+      continue;
+    }
     const folder = ensureFolder(folderPath);
     if (folder.kind !== "folder") continue;
     folder.children.push({
@@ -472,7 +442,10 @@ export function getKnowledgeTree(
     });
   }
 
-  return sortKnowledgeNodes(Array.from(rootFolders.values()));
+  return sortKnowledgeNodes([
+    ...Array.from(rootFolders.values()),
+    ...rootDocuments,
+  ]);
 }
 
 export function getProjectDocumentFolders(
@@ -532,19 +505,11 @@ export function getVisibleOverviewTasks(
 export function getVisibleTaskList(
   state: DesktopPrototypeState,
 ): PrototypeTask[] {
-  return sortTasksForBoard(
-    getProjectTasks(state).filter((task) => {
-      if (state.taskFilter === "important") return task.starred;
-      if (state.taskFilter === "today") {
-        return task.completedAt === null && task.overviewOrder === 0;
-      }
-      if (state.taskFilter === "upcoming") {
-        return task.completedAt === null && task.overviewOrder > 0;
-      }
-      if (state.taskFilter === "completed") return task.completedAt !== null;
-      return true;
-    }),
-  );
+  return getProjectTasks(state).filter((task) => {
+    if (state.taskFilter === "important") return task.starred;
+    if (state.taskFilter === "completed") return task.completedAt !== null;
+    return true;
+  });
 }
 
 export function sortTasksForBoard(tasks: PrototypeTask[]): PrototypeTask[] {
@@ -576,21 +541,6 @@ export function getTasksForDirection(
   return getVisibleOverviewTasks(state).filter(
     (task) => task.overviewDirectionId === directionId,
   );
-}
-
-export function getMilestoneProgress(state: DesktopPrototypeState): {
-  completed: number;
-  total: number;
-} {
-  const activeMilestone = getActiveMilestone(state);
-  const milestoneTasks = getProjectTasks(state).filter(
-    (task) => task.milestoneId === activeMilestone.id,
-  );
-  return {
-    completed: milestoneTasks.filter((task) => task.completedAt !== null)
-      .length,
-    total: milestoneTasks.length,
-  };
 }
 
 export function getAiContextLabel(state: DesktopPrototypeState): string {
@@ -717,20 +667,6 @@ function getProjectName(
   );
 }
 
-function filtersForProject(
-  state: DesktopPrototypeState,
-  projectId: string,
-): OverviewFilters {
-  const firstMilestone = state.milestones.find(
-    (milestone) => milestone.projectId === projectId,
-  );
-  return {
-    area: ALL_AREAS,
-    milestoneId: firstMilestone?.id ?? ALL_MILESTONES,
-    starredOnly: false,
-  };
-}
-
 function firstDocumentForProject(
   state: DesktopPrototypeState,
   projectId: string,
@@ -762,6 +698,57 @@ function updateTask(
     tasks: state.tasks.map((task) =>
       task.id === taskId ? updater(task) : task,
     ),
+  };
+}
+
+function getNextOverviewOrder(
+  state: DesktopPrototypeState,
+  directionId: OverviewDirectionId,
+): number {
+  return (
+    state.tasks.reduce(
+      (highestOrder, task) =>
+        task.projectId === state.activeProjectId &&
+        task.overviewDirectionId === directionId
+          ? Math.max(highestOrder, task.overviewOrder)
+          : highestOrder,
+      -1,
+    ) + 1
+  );
+}
+
+function createPrototypeTask({
+  id,
+  projectId,
+  overviewDirectionId,
+  overviewOrder,
+  title,
+  area,
+  subtasks,
+  notes,
+}: {
+  id: string;
+  projectId: string;
+  overviewDirectionId: OverviewDirectionId;
+  overviewOrder: number;
+  title: string;
+  area: string;
+  subtasks: PrototypeTask["subtasks"];
+  notes: string;
+}): PrototypeTask {
+  return {
+    id,
+    projectId,
+    title,
+    overviewDirectionId,
+    overviewOrder,
+    completedAt: null,
+    signal: "none",
+    starred: false,
+    area,
+    linkedDocumentIds: [],
+    subtasks,
+    notes,
   };
 }
 
@@ -901,7 +888,6 @@ function switchToProject(
     selectedInboxItemId: inboxItem?.id ?? null,
     contextPanel: null,
     contextPanelBeforeAi: null,
-    filters: filtersForProject(state, projectId),
     taskFilter: "all",
     inboxFilter: "all",
     commandPaletteOpen: false,
@@ -977,7 +963,6 @@ function activateCommandResult(
       selectedTaskId: task.id,
       contextPanel: { kind: "task", taskId: task.id },
       contextPanelBeforeAi: null,
-      filters: filtersForProject(state, task.projectId),
       commandPaletteOpen: false,
     };
   }
@@ -1040,12 +1025,6 @@ export function desktopPrototypeReducer(
         shortName: `Проект ${state.nextProjectNumber}`,
         description: "Черновой проект для проверки поведения shell.",
       };
-      const milestone: PrototypeMilestone = {
-        id: `${id}-milestone`,
-        projectId: id,
-        title: "Первый рабочий рубеж",
-        description: "Определить цель проекта и первые действия.",
-      };
       const overviewDirection: PrototypeOverviewDirection = {
         id: `${id}-primary-direction`,
         projectId: id,
@@ -1055,7 +1034,6 @@ export function desktopPrototypeReducer(
       return {
         ...state,
         projects: [...state.projects, project],
-        milestones: [...state.milestones, milestone],
         overviewDirections: [...state.overviewDirections, overviewDirection],
         activeProjectId: id,
         activeSection: "overview",
@@ -1075,11 +1053,6 @@ export function desktopPrototypeReducer(
         selectedInboxItemId: null,
         contextPanel: null,
         contextPanelBeforeAi: null,
-        filters: {
-          area: ALL_AREAS,
-          milestoneId: milestone.id,
-          starredOnly: false,
-        },
         nextProjectNumber: state.nextProjectNumber + 1,
       };
     }
@@ -1207,49 +1180,23 @@ export function desktopPrototypeReducer(
         ...task,
         signal: action.signal,
       }));
-    case "set-area-filter":
-      return {
-        ...state,
-        filters: { ...state.filters, area: action.area },
-      };
-    case "set-milestone-filter":
-      return {
-        ...state,
-        filters: { ...state.filters, milestoneId: action.milestoneId },
-      };
-    case "toggle-starred-filter":
-      return {
-        ...state,
-        filters: {
-          ...state.filters,
-          starredOnly: !state.filters.starredOnly,
-        },
-      };
     case "set-task-filter":
       return { ...state, taskFilter: action.filter };
     case "set-inbox-filter":
       return { ...state, inboxFilter: action.filter };
     case "create-task": {
-      const activeMilestone = getActiveMilestone(state);
       const activeDirection = getProjectOverviewDirections(state)[0];
       if (!activeDirection) return state;
-      const task: PrototypeTask = {
+      const task = createPrototypeTask({
         id: `mock-task-${state.nextTaskNumber}`,
         projectId: state.activeProjectId,
         title: "Новая задача",
         overviewDirectionId: activeDirection.id,
-        overviewOrder: getProjectTasks(state).filter(
-          (item) => item.overviewDirectionId === activeDirection.id,
-        ).length,
-        completedAt: null,
-        signal: "none",
-        starred: false,
+        overviewOrder: getNextOverviewOrder(state, activeDirection.id),
         area: getProjectAreas(state)[0] ?? "Общее",
-        milestoneId: activeMilestone.id,
-        linkedDocumentIds: [],
         subtasks: [],
         notes: "Черновая задача создана только в mock-состоянии прототипа.",
-      };
+      });
       return {
         ...state,
         activeSection:
@@ -1478,23 +1425,15 @@ export function desktopPrototypeReducer(
         const proposal = aiProposals.find((item) => item.id === proposalId);
         if (!proposal) continue;
         if (proposal.kind === "create-next-step") {
-          const activeMilestone = getActiveMilestone(nextState);
           const activeDirection = getProjectOverviewDirections(nextState)[0];
           if (!activeDirection) continue;
-          const task: PrototypeTask = {
+          const task = createPrototypeTask({
             id: `ai-task-${nextState.nextTaskNumber}`,
             projectId: nextState.activeProjectId,
             title: "Проверить следующий конкретный шаг",
             overviewDirectionId: activeDirection.id,
-            overviewOrder: getProjectTasks(nextState).filter(
-              (item) => item.overviewDirectionId === activeDirection.id,
-            ).length,
-            completedAt: null,
-            signal: "none",
-            starred: false,
+            overviewOrder: getNextOverviewOrder(nextState, activeDirection.id),
             area: getProjectAreas(nextState)[0] ?? "Общее",
-            milestoneId: activeMilestone.id,
-            linkedDocumentIds: [],
             subtasks: [
               {
                 id: `ai-task-${nextState.nextTaskNumber}-subtask`,
@@ -1504,7 +1443,7 @@ export function desktopPrototypeReducer(
             ],
             notes:
               "Создано mock-предложением AI после явного подтверждения пользователя.",
-          };
+          });
           nextState = {
             ...nextState,
             tasks: [task, ...nextState.tasks],
@@ -1522,17 +1461,6 @@ export function desktopPrototypeReducer(
                 `${task.notes ?? ""}\nКритерий готовности: сформулировать проверяемый результат.`.trim(),
             }));
           }
-        }
-        if (proposal.kind === "move-to-milestone" && nextState.selectedTaskId) {
-          const activeMilestone = getActiveMilestone(nextState);
-          nextState = updateTask(
-            nextState,
-            nextState.selectedTaskId,
-            (task) => ({
-              ...task,
-              milestoneId: activeMilestone.id,
-            }),
-          );
         }
         if (proposal.kind === "add-question") {
           nextState = addAiLog(
