@@ -79,6 +79,14 @@
     }
   }
 
+  @media (min-width: 1800px) {
+    .section-overview.has-context-panel.is-overview-focused {
+      grid-template-columns:
+        minmax(0, 992px) var(--context-width)
+        minmax(0, 1fr);
+    }
+  }
+
   @media (max-width: 1360px) {
     .task-list-workspace,
     .inbox-workspace {

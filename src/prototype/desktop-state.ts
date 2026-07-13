@@ -6,6 +6,7 @@ import {
   initialMilestones,
   initialProjects,
   initialTasks,
+  overviewLanes,
   type InboxFilter,
   type OverviewLane,
   type ProjectSection,
@@ -69,6 +70,8 @@ export type DesktopPrototypeState = {
   activeProjectId: string;
   activeSection: ProjectSection;
   projectRailCollapsed: boolean;
+  visibleOverviewLanes: OverviewLane[];
+  editingTaskTitleId: string | null;
   selectedTaskId: string | null;
   selectedDocumentId: string | null;
   selectedCanvasId: string | null;
@@ -109,6 +112,9 @@ export type DesktopPrototypeAction =
   | { type: "close-context-panel" }
   | { type: "toggle-task-star"; taskId: string }
   | { type: "edit-task-title"; taskId: string; title: string }
+  | { type: "begin-task-title-edit"; taskId: string }
+  | { type: "commit-task-title-edit"; taskId: string; title: string }
+  | { type: "cancel-task-title-edit" }
   | { type: "set-task-due-date"; taskId: string; dueDate: string }
   | { type: "set-task-notes"; taskId: string; notes: string }
   | { type: "toggle-subtask"; taskId: string; subtaskId: string }
@@ -116,6 +122,10 @@ export type DesktopPrototypeAction =
   | { type: "set-area-filter"; area: string }
   | { type: "set-milestone-filter"; milestoneId: string }
   | { type: "toggle-starred-filter" }
+  | { type: "toggle-overview-lane"; lane: OverviewLane }
+  | { type: "focus-overview-lane"; lane: OverviewLane }
+  | { type: "show-all-overview-lanes" }
+  | { type: "set-visible-overview-lanes"; lanes: OverviewLane[] }
   | { type: "set-task-filter"; filter: TaskFilter }
   | { type: "set-inbox-filter"; filter: InboxFilter }
   | { type: "create-task" }
@@ -144,6 +154,9 @@ export type DesktopPrototypeAction =
 
 export const ALL_AREAS = "all";
 export const ALL_MILESTONES = "all";
+export const ALL_OVERVIEW_LANES: OverviewLane[] = overviewLanes.map(
+  (lane) => lane.id,
+);
 export const MAX_VISIBLE_COMMAND_RESULTS = 10;
 
 const initialProjectId = "lukomorie";
@@ -179,6 +192,8 @@ export const initialDesktopPrototypeState: DesktopPrototypeState = {
   activeProjectId: initialProjectId,
   activeSection: "overview",
   projectRailCollapsed: false,
+  visibleOverviewLanes: [...ALL_OVERVIEW_LANES],
+  editingTaskTitleId: null,
   selectedTaskId: null,
   selectedDocumentId: initialDocumentId,
   selectedCanvasId: "canvas-l-characters",
@@ -724,6 +739,27 @@ function updateTask(
   };
 }
 
+function withVisibleOverviewLanes(
+  state: DesktopPrototypeState,
+  lanes: OverviewLane[],
+): DesktopPrototypeState {
+  const requestedLanes = new Set(lanes);
+  const visibleOverviewLanes = ALL_OVERVIEW_LANES.filter((lane) =>
+    requestedLanes.has(lane),
+  );
+  if (visibleOverviewLanes.length === 0) return state;
+
+  const editingTask = getTaskById(state, state.editingTaskTitleId);
+  return {
+    ...state,
+    visibleOverviewLanes,
+    editingTaskTitleId:
+      editingTask && !visibleOverviewLanes.includes(editingTask.overviewLane)
+        ? null
+        : state.editingTaskTitleId,
+  };
+}
+
 function addAiLog(
   state: DesktopPrototypeState,
   message: string,
@@ -744,6 +780,7 @@ function switchToProject(
   return {
     ...state,
     activeProjectId: projectId,
+    editingTaskTitleId: null,
     selectedTaskId: null,
     selectedDocumentId: document?.id ?? null,
     selectedDocumentFolder: document?.folder ?? null,
@@ -910,6 +947,7 @@ export function desktopPrototypeReducer(
         milestones: [...state.milestones, milestone],
         activeProjectId: id,
         activeSection: "overview",
+        editingTaskTitleId: null,
         selectedTaskId: null,
         selectedDocumentId: null,
         selectedDocumentFolder: null,
@@ -937,6 +975,7 @@ export function desktopPrototypeReducer(
       return {
         ...state,
         activeSection: action.section,
+        editingTaskTitleId: null,
         contextPanel: null,
         contextPanelBeforeAi: null,
         commandPaletteOpen: false,
@@ -951,6 +990,7 @@ export function desktopPrototypeReducer(
       return {
         ...nextState,
         activeSection: action.section ?? nextState.activeSection,
+        editingTaskTitleId: null,
         selectedTaskId: task.id,
         contextPanel: { kind: "task", taskId: task.id },
         contextPanelBeforeAi: null,
@@ -974,6 +1014,32 @@ export function desktopPrototypeReducer(
         ...task,
         title: action.title,
       }));
+    case "begin-task-title-edit": {
+      const task = getTaskById(state, action.taskId);
+      if (!task || task.projectId !== state.activeProjectId) return state;
+      return {
+        ...state,
+        editingTaskTitleId: task.id,
+      };
+    }
+    case "commit-task-title-edit": {
+      const title = action.title.trim();
+      if (state.editingTaskTitleId !== action.taskId || title.length === 0) {
+        return {
+          ...state,
+          editingTaskTitleId: null,
+        };
+      }
+      return {
+        ...updateTask(state, action.taskId, (task) => ({ ...task, title })),
+        editingTaskTitleId: null,
+      };
+    }
+    case "cancel-task-title-edit":
+      return {
+        ...state,
+        editingTaskTitleId: null,
+      };
     case "set-task-due-date":
       return updateTask(state, action.taskId, (task) => ({
         ...task,
@@ -1016,6 +1082,22 @@ export function desktopPrototypeReducer(
           starredOnly: !state.filters.starredOnly,
         },
       };
+    case "toggle-overview-lane": {
+      const isVisible = state.visibleOverviewLanes.includes(action.lane);
+      if (isVisible && state.visibleOverviewLanes.length === 1) return state;
+      return withVisibleOverviewLanes(
+        state,
+        isVisible
+          ? state.visibleOverviewLanes.filter((lane) => lane !== action.lane)
+          : [...state.visibleOverviewLanes, action.lane],
+      );
+    }
+    case "focus-overview-lane":
+      return withVisibleOverviewLanes(state, [action.lane]);
+    case "show-all-overview-lanes":
+      return withVisibleOverviewLanes(state, ALL_OVERVIEW_LANES);
+    case "set-visible-overview-lanes":
+      return withVisibleOverviewLanes(state, action.lanes);
     case "set-task-filter":
       return { ...state, taskFilter: action.filter };
     case "set-inbox-filter":

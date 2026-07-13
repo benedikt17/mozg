@@ -152,6 +152,21 @@ export function DesktopPrototypeShell(): React.JSX.Element {
     if (params.get("rail") === "collapsed") {
       dispatch({ type: "toggle-project-rail" });
     }
+    const requestedLanes = (params.get("lanes") ?? "")
+      .split(",")
+      .filter(isOverviewLane);
+    if (requestedLanes.length > 0) {
+      dispatch({ type: "set-visible-overview-lanes", lanes: requestedLanes });
+    } else {
+      const focusedLane = params.get("focusLane");
+      if (focusedLane && isOverviewLane(focusedLane)) {
+        dispatch({ type: "focus-overview-lane", lane: focusedLane });
+      }
+    }
+    const editingTaskId = params.get("editTask");
+    if (editingTaskId) {
+      dispatch({ type: "begin-task-title-edit", taskId: editingTaskId });
+    }
   }, []);
 
   const activateCommandResult = (result: CommandResult): void => {
@@ -332,6 +347,10 @@ function SectionWorkspace({
         `section-${state.activeSection}`,
         sidebar ? "has-tool-sidebar" : "",
         hasContextPanel ? "has-context-panel" : "",
+        state.activeSection === "overview" &&
+        state.visibleOverviewLanes.length === 1
+          ? "is-overview-focused"
+          : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -361,6 +380,10 @@ function workspaceWidthPolicy(
 function getInitialCommandQuery(): string {
   if (typeof window === "undefined") return "";
   return new URLSearchParams(window.location.search).get("commandQuery") ?? "";
+}
+
+function isOverviewLane(value: string): value is OverviewLane {
+  return overviewLanes.some((lane) => lane.id === value);
 }
 
 function renderToolSidebar(
@@ -408,10 +431,35 @@ function OverviewWorkspace({
   state: DesktopPrototypeState;
   dispatch: Dispatch;
 }): React.JSX.Element {
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const viewMenuRef = useRef<HTMLDivElement>(null);
   const activeMilestone = getActiveMilestone(state);
   const progress = getMilestoneProgress(state);
   const areas = getProjectAreas(state);
   const milestones = getProjectMilestones(state);
+  const visibleLanes = overviewLanes.filter((lane) =>
+    state.visibleOverviewLanes.includes(lane.id),
+  );
+  const isFocused = visibleLanes.length === 1;
+
+  useEffect(() => {
+    if (!viewMenuOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent): void => {
+      if (!viewMenuRef.current?.contains(event.target as Node)) {
+        setViewMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setViewMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePointer);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [viewMenuOpen]);
+
   return (
     <div className="overview-workspace">
       <section className="overview-command-bar">
@@ -421,7 +469,7 @@ function OverviewWorkspace({
           <p>{activeMilestone.description}</p>
         </div>
         <div className="overview-controls" aria-label="Фильтры обзора">
-          <label>
+          <label className="overview-filter-control">
             <span>Область</span>
             <select
               aria-label="Фильтр по области"
@@ -438,7 +486,7 @@ function OverviewWorkspace({
               ))}
             </select>
           </label>
-          <label>
+          <label className="overview-filter-control">
             <span>Рубеж</span>
             <select
               aria-label="Фильтр по рубежу"
@@ -466,6 +514,64 @@ function OverviewWorkspace({
             title="Только важные"
             variant="quiet"
           />
+          <div className="overview-view-control" ref={viewMenuRef}>
+            <PrototypeButton
+              aria-expanded={viewMenuOpen}
+              aria-haspopup="dialog"
+              onClick={() => setViewMenuOpen((open) => !open)}
+              size="compact"
+              variant="quiet"
+            >
+              Вид
+            </PrototypeButton>
+            {viewMenuOpen ? (
+              <div
+                className="overview-view-popover"
+                role="dialog"
+                aria-label="Настройка колонок обзора"
+              >
+                <strong>Показывать колонки</strong>
+                <div className="overview-lane-options">
+                  {overviewLanes.map((lane) => {
+                    const checked = state.visibleOverviewLanes.includes(
+                      lane.id,
+                    );
+                    const isLastVisible =
+                      checked && state.visibleOverviewLanes.length === 1;
+                    return (
+                      <label key={lane.id}>
+                        <input
+                          checked={checked}
+                          disabled={isLastVisible}
+                          onChange={() =>
+                            dispatch({
+                              type: "toggle-overview-lane",
+                              lane: lane.id,
+                            })
+                          }
+                          type="checkbox"
+                        />
+                        <span>{lane.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {isFocused ? (
+                  <p>Хотя бы одна колонка должна оставаться видимой.</p>
+                ) : null}
+                <PrototypeButton
+                  disabled={
+                    state.visibleOverviewLanes.length === overviewLanes.length
+                  }
+                  onClick={() => dispatch({ type: "show-all-overview-lanes" })}
+                  size="compact"
+                  variant="quiet"
+                >
+                  Показать все колонки
+                </PrototypeButton>
+              </div>
+            ) : null}
+          </div>
           <PrototypeButton
             onClick={() => dispatch({ type: "create-task" })}
             size="compact"
@@ -492,10 +598,22 @@ function OverviewWorkspace({
           </PrototypeButton>
         </div>
       </section>
-      <section className="overview-board" aria-label="Доска проекта">
-        {overviewLanes.map((lane) => (
+      <section
+        className={[
+          "overview-board",
+          `lanes-${visibleLanes.length}`,
+          isFocused ? "is-focused" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        aria-label={
+          isFocused ? "Сфокусированная колонка обзора" : "Доска проекта"
+        }
+      >
+        {visibleLanes.map((lane) => (
           <OverviewLaneColumn
             dispatch={dispatch}
+            focused={isFocused}
             key={lane.id}
             lane={lane.id}
             state={state}
@@ -510,25 +628,52 @@ function OverviewLaneColumn({
   state,
   dispatch,
   lane,
+  focused,
 }: {
   state: DesktopPrototypeState;
   dispatch: Dispatch;
   lane: OverviewLane;
+  focused: boolean;
 }): React.JSX.Element {
   const tasks = getTasksForLane(state, lane);
   return (
-    <article className="board-column">
+    <article className={`board-column lane-${lane}`}>
       <header>
         <div>
           <h3>{laneLabels[lane]}</h3>
           <p>{overviewLanes.find((item) => item.id === lane)?.hint}</p>
         </div>
-        <span>{tasks.length}</span>
+        <div className="lane-header-actions">
+          <span className="lane-task-count">{tasks.length}</span>
+          <PrototypeButton
+            onClick={() =>
+              dispatch(
+                focused
+                  ? { type: "show-all-overview-lanes" }
+                  : { type: "focus-overview-lane", lane },
+              )
+            }
+            size="compact"
+            title={
+              focused
+                ? "Вернуть все четыре колонки"
+                : `Сфокусироваться на колонке ${laneLabels[lane]}`
+            }
+            variant="ghost"
+          >
+            {focused ? "Показать все колонки" : "Сфокусироваться"}
+          </PrototypeButton>
+        </div>
       </header>
       <div className="task-stack">
         {tasks.length > 0 ? (
           tasks.map((task) => (
-            <TaskCard dispatch={dispatch} key={task.id} task={task} />
+            <TaskCard
+              dispatch={dispatch}
+              editing={state.editingTaskTitleId === task.id}
+              key={task.id}
+              task={task}
+            />
           ))
         ) : (
           <p className="empty-state">Нет задач в этой зоне.</p>
@@ -546,11 +691,37 @@ function OverviewLaneColumn({
 function TaskCard({
   task,
   dispatch,
+  editing,
 }: {
   task: PrototypeTask;
   dispatch: Dispatch;
+  editing: boolean;
 }): React.JSX.Element {
+  const [titleDraft, setTitleDraft] = useState(task.title);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const cancelledRef = useRef(false);
   const doneSubtasks = task.subtasks.filter((subtask) => subtask.done).length;
+
+  useEffect(() => {
+    if (!editing) return;
+    cancelledRef.current = false;
+    titleInputRef.current?.focus();
+    titleInputRef.current?.select();
+  }, [editing]);
+
+  const beginTitleEdit = (): void => {
+    setTitleDraft(task.title);
+    dispatch({ type: "begin-task-title-edit", taskId: task.id });
+  };
+
+  const commitTitle = (): void => {
+    dispatch({
+      type: "commit-task-title-edit",
+      taskId: task.id,
+      title: titleDraft,
+    });
+  };
+
   return (
     <article className="task-card">
       <IconButton
@@ -558,27 +729,83 @@ function TaskCard({
         className="task-star-control"
         icon={task.starred ? "★" : "☆"}
         label={task.starred ? "Убрать из важных" : "Пометить важной"}
-        onClick={() => dispatch({ type: "toggle-task-star", taskId: task.id })}
+        onClick={(event) => {
+          event.stopPropagation();
+          dispatch({ type: "toggle-task-star", taskId: task.id });
+        }}
         variant="ghost"
       />
-      <button
-        className="task-hit-area"
-        onClick={() =>
-          dispatch({
-            type: "select-task",
-            taskId: task.id,
-            section: "overview",
-          })
-        }
-        type="button"
-      >
-        <strong>{task.title}</strong>
-        <MetadataLine>
-          {task.area ?? "Общее"} · {task.dueDate ?? "без срока"} ·{" "}
-          {task.linkedDocumentIds.length} док. · {doneSubtasks}/
-          {task.subtasks.length || 0}
-        </MetadataLine>
-      </button>
+      <div className="task-hit-area">
+        {editing ? (
+          <input
+            aria-label={`Редактировать название задачи ${task.title}`}
+            className="task-title-input"
+            onBlur={() => {
+              if (cancelledRef.current) {
+                cancelledRef.current = false;
+                return;
+              }
+              commitTitle();
+            }}
+            onChange={(event) => setTitleDraft(event.target.value)}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                event.stopPropagation();
+                commitTitle();
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                cancelledRef.current = true;
+                dispatch({ type: "cancel-task-title-edit" });
+              }
+            }}
+            ref={titleInputRef}
+            value={titleDraft}
+          />
+        ) : (
+          <button
+            className="task-title-trigger"
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              beginTitleEdit();
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              event.stopPropagation();
+              beginTitleEdit();
+            }}
+            title="Двойной щелчок или Enter — изменить название"
+            type="button"
+          >
+            <strong>{task.title}</strong>
+          </button>
+        )}
+        <button
+          aria-label={`Открыть детали задачи ${task.title}`}
+          className="task-details-trigger"
+          onClick={() =>
+            dispatch({
+              type: "select-task",
+              taskId: task.id,
+              section: "overview",
+            })
+          }
+          type="button"
+        >
+          <span className="metadata-line">
+            {task.area ?? "Общее"} · {task.dueDate ?? "без срока"} ·{" "}
+            {task.linkedDocumentIds.length} док. · {doneSubtasks}/
+            {task.subtasks.length || 0}
+          </span>
+        </button>
+      </div>
     </article>
   );
 }

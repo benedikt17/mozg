@@ -42,6 +42,9 @@ function freshState(): DesktopPrototypeState {
       ...item,
     })),
     filters: { ...initialDesktopPrototypeState.filters },
+    visibleOverviewLanes: [
+      ...initialDesktopPrototypeState.visibleOverviewLanes,
+    ],
     expandedFolderIds: [...initialDesktopPrototypeState.expandedFolderIds],
     openDocumentIds: [...initialDesktopPrototypeState.openDocumentIds],
     documentHistoryBack: [...initialDesktopPrototypeState.documentHistoryBack],
@@ -393,6 +396,112 @@ describe("desktop structural prototype state", () => {
     state = desktopPrototypeReducer(state, { type: "toggle-starred-filter" });
     expect(getVisibleOverviewTasks(state).every((task) => task.starred)).toBe(
       true,
+    );
+  });
+
+  it("edits an Overview task title with trimmed commit and explicit cancel", () => {
+    let state = freshState();
+    const taskId = "luko-characters-map";
+
+    state = desktopPrototypeReducer(state, {
+      type: "begin-task-title-edit",
+      taskId,
+    });
+    expect(state.editingTaskTitleId).toBe(taskId);
+
+    state = desktopPrototypeReducer(state, {
+      type: "commit-task-title-edit",
+      taskId,
+      title: "  Обновлённая карта персонажей  ",
+    });
+    expect(state.editingTaskTitleId).toBeNull();
+    expect(state.tasks.find((task) => task.id === taskId)?.title).toBe(
+      "Обновлённая карта персонажей",
+    );
+
+    state = desktopPrototypeReducer(state, {
+      type: "begin-task-title-edit",
+      taskId,
+    });
+    state = desktopPrototypeReducer(state, { type: "cancel-task-title-edit" });
+    expect(state.editingTaskTitleId).toBeNull();
+    expect(state.tasks.find((task) => task.id === taskId)?.title).toBe(
+      "Обновлённая карта персонажей",
+    );
+  });
+
+  it("restores the current title when an inline title commit is blank", () => {
+    let state = freshState();
+    const taskId = "luko-characters-map";
+    const originalTitle = state.tasks.find((task) => task.id === taskId)?.title;
+
+    state = desktopPrototypeReducer(state, {
+      type: "begin-task-title-edit",
+      taskId,
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "commit-task-title-edit",
+      taskId,
+      title: "   ",
+    });
+
+    expect(state.editingTaskTitleId).toBeNull();
+    expect(state.tasks.find((task) => task.id === taskId)?.title).toBe(
+      originalTitle,
+    );
+  });
+
+  it("shows, hides and focuses Overview lanes in canonical order", () => {
+    let state = freshState();
+
+    state = desktopPrototypeReducer(state, {
+      type: "toggle-overview-lane",
+      lane: "next",
+    });
+    expect(state.visibleOverviewLanes).toEqual(["now", "later", "done"]);
+
+    state = desktopPrototypeReducer(state, {
+      type: "toggle-overview-lane",
+      lane: "next",
+    });
+    expect(state.visibleOverviewLanes).toEqual([
+      "now",
+      "next",
+      "later",
+      "done",
+    ]);
+
+    state = desktopPrototypeReducer(state, {
+      type: "focus-overview-lane",
+      lane: "later",
+    });
+    expect(state.visibleOverviewLanes).toEqual(["later"]);
+
+    state = desktopPrototypeReducer(state, { type: "show-all-overview-lanes" });
+    expect(state.visibleOverviewLanes).toEqual([
+      "now",
+      "next",
+      "later",
+      "done",
+    ]);
+  });
+
+  it("keeps the final Overview lane visible without mutating task lanes", () => {
+    let state = freshState();
+    const taskLanes = state.tasks.map((task) => [task.id, task.overviewLane]);
+
+    state = desktopPrototypeReducer(state, {
+      type: "focus-overview-lane",
+      lane: "now",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "toggle-overview-lane",
+      lane: "now",
+    });
+
+    expect(state.visibleOverviewLanes).toEqual(["now"]);
+    expect(state.tasks.map((task) => [task.id, task.overviewLane])).toEqual(
+      taskLanes,
     );
   });
 

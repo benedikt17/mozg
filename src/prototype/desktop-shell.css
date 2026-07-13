@@ -573,7 +573,7 @@
     padding: 0;
   }
 
-  .overview-controls label,
+  .overview-filter-control,
   .field {
     display: grid;
     gap: 4px;
@@ -583,11 +583,11 @@
     font-weight: 500;
   }
 
-  .overview-controls label {
+  .overview-filter-control {
     position: relative;
   }
 
-  .overview-controls label > span {
+  .overview-filter-control > span {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -652,6 +652,67 @@
     max-width: 188px;
   }
 
+  .overview-view-control {
+    position: relative;
+  }
+
+  .overview-view-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 40;
+    width: 240px;
+    display: grid;
+    gap: 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-overlay);
+    padding: 12px;
+    color: var(--text);
+  }
+
+  .overview-view-popover > strong {
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 600;
+  }
+
+  .overview-view-popover > p {
+    margin: 0;
+    color: var(--text-3);
+    font-size: 11px;
+    line-height: 16px;
+  }
+
+  .overview-lane-options {
+    display: grid;
+    gap: 2px;
+  }
+
+  .overview-lane-options label {
+    min-height: 30px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: var(--radius-sm);
+    padding: 4px 6px;
+    color: var(--text-2);
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 500;
+  }
+
+  .overview-lane-options label:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  .overview-lane-options label:has(input:disabled) {
+    color: var(--text-3);
+    cursor: not-allowed;
+  }
+
   .overview-board {
     min-width: 0;
     display: grid;
@@ -659,6 +720,22 @@
     gap: 12px;
     overflow-x: auto;
     padding-bottom: 8px;
+  }
+
+  .overview-board.lanes-3 {
+    width: min(100%, 1500px);
+    grid-template-columns: repeat(3, minmax(280px, 1fr));
+  }
+
+  .overview-board.lanes-2 {
+    width: min(100%, 1280px);
+    grid-template-columns: repeat(2, minmax(360px, 1fr));
+  }
+
+  .overview-board.lanes-1 {
+    width: min(100%, 960px);
+    grid-template-columns: minmax(0, 1fr);
+    overflow-x: visible;
   }
 
   .board-column {
@@ -672,7 +749,7 @@
     padding: 8px;
   }
 
-  .board-column:last-child {
+  .board-column.lane-done {
     background: color-mix(in srgb, var(--surface-2) 72%, var(--app-bg));
   }
 
@@ -698,7 +775,21 @@
     line-height: 16px;
   }
 
-  .board-column header > span {
+  .lane-header-actions {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .lane-header-actions .ui-button {
+    min-height: 24px;
+    padding-inline: 6px;
+    color: var(--text-3);
+    font-size: 11px;
+    line-height: 16px;
+  }
+
+  .lane-task-count {
     min-width: 24px;
     height: 24px;
     display: grid;
@@ -769,11 +860,68 @@
     text-align: left;
   }
 
-  .task-hit-area strong {
+  .task-title-trigger,
+  .task-details-trigger {
     min-width: 0;
+    display: block;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    color: inherit;
+    text-align: left;
+  }
+
+  .task-title-trigger {
+    width: fit-content;
+    max-width: 100%;
+    border-radius: var(--radius-sm);
+  }
+
+  .task-title-trigger:hover strong {
+    text-decoration: underline;
+    text-decoration-color: var(--border-strong);
+    text-underline-offset: 3px;
+  }
+
+  .task-title-trigger strong {
+    min-width: 0;
+    display: block;
     font-size: 14px;
     line-height: 20px;
     font-weight: 500;
+  }
+
+  .task-details-trigger {
+    width: 100%;
+  }
+
+  .task-title-input {
+    width: 100%;
+    min-height: 30px;
+    border: 1px solid var(--focus);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text);
+    padding: 4px 7px;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 500;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus) 18%, transparent);
+  }
+
+  .overview-board.is-focused .board-column {
+    min-width: 0;
+    background: var(--surface-2);
+  }
+
+  .overview-board.is-focused .task-card {
+    padding: 10px 10px 10px 12px;
+  }
+
+  .overview-board.is-focused .task-title-trigger strong,
+  .overview-board.is-focused .task-title-input {
+    font-size: 15px;
+    line-height: 22px;
   }
 
   .muted-action,
