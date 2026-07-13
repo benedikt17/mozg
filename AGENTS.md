@@ -3,14 +3,21 @@
 Этот репозиторий разрабатывается с участием AI-агентов.  
 `ARCHITECTURE.md` — обязательный и приоритетный источник архитектурных решений.
 
-## 1. Перед любой задачей
+## 1. Перед задачей
 
-Агент обязан:
+Сначала агент определяет категорию и границы задачи, затем читает необходимый контекст:
 
-1. прочитать `ARCHITECTURE.md`;
-2. прочитать текущую задачу и связанные ADR;
-3. проверить существующую структуру проекта, миграции и тесты;
-4. не начинать реализацию, пока не определены границы задачи и Definition of Done.
+| Тип задачи | Обязательный контекст перед началом |
+| --- | --- |
+| Узкое изменение UI, текста, CSS или изолированного компонента прототипа | Задача, `src/prototype/AGENTS.override.md`, непосредственно связанные prototype-компоненты, стили и тесты |
+| Prototype state, reducer, selector или interaction | Задача, `src/prototype/AGENTS.override.md`, непосредственно связанные state/model-файлы, компоненты и тесты |
+| Markdown parser, serializer, references или editor contract | Релевантные разделы `ARCHITECTURE.md`, Markdown-документация, parser, serializer, references, fixtures и round-trip tests |
+| БД, Auth, RLS, Storage, migration или persistence | Релевантные разделы архитектуры, существующие migrations, generated types, RLS/integration tests и связанные server/client boundaries |
+| Архитектурное или cross-domain изменение | Полный релевантный архитектурный контекст, ADR evaluation, все затрагиваемые модули и тесты |
+
+Для prototype state/interaction задачи более широкий архитектурный контекст читается только при пересечении с production behavior или замороженным решением. Узкая prototype-задача не требует чтения полного `ARCHITECTURE.md`, migrations, RLS tests, Markdown pipeline или несвязанных разделов прототипа.
+
+Агент не начинает реализацию, пока не определены границы задачи и Definition of Done. Не проводить repository-wide аудит и не исследовать несвязанные domains по умолчанию. Несвязанные находки сообщать без исправления; предпочитать наименьшее безопасное изменение.
 
 ## 2. Неприкосновенные решения
 
@@ -64,28 +71,19 @@ PR не должен содержать:
 - RLS включается и тестируется для каждой пользовательской таблицы.
 - Service-role ключ никогда не передаётся клиенту.
 
-## 5. Обязательные gates
+## 5. Матрица проверок
 
-Перед завершением задачи должны быть зелёными применимые проверки:
+Во время итерации используются самые узкие применимые проверки. Перед завершением выполняются gates по категории задачи:
 
-```bash
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
-```
+| Изменение | Во время итерации | Перед завершением |
+| --- | --- | --- |
+| Prototype text, CSS или изолированный component | Targeted inspection и relevant tests; `pnpm typecheck`, если менялся TypeScript | `pnpm lint`, `pnpm typecheck`, `pnpm build`, relevant tests |
+| Prototype reducer, selector, task model или interaction | Связанные Vitest-файлы и `pnpm typecheck` | `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, `git diff --check` |
+| Markdown pipeline или contract | Связанные golden/round-trip tests и `pnpm typecheck` | `pnpm test:markdown`, полный `pnpm test`, `pnpm typecheck`, `pnpm build` |
+| БД, Auth, RLS, Storage или migration | Связанные migrations, generated types и targeted integration checks | Все применимые database gates, generated types verification, `pnpm test:rls` и общие gates |
+| Архитектурное или cross-domain изменение | Проверки всех затронутых слоёв | ADR evaluation и все применимые gates |
 
-Для изменений Markdown:
-
-```bash
-pnpm test:markdown
-```
-
-Для изменений БД, Auth или политик:
-
-```bash
-pnpm test:rls
-```
+Для prototype-only задачи без изменений database-related файлов Supabase/RLS gates не запускаются.
 
 Падение gate нельзя обходить отключением теста, ослаблением assertion или добавлением исключения без явного обоснования в PR.
 
