@@ -921,6 +921,8 @@ function TaskCard({
   const titleInputRef = useRef<HTMLInputElement>(null);
   const titleClickTimerRef = useRef<number | null>(null);
   const cancelledRef = useRef(false);
+  const wasDraggingRef = useRef(false);
+  const suppressCardClickUntilRef = useRef(0);
   const doneSubtasks = task.subtasks.filter((subtask) => subtask.done).length;
   const {
     attributes,
@@ -962,9 +964,16 @@ function TaskCard({
   };
 
   useEffect(() => {
-    if (!isDragging || titleClickTimerRef.current === null) return;
-    window.clearTimeout(titleClickTimerRef.current);
-    titleClickTimerRef.current = null;
+    if (isDragging) {
+      wasDraggingRef.current = true;
+      suppressCardClickUntilRef.current = Date.now() + 500;
+      clearPendingTitleClick();
+      return;
+    }
+
+    if (!wasDraggingRef.current) return;
+    wasDraggingRef.current = false;
+    suppressCardClickUntilRef.current = Date.now() + 400;
   }, [isDragging]);
 
   const openTaskDetails = (): void => {
@@ -989,6 +998,33 @@ function TaskCard({
     });
   };
 
+  const handleCardClick = (event: React.MouseEvent<HTMLElement>): void => {
+    if (Date.now() < suppressCardClickUntilRef.current) return;
+
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    const titleTrigger = target.closest(".task-title-trigger");
+    const detailsTrigger = target.closest(".task-details-trigger");
+    const interactiveControl = target.closest(
+      "button, input, textarea, select, a, [role='button']",
+    );
+
+    if (interactiveControl && !titleTrigger && !detailsTrigger) return;
+
+    if (titleTrigger) {
+      clearPendingTitleClick();
+      titleClickTimerRef.current = window.setTimeout(() => {
+        titleClickTimerRef.current = null;
+        openTaskDetails();
+      }, 300);
+      return;
+    }
+
+    clearPendingTitleClick();
+    openTaskDetails();
+  };
+
   return (
     <article
       className={[
@@ -998,6 +1034,7 @@ function TaskCard({
       ]
         .filter(Boolean)
         .join(" ")}
+      onClick={handleCardClick}
       ref={setNodeRef}
       style={{
         transform: CSS.Transform.toString(transform),
@@ -1021,6 +1058,7 @@ function TaskCard({
         {...listeners}
         aria-label={`Перетащить задачу ${task.title}`}
         className="task-drag-handle"
+        onClick={(event) => event.stopPropagation()}
         ref={setActivatorNodeRef}
         title="Перетащить задачу"
         type="button"
@@ -1062,23 +1100,13 @@ function TaskCard({
         ) : (
           <button
             className="task-title-trigger"
-            onClick={(event) => {
-              event.stopPropagation();
-              clearPendingTitleClick();
-              titleClickTimerRef.current = window.setTimeout(() => {
-                titleClickTimerRef.current = null;
-                openTaskDetails();
-              }, 300);
-            }}
             onDoubleClick={(event) => {
               event.preventDefault();
-              event.stopPropagation();
               beginTitleEdit();
             }}
             onKeyDown={(event) => {
               if (event.key !== "Enter") return;
               event.preventDefault();
-              event.stopPropagation();
               beginTitleEdit();
             }}
             title="Двойной щелчок или Enter — изменить название"
@@ -1090,7 +1118,6 @@ function TaskCard({
         <button
           aria-label={`Открыть детали задачи ${task.title}`}
           className="task-details-trigger"
-          onClick={openTaskDetails}
           type="button"
         >
           <span className="metadata-line">
