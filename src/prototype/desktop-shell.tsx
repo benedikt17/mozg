@@ -59,12 +59,11 @@ type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 const taskSignalOptions: {
   id: TaskSignal;
   label: string;
-  description: string;
 }[] = [
-  { id: "none", label: "Без сигнала", description: "Нейтральная задача" },
-  { id: "green", label: "Зелёный", description: "Движется по плану" },
-  { id: "yellow", label: "Жёлтый", description: "Требует внимания" },
-  { id: "red", label: "Красный", description: "Есть блокировка" },
+  { id: "none", label: "Без сигнала" },
+  { id: "green", label: "Зелёный" },
+  { id: "yellow", label: "Жёлтый" },
+  { id: "red", label: "Красный" },
 ];
 
 const commandKindLabels: Record<CommandResult["kind"], string> = {
@@ -1136,19 +1135,29 @@ function ContextPanelSlot({
             <h2>{contextTitle(contextPanel)}</h2>
           </div>
         )}
-        <PrototypeButton
-          onClick={() =>
-            dispatch({
-              type:
-                contextPanel.kind === "ai"
-                  ? "close-ai-panel"
-                  : "close-context-panel",
-            })
-          }
-          variant="quiet"
-        >
-          Закрыть
-        </PrototypeButton>
+        {contextPanel.kind === "task" ? (
+          <IconButton
+            className="task-context-close"
+            icon={<span aria-hidden="true">×</span>}
+            label="Закрыть панель задачи"
+            onClick={() => dispatch({ type: "close-context-panel" })}
+            title="Закрыть панель задачи"
+          />
+        ) : (
+          <PrototypeButton
+            onClick={() =>
+              dispatch({
+                type:
+                  contextPanel.kind === "ai"
+                    ? "close-ai-panel"
+                    : "close-context-panel",
+              })
+            }
+            variant="quiet"
+          >
+            Закрыть
+          </PrototypeButton>
+        )}
       </header>
       {renderContextPanelContent(state, dispatch, contextPanel)}
     </aside>
@@ -1172,7 +1181,7 @@ function renderContextPanelContent(
   if (contextPanel.kind === "task") {
     const task = getTaskById(state, contextPanel.taskId);
     return task ? (
-      <TaskDetailsPanel dispatch={dispatch} task={task} />
+      <TaskDetailsPanel dispatch={dispatch} key={task.id} task={task} />
     ) : (
       <p>Задача не найдена.</p>
     );
@@ -1218,6 +1227,18 @@ function TaskDetailsPanel({
   task: PrototypeTask;
   dispatch: Dispatch;
 }): React.JSX.Element {
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
+
+  function addSubtask(): void {
+    if (newSubtaskTitle.trim().length === 0) return;
+    dispatch({
+      type: "add-subtask",
+      taskId: task.id,
+      title: newSubtaskTitle,
+    });
+    setNewSubtaskTitle("");
+  }
+
   return (
     <div className="panel-stack">
       <label className="field">
@@ -1240,9 +1261,10 @@ function TaskDetailsPanel({
             <label
               className={`task-signal-option task-signal-${option.id}`}
               key={option.id}
-              title={option.description}
+              title={option.label}
             >
               <input
+                aria-label={option.label}
                 checked={task.signal === option.id}
                 name={`task-signal-${task.id}`}
                 onChange={() =>
@@ -1256,12 +1278,37 @@ function TaskDetailsPanel({
                 value={option.id}
               />
               <span className="task-signal-swatch" aria-hidden="true" />
-              <span>{option.label}</span>
             </label>
           ))}
         </div>
       </fieldset>
       <ContextPanelSection title="Подзадачи">
+        <form
+          className="subtask-add-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            addSubtask();
+          }}
+        >
+          <input
+            aria-label="Новая подзадача"
+            onChange={(event) => setNewSubtaskTitle(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              addSubtask();
+            }}
+            placeholder="Новая подзадача"
+            value={newSubtaskTitle}
+          />
+          <IconButton
+            icon={<span aria-hidden="true">+</span>}
+            label="Добавить подзадачу"
+            title="Добавить подзадачу"
+            type="submit"
+            variant="quiet"
+          />
+        </form>
         {task.subtasks.length > 0 ? (
           task.subtasks.map((subtask) => (
             <label className="subtask-row" key={subtask.id}>

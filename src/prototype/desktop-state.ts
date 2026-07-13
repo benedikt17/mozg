@@ -110,6 +110,7 @@ export type DesktopPrototypeAction =
   | { type: "set-task-due-date"; taskId: string; dueDate: string }
   | { type: "set-task-notes"; taskId: string; notes: string }
   | { type: "toggle-subtask"; taskId: string; subtaskId: string }
+  | { type: "add-subtask"; taskId: string; title: string }
   | {
       type: "move-task";
       taskId: string;
@@ -701,6 +702,19 @@ function updateTask(
   };
 }
 
+function getNextSubtaskId(task: PrototypeTask): string {
+  const prefix = `${task.id}-subtask-`;
+  let nextNumber = task.subtasks.length + 1;
+
+  while (
+    task.subtasks.some((subtask) => subtask.id === `${prefix}${nextNumber}`)
+  ) {
+    nextNumber += 1;
+  }
+
+  return `${prefix}${nextNumber}`;
+}
+
 function getNextOverviewOrder(
   state: DesktopPrototypeState,
   directionId: OverviewDirectionId,
@@ -1146,6 +1160,23 @@ export function desktopPrototypeReducer(
             : subtask,
         ),
       }));
+    case "add-subtask": {
+      const title = action.title.trim();
+      const task = getTaskById(state, action.taskId);
+      if (!task || title.length === 0) return state;
+
+      return updateTask(state, task.id, (currentTask) => ({
+        ...currentTask,
+        subtasks: [
+          ...currentTask.subtasks,
+          {
+            id: getNextSubtaskId(currentTask),
+            title,
+            done: false,
+          },
+        ],
+      }));
+    }
     case "move-task":
       return moveOverviewTask(
         state,

@@ -440,6 +440,42 @@ describe("desktop structural prototype state", () => {
     ).toBe("none");
   });
 
+  it("appends a trimmed incomplete subtask only to the selected task", () => {
+    const state = freshState();
+    const targetBefore = state.tasks.find(
+      (task) => task.id === "luko-first-scene",
+    );
+    const otherBefore = state.tasks.find(
+      (task) => task.id === "luko-world-rules",
+    );
+    const unchanged = desktopPrototypeReducer(state, {
+      type: "add-subtask",
+      taskId: "luko-first-scene",
+      title: "   ",
+    });
+
+    expect(unchanged).toBe(state);
+
+    const next = desktopPrototypeReducer(state, {
+      type: "add-subtask",
+      taskId: "luko-first-scene",
+      title: "  Проверить переход сцены  ",
+    });
+    const targetAfter = next.tasks.find(
+      (task) => task.id === "luko-first-scene",
+    );
+    const otherAfter = next.tasks.find(
+      (task) => task.id === "luko-world-rules",
+    );
+
+    expect(targetAfter?.subtasks.slice(0, -1)).toEqual(targetBefore?.subtasks);
+    expect(targetAfter?.subtasks.at(-1)).toMatchObject({
+      title: "Проверить переход сцены",
+      done: false,
+    });
+    expect(otherAfter?.subtasks).toEqual(otherBefore?.subtasks);
+  });
+
   it("reorders tasks at the beginning, middle and end of a direction", () => {
     let beginning = freshState();
     beginning = desktopPrototypeReducer(beginning, {
