@@ -4,6 +4,9 @@ import {
   ALL_AREAS,
   desktopPrototypeReducer,
   getCommandResults,
+  getDocumentAncestorFolderIds,
+  getDocumentById,
+  getKnowledgeTree,
   getTasksForLane,
   getVisibleOverviewTasks,
   getVisibleTaskList,
@@ -38,6 +41,12 @@ function freshState(): DesktopPrototypeState {
       ...item,
     })),
     filters: { ...initialDesktopPrototypeState.filters },
+    expandedFolderIds: [...initialDesktopPrototypeState.expandedFolderIds],
+    openDocumentIds: [...initialDesktopPrototypeState.openDocumentIds],
+    documentHistoryBack: [...initialDesktopPrototypeState.documentHistoryBack],
+    documentHistoryForward: [
+      ...initialDesktopPrototypeState.documentHistoryForward,
+    ],
     selectedAiProposalIds: [
       ...initialDesktopPrototypeState.selectedAiProposalIds,
     ],
@@ -431,5 +440,180 @@ describe("desktop structural prototype state", () => {
       kind: "task",
       taskId: "mock-task-1",
     });
+  });
+
+  it("expands, collapses and collapses all Knowledge folders while preserving the active document path", () => {
+    let state = freshState();
+    const folderId = "lukomorie:Персонажи/Отношения";
+
+    expect(state.expandedFolderIds).not.toContain(folderId);
+
+    state = desktopPrototypeReducer(state, {
+      type: "toggle-knowledge-folder",
+      folderId,
+    });
+    expect(state.expandedFolderIds).toContain(folderId);
+
+    state = desktopPrototypeReducer(state, {
+      type: "toggle-knowledge-folder",
+      folderId,
+    });
+    expect(state.expandedFolderIds).not.toContain(folderId);
+
+    state = desktopPrototypeReducer(state, {
+      type: "collapse-all-knowledge-folders",
+    });
+
+    const selectedDocument = getDocumentById(state, state.selectedDocumentId);
+    expect(selectedDocument).toBeDefined();
+    expect(state.expandedFolderIds).toEqual(
+      selectedDocument ? getDocumentAncestorFolderIds(selectedDocument) : [],
+    );
+  });
+
+  it("filters the Knowledge tree by nested document context", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "set-knowledge-search",
+      query: "тварь из бездны",
+    });
+
+    const tree = getKnowledgeTree(state);
+    const firstBranch = tree[0];
+
+    expect(state.knowledgeSearchQuery).toBe("тварь из бездны");
+    expect(JSON.stringify(tree)).toContain("doc-l-abyss-relationship");
+    expect(firstBranch?.kind).toBe("folder");
+  });
+
+  it("selects a nested Knowledge document, expands ancestors and opens a tab", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "select-document",
+      documentId: "doc-l-routes",
+    });
+
+    expect(state.activeSection).toBe("knowledge");
+    expect(state.selectedDocumentId).toBe("doc-l-routes");
+    expect(state.openDocumentIds).toContain("doc-l-routes");
+    expect(state.expandedFolderIds).toContain("lukomorie:Мир");
+    expect(state.expandedFolderIds).toContain("lukomorie:Мир/География");
+  });
+
+  it("closes document tabs and switches the active tab to the remaining document", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "select-document",
+      documentId: "doc-l-routes",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "close-document-tab",
+      documentId: "doc-l-routes",
+    });
+
+    expect(state.openDocumentIds).not.toContain("doc-l-routes");
+    expect(state.selectedDocumentId).toBe(state.openDocumentIds.at(-1));
+
+    const nextTab = state.openDocumentIds[0];
+    expect(nextTab).toBeDefined();
+    if (!nextTab) return;
+
+    state = desktopPrototypeReducer(state, {
+      type: "activate-document-tab",
+      documentId: nextTab,
+    });
+    expect(state.selectedDocumentId).toBe(nextTab);
+  });
+
+  it("navigates Knowledge document history backward and forward", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "select-document",
+      documentId: "doc-l-routes",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "select-document",
+      documentId: "doc-l-scene-list",
+    });
+
+    expect(state.selectedDocumentId).toBe("doc-l-scene-list");
+    expect(state.documentHistoryBack).toContain("doc-l-routes");
+
+    state = desktopPrototypeReducer(state, { type: "go-document-back" });
+    expect(state.selectedDocumentId).toBe("doc-l-routes");
+    expect(state.documentHistoryForward[0]).toBe("doc-l-scene-list");
+
+    state = desktopPrototypeReducer(state, { type: "go-document-forward" });
+    expect(state.selectedDocumentId).toBe("doc-l-scene-list");
+  });
+
+  it("opens a nested Knowledge document from command palette search", () => {
+    let state = freshState();
+    const result = getCommandResults(state, "Пути между островами").find(
+      (item) => item.kind === "document",
+    );
+
+    expect(result).toBeDefined();
+    if (!result) return;
+
+    state = desktopPrototypeReducer(state, {
+      type: "activate-command-result",
+      result,
+    });
+
+    expect(state.activeProjectId).toBe("lukomorie");
+    expect(state.activeSection).toBe("knowledge");
+    expect(state.selectedDocumentId).toBe("doc-l-routes");
+    expect(state.openDocumentIds).toContain("doc-l-routes");
+    expect(state.expandedFolderIds).toContain("lukomorie:Мир/География");
+    expect(state.contextPanel).toEqual({
+      kind: "document-context",
+      documentId: "doc-l-routes",
+    });
+  });
+
+  it("opens document context, switches context modes and restores it after AI closes", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "select-document",
+      documentId: "doc-l-routes",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "open-document-context",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "set-knowledge-context-mode",
+      mode: "backlinks",
+    });
+
+    expect(state.knowledgeContextMode).toBe("backlinks");
+    expect(state.contextPanel).toEqual({
+      kind: "document-context",
+      documentId: "doc-l-routes",
+    });
+
+    state = desktopPrototypeReducer(state, { type: "open-ai-panel" });
+    expect(state.contextPanel).toEqual({ kind: "ai" });
+
+    state = desktopPrototypeReducer(state, { type: "close-ai-panel" });
+    expect(state.contextPanel).toEqual({
+      kind: "document-context",
+      documentId: "doc-l-routes",
+    });
+  });
+
+  it("toggles the Knowledge split-view mock without changing persistence data", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "toggle-knowledge-split-view",
+    });
+
+    expect(state.splitViewDocumentId).toBeTruthy();
+    expect(state.splitViewDocumentId).not.toBe(state.selectedDocumentId);
+
+    state = desktopPrototypeReducer(state, {
+      type: "toggle-knowledge-split-view",
+    });
+    expect(state.splitViewDocumentId).toBeNull();
   });
 });

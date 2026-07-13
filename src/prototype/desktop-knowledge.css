@@ -1,0 +1,372 @@
+@scope (.desktop-prototype) {
+  .knowledge-sidebar {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+
+  .knowledge-sidebar-header {
+    gap: 10px;
+  }
+
+  .knowledge-sidebar-header div:first-child {
+    display: grid;
+    gap: 4px;
+  }
+
+  .knowledge-sidebar-header span,
+  .knowledge-sidebar-header strong {
+    display: block;
+  }
+
+  .knowledge-toolbar {
+    display: grid;
+    grid-template-columns: repeat(6, 28px);
+    gap: 2px;
+  }
+
+  .ui-icon {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+  }
+
+  .knowledge-search {
+    display: grid;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+    padding: 0 10px 10px;
+    color: var(--text-3);
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 500;
+  }
+
+  .knowledge-search input {
+    min-height: 30px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text);
+    padding: 0 8px;
+  }
+
+  .knowledge-tree {
+    min-height: 0;
+    overflow: auto;
+    padding: 6px 6px 12px;
+  }
+
+  .knowledge-tree-branch,
+  .knowledge-tree-children {
+    display: grid;
+    min-width: 0;
+  }
+
+  .knowledge-tree-row {
+    --tree-indent: calc(var(--tree-depth) * 14px);
+
+    width: 100%;
+    min-height: 28px;
+    display: grid;
+    grid-template-columns: 16px 16px minmax(0, 1fr);
+    align-items: center;
+    gap: 5px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-2);
+    padding: 4px 6px 4px calc(6px + var(--tree-indent));
+    text-align: left;
+  }
+
+  .knowledge-tree-row:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  .knowledge-tree-row.folder {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .knowledge-tree-row.document {
+    color: var(--text-2);
+  }
+
+  .knowledge-tree-row.is-active {
+    background: var(--surface-selected);
+    color: var(--accent-2);
+  }
+
+  .knowledge-tree-row span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tree-disclosure-spacer {
+    width: 16px;
+    height: 16px;
+  }
+
+  .document-workspace {
+    min-height: calc(100vh - var(--header-height) - 32px);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    gap: 0;
+    max-width: none;
+    background: var(--surface);
+  }
+
+  .document-tabs {
+    min-height: 38px;
+    gap: 0;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+    padding: 4px 8px 0;
+  }
+
+  .document-tabs button {
+    position: relative;
+    min-width: 140px;
+    max-width: 220px;
+    justify-content: start;
+    border-bottom-color: transparent;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    background: transparent;
+    padding-inline: 10px 6px;
+  }
+
+  .document-tabs button.active {
+    border-color: var(--border);
+    border-bottom-color: var(--surface);
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  .document-tabs button > span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tab-unsaved {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--accent);
+  }
+
+  .tab-close {
+    width: 18px;
+    height: 18px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-sm);
+    color: var(--text-3);
+    margin-left: auto;
+  }
+
+  .tab-close:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  .document-tab-add {
+    min-width: 36px !important;
+    justify-content: center !important;
+  }
+
+  .document-nav {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    padding: 7px 12px;
+  }
+
+  .document-history-controls,
+  .document-actions,
+  .context-mode-tabs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .document-breadcrumb {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+    color: var(--text-3);
+    font-size: 12px;
+    line-height: 16px;
+    list-style: none;
+  }
+
+  .document-breadcrumb li {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .document-breadcrumb li:not(:last-child)::after {
+    content: "/";
+    margin-left: 6px;
+    color: var(--border-strong);
+  }
+
+  .document-breadcrumb [aria-current="page"] {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .document-editor-surface {
+    min-height: 0;
+    display: grid;
+    justify-items: center;
+    overflow: auto;
+    background:
+      linear-gradient(90deg, rgb(32 32 29 / 3%) 1px, transparent 1px),
+      var(--surface);
+    background-size: 56px 56px;
+    padding: 42px clamp(28px, 8vw, 120px);
+  }
+
+  .document-editor-surface.is-split-view {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 28px;
+    justify-items: stretch;
+  }
+
+  .document-page {
+    width: min(100%, 820px);
+    min-height: 560px;
+    background: transparent;
+    padding: 0;
+  }
+
+  .document-editor-surface.is-split-view .document-page {
+    width: 100%;
+    max-width: 760px;
+  }
+
+  .document-page.secondary {
+    border-left: 1px solid var(--border);
+    padding-left: 28px;
+  }
+
+  .document-page > span {
+    display: block;
+    margin-bottom: 10px;
+  }
+
+  .document-page h1 {
+    margin: 0 0 22px;
+    font-size: 32px;
+    line-height: 40px;
+    letter-spacing: -0.02em;
+  }
+
+  .document-page h2 {
+    margin: 30px 0 10px;
+    color: var(--text);
+    font-size: 20px;
+    line-height: 28px;
+    font-weight: 600;
+  }
+
+  .document-page p,
+  .document-page blockquote {
+    max-width: 820px;
+    color: var(--text);
+    font-size: 16px;
+    line-height: 28px;
+  }
+
+  .document-page blockquote {
+    border-left: 3px solid var(--border-strong);
+    margin: 18px 0;
+    padding-left: 16px;
+    color: var(--text-2);
+  }
+
+  .document-list-item {
+    margin-block: 6px;
+    padding-left: 12px;
+  }
+
+  .workspace-footer {
+    background: var(--surface);
+    padding: 10px 12px;
+  }
+
+  .context-mode-tabs {
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+  }
+
+  .context-mode-tabs button {
+    min-height: 28px;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text-3);
+    padding: 0 8px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .context-mode-tabs button:hover,
+  .context-mode-tabs button.active {
+    background: var(--surface-selected);
+    color: var(--accent-2);
+  }
+
+  @media (min-width: 2200px) {
+    .document-editor-surface {
+      padding-inline: clamp(64px, 12vw, 260px);
+    }
+
+    .document-editor-surface.is-split-view {
+      padding-inline: clamp(48px, 7vw, 180px);
+    }
+  }
+
+  @media (max-width: 1360px) {
+    .document-workspace {
+      min-height: 620px;
+    }
+
+    .document-nav {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .document-actions {
+      grid-column: 1 / -1;
+      justify-content: flex-start;
+    }
+
+    .document-editor-surface.is-split-view {
+      grid-template-columns: 1fr;
+    }
+
+    .document-page.secondary {
+      border-top: 1px solid var(--border);
+      border-left: 0;
+      padding-top: 28px;
+      padding-left: 0;
+    }
+  }
+}

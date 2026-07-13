@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   aiProposals,
   inboxFilters,
@@ -8,6 +8,7 @@ import {
   projectSections,
   taskFilters,
   type OverviewLane,
+  type ProjectSection,
   type PrototypeDocument,
   type PrototypeInboxItem,
   type PrototypeTask,
@@ -22,12 +23,15 @@ import {
   getCanvasById,
   getCanvasObjectById,
   getCommandResults,
+  getDocumentBreadcrumb,
   getDocumentById,
+  getDocumentFolderPath,
   getInboxItemById,
+  getKnowledgeTree,
   getMilestoneProgress,
+  getOpenDocuments,
   getProjectAreas,
   getProjectCanvases,
-  getProjectDocumentFolders,
   getProjectDocuments,
   getProjectMilestones,
   getTaskById,
@@ -39,6 +43,8 @@ import {
   type ContextPanelState,
   type DesktopPrototypeAction,
   type DesktopPrototypeState,
+  type KnowledgeContextMode,
+  type KnowledgeTreeNode,
 } from "@/prototype/desktop-state";
 import {
   ContextPanelSection,
@@ -49,6 +55,8 @@ import {
   WorkspaceHeader,
 } from "@/prototype/desktop-ui";
 import "./desktop-shell.css";
+import "./desktop-workspaces.css";
+import "./desktop-knowledge.css";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 
@@ -73,8 +81,9 @@ export function DesktopPrototypeShell(): React.JSX.Element {
     desktopPrototypeReducer,
     initialDesktopPrototypeState,
   );
-  const [commandQuery, setCommandQuery] = useState("");
+  const [commandQuery, setCommandQuery] = useState(getInitialCommandQuery);
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
+  const seededFromUrl = useRef(false);
   const commandResults = useMemo(
     () => getCommandResults(state, commandQuery),
     [state, commandQuery],
@@ -95,6 +104,51 @@ export function DesktopPrototypeShell(): React.JSX.Element {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (seededFromUrl.current) return;
+    seededFromUrl.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const sectionParam = params.get("section");
+    const section = projectSections.some((item) => item.id === sectionParam)
+      ? (sectionParam as ProjectSection)
+      : null;
+    if (section) {
+      dispatch({ type: "switch-section", section });
+    }
+    if (params.get("search")) {
+      dispatch({
+        type: "set-knowledge-search",
+        query: params.get("search") ?? "",
+      });
+    }
+    const documentId = params.get("document") ?? "doc-l-routes";
+    if (section === "knowledge" || params.get("document")) {
+      dispatch({ type: "select-document", documentId });
+    }
+    if (params.get("split") === "1") {
+      dispatch({ type: "toggle-knowledge-split-view" });
+    }
+    if (params.get("detail") === "task") {
+      dispatch({
+        type: "select-task",
+        taskId: "luko-characters-map",
+        section: section === "overview" ? "overview" : "tasks",
+      });
+    }
+    if (params.get("detail") === "inbox") {
+      dispatch({ type: "select-inbox-item", itemId: "inbox-l-text" });
+    }
+    if (params.get("context") === "document") {
+      dispatch({ type: "open-document-context", documentId });
+    }
+    if (params.get("ai") === "1") {
+      dispatch({ type: "open-ai-panel" });
+    }
+    if (params.get("command") === "1") {
+      dispatch({ type: "open-command-palette" });
+    }
   }, []);
 
   const activateCommandResult = (result: CommandResult): void => {
@@ -231,6 +285,8 @@ function SectionWorkspace({
     <div
       className={[
         "section-workspace",
+        `workspace-policy-${workspaceWidthPolicy(state)}`,
+        `section-${state.activeSection}`,
         sidebar ? "has-tool-sidebar" : "",
         hasContextPanel ? "has-context-panel" : "",
       ]
@@ -250,6 +306,22 @@ function SectionWorkspace({
       ) : null}
     </div>
   );
+}
+
+function workspaceWidthPolicy(
+  state: DesktopPrototypeState,
+): "full-surface" | "readable-document" | "bounded-cluster" {
+  if (state.activeSection === "canvases") return "full-surface";
+  if (state.activeSection === "knowledge") return "readable-document";
+  if (state.activeSection === "tasks" || state.activeSection === "inbox") {
+    return "bounded-cluster";
+  }
+  return state.contextPanel ? "bounded-cluster" : "full-surface";
+}
+
+function getInitialCommandQuery(): string {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get("commandQuery") ?? "";
 }
 
 function renderToolSidebar(
@@ -471,33 +543,156 @@ function KnowledgeSidebar({
   state: DesktopPrototypeState;
   dispatch: Dispatch;
 }): React.JSX.Element {
-  const folders = getProjectDocumentFolders(state);
-  const documents = getProjectDocuments(state);
+  const tree = getKnowledgeTree(state);
   return (
-    <aside className="tool-sidebar" aria-label="Дерево документов">
-      <header>
-        <span>Знания</span>
-        <strong>Документы</strong>
+    <aside
+      className="tool-sidebar knowledge-sidebar"
+      aria-label="Дерево документов"
+    >
+      <header className="knowledge-sidebar-header">
+        <div>
+          <span>Знания</span>
+          <strong>Документы</strong>
+        </div>
+        <div
+          className="knowledge-toolbar"
+          aria-label="Действия с деревом документов"
+        >
+          <IconButton
+            icon={<UiIcon name="search" />}
+            label="Найти в знаниях"
+            title="Найти в знаниях"
+            variant="ghost"
+          />
+          <IconButton
+            icon={<UiIcon name="file-plus" />}
+            label="Создать документ"
+            title="Создать документ"
+            variant="ghost"
+          />
+          <IconButton
+            icon={<UiIcon name="folder-plus" />}
+            label="Создать папку"
+            title="Создать папку"
+            variant="ghost"
+          />
+          <IconButton
+            icon={<UiIcon name="sort" />}
+            label="Сортировать"
+            title="Сортировать"
+            variant="ghost"
+          />
+          <IconButton
+            icon={<UiIcon name="collapse" />}
+            label="Свернуть все папки"
+            onClick={() => dispatch({ type: "collapse-all-knowledge-folders" })}
+            title="Свернуть все папки"
+            variant="ghost"
+          />
+          <IconButton
+            icon={<UiIcon name="more" />}
+            label="Дополнительное меню"
+            title="Дополнительное меню"
+            variant="ghost"
+          />
+        </div>
       </header>
-      {folders.map((folder) => (
-        <section className="tree-group" key={folder}>
-          <h3>{folder}</h3>
-          {documents
-            .filter((document) => document.folder === folder)
-            .map((document) => (
-              <ToolSidebarItem
-                active={state.selectedDocumentId === document.id}
-                key={document.id}
-                onClick={() =>
-                  dispatch({ type: "select-document", documentId: document.id })
-                }
-              >
-                {document.title}
-              </ToolSidebarItem>
-            ))}
-        </section>
-      ))}
+      <label className="knowledge-search">
+        <span>Поиск по проекту</span>
+        <input
+          onChange={(event) =>
+            dispatch({
+              type: "set-knowledge-search",
+              query: event.target.value,
+            })
+          }
+          placeholder="Документ, папка или связь"
+          value={state.knowledgeSearchQuery}
+        />
+      </label>
+      <nav className="knowledge-tree" aria-label="Иерархия документов">
+        {tree.length > 0 ? (
+          tree.map((node) => (
+            <KnowledgeTreeNodeView
+              dispatch={dispatch}
+              key={node.id}
+              node={node}
+              state={state}
+            />
+          ))
+        ) : (
+          <p className="empty-state">Ничего не найдено.</p>
+        )}
+      </nav>
     </aside>
+  );
+}
+
+function KnowledgeTreeNodeView({
+  node,
+  state,
+  dispatch,
+}: {
+  node: KnowledgeTreeNode;
+  state: DesktopPrototypeState;
+  dispatch: Dispatch;
+}): React.JSX.Element {
+  const depth = Math.max(node.path.length - 1, 0);
+  if (node.kind === "folder") {
+    const expanded =
+      state.knowledgeSearchQuery.trim().length > 0 ||
+      state.expandedFolderIds.includes(node.id);
+    return (
+      <div className="knowledge-tree-branch">
+        <button
+          aria-expanded={expanded}
+          className="knowledge-tree-row folder"
+          onClick={() =>
+            dispatch({ type: "toggle-knowledge-folder", folderId: node.id })
+          }
+          style={treeDepthStyle(depth)}
+          title={node.path.join(" / ")}
+          type="button"
+        >
+          <UiIcon name={expanded ? "chevron-down" : "chevron-right"} />
+          <UiIcon name={expanded ? "folder-open" : "folder"} />
+          <span>{node.title}</span>
+        </button>
+        {expanded ? (
+          <div className="knowledge-tree-children">
+            {node.children.map((child) => (
+              <KnowledgeTreeNodeView
+                dispatch={dispatch}
+                key={child.id}
+                node={child}
+                state={state}
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+  return (
+    <button
+      className={[
+        "knowledge-tree-row",
+        "document",
+        state.selectedDocumentId === node.document.id ? "is-active" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      onClick={() =>
+        dispatch({ type: "select-document", documentId: node.document.id })
+      }
+      style={treeDepthStyle(depth)}
+      title={getDocumentBreadcrumb(node.document)}
+      type="button"
+    >
+      <span className="tree-disclosure-spacer" />
+      <UiIcon name="file" />
+      <span>{node.title}</span>
+    </button>
   );
 }
 
@@ -514,53 +709,193 @@ function KnowledgeWorkspace({
   if (!selectedDocument) {
     return <EmptySection title="Знания" />;
   }
-  const openTabs = documents.slice(0, 3);
+  const openTabs = getOpenDocuments(state);
+  const splitDocument = getDocumentById(state, state.splitViewDocumentId);
   return (
     <div className="document-workspace">
-      <div className="document-tabs">
-        <button type="button">←</button>
-        <button type="button">→</button>
+      <div
+        className="document-tabs"
+        role="tablist"
+        aria-label="Открытые документы"
+      >
         {openTabs.map((document) => (
           <button
+            aria-selected={document.id === selectedDocument.id}
             className={document.id === selectedDocument.id ? "active" : ""}
             key={document.id}
             onClick={() =>
-              dispatch({ type: "select-document", documentId: document.id })
+              dispatch({
+                type: "activate-document-tab",
+                documentId: document.id,
+              })
             }
+            role="tab"
             type="button"
           >
-            {document.title}
+            <span>{document.title}</span>
+            {document.id === "doc-l-magic" ? (
+              <span
+                className="tab-unsaved"
+                aria-label="Есть несохранённые mock-правки"
+              />
+            ) : null}
+            <span
+              aria-label={`Закрыть ${document.title}`}
+              className="tab-close"
+              onClick={(event) => {
+                event.stopPropagation();
+                dispatch({
+                  type: "close-document-tab",
+                  documentId: document.id,
+                });
+              }}
+              role="button"
+              tabIndex={0}
+              title={`Закрыть ${document.title}`}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  dispatch({
+                    type: "close-document-tab",
+                    documentId: document.id,
+                  });
+                }
+              }}
+            >
+              ×
+            </span>
           </button>
         ))}
-      </div>
-      <article className="document-page">
-        <span>{selectedDocument.folder}</span>
-        <h1>{selectedDocument.title}</h1>
-        {selectedDocument.content.map((line) => (
-          <p key={line}>{line}</p>
-        ))}
-      </article>
-      <footer className="workspace-footer">
         <button
+          className="document-tab-add"
+          type="button"
+          title="Открыть новую вкладку"
+        >
+          +
+        </button>
+      </div>
+      <nav className="document-nav" aria-label="Навигация документа">
+        <div className="document-history-controls">
+          <IconButton
+            disabled={state.documentHistoryBack.length === 0}
+            icon={<UiIcon name="arrow-left" />}
+            label="Назад"
+            onClick={() => dispatch({ type: "go-document-back" })}
+            title="Назад"
+            variant="ghost"
+          />
+          <IconButton
+            disabled={state.documentHistoryForward.length === 0}
+            icon={<UiIcon name="arrow-right" />}
+            label="Вперёд"
+            onClick={() => dispatch({ type: "go-document-forward" })}
+            title="Вперёд"
+            variant="ghost"
+          />
+        </div>
+        <ol className="document-breadcrumb">
+          {getDocumentFolderPath(selectedDocument).map((part) => (
+            <li key={part}>{part}</li>
+          ))}
+          <li aria-current="page">{selectedDocument.title}</li>
+        </ol>
+        <div className="document-actions">
+          <PrototypeButton
+            active={Boolean(state.splitViewDocumentId)}
+            onClick={() => dispatch({ type: "toggle-knowledge-split-view" })}
+            size="compact"
+            variant="quiet"
+          >
+            Split
+          </PrototypeButton>
+          <PrototypeButton
+            active={state.contextPanel?.kind === "document-context"}
+            onClick={() =>
+              dispatch({
+                type: "open-document-context",
+                documentId: selectedDocument.id,
+              })
+            }
+            size="compact"
+            variant="quiet"
+          >
+            Контекст
+          </PrototypeButton>
+          <PrototypeButton
+            active={state.contextPanel?.kind === "ai"}
+            onClick={() => dispatch({ type: "open-ai-panel" })}
+            size="compact"
+            variant="quiet"
+          >
+            AI
+          </PrototypeButton>
+        </div>
+      </nav>
+      <div
+        className={[
+          "document-editor-surface",
+          splitDocument ? "is-split-view" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        <DocumentArticle document={selectedDocument} />
+        {splitDocument ? (
+          <DocumentArticle document={splitDocument} secondary />
+        ) : null}
+      </div>
+      <footer className="workspace-footer">
+        <PrototypeButton
           onClick={() =>
             dispatch({
               type: "open-document-context",
               documentId: selectedDocument.id,
             })
           }
-          type="button"
+          variant="quiet"
         >
           Открыть контекст документа
-        </button>
-        <button
+        </PrototypeButton>
+        <PrototypeButton
           onClick={() => dispatch({ type: "open-ai-panel" })}
-          type="button"
+          variant="quiet"
         >
           AI по документу
-        </button>
+        </PrototypeButton>
       </footer>
     </div>
   );
+}
+
+function DocumentArticle({
+  document,
+  secondary = false,
+}: {
+  document: PrototypeDocument;
+  secondary?: boolean;
+}): React.JSX.Element {
+  return (
+    <article
+      className={secondary ? "document-page secondary" : "document-page"}
+    >
+      <span>{getDocumentBreadcrumb(document)}</span>
+      {document.content.map((line, index) => (
+        <MarkdownPreviewBlock key={`${document.id}-${index}`} line={line} />
+      ))}
+    </article>
+  );
+}
+
+function MarkdownPreviewBlock({ line }: { line: string }): React.JSX.Element {
+  if (line.startsWith("# ")) return <h1>{line.slice(2)}</h1>;
+  if (line.startsWith("## ")) return <h2>{line.slice(3)}</h2>;
+  if (line.startsWith("- "))
+    return <p className="document-list-item">• {line.slice(2)}</p>;
+  if (/^\d+\.\s/.test(line))
+    return <p className="document-list-item">{line}</p>;
+  if (line.startsWith("> ")) return <blockquote>{line.slice(2)}</blockquote>;
+  return <p>{line}</p>;
 }
 
 function TasksSidebar({
@@ -878,7 +1213,11 @@ function renderContextPanelContent(
   if (contextPanel.kind === "document-context") {
     const document = getDocumentById(state, contextPanel.documentId);
     return document ? (
-      <DocumentContextPanel document={document} state={state} />
+      <DocumentContextPanel
+        dispatch={dispatch}
+        document={document}
+        state={state}
+      />
     ) : (
       <p>Документ не найден.</p>
     );
@@ -1007,32 +1346,89 @@ function TaskDetailsPanel({
 }
 
 function DocumentContextPanel({
+  dispatch,
   document,
   state,
 }: {
+  dispatch: Dispatch;
   document: PrototypeDocument;
   state: DesktopPrototypeState;
 }): React.JSX.Element {
   const linkedTasks = document.linkedTaskIds
     .map((taskId) => getTaskById(state, taskId))
     .filter((task): task is PrototypeTask => Boolean(task));
+  const outgoingLinks = document.content
+    .join(" ")
+    .match(/\[\[([^\]]+)\]\]/g)
+    ?.map((link) => link.slice(2, -2)) ?? ["Правила магии", "Список сцен"];
+  const modes: { id: KnowledgeContextMode; label: string }[] = [
+    { id: "outline", label: "Структура" },
+    { id: "backlinks", label: "Обратные" },
+    { id: "outgoing", label: "Исходящие" },
+    { id: "tasks", label: "Задачи" },
+    { id: "history", label: "История" },
+  ];
   return (
     <div className="panel-stack">
-      <ContextPanelSection title="Backlinks">
-        {document.backlinks.map((backlink) => (
-          <span className="document-pill" key={backlink}>
-            {backlink}
-          </span>
+      <div
+        className="context-mode-tabs"
+        role="tablist"
+        aria-label="Режим контекста документа"
+      >
+        {modes.map((mode) => (
+          <button
+            aria-selected={state.knowledgeContextMode === mode.id}
+            className={state.knowledgeContextMode === mode.id ? "active" : ""}
+            key={mode.id}
+            onClick={() =>
+              dispatch({ type: "set-knowledge-context-mode", mode: mode.id })
+            }
+            role="tab"
+            type="button"
+          >
+            {mode.label}
+          </button>
         ))}
-      </ContextPanelSection>
-      <ContextPanelSection title="Связанные задачи">
-        {linkedTasks.map((task) => (
-          <p key={task.id}>{task.title}</p>
-        ))}
-      </ContextPanelSection>
-      <ContextPanelSection title="История">
-        <p>Mock: документ открыт в структурном прототипе shell.</p>
-      </ContextPanelSection>
+      </div>
+      {state.knowledgeContextMode === "outline" ? (
+        <ContextPanelSection title="Структура">
+          <p>{getDocumentBreadcrumb(document)}</p>
+          <p>{document.excerpt}</p>
+        </ContextPanelSection>
+      ) : null}
+      {state.knowledgeContextMode === "backlinks" ? (
+        <ContextPanelSection title="Обратные ссылки">
+          {document.backlinks.map((backlink) => (
+            <span className="document-pill" key={backlink}>
+              {backlink}
+            </span>
+          ))}
+        </ContextPanelSection>
+      ) : null}
+      {state.knowledgeContextMode === "outgoing" ? (
+        <ContextPanelSection title="Исходящие ссылки">
+          {outgoingLinks.map((link) => (
+            <span className="document-pill" key={link}>
+              {link}
+            </span>
+          ))}
+        </ContextPanelSection>
+      ) : null}
+      {state.knowledgeContextMode === "tasks" ? (
+        <ContextPanelSection title="Связанные задачи">
+          {linkedTasks.length > 0 ? (
+            linkedTasks.map((task) => <p key={task.id}>{task.title}</p>)
+          ) : (
+            <p>Связанных mock-задач пока нет.</p>
+          )}
+        </ContextPanelSection>
+      ) : null}
+      {state.knowledgeContextMode === "history" ? (
+        <ContextPanelSection title="История">
+          <p>Сегодня: документ открыт в структурном прототипе shell.</p>
+          <p>Вчера: уточнены связи с соседними заметками и задачами.</p>
+        </ContextPanelSection>
+      ) : null}
     </div>
   );
 }
@@ -1209,6 +1605,107 @@ function CommandPalette({
       </section>
     </div>
   );
+}
+
+type UiIconName =
+  | "arrow-left"
+  | "arrow-right"
+  | "chevron-down"
+  | "chevron-right"
+  | "collapse"
+  | "file"
+  | "file-plus"
+  | "folder"
+  | "folder-open"
+  | "folder-plus"
+  | "more"
+  | "search"
+  | "sort";
+
+function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
+  const commonProps = {
+    "aria-hidden": true,
+    className: "ui-icon",
+    fill: "none",
+    stroke: "currentColor",
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    strokeWidth: 1.8,
+    viewBox: "0 0 24 24",
+  } as const;
+  const paths: Record<UiIconName, React.ReactNode> = {
+    "arrow-left": <path d="M15 18l-6-6 6-6" />,
+    "arrow-right": <path d="M9 6l6 6-6 6" />,
+    "chevron-down": <path d="M7 10l5 5 5-5" />,
+    "chevron-right": <path d="M10 7l5 5-5 5" />,
+    collapse: (
+      <>
+        <path d="M8 7h8" />
+        <path d="M8 12h8" />
+        <path d="M8 17h8" />
+      </>
+    ),
+    file: (
+      <>
+        <path d="M7 3h7l4 4v14H7z" />
+        <path d="M14 3v5h5" />
+      </>
+    ),
+    "file-plus": (
+      <>
+        <path d="M7 3h7l4 4v14H7z" />
+        <path d="M14 3v5h5" />
+        <path d="M10 14h5" />
+        <path d="M12.5 11.5v5" />
+      </>
+    ),
+    folder: (
+      <>
+        <path d="M3 6h7l2 2h9v10.5A2.5 2.5 0 0 1 18.5 21h-13A2.5 2.5 0 0 1 3 18.5z" />
+        <path d="M3 9h18" />
+      </>
+    ),
+    "folder-open": (
+      <>
+        <path d="M3 7h7l2 2h9" />
+        <path d="M4 11h17l-2 8H5z" />
+      </>
+    ),
+    "folder-plus": (
+      <>
+        <path d="M3 6h7l2 2h9v10.5A2.5 2.5 0 0 1 18.5 21h-13A2.5 2.5 0 0 1 3 18.5z" />
+        <path d="M10 15h5" />
+        <path d="M12.5 12.5v5" />
+      </>
+    ),
+    more: (
+      <>
+        <path d="M6 12h.01" />
+        <path d="M12 12h.01" />
+        <path d="M18 12h.01" />
+      </>
+    ),
+    search: (
+      <>
+        <circle cx="11" cy="11" r="6" />
+        <path d="M16 16l4 4" />
+      </>
+    ),
+    sort: (
+      <>
+        <path d="M7 6h10" />
+        <path d="M9 12h6" />
+        <path d="M11 18h2" />
+      </>
+    ),
+  };
+  return <svg {...commonProps}>{paths[name]}</svg>;
+}
+
+function treeDepthStyle(
+  depth: number,
+): React.CSSProperties & { "--tree-depth": number } {
+  return { "--tree-depth": depth };
 }
 
 function EmptySection({ title }: { title: string }): React.JSX.Element {

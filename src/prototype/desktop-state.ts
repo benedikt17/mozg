@@ -38,6 +38,25 @@ export type OverviewFilters = {
   starredOnly: boolean;
 };
 
+export type KnowledgeContextMode =
+  "outline" | "backlinks" | "outgoing" | "tasks" | "history";
+
+export type KnowledgeTreeNode =
+  | {
+      kind: "folder";
+      id: string;
+      title: string;
+      path: string[];
+      children: KnowledgeTreeNode[];
+    }
+  | {
+      kind: "document";
+      id: string;
+      title: string;
+      path: string[];
+      document: PrototypeDocument;
+    };
+
 export type CommandResult =
   | { kind: "project"; id: string; title: string; subtitle: string }
   | { kind: "section"; id: ProjectSection; title: string; subtitle: string }
@@ -55,6 +74,13 @@ export type DesktopPrototypeState = {
   selectedCanvasObjectId: string | null;
   selectedInboxItemId: string | null;
   selectedDocumentFolder: string | null;
+  expandedFolderIds: string[];
+  knowledgeSearchQuery: string;
+  openDocumentIds: string[];
+  documentHistoryBack: string[];
+  documentHistoryForward: string[];
+  knowledgeContextMode: KnowledgeContextMode;
+  splitViewDocumentId: string | null;
   taskFilter: TaskFilter;
   inboxFilter: InboxFilter;
   contextPanel: ContextPanelState;
@@ -92,6 +118,15 @@ export type DesktopPrototypeAction =
   | { type: "set-inbox-filter"; filter: InboxFilter }
   | { type: "create-task" }
   | { type: "select-document"; documentId: string }
+  | { type: "toggle-knowledge-folder"; folderId: string }
+  | { type: "collapse-all-knowledge-folders" }
+  | { type: "set-knowledge-search"; query: string }
+  | { type: "close-document-tab"; documentId: string }
+  | { type: "activate-document-tab"; documentId: string }
+  | { type: "go-document-back" }
+  | { type: "go-document-forward" }
+  | { type: "set-knowledge-context-mode"; mode: KnowledgeContextMode }
+  | { type: "toggle-knowledge-split-view" }
   | { type: "open-document-context"; documentId?: string }
   | { type: "select-canvas"; canvasId: string }
   | { type: "select-canvas-object"; canvasId: string; objectId: string }
@@ -109,16 +144,50 @@ export const ALL_MILESTONES = "all";
 export const MAX_VISIBLE_COMMAND_RESULTS = 10;
 
 const initialProjectId = "lukomorie";
+const initialDocumentId = "doc-l-nastenka";
+const initialOpenDocumentIds = [
+  initialDocumentId,
+  "doc-l-baba-yaga",
+  "doc-l-magic",
+  "doc-l-scene-list",
+];
+const initialExpandedFolderIds = [
+  knowledgeFolderId(initialProjectId, ["Персонажи"]),
+  knowledgeFolderId(initialProjectId, ["Персонажи", "Главные герои"]),
+  knowledgeFolderId(initialProjectId, ["Персонажи", "Волшебные существа"]),
+  knowledgeFolderId(initialProjectId, ["Мир"]),
+  knowledgeFolderId(initialProjectId, ["Мир", "География"]),
+  knowledgeFolderId(initialProjectId, ["Сценарии"]),
+  knowledgeFolderId(initialProjectId, ["Сценарии", "Первый сезон"]),
+  knowledgeFolderId(initialProjectId, ["Производство"]),
+];
+const documentFolderPathOverrides: Record<string, string[]> = {
+  "doc-l-nastenka": ["Персонажи", "Главные герои"],
+  "doc-l-baba-yaga": ["Персонажи", "Волшебные существа"],
+  "doc-l-koschei": ["Персонажи", "Волшебные существа"],
+  "doc-l-geography": ["Мир", "География"],
+  "doc-l-magic": ["Мир"],
+  "doc-l-first-chapter": ["Сценарии", "Первый сезон"],
+  "doc-l-scenes": ["Сценарии", "Первый сезон"],
+  "doc-l-production": ["Производство"],
+};
 
 export const initialDesktopPrototypeState: DesktopPrototypeState = {
   activeProjectId: initialProjectId,
   activeSection: "overview",
   selectedTaskId: null,
-  selectedDocumentId: "doc-l-nastenka",
+  selectedDocumentId: initialDocumentId,
   selectedCanvasId: "canvas-l-characters",
   selectedCanvasObjectId: null,
   selectedInboxItemId: "inbox-l-text",
   selectedDocumentFolder: "Персонажи",
+  expandedFolderIds: initialExpandedFolderIds,
+  knowledgeSearchQuery: "",
+  openDocumentIds: initialOpenDocumentIds,
+  documentHistoryBack: [],
+  documentHistoryForward: [],
+  knowledgeContextMode: "outline",
+  splitViewDocumentId: null,
   taskFilter: "all",
   inboxFilter: "all",
   contextPanel: null,
@@ -227,6 +296,128 @@ export function getProjectDocuments(
   return state.documents.filter((document) => document.projectId === projectId);
 }
 
+export function knowledgeFolderId(projectId: string, path: string[]): string {
+  return `${projectId}:${path.join("/")}`;
+}
+
+export function getDocumentFolderPath(document: PrototypeDocument): string[] {
+  if (document.folderPath && document.folderPath.length > 0) {
+    return document.folderPath;
+  }
+  const overridePath = documentFolderPathOverrides[document.id];
+  if (overridePath) return overridePath;
+  return document.folder ? [document.folder] : [];
+}
+
+export function getDocumentBreadcrumb(document: PrototypeDocument): string {
+  return [...getDocumentFolderPath(document), document.title].join(" / ");
+}
+
+export function getDocumentAncestorFolderIds(
+  document: PrototypeDocument,
+): string[] {
+  const path = getDocumentFolderPath(document);
+  return path.map((_, index) =>
+    knowledgeFolderId(document.projectId, path.slice(0, index + 1)),
+  );
+}
+
+export function getOpenDocuments(
+  state: DesktopPrototypeState,
+): PrototypeDocument[] {
+  const openDocuments = state.openDocumentIds
+    .map((documentId) => getDocumentById(state, documentId))
+    .filter((document): document is PrototypeDocument => Boolean(document));
+  const selectedDocument = getDocumentById(state, state.selectedDocumentId);
+  if (
+    selectedDocument &&
+    !openDocuments.some((document) => document.id === selectedDocument.id)
+  ) {
+    return [...openDocuments, selectedDocument];
+  }
+  return openDocuments;
+}
+
+export function getKnowledgeTree(
+  state: DesktopPrototypeState,
+  projectId = state.activeProjectId,
+): KnowledgeTreeNode[] {
+  const documents = getProjectDocuments(state, projectId);
+  const query = state.knowledgeSearchQuery.trim().toLocaleLowerCase("ru");
+  const rootFolders = new Map<string, KnowledgeTreeNode>();
+  const childFolderMaps = new Map<string, Map<string, KnowledgeTreeNode>>();
+  const matches = (document: PrototypeDocument): boolean => {
+    if (!query) return true;
+    const searchable = [
+      document.title,
+      document.excerpt,
+      getDocumentBreadcrumb(document),
+    ]
+      .join(" ")
+      .toLocaleLowerCase("ru");
+    return searchable.includes(query);
+  };
+
+  const getFolderChildrenMap = (
+    folder: Extract<KnowledgeTreeNode, { kind: "folder" }>,
+  ): Map<string, KnowledgeTreeNode> => {
+    const existing = childFolderMaps.get(folder.id);
+    if (existing) return existing;
+    const next = new Map<string, KnowledgeTreeNode>();
+    childFolderMaps.set(folder.id, next);
+    return next;
+  };
+
+  const ensureFolder = (path: string[]): KnowledgeTreeNode => {
+    const id = knowledgeFolderId(projectId, path);
+    const title = path[path.length - 1] ?? "Документы";
+    if (path.length === 1) {
+      const existingRoot = rootFolders.get(id);
+      if (existingRoot) return existingRoot;
+      const folder: KnowledgeTreeNode = {
+        kind: "folder",
+        id,
+        title,
+        path,
+        children: [],
+      };
+      rootFolders.set(id, folder);
+      return folder;
+    }
+    const parent = ensureFolder(path.slice(0, -1));
+    if (parent.kind !== "folder") return parent;
+    const siblings = getFolderChildrenMap(parent);
+    const existing = siblings.get(id);
+    if (existing) return existing;
+    const folder: KnowledgeTreeNode = {
+      kind: "folder",
+      id,
+      title,
+      path,
+      children: [],
+    };
+    siblings.set(id, folder);
+    parent.children.push(folder);
+    return folder;
+  };
+
+  for (const document of documents) {
+    if (!matches(document)) continue;
+    const folderPath = getDocumentFolderPath(document);
+    const folder = ensureFolder(folderPath);
+    if (folder.kind !== "folder") continue;
+    folder.children.push({
+      kind: "document",
+      id: document.id,
+      title: document.title,
+      path: [...folderPath, document.title],
+      document,
+    });
+  }
+
+  return sortKnowledgeNodes(Array.from(rootFolders.values()));
+}
+
 export function getProjectDocumentFolders(
   state: DesktopPrototypeState,
   projectId = state.activeProjectId,
@@ -310,6 +501,19 @@ export function sortTasksForBoard(tasks: PrototypeTask[]): PrototypeTask[] {
     if (first.starred !== second.starred) return first.starred ? -1 : 1;
     return first.title.localeCompare(second.title, "ru");
   });
+}
+
+function sortKnowledgeNodes(nodes: KnowledgeTreeNode[]): KnowledgeTreeNode[] {
+  return [...nodes]
+    .map((node) =>
+      node.kind === "folder"
+        ? { ...node, children: sortKnowledgeNodes(node.children) }
+        : node,
+    )
+    .sort((first, second) => {
+      if (first.kind !== second.kind) return first.kind === "folder" ? -1 : 1;
+      return first.title.localeCompare(second.title, "ru");
+    });
 }
 
 export function getTasksForLane(
@@ -406,12 +610,17 @@ export function getCommandResults(
     }));
 
   const documentResults: CommandResult[] = state.documents
-    .filter((document) => matches(document.title))
+    .filter(
+      (document) =>
+        matches(document.title) ||
+        matches(document.excerpt) ||
+        matches(getDocumentBreadcrumb(document)),
+    )
     .map((document) => ({
       kind: "document",
       id: document.id,
       title: document.title,
-      subtitle: `Документ · ${getProjectName(state, document.projectId)}`,
+      subtitle: `Документ · ${getProjectName(state, document.projectId)} · ${getDocumentBreadcrumb(document)}`,
     }));
 
   const canvasResults: CommandResult[] = state.canvases
@@ -526,6 +735,13 @@ function switchToProject(
     selectedTaskId: null,
     selectedDocumentId: document?.id ?? null,
     selectedDocumentFolder: document?.folder ?? null,
+    expandedFolderIds: document ? getDocumentAncestorFolderIds(document) : [],
+    knowledgeSearchQuery: "",
+    openDocumentIds: document ? [document.id] : [],
+    documentHistoryBack: [],
+    documentHistoryForward: [],
+    knowledgeContextMode: "outline",
+    splitViewDocumentId: null,
     selectedCanvasId: canvas?.id ?? null,
     selectedCanvasObjectId: null,
     selectedInboxItemId: inboxItem?.id ?? null,
@@ -536,6 +752,49 @@ function switchToProject(
     inboxFilter: "all",
     commandPaletteOpen: false,
     selectedAiProposalIds: [],
+  };
+}
+
+function selectKnowledgeDocument(
+  state: DesktopPrototypeState,
+  document: PrototypeDocument,
+  options: { pushHistory: boolean; contextPanel?: ContextPanelState } = {
+    pushHistory: true,
+  },
+): DesktopPrototypeState {
+  const sameProjectState =
+    document.projectId === state.activeProjectId
+      ? state
+      : switchToProject(state, document.projectId);
+  const previousDocumentId = sameProjectState.selectedDocumentId;
+  const shouldPushHistory =
+    options.pushHistory &&
+    previousDocumentId !== null &&
+    previousDocumentId !== document.id;
+  return {
+    ...sameProjectState,
+    activeProjectId: document.projectId,
+    activeSection: "knowledge",
+    selectedDocumentId: document.id,
+    selectedDocumentFolder: document.folder,
+    expandedFolderIds: Array.from(
+      new Set([
+        ...sameProjectState.expandedFolderIds,
+        ...getDocumentAncestorFolderIds(document),
+      ]),
+    ),
+    openDocumentIds: sameProjectState.openDocumentIds.includes(document.id)
+      ? sameProjectState.openDocumentIds
+      : [...sameProjectState.openDocumentIds, document.id],
+    documentHistoryBack: shouldPushHistory
+      ? [...sameProjectState.documentHistoryBack, previousDocumentId]
+      : sameProjectState.documentHistoryBack,
+    documentHistoryForward: options.pushHistory
+      ? []
+      : sameProjectState.documentHistoryForward,
+    contextPanel: options.contextPanel ?? sameProjectState.contextPanel,
+    contextPanelBeforeAi: null,
+    commandPaletteOpen: false,
   };
 }
 
@@ -571,15 +830,10 @@ function activateCommandResult(
   if (result.kind === "document") {
     const document = getDocumentById(state, result.id);
     if (!document) return state;
-    return {
-      ...switchToProject(state, document.projectId),
-      activeSection: "knowledge",
-      selectedDocumentId: document.id,
-      selectedDocumentFolder: document.folder,
+    return selectKnowledgeDocument(state, document, {
+      pushHistory: true,
       contextPanel: { kind: "document-context", documentId: document.id },
-      contextPanelBeforeAi: null,
-      commandPaletteOpen: false,
-    };
+    });
   }
   if (result.kind === "canvas") {
     const canvas = getCanvasById(state, result.id);
@@ -642,6 +896,13 @@ export function desktopPrototypeReducer(
         selectedTaskId: null,
         selectedDocumentId: null,
         selectedDocumentFolder: null,
+        expandedFolderIds: [],
+        knowledgeSearchQuery: "",
+        openDocumentIds: [],
+        documentHistoryBack: [],
+        documentHistoryForward: [],
+        knowledgeContextMode: "outline",
+        splitViewDocumentId: null,
         selectedCanvasId: null,
         selectedCanvasObjectId: null,
         selectedInboxItemId: null,
@@ -770,15 +1031,114 @@ export function desktopPrototypeReducer(
     case "select-document": {
       const document = getDocumentById(state, action.documentId);
       if (!document) return state;
+      return selectKnowledgeDocument(state, document);
+    }
+    case "toggle-knowledge-folder": {
+      const expanded = state.expandedFolderIds.includes(action.folderId);
       return {
         ...state,
-        activeProjectId: document.projectId,
-        activeSection: "knowledge",
-        selectedDocumentId: document.id,
-        selectedDocumentFolder: document.folder,
-        contextPanel: null,
-        contextPanelBeforeAi: null,
-        commandPaletteOpen: false,
+        expandedFolderIds: expanded
+          ? state.expandedFolderIds.filter(
+              (folderId) => folderId !== action.folderId,
+            )
+          : [...state.expandedFolderIds, action.folderId],
+      };
+    }
+    case "collapse-all-knowledge-folders": {
+      const selectedDocument = getDocumentById(state, state.selectedDocumentId);
+      return {
+        ...state,
+        expandedFolderIds: selectedDocument
+          ? getDocumentAncestorFolderIds(selectedDocument)
+          : [],
+      };
+    }
+    case "set-knowledge-search":
+      return {
+        ...state,
+        knowledgeSearchQuery: action.query,
+        expandedFolderIds: action.query.trim()
+          ? Array.from(
+              new Set(
+                getProjectDocuments(state).flatMap((document) =>
+                  getDocumentAncestorFolderIds(document),
+                ),
+              ),
+            )
+          : state.expandedFolderIds,
+      };
+    case "close-document-tab": {
+      const nextOpenDocumentIds = state.openDocumentIds.filter(
+        (documentId) => documentId !== action.documentId,
+      );
+      if (state.selectedDocumentId !== action.documentId) {
+        return { ...state, openDocumentIds: nextOpenDocumentIds };
+      }
+      const nextActiveDocumentId =
+        nextOpenDocumentIds[nextOpenDocumentIds.length - 1] ?? null;
+      const nextActiveDocument = getDocumentById(state, nextActiveDocumentId);
+      return {
+        ...state,
+        selectedDocumentId: nextActiveDocument?.id ?? null,
+        selectedDocumentFolder: nextActiveDocument?.folder ?? null,
+        openDocumentIds: nextOpenDocumentIds,
+        contextPanel:
+          state.contextPanel?.kind === "document-context" &&
+          state.contextPanel.documentId === action.documentId
+            ? null
+            : state.contextPanel,
+      };
+    }
+    case "activate-document-tab": {
+      const document = getDocumentById(state, action.documentId);
+      if (!document) return state;
+      return selectKnowledgeDocument(state, document);
+    }
+    case "go-document-back": {
+      const previousDocumentId =
+        state.documentHistoryBack[state.documentHistoryBack.length - 1];
+      const previousDocument = getDocumentById(state, previousDocumentId);
+      if (!previousDocument) return state;
+      const currentDocumentId = state.selectedDocumentId;
+      const nextState = selectKnowledgeDocument(state, previousDocument, {
+        pushHistory: false,
+      });
+      return {
+        ...nextState,
+        documentHistoryBack: state.documentHistoryBack.slice(0, -1),
+        documentHistoryForward: currentDocumentId
+          ? [currentDocumentId, ...state.documentHistoryForward]
+          : state.documentHistoryForward,
+      };
+    }
+    case "go-document-forward": {
+      const nextDocumentId = state.documentHistoryForward[0];
+      const nextDocument = getDocumentById(state, nextDocumentId);
+      if (!nextDocument) return state;
+      const currentDocumentId = state.selectedDocumentId;
+      const nextState = selectKnowledgeDocument(state, nextDocument, {
+        pushHistory: false,
+      });
+      return {
+        ...nextState,
+        documentHistoryBack: currentDocumentId
+          ? [...state.documentHistoryBack, currentDocumentId]
+          : state.documentHistoryBack,
+        documentHistoryForward: state.documentHistoryForward.slice(1),
+      };
+    }
+    case "set-knowledge-context-mode":
+      return { ...state, knowledgeContextMode: action.mode };
+    case "toggle-knowledge-split-view": {
+      if (state.splitViewDocumentId) {
+        return { ...state, splitViewDocumentId: null };
+      }
+      const fallbackDocument = getProjectDocuments(state).find(
+        (document) => document.id !== state.selectedDocumentId,
+      );
+      return {
+        ...state,
+        splitViewDocumentId: fallbackDocument?.id ?? null,
       };
     }
     case "open-document-context": {
