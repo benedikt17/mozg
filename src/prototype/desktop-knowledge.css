@@ -1,21 +1,30 @@
 @scope (.desktop-prototype) {
   .knowledge-sidebar {
     display: grid;
-    grid-template-rows: auto auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
     overflow: hidden;
   }
 
   .knowledge-sidebar-header {
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 8px;
-    padding-bottom: 10px !important;
+    padding: 8px 8px 6px !important;
   }
 
   .knowledge-toolbar {
-    display: grid;
-    grid-template-columns: 28px;
+    display: flex;
+    align-items: center;
     gap: 2px;
+  }
+
+  .knowledge-toolbar .ui-button {
+    color: var(--text-3);
+  }
+
+  .knowledge-toolbar .ui-button:hover:not(:disabled) {
+    color: var(--text);
+  }
+
+  .knowledge-toolbar .ui-button:disabled {
+    opacity: 0.42;
   }
 
   .ui-icon {
@@ -42,65 +51,6 @@
     background: var(--surface);
     color: var(--text);
     padding: 0 8px;
-  }
-
-  .knowledge-key-documents {
-    display: grid;
-    gap: 5px;
-    border-bottom: 1px solid var(--border);
-    padding: 9px 6px 10px;
-  }
-
-  .knowledge-key-documents > div {
-    display: grid;
-    gap: 1px;
-    padding-inline: 6px;
-  }
-
-  .knowledge-key-documents > div strong {
-    color: var(--text);
-    font-size: 12px;
-    line-height: 16px;
-    font-weight: 600;
-  }
-
-  .knowledge-key-documents > div span {
-    color: var(--text-3);
-    font-size: 11px;
-    line-height: 15px;
-  }
-
-  .knowledge-key-documents nav {
-    display: grid;
-    gap: 2px;
-  }
-
-  .knowledge-key-documents button {
-    width: 100%;
-    min-height: 28px;
-    display: grid;
-    grid-template-columns: 16px minmax(0, 1fr);
-    align-items: center;
-    gap: 6px;
-    border: 0;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--text-2);
-    padding: 4px 6px;
-    text-align: left;
-  }
-
-  .knowledge-key-documents button:hover,
-  .knowledge-key-documents button.is-active {
-    background: var(--surface-selected);
-    color: var(--accent-2);
-  }
-
-  .knowledge-key-documents button span {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .knowledge-tree {
@@ -306,15 +256,16 @@
     min-width: 0;
     min-height: 0;
     display: grid;
-    grid-template-columns: 184px minmax(0, 1fr);
+    grid-template-columns: 210px minmax(0, 1fr);
     overflow: hidden;
+    background: var(--surface);
   }
 
   .document-outline {
     min-width: 0;
     overflow: auto;
     border-right: 1px solid var(--border);
-    background: color-mix(in srgb, var(--surface-2) 66%, var(--surface));
+    background: var(--surface);
     padding: 22px 10px;
   }
 
@@ -381,13 +332,10 @@
   .document-editor-surface {
     min-height: 0;
     display: grid;
-    justify-items: center;
+    justify-items: start;
     overflow: auto;
-    background:
-      linear-gradient(90deg, rgb(32 32 29 / 3%) 1px, transparent 1px),
-      var(--surface);
-    background-size: 56px 56px;
-    padding: 38px clamp(32px, 5vw, 96px);
+    background: var(--surface);
+    padding: 38px clamp(28px, 3vw, 64px);
   }
 
   .document-editor-surface.is-split-view {
@@ -398,7 +346,7 @@
   }
 
   .document-page {
-    width: min(100%, 960px);
+    width: min(100%, 900px);
     min-height: 560px;
     background: transparent;
     padding: 0;
@@ -489,7 +437,7 @@
 
   @media (min-width: 2200px) {
     .document-editor-surface {
-      padding-inline: clamp(72px, 8vw, 180px);
+      padding-inline: clamp(48px, 4vw, 96px);
     }
 
     .document-editor-surface.is-split-view {
@@ -515,15 +463,31 @@
       grid-template-columns: 1fr;
     }
 
-    .document-body {
-      grid-template-columns: 156px minmax(0, 1fr);
-    }
-
     .document-page.secondary {
       border-top: 1px solid var(--border);
       border-left: 0;
       padding-top: 28px;
       padding-left: 0;
+    }
+  }
+
+  @media (max-width: 1280px) {
+    .document-body {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .document-outline {
+      display: none;
+    }
+  }
+
+  @media (max-width: 1540px) {
+    .section-knowledge.has-context-panel .document-body {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .section-knowledge.has-context-panel .document-outline {
+      display: none;
     }
   }
 }

@@ -1,8 +1,6 @@
 @scope (.desktop-prototype) {
-  /* Workspace width policies:
-     full-surface: useful ultra-wide workspace;
-     readable-document: full editor surface with constrained article columns;
-     bounded-cluster: related list/board and context panel stay adjacent. */
+  /* Section grids own the complete width after the Project Rail.
+     Readability constraints belong inside the relevant Main Workspace. */
 
   .project-workspace {
     overflow: hidden;
@@ -11,23 +9,6 @@
   .section-workspace {
     justify-self: stretch;
     width: 100%;
-  }
-
-  .workspace-policy-bounded-cluster {
-    width: min(100%, 1520px);
-    justify-self: center;
-  }
-
-  .workspace-policy-bounded-cluster.section-tasks {
-    width: min(100%, 1540px);
-  }
-
-  .workspace-policy-bounded-cluster.section-inbox {
-    width: min(100%, 1500px);
-  }
-
-  .workspace-policy-bounded-cluster.section-overview.has-context-panel {
-    width: min(100%, 1760px);
   }
 
   .workspace-policy-full-surface,
@@ -42,15 +23,11 @@
   .overview-workspace {
     width: min(100%, 1720px);
     max-width: none;
-    justify-self: center;
+    justify-self: start;
   }
 
   .workspace-policy-full-surface.section-overview .overview-workspace {
-    margin-inline: auto;
-  }
-
-  .workspace-policy-bounded-cluster.section-overview .overview-workspace {
-    width: 100%;
+    margin-inline: 0;
   }
 
   .overview-board {
@@ -62,13 +39,9 @@
   }
 
   .task-list-workspace {
-    width: min(100%, 1040px);
+    width: 100%;
     max-width: none;
-    justify-self: end;
-  }
-
-  .section-tasks:not(.has-context-panel) .task-list-workspace {
-    justify-self: center;
+    justify-self: stretch;
   }
 
   .task-list {
@@ -77,17 +50,14 @@
   }
 
   .inbox-workspace {
-    width: min(100%, 980px);
+    width: 100%;
     max-width: none;
-    justify-self: end;
-  }
-
-  .section-inbox:not(.has-context-panel) .inbox-workspace {
-    justify-self: center;
+    justify-self: stretch;
   }
 
   .inbox-grid {
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(280px, 420px));
+    justify-content: start;
   }
 
   .canvas-workspace {
@@ -104,35 +74,12 @@
   }
 
   @media (min-width: 2200px) {
-    .workspace-policy-bounded-cluster.section-tasks {
-      width: min(calc(100% - 10vw), 1920px);
-    }
-
-    .workspace-policy-bounded-cluster.section-inbox {
-      width: min(calc(100% - 10vw), 1880px);
-    }
-
-    .task-list-workspace {
-      width: min(100%, 1160px);
-    }
-
-    .inbox-workspace {
-      width: min(100%, 1120px);
-    }
-
     .overview-workspace {
       width: min(100%, 1800px);
     }
   }
 
   @media (max-width: 1360px) {
-    .workspace-policy-bounded-cluster,
-    .workspace-policy-bounded-cluster.section-tasks,
-    .workspace-policy-bounded-cluster.section-inbox,
-    .workspace-policy-bounded-cluster.section-overview.has-context-panel {
-      width: 100%;
-    }
-
     .task-list-workspace,
     .inbox-workspace {
       width: 100%;

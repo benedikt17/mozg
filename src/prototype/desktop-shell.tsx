@@ -27,7 +27,6 @@ import {
   getDocumentById,
   getDocumentFolderPath,
   getInboxItemById,
-  getKeyDocuments,
   getKnowledgeTree,
   getMilestoneProgress,
   getOpenDocuments,
@@ -354,13 +353,9 @@ function SectionWorkspace({
 
 function workspaceWidthPolicy(
   state: DesktopPrototypeState,
-): "full-surface" | "readable-document" | "bounded-cluster" {
-  if (state.activeSection === "canvases") return "full-surface";
+): "full-surface" | "readable-document" {
   if (state.activeSection === "knowledge") return "readable-document";
-  if (state.activeSection === "tasks" || state.activeSection === "inbox") {
-    return "bounded-cluster";
-  }
-  return state.contextPanel ? "bounded-cluster" : "full-surface";
+  return "full-surface";
 }
 
 function getInitialCommandQuery(): string {
@@ -596,18 +591,38 @@ function KnowledgeSidebar({
   dispatch: Dispatch;
 }): React.JSX.Element {
   const tree = getKnowledgeTree(state);
-  const keyDocuments = getKeyDocuments(state);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   return (
     <aside
       className="tool-sidebar knowledge-sidebar"
       aria-label="Дерево документов"
     >
       <header className="knowledge-sidebar-header">
-        <strong>Документы</strong>
         <div
           className="knowledge-toolbar"
           aria-label="Действия с деревом документов"
         >
+          <IconButton
+            icon={<UiIcon name="search" />}
+            label="Перейти к поиску документов"
+            onClick={() => searchInputRef.current?.focus()}
+            title="Поиск по документам"
+            variant="ghost"
+          />
+          <IconButton
+            disabled
+            icon={<UiIcon name="file-plus" />}
+            label="Создать документ"
+            title="Создать документ — недоступно в mock-прототипе"
+            variant="ghost"
+          />
+          <IconButton
+            disabled
+            icon={<UiIcon name="folder-plus" />}
+            label="Создать папку"
+            title="Создать папку — недоступно в mock-прототипе"
+            variant="ghost"
+          />
           <IconButton
             icon={<UiIcon name="collapse" />}
             label="Свернуть все папки"
@@ -620,6 +635,7 @@ function KnowledgeSidebar({
       <label className="knowledge-search">
         <span>Поиск по проекту</span>
         <input
+          ref={searchInputRef}
           onChange={(event) =>
             dispatch({
               type: "set-knowledge-search",
@@ -630,33 +646,6 @@ function KnowledgeSidebar({
           value={state.knowledgeSearchQuery}
         />
       </label>
-      <section
-        className="knowledge-key-documents"
-        aria-labelledby="knowledge-key-documents-title"
-      >
-        <div>
-          <strong id="knowledge-key-documents-title">Ключевые документы</strong>
-          <span>Отмечены вручную для быстрого доступа</span>
-        </div>
-        <nav aria-label="Ключевые документы проекта">
-          {keyDocuments.map((document) => (
-            <button
-              className={
-                state.selectedDocumentId === document.id ? "is-active" : ""
-              }
-              key={document.id}
-              onClick={() =>
-                dispatch({ type: "select-document", documentId: document.id })
-              }
-              title={`${document.title} — ключевой документ проекта`}
-              type="button"
-            >
-              <UiIcon name="pin" />
-              <span>{document.title}</span>
-            </button>
-          ))}
-        </nav>
-      </section>
       <nav className="knowledge-tree" aria-label="Иерархия документов">
         {tree.length > 0 ? (
           tree.map((node) => (
