@@ -1,7 +1,7 @@
 export type ProjectSection =
   "overview" | "knowledge" | "tasks" | "canvases" | "inbox";
 
-export type OverviewLane = "now" | "next" | "later" | "done";
+export type OverviewDirectionId = string;
 
 export type TaskSignal = "none" | "green" | "yellow" | "red";
 
@@ -24,6 +24,13 @@ export type PrototypeMilestone = {
   description: string;
 };
 
+export type PrototypeOverviewDirection = {
+  id: OverviewDirectionId;
+  projectId: string;
+  title: string;
+  order: number;
+};
+
 export type PrototypeSubtask = {
   id: string;
   title: string;
@@ -34,7 +41,7 @@ export type PrototypeTask = {
   id: string;
   projectId: string;
   title: string;
-  overviewLane: OverviewLane;
+  overviewDirectionId: OverviewDirectionId;
   overviewOrder: number;
   completedAt: string | null;
   signal: TaskSignal;
@@ -109,7 +116,7 @@ export const projectSections: {
   {
     id: "overview",
     label: "Обзор",
-    description: "Рубеж, активные задачи и короткое состояние проекта.",
+    description: "Главные рабочие направления проекта и их текущие задачи.",
   },
   {
     id: "knowledge",
@@ -130,33 +137,6 @@ export const projectSections: {
     id: "inbox",
     label: "Входящие",
     description: "Захваченные материалы до превращения в знания или задачи.",
-  },
-];
-
-export const overviewLanes: {
-  id: OverviewLane;
-  label: string;
-  hint: string;
-}[] = [
-  {
-    id: "now",
-    label: "Сейчас",
-    hint: "Работа, которая действительно активна.",
-  },
-  {
-    id: "next",
-    label: "Дальше",
-    hint: "Логичные следующие действия.",
-  },
-  {
-    id: "later",
-    label: "Позже",
-    hint: "Важно, но пока не стало текущим.",
-  },
-  {
-    id: "done",
-    label: "Готово",
-    hint: "Недавно завершённое, без всей истории проекта.",
   },
 ];
 
@@ -218,6 +198,57 @@ export const initialProjects: PrototypeProject[] = [
   },
 ];
 
+export const initialOverviewDirections: PrototypeOverviewDirection[] = [
+  {
+    id: "lukomorie-scenario",
+    projectId: "lukomorie",
+    title: "Сценарий",
+    order: 0,
+  },
+  {
+    id: "lukomorie-characters",
+    projectId: "lukomorie",
+    title: "Персонажи",
+    order: 1,
+  },
+  {
+    id: "lukomorie-visual",
+    projectId: "lukomorie",
+    title: "Визуальная разработка",
+    order: 2,
+  },
+  {
+    id: "lukomorie-production",
+    projectId: "lukomorie",
+    title: "Производство",
+    order: 3,
+  },
+  {
+    id: "ammonit-research-direction",
+    projectId: "ammonit",
+    title: "Исследование",
+    order: 0,
+  },
+  {
+    id: "ammonit-interviews-direction",
+    projectId: "ammonit",
+    title: "Интервью",
+    order: 1,
+  },
+  {
+    id: "voice-scenario-direction",
+    projectId: "voice-studio",
+    title: "Сценарий",
+    order: 0,
+  },
+  {
+    id: "personal-planning-direction",
+    projectId: "personal",
+    title: "Планирование",
+    order: 0,
+  },
+];
+
 export const initialMilestones: PrototypeMilestone[] = [
   {
     id: "lukomorie-alpha",
@@ -258,7 +289,7 @@ export const initialTasks: PrototypeTask[] = [
     id: "luko-characters-map",
     projectId: "lukomorie",
     title: "Собрать карту мотиваций ключевых персонажей",
-    overviewLane: "now",
+    overviewDirectionId: "lukomorie-characters",
     overviewOrder: 0,
     completedAt: null,
     signal: "red",
@@ -291,7 +322,7 @@ export const initialTasks: PrototypeTask[] = [
     id: "luko-first-scene",
     projectId: "lukomorie",
     title: "Переписать вход в первую сцену через действие",
-    overviewLane: "now",
+    overviewDirectionId: "lukomorie-scenario",
     overviewOrder: 1,
     completedAt: null,
     signal: "yellow",
@@ -318,7 +349,7 @@ export const initialTasks: PrototypeTask[] = [
     id: "luko-world-rules",
     projectId: "lukomorie",
     title: "Согласовать три правила путешествия между островами",
-    overviewLane: "next",
+    overviewDirectionId: "lukomorie-scenario",
     overviewOrder: 0,
     completedAt: null,
     signal: "green",
@@ -344,7 +375,7 @@ export const initialTasks: PrototypeTask[] = [
     id: "luko-shot-list",
     projectId: "lukomorie",
     title: "Собрать визуальные референсы для первой локации",
-    overviewLane: "next",
+    overviewDirectionId: "lukomorie-visual",
     overviewOrder: 1,
     completedAt: null,
     signal: "none",
@@ -369,7 +400,7 @@ export const initialTasks: PrototypeTask[] = [
     id: "luko-production-plan",
     projectId: "lukomorie",
     title: "Определить минимальный производственный цикл",
-    overviewLane: "later",
+    overviewDirectionId: "lukomorie-production",
     overviewOrder: 0,
     completedAt: null,
     signal: "yellow",
@@ -394,7 +425,7 @@ export const initialTasks: PrototypeTask[] = [
     id: "luko-brief-done",
     projectId: "lukomorie",
     title: "Свести brief по текущей версии проекта",
-    overviewLane: "done",
+    overviewDirectionId: "lukomorie-production",
     overviewOrder: 0,
     completedAt: "2026-07-10T12:00:00.000Z",
     signal: "green",
@@ -416,7 +447,7 @@ export const initialTasks: PrototypeTask[] = [
     id: "ammonit-index",
     projectId: "ammonit",
     title: "Разложить находки по темам",
-    overviewLane: "now",
+    overviewDirectionId: "ammonit-research-direction",
     overviewOrder: 0,
     completedAt: null,
     signal: "none",
@@ -442,7 +473,7 @@ export const initialTasks: PrototypeTask[] = [
     id: "ammonit-interview",
     projectId: "ammonit",
     title: "Подготовить вопросы для следующего разговора",
-    overviewLane: "next",
+    overviewDirectionId: "ammonit-interviews-direction",
     overviewOrder: 0,
     completedAt: null,
     signal: "none",
@@ -462,7 +493,7 @@ export const initialTasks: PrototypeTask[] = [
     id: "voice-script",
     projectId: "voice-studio",
     title: "Сократить сценарий демо до двух минут",
-    overviewLane: "now",
+    overviewDirectionId: "voice-scenario-direction",
     overviewOrder: 0,
     completedAt: null,
     signal: "none",
@@ -488,7 +519,7 @@ export const initialTasks: PrototypeTask[] = [
     id: "personal-calendar",
     projectId: "personal",
     title: "Убрать лишние обещания из календаря",
-    overviewLane: "now",
+    overviewDirectionId: "personal-planning-direction",
     overviewOrder: 0,
     completedAt: null,
     signal: "none",
@@ -1145,14 +1176,7 @@ export const aiProposals: AiProposal[] = [
     kind: "create-next-step",
     title: "Создать недостающий следующий шаг",
     description:
-      "Добавить компактную задачу в колонку «Дальше» текущего проекта.",
-  },
-  {
-    id: "move-to-milestone",
-    kind: "move-to-milestone",
-    title: "Вернуть задачу в текущий рубеж",
-    description:
-      "Привязать выбранную задачу к активному milestone и оставить её видимой.",
+      "Добавить компактную задачу в первое рабочее направление проекта.",
   },
   {
     id: "add-question",

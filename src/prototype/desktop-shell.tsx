@@ -24,21 +24,18 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   aiProposals,
   inboxFilters,
-  overviewLanes,
   projectSections,
   taskFilters,
-  type OverviewLane,
+  type OverviewDirectionId,
   type ProjectSection,
   type PrototypeDocument,
   type PrototypeInboxItem,
+  type PrototypeOverviewDirection,
   type PrototypeTask,
   type TaskSignal,
 } from "@/prototype/desktop-mock-data";
 import {
-  ALL_AREAS,
-  ALL_MILESTONES,
   desktopPrototypeReducer,
-  getActiveMilestone,
   getActiveProject,
   getAiContextLabel,
   getCanvasById,
@@ -49,14 +46,13 @@ import {
   getDocumentFolderPath,
   getInboxItemById,
   getKnowledgeTree,
-  getMilestoneProgress,
   getOpenDocuments,
-  getProjectAreas,
   getProjectCanvases,
   getProjectDocuments,
-  getProjectMilestones,
+  getOverviewDirectionById,
+  getProjectOverviewDirections,
   getTaskById,
-  getTasksForLane,
+  getTasksForDirection,
   getVisibleInboxItems,
   getVisibleTaskList,
   initialDesktopPrototypeState,
@@ -82,30 +78,24 @@ import "./desktop-knowledge.css";
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 
 type OverviewDropTarget = {
-  lane: OverviewLane;
+  directionId: OverviewDirectionId;
   index: number;
 };
 
 type OverviewDragData = {
   type: "overview-task";
   taskId: string;
-  lane: OverviewLane;
+  directionId: OverviewDirectionId;
 };
 
-type OverviewLaneDropData = {
-  type: "overview-lane";
-  lane: OverviewLane;
+type OverviewDirectionDropData = {
+  type: "overview-direction";
+  directionId: OverviewDirectionId;
 };
 
 const taskDragId = (taskId: string): string => `overview-task:${taskId}`;
-const laneDropId = (lane: OverviewLane): string => `overview-lane:${lane}`;
-
-const laneLabels: Record<OverviewLane, string> = {
-  now: "Сейчас",
-  next: "Дальше",
-  later: "Позже",
-  done: "Готово",
-};
+const directionDropId = (directionId: OverviewDirectionId): string =>
+  `overview-direction:${directionId}`;
 
 const taskSignalOptions: {
   id: TaskSignal;
@@ -202,17 +192,6 @@ export function DesktopPrototypeShell(): React.JSX.Element {
     }
     if (params.get("rail") === "collapsed") {
       dispatch({ type: "toggle-project-rail" });
-    }
-    const requestedLanes = (params.get("lanes") ?? "")
-      .split(",")
-      .filter(isOverviewLane);
-    if (requestedLanes.length > 0) {
-      dispatch({ type: "set-visible-overview-lanes", lanes: requestedLanes });
-    } else {
-      const focusedLane = params.get("focusLane");
-      if (focusedLane && isOverviewLane(focusedLane)) {
-        dispatch({ type: "focus-overview-lane", lane: focusedLane });
-      }
     }
     const editingTaskId = params.get("editTask");
     if (editingTaskId) {
@@ -398,10 +377,6 @@ function SectionWorkspace({
         `section-${state.activeSection}`,
         sidebar ? "has-tool-sidebar" : "",
         hasContextPanel ? "has-context-panel" : "",
-        state.activeSection === "overview" &&
-        state.visibleOverviewLanes.length === 1
-          ? "is-overview-focused"
-          : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -431,10 +406,6 @@ function workspaceWidthPolicy(
 function getInitialCommandQuery(): string {
   if (typeof window === "undefined") return "";
   return new URLSearchParams(window.location.search).get("commandQuery") ?? "";
-}
-
-function isOverviewLane(value: string): value is OverviewLane {
-  return overviewLanes.some((lane) => lane.id === value);
 }
 
 function renderToolSidebar(
@@ -481,18 +452,18 @@ function isOverviewTaskDragData(value: unknown): value is OverviewDragData {
   return (
     candidate.type === "overview-task" &&
     typeof candidate.taskId === "string" &&
-    typeof candidate.lane === "string" &&
-    isOverviewLane(candidate.lane)
+    typeof candidate.directionId === "string"
   );
 }
 
-function isOverviewLaneDropData(value: unknown): value is OverviewLaneDropData {
+function isOverviewDirectionDropData(
+  value: unknown,
+): value is OverviewDirectionDropData {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
   return (
-    candidate.type === "overview-lane" &&
-    typeof candidate.lane === "string" &&
-    isOverviewLane(candidate.lane)
+    candidate.type === "overview-direction" &&
+    typeof candidate.directionId === "string"
   );
 }
 
@@ -505,28 +476,29 @@ function getOverviewDropTarget(
   if (!over) return null;
   const overData = over.data.current;
 
-  if (isOverviewLaneDropData(overData)) {
+  if (isOverviewDirectionDropData(overData)) {
     return {
-      lane: overData.lane,
-      index: getTasksForLane(state, overData.lane).filter(
+      directionId: overData.directionId,
+      index: getTasksForDirection(state, overData.directionId).filter(
         (task) => task.id !== activeTaskId,
       ).length,
     };
   }
 
   if (!isOverviewTaskDragData(overData)) return null;
-  const targetTasks = getTasksForLane(state, overData.lane).filter(
+  const targetTasks = getTasksForDirection(state, overData.directionId).filter(
     (task) => task.id !== activeTaskId,
   );
   const overIndex = targetTasks.findIndex(
     (task) => task.id === overData.taskId,
   );
   if (overIndex < 0) {
-    const currentIndex = getTasksForLane(state, overData.lane).findIndex(
-      (task) => task.id === activeTaskId,
-    );
+    const currentIndex = getTasksForDirection(
+      state,
+      overData.directionId,
+    ).findIndex((task) => task.id === activeTaskId);
     return {
-      lane: overData.lane,
+      directionId: overData.directionId,
       index: Math.min(Math.max(currentIndex, 0), targetTasks.length),
     };
   }
@@ -537,7 +509,7 @@ function getOverviewDropTarget(
       over.rect.top + over.rect.height / 2
     : false;
   return {
-    lane: overData.lane,
+    directionId: overData.directionId,
     index: overIndex + (insertAfter ? 1 : 0),
   };
 }
@@ -549,25 +521,19 @@ function OverviewWorkspace({
   state: DesktopPrototypeState;
   dispatch: Dispatch;
 }): React.JSX.Element {
-  const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<OverviewDropTarget | null>(null);
-  const viewMenuRef = useRef<HTMLDivElement>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
-  const activeMilestone = getActiveMilestone(state);
-  const progress = getMilestoneProgress(state);
-  const areas = getProjectAreas(state);
-  const milestones = getProjectMilestones(state);
-  const visibleLanes = overviewLanes.filter((lane) =>
-    state.visibleOverviewLanes.includes(lane.id),
-  );
-  const isFocused = visibleLanes.length === 1;
+  const directions = getProjectOverviewDirections(state);
   const activeTask = getTaskById(state, activeTaskId);
+  const activeTaskDirection = activeTask
+    ? getOverviewDirectionById(state, activeTask.overviewDirectionId)
+    : undefined;
 
   const clearDragState = (): void => {
     setActiveTaskId(null);
@@ -592,166 +558,23 @@ function OverviewWorkspace({
       dispatch({
         type: "move-overview-task",
         taskId: activeTaskId,
-        targetLane: target.lane,
+        targetDirectionId: target.directionId,
         targetIndex: target.index,
       });
     }
     clearDragState();
   };
 
-  useEffect(() => {
-    if (!viewMenuOpen) return;
-    const closeOnOutsidePointer = (event: PointerEvent): void => {
-      if (!viewMenuRef.current?.contains(event.target as Node)) {
-        setViewMenuOpen(false);
-      }
-    };
-    const closeOnEscape = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") setViewMenuOpen(false);
-    };
-    window.addEventListener("pointerdown", closeOnOutsidePointer);
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      window.removeEventListener("pointerdown", closeOnOutsidePointer);
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [viewMenuOpen]);
-
   return (
     <div className="overview-workspace">
-      <section className="overview-command-bar">
-        <div className="overview-goal">
-          <span className="ui-eyebrow">Ближайшая цель</span>
-          <h2>{activeMilestone.title}</h2>
-          <p>{activeMilestone.description}</p>
-        </div>
-        <div className="overview-controls" aria-label="Фильтры обзора">
-          <label className="overview-filter-control">
-            <span>Область</span>
-            <select
-              aria-label="Фильтр по области"
-              onChange={(event) =>
-                dispatch({ type: "set-area-filter", area: event.target.value })
-              }
-              value={state.filters.area}
-            >
-              <option value={ALL_AREAS}>Все области</option>
-              {areas.map((area) => (
-                <option key={area} value={area}>
-                  {area}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="overview-filter-control">
-            <span>Рубеж</span>
-            <select
-              aria-label="Фильтр по рубежу"
-              onChange={(event) =>
-                dispatch({
-                  type: "set-milestone-filter",
-                  milestoneId: event.target.value,
-                })
-              }
-              value={state.filters.milestoneId}
-            >
-              <option value={ALL_MILESTONES}>Все рубежи</option>
-              {milestones.map((milestone) => (
-                <option key={milestone.id} value={milestone.id}>
-                  {milestone.title}
-                </option>
-              ))}
-            </select>
-          </label>
-          <IconButton
-            active={state.filters.starredOnly}
-            icon="★"
-            label="Только важные"
-            onClick={() => dispatch({ type: "toggle-starred-filter" })}
-            title="Только важные"
-            variant="quiet"
-          />
-          <div className="overview-view-control" ref={viewMenuRef}>
-            <PrototypeButton
-              aria-expanded={viewMenuOpen}
-              aria-haspopup="dialog"
-              onClick={() => setViewMenuOpen((open) => !open)}
-              size="compact"
-              variant="quiet"
-            >
-              Вид
-            </PrototypeButton>
-            {viewMenuOpen ? (
-              <div
-                className="overview-view-popover"
-                role="dialog"
-                aria-label="Настройка колонок обзора"
-              >
-                <strong>Показывать колонки</strong>
-                <div className="overview-lane-options">
-                  {overviewLanes.map((lane) => {
-                    const checked = state.visibleOverviewLanes.includes(
-                      lane.id,
-                    );
-                    const isLastVisible =
-                      checked && state.visibleOverviewLanes.length === 1;
-                    return (
-                      <label key={lane.id}>
-                        <input
-                          checked={checked}
-                          disabled={isLastVisible}
-                          onChange={() =>
-                            dispatch({
-                              type: "toggle-overview-lane",
-                              lane: lane.id,
-                            })
-                          }
-                          type="checkbox"
-                        />
-                        <span>{lane.label}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-                {isFocused ? (
-                  <p>Хотя бы одна колонка должна оставаться видимой.</p>
-                ) : null}
-                <PrototypeButton
-                  disabled={
-                    state.visibleOverviewLanes.length === overviewLanes.length
-                  }
-                  onClick={() => dispatch({ type: "show-all-overview-lanes" })}
-                  size="compact"
-                  variant="quiet"
-                >
-                  Показать все колонки
-                </PrototypeButton>
-              </div>
-            ) : null}
-          </div>
+      <section className="overview-command-bar" aria-label="Действия доски">
+        <div className="overview-controls">
           <PrototypeButton
             onClick={() => dispatch({ type: "create-task" })}
             size="compact"
             variant="primary"
           >
             + Задача
-          </PrototypeButton>
-        </div>
-        <div className="progress-box">
-          <span>
-            <strong>
-              {progress.completed}/{progress.total}
-            </strong>{" "}
-            завершено
-          </span>
-          <PrototypeButton
-            onClick={() =>
-              dispatch({ type: "switch-section", section: "tasks" })
-            }
-            size="compact"
-            variant="quiet"
-          >
-            Открыть задачи
           </PrototypeButton>
         </div>
       </section>
@@ -764,90 +587,69 @@ function OverviewWorkspace({
         sensors={sensors}
       >
         <section
-          className={[
-            "overview-board",
-            `lanes-${visibleLanes.length}`,
-            isFocused ? "is-focused" : "",
-          ]
+          className={["overview-board", `directions-${directions.length}`]
             .filter(Boolean)
             .join(" ")}
-          aria-label={
-            isFocused ? "Сфокусированная колонка обзора" : "Доска проекта"
-          }
+          aria-label="Рабочие направления проекта"
         >
-          {visibleLanes.map((lane) => (
-            <OverviewLaneColumn
+          {directions.map((direction) => (
+            <OverviewDirectionColumn
               activeTaskId={activeTaskId}
+              direction={direction}
               dispatch={dispatch}
               dropTarget={dropTarget}
-              focused={isFocused}
-              key={lane.id}
-              lane={lane.id}
+              key={direction.id}
               state={state}
             />
           ))}
         </section>
         <DragOverlay dropAnimation={null}>
-          {activeTask ? <TaskDragOverlay task={activeTask} /> : null}
+          {activeTask ? (
+            <TaskDragOverlay
+              directionTitle={activeTaskDirection?.title ?? "Направление"}
+              task={activeTask}
+            />
+          ) : null}
         </DragOverlay>
       </DndContext>
     </div>
   );
 }
 
-function OverviewLaneColumn({
+function OverviewDirectionColumn({
   state,
   dispatch,
-  lane,
-  focused,
+  direction,
   activeTaskId,
   dropTarget,
 }: {
   state: DesktopPrototypeState;
   dispatch: Dispatch;
-  lane: OverviewLane;
-  focused: boolean;
+  direction: PrototypeOverviewDirection;
   activeTaskId: string | null;
   dropTarget: OverviewDropTarget | null;
 }): React.JSX.Element {
-  const tasks = getTasksForLane(state, lane);
+  const tasks = getTasksForDirection(state, direction.id);
   const positionedTasks = tasks.filter((task) => task.id !== activeTaskId);
   const { isOver, setNodeRef } = useDroppable({
-    id: laneDropId(lane),
-    data: { type: "overview-lane", lane } satisfies OverviewLaneDropData,
+    id: directionDropId(direction.id),
+    data: {
+      type: "overview-direction",
+      directionId: direction.id,
+    } satisfies OverviewDirectionDropData,
   });
-  const laneDropTarget = dropTarget?.lane === lane ? dropTarget : null;
+  const directionDropTarget =
+    dropTarget?.directionId === direction.id ? dropTarget : null;
   return (
     <article
-      className={["board-column", `lane-${lane}`, isOver ? "is-drag-over" : ""]
+      className={["board-column", isOver ? "is-drag-over" : ""]
         .filter(Boolean)
         .join(" ")}
     >
       <header>
-        <div>
-          <h3>{laneLabels[lane]}</h3>
-          <p>{overviewLanes.find((item) => item.id === lane)?.hint}</p>
-        </div>
+        <DirectionTitleInput direction={direction} dispatch={dispatch} />
         <div className="lane-header-actions">
           <span className="lane-task-count">{tasks.length}</span>
-          <PrototypeButton
-            onClick={() =>
-              dispatch(
-                focused
-                  ? { type: "show-all-overview-lanes" }
-                  : { type: "focus-overview-lane", lane },
-              )
-            }
-            size="compact"
-            title={
-              focused
-                ? "Вернуть все четыре колонки"
-                : `Сфокусироваться на колонке ${laneLabels[lane]}`
-            }
-            variant="ghost"
-          >
-            {focused ? "Показать все колонки" : "Сфокусироваться"}
-          </PrototypeButton>
         </div>
       </header>
       <div className="task-stack" ref={setNodeRef}>
@@ -856,13 +658,13 @@ function OverviewLaneColumn({
           strategy={verticalListSortingStrategy}
         >
           {tasks.length > 0 ? (
-            tasks.map((task) => {
+            tasks.map((task, taskIndex) => {
               const visibleIndex = positionedTasks.findIndex(
                 (item) => item.id === task.id,
               );
               const showIndicatorBefore =
                 task.id !== activeTaskId &&
-                laneDropTarget?.index === visibleIndex;
+                directionDropTarget?.index === visibleIndex;
               return (
                 <div className="task-sort-slot" key={task.id}>
                   {showIndicatorBefore ? <TaskDropIndicator /> : null}
@@ -870,24 +672,68 @@ function OverviewLaneColumn({
                     dispatch={dispatch}
                     editing={state.editingTaskTitleId === task.id}
                     task={task}
+                    taskCount={tasks.length}
+                    taskIndex={taskIndex}
                   />
                 </div>
               );
             })
           ) : (
-            <p className="empty-state">Нет задач в этой зоне.</p>
+            <p className="empty-state">Нет задач в этом направлении.</p>
           )}
-          {laneDropTarget?.index === positionedTasks.length ? (
+          {directionDropTarget?.index === positionedTasks.length ? (
             <TaskDropIndicator />
           ) : null}
         </SortableContext>
       </div>
-      {lane === "done" ? (
-        <button className="muted-action" type="button">
-          Все завершённые
-        </button>
-      ) : null}
     </article>
+  );
+}
+
+function DirectionTitleInput({
+  direction,
+  dispatch,
+}: {
+  direction: PrototypeOverviewDirection;
+  dispatch: Dispatch;
+}): React.JSX.Element {
+  const [draft, setDraft] = useState(direction.title);
+
+  const commit = (value: string): void => {
+    const title = value.trim();
+    if (title.length === 0) {
+      setDraft(direction.title);
+      return;
+    }
+    dispatch({
+      type: "rename-overview-direction",
+      directionId: direction.id,
+      title,
+    });
+    setDraft(title);
+  };
+
+  return (
+    <input
+      aria-label={`Название направления ${direction.title}`}
+      className="direction-title-input"
+      onBlur={(event) => commit(event.currentTarget.value)}
+      onChange={(event) => setDraft(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          event.currentTarget.blur();
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.currentTarget.value = direction.title;
+          setDraft(direction.title);
+          event.currentTarget.blur();
+        }
+      }}
+      title="Изменить название направления"
+      value={draft}
+    />
   );
 }
 
@@ -895,13 +741,19 @@ function TaskDropIndicator(): React.JSX.Element {
   return <div className="task-drop-indicator" aria-hidden="true" />;
 }
 
-function TaskDragOverlay({ task }: { task: PrototypeTask }): React.JSX.Element {
+function TaskDragOverlay({
+  task,
+  directionTitle,
+}: {
+  task: PrototypeTask;
+  directionTitle: string;
+}): React.JSX.Element {
   return (
     <article className={`task-card task-signal-${task.signal} drag-overlay`}>
       <div className="task-hit-area">
         <strong>{task.title}</strong>
         <span className="metadata-line">
-          {task.area ?? "Общее"} · {laneLabels[task.overviewLane]}
+          {task.area ?? "Общее"} · {directionTitle}
         </span>
       </div>
     </article>
@@ -912,10 +764,14 @@ function TaskCard({
   task,
   dispatch,
   editing,
+  taskCount,
+  taskIndex,
 }: {
   task: PrototypeTask;
   dispatch: Dispatch;
   editing: boolean;
+  taskCount: number;
+  taskIndex: number;
 }): React.JSX.Element {
   const [titleDraft, setTitleDraft] = useState(task.title);
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -937,7 +793,7 @@ function TaskCard({
     data: {
       type: "overview-task",
       taskId: task.id,
-      lane: task.overviewLane,
+      directionId: task.overviewDirectionId,
     } satisfies OverviewDragData,
   });
 
@@ -1059,8 +915,29 @@ function TaskCard({
         aria-label={`Перетащить задачу ${task.title}`}
         className="task-drag-handle"
         onClick={(event) => event.stopPropagation()}
+        onKeyDownCapture={(event) => {
+          if (
+            !event.altKey ||
+            (event.key !== "ArrowUp" && event.key !== "ArrowDown")
+          ) {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          const targetIndex =
+            event.key === "ArrowUp"
+              ? Math.max(0, taskIndex - 1)
+              : Math.min(taskCount - 1, taskIndex + 1);
+          if (targetIndex === taskIndex) return;
+          dispatch({
+            type: "move-overview-task",
+            taskId: task.id,
+            targetDirectionId: task.overviewDirectionId,
+            targetIndex,
+          });
+        }}
         ref={setActivatorNodeRef}
-        title="Перетащить задачу"
+        title="Перетащить задачу; Alt+↑/↓ — изменить приоритет"
         type="button"
       >
         ⠿
@@ -1617,7 +1494,15 @@ function TasksWorkspace({
       />
       <div className="task-list">
         {tasks.map((task) => (
-          <TaskListRow dispatch={dispatch} key={task.id} task={task} />
+          <TaskListRow
+            directionTitle={
+              getOverviewDirectionById(state, task.overviewDirectionId)
+                ?.title ?? "Направление"
+            }
+            dispatch={dispatch}
+            key={task.id}
+            task={task}
+          />
         ))}
       </div>
     </div>
@@ -1627,9 +1512,11 @@ function TasksWorkspace({
 function TaskListRow({
   task,
   dispatch,
+  directionTitle,
 }: {
   task: PrototypeTask;
   dispatch: Dispatch;
+  directionTitle: string;
 }): React.JSX.Element {
   const doneSubtasks = task.subtasks.filter((subtask) => subtask.done).length;
   return (
@@ -1642,8 +1529,8 @@ function TaskListRow({
       >
         <strong>{task.title}</strong>
         <span>
-          {task.area ?? "Общее"} · {laneLabels[task.overviewLane]} ·{" "}
-          {doneSubtasks}/{task.subtasks.length || 0}
+          {task.area ?? "Общее"} · {directionTitle} · {doneSubtasks}/
+          {task.subtasks.length || 0}
           {task.completedAt ? " · завершена" : ""}
         </span>
       </button>
@@ -1874,7 +1761,7 @@ function renderContextPanelContent(
   if (contextPanel.kind === "task") {
     const task = getTaskById(state, contextPanel.taskId);
     return task ? (
-      <TaskDetailsPanel dispatch={dispatch} task={task} />
+      <TaskDetailsPanel dispatch={dispatch} state={state} task={task} />
     ) : (
       <p>Задача не найдена.</p>
     );
@@ -1916,10 +1803,13 @@ function renderContextPanelContent(
 function TaskDetailsPanel({
   task,
   dispatch,
+  state,
 }: {
   task: PrototypeTask;
   dispatch: Dispatch;
+  state: DesktopPrototypeState;
 }): React.JSX.Element {
+  const directions = getProjectOverviewDirections(state, task.projectId);
   return (
     <div className="panel-stack">
       <label className="field">
@@ -1984,20 +1874,20 @@ function TaskDetailsPanel({
         />
       </label>
       <label className="field">
-        Колонка обзора
+        Направление проекта
         <select
           onChange={(event) =>
             dispatch({
               type: "move-task",
               taskId: task.id,
-              overviewLane: event.target.value as OverviewLane,
+              overviewDirectionId: event.target.value,
             })
           }
-          value={task.overviewLane}
+          value={task.overviewDirectionId}
         >
-          {overviewLanes.map((lane) => (
-            <option key={lane.id} value={lane.id}>
-              {lane.label}
+          {directions.map((direction) => (
+            <option key={direction.id} value={direction.id}>
+              {direction.title}
             </option>
           ))}
         </select>

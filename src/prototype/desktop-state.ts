@@ -4,17 +4,18 @@ import {
   initialDocuments,
   initialInboxItems,
   initialMilestones,
+  initialOverviewDirections,
   initialProjects,
   initialTasks,
-  overviewLanes,
   type InboxFilter,
-  type OverviewLane,
+  type OverviewDirectionId,
   type ProjectSection,
   type PrototypeCanvas,
   type PrototypeCanvasObject,
   type PrototypeDocument,
   type PrototypeInboxItem,
   type PrototypeMilestone,
+  type PrototypeOverviewDirection,
   type PrototypeProject,
   type PrototypeTask,
   type TaskSignal,
@@ -71,7 +72,6 @@ export type DesktopPrototypeState = {
   activeProjectId: string;
   activeSection: ProjectSection;
   projectRailCollapsed: boolean;
-  visibleOverviewLanes: OverviewLane[];
   editingTaskTitleId: string | null;
   selectedTaskId: string | null;
   selectedDocumentId: string | null;
@@ -93,6 +93,7 @@ export type DesktopPrototypeState = {
   commandPaletteOpen: boolean;
   projects: PrototypeProject[];
   milestones: PrototypeMilestone[];
+  overviewDirections: PrototypeOverviewDirection[];
   tasks: PrototypeTask[];
   documents: PrototypeDocument[];
   canvases: PrototypeCanvas[];
@@ -119,21 +120,26 @@ export type DesktopPrototypeAction =
   | { type: "set-task-due-date"; taskId: string; dueDate: string }
   | { type: "set-task-notes"; taskId: string; notes: string }
   | { type: "toggle-subtask"; taskId: string; subtaskId: string }
-  | { type: "move-task"; taskId: string; overviewLane: OverviewLane }
+  | {
+      type: "move-task";
+      taskId: string;
+      overviewDirectionId: OverviewDirectionId;
+    }
   | {
       type: "move-overview-task";
       taskId: string;
-      targetLane: OverviewLane;
+      targetDirectionId: OverviewDirectionId;
       targetIndex: number;
+    }
+  | {
+      type: "rename-overview-direction";
+      directionId: OverviewDirectionId;
+      title: string;
     }
   | { type: "set-task-signal"; taskId: string; signal: TaskSignal }
   | { type: "set-area-filter"; area: string }
   | { type: "set-milestone-filter"; milestoneId: string }
   | { type: "toggle-starred-filter" }
-  | { type: "toggle-overview-lane"; lane: OverviewLane }
-  | { type: "focus-overview-lane"; lane: OverviewLane }
-  | { type: "show-all-overview-lanes" }
-  | { type: "set-visible-overview-lanes"; lanes: OverviewLane[] }
   | { type: "set-task-filter"; filter: TaskFilter }
   | { type: "set-inbox-filter"; filter: InboxFilter }
   | { type: "create-task" }
@@ -162,9 +168,6 @@ export type DesktopPrototypeAction =
 
 export const ALL_AREAS = "all";
 export const ALL_MILESTONES = "all";
-export const ALL_OVERVIEW_LANES: OverviewLane[] = overviewLanes.map(
-  (lane) => lane.id,
-);
 export const MAX_VISIBLE_COMMAND_RESULTS = 10;
 
 const initialProjectId = "lukomorie";
@@ -200,7 +203,6 @@ export const initialDesktopPrototypeState: DesktopPrototypeState = {
   activeProjectId: initialProjectId,
   activeSection: "overview",
   projectRailCollapsed: false,
-  visibleOverviewLanes: [...ALL_OVERVIEW_LANES],
   editingTaskTitleId: null,
   selectedTaskId: null,
   selectedDocumentId: initialDocumentId,
@@ -222,6 +224,7 @@ export const initialDesktopPrototypeState: DesktopPrototypeState = {
   commandPaletteOpen: false,
   projects: initialProjects,
   milestones: initialMilestones,
+  overviewDirections: initialOverviewDirections,
   tasks: initialTasks,
   documents: initialDocuments,
   canvases: initialCanvases,
@@ -252,6 +255,25 @@ export function getProjectMilestones(
 ): PrototypeMilestone[] {
   return state.milestones.filter(
     (milestone) => milestone.projectId === projectId,
+  );
+}
+
+export function getProjectOverviewDirections(
+  state: DesktopPrototypeState,
+  projectId = state.activeProjectId,
+): PrototypeOverviewDirection[] {
+  return state.overviewDirections
+    .filter((direction) => direction.projectId === projectId)
+    .sort((first, second) => first.order - second.order)
+    .slice(0, 4);
+}
+
+export function getOverviewDirectionById(
+  state: DesktopPrototypeState,
+  directionId: OverviewDirectionId,
+): PrototypeOverviewDirection | undefined {
+  return state.overviewDirections.find(
+    (direction) => direction.id === directionId,
   );
 }
 
@@ -503,9 +525,7 @@ export function getVisibleOverviewTasks(
   state: DesktopPrototypeState,
 ): PrototypeTask[] {
   return sortTasksForBoard(
-    getProjectTasks(state).filter((task) =>
-      taskMatchesOverviewFilters(state, task),
-    ),
+    getProjectTasks(state).filter((task) => task.completedAt === null),
   );
 }
 
@@ -516,13 +536,10 @@ export function getVisibleTaskList(
     getProjectTasks(state).filter((task) => {
       if (state.taskFilter === "important") return task.starred;
       if (state.taskFilter === "today") {
-        return task.completedAt === null && task.overviewLane === "now";
+        return task.completedAt === null && task.overviewOrder === 0;
       }
       if (state.taskFilter === "upcoming") {
-        return (
-          task.completedAt === null &&
-          (task.overviewLane === "next" || task.overviewLane === "later")
-        );
+        return task.completedAt === null && task.overviewOrder > 0;
       }
       if (state.taskFilter === "completed") return task.completedAt !== null;
       return true;
@@ -539,19 +556,6 @@ export function sortTasksForBoard(tasks: PrototypeTask[]): PrototypeTask[] {
   });
 }
 
-function taskMatchesOverviewFilters(
-  state: DesktopPrototypeState,
-  task: PrototypeTask,
-): boolean {
-  const areaMatches =
-    state.filters.area === ALL_AREAS || task.area === state.filters.area;
-  const milestoneMatches =
-    state.filters.milestoneId === ALL_MILESTONES ||
-    task.milestoneId === state.filters.milestoneId;
-  const starMatches = !state.filters.starredOnly || task.starred;
-  return areaMatches && milestoneMatches && starMatches;
-}
-
 function sortKnowledgeNodes(nodes: KnowledgeTreeNode[]): KnowledgeTreeNode[] {
   return [...nodes]
     .map((node) =>
@@ -565,12 +569,12 @@ function sortKnowledgeNodes(nodes: KnowledgeTreeNode[]): KnowledgeTreeNode[] {
     });
 }
 
-export function getTasksForLane(
+export function getTasksForDirection(
   state: DesktopPrototypeState,
-  lane: OverviewLane,
+  directionId: OverviewDirectionId,
 ): PrototypeTask[] {
   return getVisibleOverviewTasks(state).filter(
-    (task) => task.overviewLane === lane,
+    (task) => task.overviewDirectionId === directionId,
   );
 }
 
@@ -583,7 +587,7 @@ export function getMilestoneProgress(state: DesktopPrototypeState): {
     (task) => task.milestoneId === activeMilestone.id,
   );
   return {
-    completed: milestoneTasks.filter((task) => task.overviewLane === "done")
+    completed: milestoneTasks.filter((task) => task.completedAt !== null)
       .length,
     total: milestoneTasks.length,
   };
@@ -761,14 +765,16 @@ function updateTask(
   };
 }
 
-function normalizeLaneOrders(
+function normalizeDirectionOrders(
   tasks: PrototypeTask[],
   projectId: string,
-  lane: OverviewLane,
+  directionId: OverviewDirectionId,
 ): PrototypeTask[] {
   const orderedIds = sortTasksForBoard(
     tasks.filter(
-      (task) => task.projectId === projectId && task.overviewLane === lane,
+      (task) =>
+        task.projectId === projectId &&
+        task.overviewDirectionId === directionId,
     ),
   ).map((task) => task.id);
   const orderById = new Map(
@@ -783,24 +789,28 @@ function normalizeLaneOrders(
 export function moveOverviewTask(
   state: DesktopPrototypeState,
   taskId: string,
-  targetLane: OverviewLane,
+  targetDirectionId: OverviewDirectionId,
   targetIndex: number,
-  appendToLaneEnd = false,
+  appendToDirectionEnd = false,
 ): DesktopPrototypeState {
   const movingTask = getTaskById(state, taskId);
   if (!movingTask) return state;
+  const targetDirection = getOverviewDirectionById(state, targetDirectionId);
+  if (!targetDirection || targetDirection.projectId !== movingTask.projectId) {
+    return state;
+  }
 
-  const sourceLane = movingTask.overviewLane;
+  const sourceDirectionId = movingTask.overviewDirectionId;
   const targetTasks = sortTasksForBoard(
     state.tasks.filter(
       (task) =>
         task.projectId === movingTask.projectId &&
-        task.overviewLane === targetLane &&
+        task.overviewDirectionId === targetDirectionId &&
         task.id !== taskId,
     ),
   );
   const visibleTargetIds = targetTasks
-    .filter((task) => taskMatchesOverviewFilters(state, task))
+    .filter((task) => task.completedAt === null)
     .map((task) => task.id);
   const safeTargetIndex = Math.max(
     0,
@@ -808,7 +818,7 @@ export function moveOverviewTask(
   );
 
   let fullInsertionIndex = targetTasks.length;
-  if (!appendToLaneEnd && visibleTargetIds.length > 0) {
+  if (!appendToDirectionEnd && visibleTargetIds.length > 0) {
     if (safeTargetIndex < visibleTargetIds.length) {
       fullInsertionIndex = targetTasks.findIndex(
         (task) => task.id === visibleTargetIds[safeTargetIndex],
@@ -821,14 +831,9 @@ export function moveOverviewTask(
     }
   }
 
-  const completedAt =
-    targetLane === "done"
-      ? (movingTask.completedAt ?? new Date().toISOString())
-      : null;
   const movedTask: PrototypeTask = {
     ...movingTask,
-    overviewLane: targetLane,
-    completedAt,
+    overviewDirectionId: targetDirectionId,
   };
   const orderedTargetTasks = [...targetTasks];
   orderedTargetTasks.splice(fullInsertionIndex, 0, movedTask);
@@ -849,32 +854,15 @@ export function moveOverviewTask(
       : { ...task, overviewOrder: targetOrder };
   });
 
-  if (sourceLane !== targetLane) {
-    tasks = normalizeLaneOrders(tasks, movingTask.projectId, sourceLane);
+  if (sourceDirectionId !== targetDirectionId) {
+    tasks = normalizeDirectionOrders(
+      tasks,
+      movingTask.projectId,
+      sourceDirectionId,
+    );
   }
 
   return { ...state, tasks };
-}
-
-function withVisibleOverviewLanes(
-  state: DesktopPrototypeState,
-  lanes: OverviewLane[],
-): DesktopPrototypeState {
-  const requestedLanes = new Set(lanes);
-  const visibleOverviewLanes = ALL_OVERVIEW_LANES.filter((lane) =>
-    requestedLanes.has(lane),
-  );
-  if (visibleOverviewLanes.length === 0) return state;
-
-  const editingTask = getTaskById(state, state.editingTaskTitleId);
-  return {
-    ...state,
-    visibleOverviewLanes,
-    editingTaskTitleId:
-      editingTask && !visibleOverviewLanes.includes(editingTask.overviewLane)
-        ? null
-        : state.editingTaskTitleId,
-  };
 }
 
 function addAiLog(
@@ -1058,10 +1046,17 @@ export function desktopPrototypeReducer(
         title: "Первый рабочий рубеж",
         description: "Определить цель проекта и первые действия.",
       };
+      const overviewDirection: PrototypeOverviewDirection = {
+        id: `${id}-primary-direction`,
+        projectId: id,
+        title: "Основное направление",
+        order: 0,
+      };
       return {
         ...state,
         projects: [...state.projects, project],
         milestones: [...state.milestones, milestone],
+        overviewDirections: [...state.overviewDirections, overviewDirection],
         activeProjectId: id,
         activeSection: "overview",
         editingTaskTitleId: null,
@@ -1182,7 +1177,7 @@ export function desktopPrototypeReducer(
       return moveOverviewTask(
         state,
         action.taskId,
-        action.overviewLane,
+        action.overviewDirectionId,
         0,
         true,
       );
@@ -1190,9 +1185,23 @@ export function desktopPrototypeReducer(
       return moveOverviewTask(
         state,
         action.taskId,
-        action.targetLane,
+        action.targetDirectionId,
         action.targetIndex,
       );
+    case "rename-overview-direction": {
+      const title = action.title.trim();
+      if (title.length === 0) return state;
+      const direction = getOverviewDirectionById(state, action.directionId);
+      if (!direction || direction.projectId !== state.activeProjectId) {
+        return state;
+      }
+      return {
+        ...state,
+        overviewDirections: state.overviewDirections.map((item) =>
+          item.id === direction.id ? { ...item, title } : item,
+        ),
+      };
+    }
     case "set-task-signal":
       return updateTask(state, action.taskId, (task) => ({
         ...task,
@@ -1216,35 +1225,21 @@ export function desktopPrototypeReducer(
           starredOnly: !state.filters.starredOnly,
         },
       };
-    case "toggle-overview-lane": {
-      const isVisible = state.visibleOverviewLanes.includes(action.lane);
-      if (isVisible && state.visibleOverviewLanes.length === 1) return state;
-      return withVisibleOverviewLanes(
-        state,
-        isVisible
-          ? state.visibleOverviewLanes.filter((lane) => lane !== action.lane)
-          : [...state.visibleOverviewLanes, action.lane],
-      );
-    }
-    case "focus-overview-lane":
-      return withVisibleOverviewLanes(state, [action.lane]);
-    case "show-all-overview-lanes":
-      return withVisibleOverviewLanes(state, ALL_OVERVIEW_LANES);
-    case "set-visible-overview-lanes":
-      return withVisibleOverviewLanes(state, action.lanes);
     case "set-task-filter":
       return { ...state, taskFilter: action.filter };
     case "set-inbox-filter":
       return { ...state, inboxFilter: action.filter };
     case "create-task": {
       const activeMilestone = getActiveMilestone(state);
+      const activeDirection = getProjectOverviewDirections(state)[0];
+      if (!activeDirection) return state;
       const task: PrototypeTask = {
         id: `mock-task-${state.nextTaskNumber}`,
         projectId: state.activeProjectId,
         title: "Новая задача",
-        overviewLane: "now",
+        overviewDirectionId: activeDirection.id,
         overviewOrder: getProjectTasks(state).filter(
-          (item) => item.overviewLane === "now",
+          (item) => item.overviewDirectionId === activeDirection.id,
         ).length,
         completedAt: null,
         signal: "none",
@@ -1484,13 +1479,15 @@ export function desktopPrototypeReducer(
         if (!proposal) continue;
         if (proposal.kind === "create-next-step") {
           const activeMilestone = getActiveMilestone(nextState);
+          const activeDirection = getProjectOverviewDirections(nextState)[0];
+          if (!activeDirection) continue;
           const task: PrototypeTask = {
             id: `ai-task-${nextState.nextTaskNumber}`,
             projectId: nextState.activeProjectId,
             title: "Проверить следующий конкретный шаг",
-            overviewLane: "next",
+            overviewDirectionId: activeDirection.id,
             overviewOrder: getProjectTasks(nextState).filter(
-              (item) => item.overviewLane === "next",
+              (item) => item.overviewDirectionId === activeDirection.id,
             ).length,
             completedAt: null,
             signal: "none",
@@ -1517,7 +1514,7 @@ export function desktopPrototypeReducer(
         if (proposal.kind === "clarify-task") {
           const targetTask =
             getTaskById(nextState, nextState.selectedTaskId) ??
-            getTasksForLane(nextState, "now")[0];
+            getVisibleOverviewTasks(nextState)[0];
           if (targetTask) {
             nextState = updateTask(nextState, targetTask.id, (task) => ({
               ...task,

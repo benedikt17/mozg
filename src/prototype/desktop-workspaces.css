@@ -36,15 +36,15 @@
     margin-inline: auto;
   }
 
-  .overview-board.lanes-3 {
+  .overview-board.directions-3 {
     --overview-board-max: 1500px;
   }
 
-  .overview-board.lanes-2 {
+  .overview-board.directions-2 {
     --overview-board-max: 1200px;
   }
 
-  .overview-board.lanes-1 {
+  .overview-board.directions-1 {
     --overview-board-max: 960px;
   }
 
@@ -88,7 +88,7 @@
   }
 
   @media (min-width: 2200px) {
-    .overview-board.lanes-4 {
+    .overview-board.directions-4 {
       --overview-board-max: 1800px;
     }
   }
