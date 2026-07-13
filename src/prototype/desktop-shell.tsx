@@ -699,6 +699,7 @@ function TaskCard({
 }): React.JSX.Element {
   const [titleDraft, setTitleDraft] = useState(task.title);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const titleClickTimerRef = useRef<number | null>(null);
   const cancelledRef = useRef(false);
   const doneSubtasks = task.subtasks.filter((subtask) => subtask.done).length;
 
@@ -709,7 +710,31 @@ function TaskCard({
     titleInputRef.current?.select();
   }, [editing]);
 
+  useEffect(
+    () => () => {
+      if (titleClickTimerRef.current !== null) {
+        window.clearTimeout(titleClickTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const clearPendingTitleClick = (): void => {
+    if (titleClickTimerRef.current === null) return;
+    window.clearTimeout(titleClickTimerRef.current);
+    titleClickTimerRef.current = null;
+  };
+
+  const openTaskDetails = (): void => {
+    dispatch({
+      type: "select-task",
+      taskId: task.id,
+      section: "overview",
+    });
+  };
+
   const beginTitleEdit = (): void => {
+    clearPendingTitleClick();
     setTitleDraft(task.title);
     dispatch({ type: "begin-task-title-edit", taskId: task.id });
   };
@@ -769,7 +794,14 @@ function TaskCard({
         ) : (
           <button
             className="task-title-trigger"
-            onClick={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              clearPendingTitleClick();
+              titleClickTimerRef.current = window.setTimeout(() => {
+                titleClickTimerRef.current = null;
+                openTaskDetails();
+              }, 300);
+            }}
             onDoubleClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -790,13 +822,7 @@ function TaskCard({
         <button
           aria-label={`Открыть детали задачи ${task.title}`}
           className="task-details-trigger"
-          onClick={() =>
-            dispatch({
-              type: "select-task",
-              taskId: task.id,
-              section: "overview",
-            })
-          }
+          onClick={openTaskDetails}
           type="button"
         >
           <span className="metadata-line">

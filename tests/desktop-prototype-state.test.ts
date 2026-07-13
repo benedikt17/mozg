@@ -404,10 +404,18 @@ describe("desktop structural prototype state", () => {
     const taskId = "luko-characters-map";
 
     state = desktopPrototypeReducer(state, {
+      type: "select-task",
+      taskId,
+      section: "overview",
+    });
+    expect(state.contextPanel).toEqual({ kind: "task", taskId });
+
+    state = desktopPrototypeReducer(state, {
       type: "begin-task-title-edit",
       taskId,
     });
     expect(state.editingTaskTitleId).toBe(taskId);
+    expect(state.contextPanel).toBeNull();
 
     state = desktopPrototypeReducer(state, {
       type: "commit-task-title-edit",

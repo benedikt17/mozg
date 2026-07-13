@@ -1020,6 +1020,8 @@ export function desktopPrototypeReducer(
       return {
         ...state,
         editingTaskTitleId: task.id,
+        contextPanel: null,
+        contextPanelBeforeAi: null,
       };
     }
     case "commit-task-title-edit": {

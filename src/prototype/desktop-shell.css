@@ -728,7 +728,7 @@
   }
 
   .overview-board.lanes-2 {
-    width: min(100%, 1280px);
+    width: min(100%, 1200px);
     grid-template-columns: repeat(2, minmax(360px, 1fr));
   }
 

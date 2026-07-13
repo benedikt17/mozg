@@ -21,9 +21,9 @@
   }
 
   .overview-workspace {
-    width: min(100%, 1720px);
+    width: 100%;
     max-width: none;
-    justify-self: start;
+    justify-self: stretch;
   }
 
   .workspace-policy-full-surface.section-overview .overview-workspace {
@@ -31,7 +31,21 @@
   }
 
   .overview-board {
+    width: min(100%, var(--overview-board-max, 1720px));
     grid-template-columns: repeat(4, minmax(280px, 1fr));
+    margin-inline: auto;
+  }
+
+  .overview-board.lanes-3 {
+    --overview-board-max: 1500px;
+  }
+
+  .overview-board.lanes-2 {
+    --overview-board-max: 1200px;
+  }
+
+  .overview-board.lanes-1 {
+    --overview-board-max: 960px;
   }
 
   .board-column {
@@ -74,16 +88,8 @@
   }
 
   @media (min-width: 2200px) {
-    .overview-workspace {
-      width: min(100%, 1800px);
-    }
-  }
-
-  @media (min-width: 1800px) {
-    .section-overview.has-context-panel.is-overview-focused {
-      grid-template-columns:
-        minmax(0, 992px) var(--context-width)
-        minmax(0, 1fr);
+    .overview-board.lanes-4 {
+      --overview-board-max: 1800px;
     }
   }
 
