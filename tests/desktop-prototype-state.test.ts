@@ -58,6 +58,13 @@ function freshState(): DesktopPrototypeState {
   };
 }
 
+function laneIds(
+  state: DesktopPrototypeState,
+  lane: "now" | "next" | "later" | "done",
+): string[] {
+  return getTasksForLane(state, lane).map((task) => task.id);
+}
+
 describe("desktop structural prototype state", () => {
   it("collapses the project rail without changing project navigation state", () => {
     const state = desktopPrototypeReducer(freshState(), {
@@ -347,7 +354,7 @@ describe("desktop structural prototype state", () => {
     });
   });
 
-  it("moves a task between Overview lanes without changing a production status", () => {
+  it("moves a task between Overview lanes through the shared append helper", () => {
     let state = freshState();
     state = desktopPrototypeReducer(state, {
       type: "move-task",
@@ -359,14 +366,256 @@ describe("desktop structural prototype state", () => {
       state.tasks.find((task) => task.id === "luko-production-plan")
         ?.overviewLane,
     ).toBe("now");
+    expect(laneIds(state, "now").at(-1)).toBe("luko-production-plan");
   });
 
-  it("sorts starred tasks above normal tasks inside a lane", () => {
-    const state = freshState();
-    const nowTasks = getTasksForLane(state, "now");
+  it("appends from Task Details after hidden target-lane tasks", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "move-task",
+      taskId: "luko-first-scene",
+      overviewLane: "next",
+    });
+    const fullNext = state.tasks
+      .filter(
+        (task) =>
+          task.projectId === "lukomorie" && task.overviewLane === "next",
+      )
+      .sort((first, second) => first.overviewOrder - second.overviewOrder)
+      .map((task) => task.id);
+    expect(fullNext.at(-1)).toBe("luko-first-scene");
+  });
 
-    expect(nowTasks.length).toBeGreaterThan(1);
-    expect(nowTasks[0]?.starred).toBe(true);
+  it("uses manual order as authoritative when a task star changes", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "move-overview-task",
+      taskId: "luko-first-scene",
+      targetLane: "now",
+      targetIndex: 0,
+    });
+    const before = laneIds(state, "now");
+    state = desktopPrototypeReducer(state, {
+      type: "toggle-task-star",
+      taskId: "luko-first-scene",
+    });
+
+    expect(laneIds(state, "now")).toEqual(before);
+    expect(laneIds(state, "now")[0]).toBe("luko-first-scene");
+  });
+
+  it("sets and clears semantic task signals without affecting order", () => {
+    let state = freshState();
+    const before = laneIds(state, "now");
+    state = desktopPrototypeReducer(state, {
+      type: "set-task-signal",
+      taskId: "luko-first-scene",
+      signal: "red",
+    });
+    expect(
+      state.tasks.find((task) => task.id === "luko-first-scene")?.signal,
+    ).toBe("red");
+    expect(laneIds(state, "now")).toEqual(before);
+
+    state = desktopPrototypeReducer(state, {
+      type: "set-task-signal",
+      taskId: "luko-first-scene",
+      signal: "none",
+    });
+    expect(
+      state.tasks.find((task) => task.id === "luko-first-scene")?.signal,
+    ).toBe("none");
+  });
+
+  it("reorders tasks at the beginning, middle and end of a lane", () => {
+    let beginning = freshState();
+    beginning = desktopPrototypeReducer(beginning, {
+      type: "move-overview-task",
+      taskId: "luko-first-scene",
+      targetLane: "now",
+      targetIndex: 0,
+    });
+    expect(laneIds(beginning, "now")).toEqual([
+      "luko-first-scene",
+      "luko-characters-map",
+    ]);
+
+    let middle = freshState();
+    middle = desktopPrototypeReducer(middle, {
+      type: "move-overview-task",
+      taskId: "luko-production-plan",
+      targetLane: "now",
+      targetIndex: 1,
+    });
+    expect(laneIds(middle, "now")).toEqual([
+      "luko-characters-map",
+      "luko-production-plan",
+      "luko-first-scene",
+    ]);
+
+    let end = freshState();
+    end = desktopPrototypeReducer(end, {
+      type: "move-overview-task",
+      taskId: "luko-characters-map",
+      targetLane: "now",
+      targetIndex: 1,
+    });
+    expect(laneIds(end, "now")).toEqual([
+      "luko-first-scene",
+      "luko-characters-map",
+    ]);
+  });
+
+  it("moves tasks across lanes and into an empty lane without duplicates", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "move-overview-task",
+      taskId: "luko-production-plan",
+      targetLane: "now",
+      targetIndex: 1,
+    });
+    expect(laneIds(state, "later")).toEqual([]);
+    state = desktopPrototypeReducer(state, {
+      type: "move-overview-task",
+      taskId: "luko-first-scene",
+      targetLane: "later",
+      targetIndex: 0,
+    });
+    expect(laneIds(state, "later")).toEqual(["luko-first-scene"]);
+    expect(
+      state.tasks.filter((task) => task.id === "luko-first-scene"),
+    ).toHaveLength(1);
+  });
+
+  it("normalizes duplicate and sparse lane orders deterministically", () => {
+    let state = freshState();
+    state = {
+      ...state,
+      tasks: state.tasks.map((task) =>
+        task.id === "luko-characters-map" || task.id === "luko-first-scene"
+          ? { ...task, overviewOrder: 40 }
+          : task,
+      ),
+    };
+    state = desktopPrototypeReducer(state, {
+      type: "move-overview-task",
+      taskId: "luko-first-scene",
+      targetLane: "now",
+      targetIndex: 0,
+    });
+    expect(
+      getTasksForLane(state, "now").map((task) => task.overviewOrder),
+    ).toEqual([0, 1]);
+    expect(laneIds(state, "now")).toEqual([
+      "luko-first-scene",
+      "luko-characters-map",
+    ]);
+  });
+
+  it("preserves hidden task order while moving at a filtered visible position", () => {
+    let state = freshState();
+    state = {
+      ...state,
+      tasks: state.tasks.map((task) => {
+        if (task.id === "luko-world-rules")
+          return { ...task, overviewOrder: 0 };
+        if (task.id === "luko-production-plan") {
+          return {
+            ...task,
+            overviewLane: "next" as const,
+            overviewOrder: 1,
+            milestoneId: "lukomorie-world",
+          };
+        }
+        if (task.id === "luko-shot-list") return { ...task, overviewOrder: 2 };
+        return task;
+      }),
+    };
+    state = desktopPrototypeReducer(state, {
+      type: "move-overview-task",
+      taskId: "luko-first-scene",
+      targetLane: "next",
+      targetIndex: 0,
+    });
+    const fullNext = state.tasks
+      .filter(
+        (task) =>
+          task.projectId === "lukomorie" && task.overviewLane === "next",
+      )
+      .sort((first, second) => first.overviewOrder - second.overviewOrder)
+      .map((task) => task.id);
+    expect(fullNext).toEqual([
+      "luko-world-rules",
+      "luko-production-plan",
+      "luko-first-scene",
+      "luko-shot-list",
+    ]);
+  });
+
+  it("updates completion timestamps when entering and leaving Done", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "move-overview-task",
+      taskId: "luko-production-plan",
+      targetLane: "done",
+      targetIndex: 1,
+    });
+    expect(
+      state.tasks.find((task) => task.id === "luko-production-plan")
+        ?.completedAt,
+    ).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    state = desktopPrototypeReducer(state, {
+      type: "set-task-filter",
+      filter: "completed",
+    });
+    expect(getVisibleTaskList(state).map((task) => task.id)).toContain(
+      "luko-production-plan",
+    );
+
+    state = desktopPrototypeReducer(state, {
+      type: "move-overview-task",
+      taskId: "luko-production-plan",
+      targetLane: "next",
+      targetIndex: 0,
+    });
+    expect(
+      state.tasks.find((task) => task.id === "luko-production-plan")
+        ?.completedAt,
+    ).toBeNull();
+    expect(getVisibleTaskList(state).map((task) => task.id)).not.toContain(
+      "luko-production-plan",
+    );
+  });
+
+  it("preserves selected task and context while moving another task", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "select-task",
+      taskId: "luko-characters-map",
+      section: "overview",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "move-overview-task",
+      taskId: "luko-first-scene",
+      targetLane: "next",
+      targetIndex: 0,
+    });
+    expect(state.selectedTaskId).toBe("luko-characters-map");
+    expect(state.contextPanel).toEqual({
+      kind: "task",
+      taskId: "luko-characters-map",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "move-overview-task",
+      taskId: "luko-characters-map",
+      targetLane: "later",
+      targetIndex: 0,
+    });
+    expect(state.selectedTaskId).toBe("luko-characters-map");
+    expect(state.contextPanel).toEqual({
+      kind: "task",
+      taskId: "luko-characters-map",
+    });
   });
 
   it("filters Overview by area, milestone and starred-only toggle", () => {
@@ -562,7 +811,10 @@ describe("desktop structural prototype state", () => {
       projectId: "lukomorie",
       title: "Новая задача",
       overviewLane: "now",
+      signal: "none",
+      completedAt: null,
     });
+    expect(laneIds(state, "now").at(-1)).toBe("mock-task-1");
     expect(state.selectedTaskId).toBe("mock-task-1");
     expect(state.contextPanel).toEqual({
       kind: "task",

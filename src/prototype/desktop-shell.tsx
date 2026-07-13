@@ -2,6 +2,26 @@
 
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
+  closestCenter,
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   aiProposals,
   inboxFilters,
   overviewLanes,
@@ -12,6 +32,7 @@ import {
   type PrototypeDocument,
   type PrototypeInboxItem,
   type PrototypeTask,
+  type TaskSignal,
 } from "@/prototype/desktop-mock-data";
 import {
   ALL_AREAS,
@@ -60,12 +81,42 @@ import "./desktop-knowledge.css";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 
+type OverviewDropTarget = {
+  lane: OverviewLane;
+  index: number;
+};
+
+type OverviewDragData = {
+  type: "overview-task";
+  taskId: string;
+  lane: OverviewLane;
+};
+
+type OverviewLaneDropData = {
+  type: "overview-lane";
+  lane: OverviewLane;
+};
+
+const taskDragId = (taskId: string): string => `overview-task:${taskId}`;
+const laneDropId = (lane: OverviewLane): string => `overview-lane:${lane}`;
+
 const laneLabels: Record<OverviewLane, string> = {
   now: "Сейчас",
   next: "Дальше",
   later: "Позже",
   done: "Готово",
 };
+
+const taskSignalOptions: {
+  id: TaskSignal;
+  label: string;
+  description: string;
+}[] = [
+  { id: "none", label: "Без сигнала", description: "Нейтральная задача" },
+  { id: "green", label: "Зелёный", description: "Движется по плану" },
+  { id: "yellow", label: "Жёлтый", description: "Требует внимания" },
+  { id: "red", label: "Красный", description: "Есть блокировка" },
+];
 
 const commandKindLabels: Record<CommandResult["kind"], string> = {
   project: "Проект",
@@ -424,6 +475,73 @@ function renderMainWorkspace(
   return <OverviewWorkspace state={state} dispatch={dispatch} />;
 }
 
+function isOverviewTaskDragData(value: unknown): value is OverviewDragData {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    candidate.type === "overview-task" &&
+    typeof candidate.taskId === "string" &&
+    typeof candidate.lane === "string" &&
+    isOverviewLane(candidate.lane)
+  );
+}
+
+function isOverviewLaneDropData(value: unknown): value is OverviewLaneDropData {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    candidate.type === "overview-lane" &&
+    typeof candidate.lane === "string" &&
+    isOverviewLane(candidate.lane)
+  );
+}
+
+function getOverviewDropTarget(
+  state: DesktopPrototypeState,
+  activeTaskId: string,
+  event: DragOverEvent | DragEndEvent,
+): OverviewDropTarget | null {
+  const over = event.over;
+  if (!over) return null;
+  const overData = over.data.current;
+
+  if (isOverviewLaneDropData(overData)) {
+    return {
+      lane: overData.lane,
+      index: getTasksForLane(state, overData.lane).filter(
+        (task) => task.id !== activeTaskId,
+      ).length,
+    };
+  }
+
+  if (!isOverviewTaskDragData(overData)) return null;
+  const targetTasks = getTasksForLane(state, overData.lane).filter(
+    (task) => task.id !== activeTaskId,
+  );
+  const overIndex = targetTasks.findIndex(
+    (task) => task.id === overData.taskId,
+  );
+  if (overIndex < 0) {
+    const currentIndex = getTasksForLane(state, overData.lane).findIndex(
+      (task) => task.id === activeTaskId,
+    );
+    return {
+      lane: overData.lane,
+      index: Math.min(Math.max(currentIndex, 0), targetTasks.length),
+    };
+  }
+
+  const translatedRect = event.active.rect.current.translated;
+  const insertAfter = translatedRect
+    ? translatedRect.top + translatedRect.height / 2 >
+      over.rect.top + over.rect.height / 2
+    : false;
+  return {
+    lane: overData.lane,
+    index: overIndex + (insertAfter ? 1 : 0),
+  };
+}
+
 function OverviewWorkspace({
   state,
   dispatch,
@@ -432,7 +550,15 @@ function OverviewWorkspace({
   dispatch: Dispatch;
 }): React.JSX.Element {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<OverviewDropTarget | null>(null);
   const viewMenuRef = useRef<HTMLDivElement>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
   const activeMilestone = getActiveMilestone(state);
   const progress = getMilestoneProgress(state);
   const areas = getProjectAreas(state);
@@ -441,6 +567,37 @@ function OverviewWorkspace({
     state.visibleOverviewLanes.includes(lane.id),
   );
   const isFocused = visibleLanes.length === 1;
+  const activeTask = getTaskById(state, activeTaskId);
+
+  const clearDragState = (): void => {
+    setActiveTaskId(null);
+    setDropTarget(null);
+  };
+
+  const handleDragStart = (event: DragStartEvent): void => {
+    const dragData = event.active.data.current;
+    if (!isOverviewTaskDragData(dragData)) return;
+    setActiveTaskId(dragData.taskId);
+  };
+
+  const handleDragOver = (event: DragOverEvent): void => {
+    if (!activeTaskId) return;
+    setDropTarget(getOverviewDropTarget(state, activeTaskId, event));
+  };
+
+  const handleDragEnd = (event: DragEndEvent): void => {
+    if (!activeTaskId) return;
+    const target = getOverviewDropTarget(state, activeTaskId, event);
+    if (target) {
+      dispatch({
+        type: "move-overview-task",
+        taskId: activeTaskId,
+        targetLane: target.lane,
+        targetIndex: target.index,
+      });
+    }
+    clearDragState();
+  };
 
   useEffect(() => {
     if (!viewMenuOpen) return;
@@ -598,28 +755,42 @@ function OverviewWorkspace({
           </PrototypeButton>
         </div>
       </section>
-      <section
-        className={[
-          "overview-board",
-          `lanes-${visibleLanes.length}`,
-          isFocused ? "is-focused" : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        aria-label={
-          isFocused ? "Сфокусированная колонка обзора" : "Доска проекта"
-        }
+      <DndContext
+        collisionDetection={closestCenter}
+        onDragCancel={clearDragState}
+        onDragEnd={handleDragEnd}
+        onDragOver={handleDragOver}
+        onDragStart={handleDragStart}
+        sensors={sensors}
       >
-        {visibleLanes.map((lane) => (
-          <OverviewLaneColumn
-            dispatch={dispatch}
-            focused={isFocused}
-            key={lane.id}
-            lane={lane.id}
-            state={state}
-          />
-        ))}
-      </section>
+        <section
+          className={[
+            "overview-board",
+            `lanes-${visibleLanes.length}`,
+            isFocused ? "is-focused" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          aria-label={
+            isFocused ? "Сфокусированная колонка обзора" : "Доска проекта"
+          }
+        >
+          {visibleLanes.map((lane) => (
+            <OverviewLaneColumn
+              activeTaskId={activeTaskId}
+              dispatch={dispatch}
+              dropTarget={dropTarget}
+              focused={isFocused}
+              key={lane.id}
+              lane={lane.id}
+              state={state}
+            />
+          ))}
+        </section>
+        <DragOverlay dropAnimation={null}>
+          {activeTask ? <TaskDragOverlay task={activeTask} /> : null}
+        </DragOverlay>
+      </DndContext>
     </div>
   );
 }
@@ -629,15 +800,29 @@ function OverviewLaneColumn({
   dispatch,
   lane,
   focused,
+  activeTaskId,
+  dropTarget,
 }: {
   state: DesktopPrototypeState;
   dispatch: Dispatch;
   lane: OverviewLane;
   focused: boolean;
+  activeTaskId: string | null;
+  dropTarget: OverviewDropTarget | null;
 }): React.JSX.Element {
   const tasks = getTasksForLane(state, lane);
+  const positionedTasks = tasks.filter((task) => task.id !== activeTaskId);
+  const { isOver, setNodeRef } = useDroppable({
+    id: laneDropId(lane),
+    data: { type: "overview-lane", lane } satisfies OverviewLaneDropData,
+  });
+  const laneDropTarget = dropTarget?.lane === lane ? dropTarget : null;
   return (
-    <article className={`board-column lane-${lane}`}>
+    <article
+      className={["board-column", `lane-${lane}`, isOver ? "is-drag-over" : ""]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <header>
         <div>
           <h3>{laneLabels[lane]}</h3>
@@ -665,25 +850,60 @@ function OverviewLaneColumn({
           </PrototypeButton>
         </div>
       </header>
-      <div className="task-stack">
-        {tasks.length > 0 ? (
-          tasks.map((task) => (
-            <TaskCard
-              dispatch={dispatch}
-              editing={state.editingTaskTitleId === task.id}
-              key={task.id}
-              task={task}
-            />
-          ))
-        ) : (
-          <p className="empty-state">Нет задач в этой зоне.</p>
-        )}
+      <div className="task-stack" ref={setNodeRef}>
+        <SortableContext
+          items={tasks.map((task) => taskDragId(task.id))}
+          strategy={verticalListSortingStrategy}
+        >
+          {tasks.length > 0 ? (
+            tasks.map((task) => {
+              const visibleIndex = positionedTasks.findIndex(
+                (item) => item.id === task.id,
+              );
+              const showIndicatorBefore =
+                task.id !== activeTaskId &&
+                laneDropTarget?.index === visibleIndex;
+              return (
+                <div className="task-sort-slot" key={task.id}>
+                  {showIndicatorBefore ? <TaskDropIndicator /> : null}
+                  <TaskCard
+                    dispatch={dispatch}
+                    editing={state.editingTaskTitleId === task.id}
+                    task={task}
+                  />
+                </div>
+              );
+            })
+          ) : (
+            <p className="empty-state">Нет задач в этой зоне.</p>
+          )}
+          {laneDropTarget?.index === positionedTasks.length ? (
+            <TaskDropIndicator />
+          ) : null}
+        </SortableContext>
       </div>
       {lane === "done" ? (
         <button className="muted-action" type="button">
           Все завершённые
         </button>
       ) : null}
+    </article>
+  );
+}
+
+function TaskDropIndicator(): React.JSX.Element {
+  return <div className="task-drop-indicator" aria-hidden="true" />;
+}
+
+function TaskDragOverlay({ task }: { task: PrototypeTask }): React.JSX.Element {
+  return (
+    <article className={`task-card task-signal-${task.signal} drag-overlay`}>
+      <div className="task-hit-area">
+        <strong>{task.title}</strong>
+        <span className="metadata-line">
+          {task.area ?? "Общее"} · {laneLabels[task.overviewLane]}
+        </span>
+      </div>
     </article>
   );
 }
@@ -702,6 +922,22 @@ function TaskCard({
   const titleClickTimerRef = useRef<number | null>(null);
   const cancelledRef = useRef(false);
   const doneSubtasks = task.subtasks.filter((subtask) => subtask.done).length;
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({
+    id: taskDragId(task.id),
+    data: {
+      type: "overview-task",
+      taskId: task.id,
+      lane: task.overviewLane,
+    } satisfies OverviewDragData,
+  });
 
   useEffect(() => {
     if (!editing) return;
@@ -724,6 +960,12 @@ function TaskCard({
     window.clearTimeout(titleClickTimerRef.current);
     titleClickTimerRef.current = null;
   };
+
+  useEffect(() => {
+    if (!isDragging || titleClickTimerRef.current === null) return;
+    window.clearTimeout(titleClickTimerRef.current);
+    titleClickTimerRef.current = null;
+  }, [isDragging]);
 
   const openTaskDetails = (): void => {
     dispatch({
@@ -748,7 +990,20 @@ function TaskCard({
   };
 
   return (
-    <article className="task-card">
+    <article
+      className={[
+        "task-card",
+        `task-signal-${task.signal}`,
+        isDragging ? "is-dragging" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+    >
       <IconButton
         active={task.starred}
         className="task-star-control"
@@ -758,9 +1013,21 @@ function TaskCard({
           event.stopPropagation();
           dispatch({ type: "toggle-task-star", taskId: task.id });
         }}
+        onPointerDown={(event) => event.stopPropagation()}
         variant="ghost"
       />
-      <div className="task-hit-area">
+      <button
+        {...attributes}
+        {...listeners}
+        aria-label={`Перетащить задачу ${task.title}`}
+        className="task-drag-handle"
+        ref={setActivatorNodeRef}
+        title="Перетащить задачу"
+        type="button"
+      >
+        ⠿
+      </button>
+      <div className="task-hit-area" {...listeners}>
         {editing ? (
           <input
             aria-label={`Редактировать название задачи ${task.title}`}
@@ -775,6 +1042,7 @@ function TaskCard({
             onChange={(event) => setTitleDraft(event.target.value)}
             onClick={(event) => event.stopPropagation()}
             onDoubleClick={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
@@ -1338,7 +1606,7 @@ function TaskListRow({
 }): React.JSX.Element {
   const doneSubtasks = task.subtasks.filter((subtask) => subtask.done).length;
   return (
-    <article className="task-row">
+    <article className={`task-row task-signal-${task.signal}`}>
       <button
         onClick={() =>
           dispatch({ type: "select-task", taskId: task.id, section: "tasks" })
@@ -1349,6 +1617,7 @@ function TaskListRow({
         <span>
           {task.area ?? "Общее"} · {laneLabels[task.overviewLane]} ·{" "}
           {doneSubtasks}/{task.subtasks.length || 0}
+          {task.completedAt ? " · завершена" : ""}
         </span>
       </button>
       <button
@@ -1646,6 +1915,34 @@ function TaskDetailsPanel({
       >
         {task.starred ? "★ Важная задача" : "☆ Сделать важной"}
       </button>
+      <fieldset className="task-signal-selector">
+        <legend>Сигнал задачи</legend>
+        <div className="task-signal-options">
+          {taskSignalOptions.map((option) => (
+            <label
+              className={`task-signal-option task-signal-${option.id}`}
+              key={option.id}
+              title={option.description}
+            >
+              <input
+                checked={task.signal === option.id}
+                name={`task-signal-${task.id}`}
+                onChange={() =>
+                  dispatch({
+                    type: "set-task-signal",
+                    taskId: task.id,
+                    signal: option.id,
+                  })
+                }
+                type="radio"
+                value={option.id}
+              />
+              <span className="task-signal-swatch" aria-hidden="true" />
+              <span>{option.label}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <label className="field">
         Срок
         <input

@@ -17,6 +17,7 @@ import {
   type PrototypeMilestone,
   type PrototypeProject,
   type PrototypeTask,
+  type TaskSignal,
   type TaskFilter,
 } from "@/prototype/desktop-mock-data";
 
@@ -119,6 +120,13 @@ export type DesktopPrototypeAction =
   | { type: "set-task-notes"; taskId: string; notes: string }
   | { type: "toggle-subtask"; taskId: string; subtaskId: string }
   | { type: "move-task"; taskId: string; overviewLane: OverviewLane }
+  | {
+      type: "move-overview-task";
+      taskId: string;
+      targetLane: OverviewLane;
+      targetIndex: number;
+    }
+  | { type: "set-task-signal"; taskId: string; signal: TaskSignal }
   | { type: "set-area-filter"; area: string }
   | { type: "set-milestone-filter"; milestoneId: string }
   | { type: "toggle-starred-filter" }
@@ -495,15 +503,9 @@ export function getVisibleOverviewTasks(
   state: DesktopPrototypeState,
 ): PrototypeTask[] {
   return sortTasksForBoard(
-    getProjectTasks(state).filter((task) => {
-      const areaMatches =
-        state.filters.area === ALL_AREAS || task.area === state.filters.area;
-      const milestoneMatches =
-        state.filters.milestoneId === ALL_MILESTONES ||
-        task.milestoneId === state.filters.milestoneId;
-      const starMatches = !state.filters.starredOnly || task.starred;
-      return areaMatches && milestoneMatches && starMatches;
-    }),
+    getProjectTasks(state).filter((task) =>
+      taskMatchesOverviewFilters(state, task),
+    ),
   );
 }
 
@@ -513,11 +515,16 @@ export function getVisibleTaskList(
   return sortTasksForBoard(
     getProjectTasks(state).filter((task) => {
       if (state.taskFilter === "important") return task.starred;
-      if (state.taskFilter === "today") return task.overviewLane === "now";
-      if (state.taskFilter === "upcoming") {
-        return task.overviewLane === "next" || task.overviewLane === "later";
+      if (state.taskFilter === "today") {
+        return task.completedAt === null && task.overviewLane === "now";
       }
-      if (state.taskFilter === "completed") return task.overviewLane === "done";
+      if (state.taskFilter === "upcoming") {
+        return (
+          task.completedAt === null &&
+          (task.overviewLane === "next" || task.overviewLane === "later")
+        );
+      }
+      if (state.taskFilter === "completed") return task.completedAt !== null;
       return true;
     }),
   );
@@ -525,9 +532,24 @@ export function getVisibleTaskList(
 
 export function sortTasksForBoard(tasks: PrototypeTask[]): PrototypeTask[] {
   return [...tasks].sort((first, second) => {
-    if (first.starred !== second.starred) return first.starred ? -1 : 1;
-    return first.title.localeCompare(second.title, "ru");
+    if (first.overviewOrder !== second.overviewOrder) {
+      return first.overviewOrder - second.overviewOrder;
+    }
+    return first.id.localeCompare(second.id);
   });
+}
+
+function taskMatchesOverviewFilters(
+  state: DesktopPrototypeState,
+  task: PrototypeTask,
+): boolean {
+  const areaMatches =
+    state.filters.area === ALL_AREAS || task.area === state.filters.area;
+  const milestoneMatches =
+    state.filters.milestoneId === ALL_MILESTONES ||
+    task.milestoneId === state.filters.milestoneId;
+  const starMatches = !state.filters.starredOnly || task.starred;
+  return areaMatches && milestoneMatches && starMatches;
 }
 
 function sortKnowledgeNodes(nodes: KnowledgeTreeNode[]): KnowledgeTreeNode[] {
@@ -737,6 +759,101 @@ function updateTask(
       task.id === taskId ? updater(task) : task,
     ),
   };
+}
+
+function normalizeLaneOrders(
+  tasks: PrototypeTask[],
+  projectId: string,
+  lane: OverviewLane,
+): PrototypeTask[] {
+  const orderedIds = sortTasksForBoard(
+    tasks.filter(
+      (task) => task.projectId === projectId && task.overviewLane === lane,
+    ),
+  ).map((task) => task.id);
+  const orderById = new Map(
+    orderedIds.map((taskId, overviewOrder) => [taskId, overviewOrder]),
+  );
+  return tasks.map((task) => {
+    const overviewOrder = orderById.get(task.id);
+    return overviewOrder === undefined ? task : { ...task, overviewOrder };
+  });
+}
+
+export function moveOverviewTask(
+  state: DesktopPrototypeState,
+  taskId: string,
+  targetLane: OverviewLane,
+  targetIndex: number,
+  appendToLaneEnd = false,
+): DesktopPrototypeState {
+  const movingTask = getTaskById(state, taskId);
+  if (!movingTask) return state;
+
+  const sourceLane = movingTask.overviewLane;
+  const targetTasks = sortTasksForBoard(
+    state.tasks.filter(
+      (task) =>
+        task.projectId === movingTask.projectId &&
+        task.overviewLane === targetLane &&
+        task.id !== taskId,
+    ),
+  );
+  const visibleTargetIds = targetTasks
+    .filter((task) => taskMatchesOverviewFilters(state, task))
+    .map((task) => task.id);
+  const safeTargetIndex = Math.max(
+    0,
+    Math.min(Math.trunc(targetIndex), visibleTargetIds.length),
+  );
+
+  let fullInsertionIndex = targetTasks.length;
+  if (!appendToLaneEnd && visibleTargetIds.length > 0) {
+    if (safeTargetIndex < visibleTargetIds.length) {
+      fullInsertionIndex = targetTasks.findIndex(
+        (task) => task.id === visibleTargetIds[safeTargetIndex],
+      );
+    } else {
+      fullInsertionIndex =
+        targetTasks.findIndex(
+          (task) => task.id === visibleTargetIds[visibleTargetIds.length - 1],
+        ) + 1;
+    }
+  }
+
+  const completedAt =
+    targetLane === "done"
+      ? (movingTask.completedAt ?? new Date().toISOString())
+      : null;
+  const movedTask: PrototypeTask = {
+    ...movingTask,
+    overviewLane: targetLane,
+    completedAt,
+  };
+  const orderedTargetTasks = [...targetTasks];
+  orderedTargetTasks.splice(fullInsertionIndex, 0, movedTask);
+  const targetOrderById = new Map(
+    orderedTargetTasks.map((task, overviewOrder) => [task.id, overviewOrder]),
+  );
+
+  let tasks = state.tasks.map((task) => {
+    const targetOrder = targetOrderById.get(task.id);
+    if (task.id === taskId) {
+      return {
+        ...movedTask,
+        overviewOrder: targetOrder ?? 0,
+      };
+    }
+    return targetOrder === undefined
+      ? task
+      : { ...task, overviewOrder: targetOrder };
+  });
+
+  if (sourceLane !== targetLane) {
+    tasks = normalizeLaneOrders(tasks, movingTask.projectId, sourceLane);
+  }
+
+  return { ...state, tasks };
 }
 
 function withVisibleOverviewLanes(
@@ -1062,9 +1179,24 @@ export function desktopPrototypeReducer(
         ),
       }));
     case "move-task":
+      return moveOverviewTask(
+        state,
+        action.taskId,
+        action.overviewLane,
+        0,
+        true,
+      );
+    case "move-overview-task":
+      return moveOverviewTask(
+        state,
+        action.taskId,
+        action.targetLane,
+        action.targetIndex,
+      );
+    case "set-task-signal":
       return updateTask(state, action.taskId, (task) => ({
         ...task,
-        overviewLane: action.overviewLane,
+        signal: action.signal,
       }));
     case "set-area-filter":
       return {
@@ -1111,6 +1243,11 @@ export function desktopPrototypeReducer(
         projectId: state.activeProjectId,
         title: "Новая задача",
         overviewLane: "now",
+        overviewOrder: getProjectTasks(state).filter(
+          (item) => item.overviewLane === "now",
+        ).length,
+        completedAt: null,
+        signal: "none",
         starred: false,
         area: getProjectAreas(state)[0] ?? "Общее",
         milestoneId: activeMilestone.id,
@@ -1352,6 +1489,11 @@ export function desktopPrototypeReducer(
             projectId: nextState.activeProjectId,
             title: "Проверить следующий конкретный шаг",
             overviewLane: "next",
+            overviewOrder: getProjectTasks(nextState).filter(
+              (item) => item.overviewLane === "next",
+            ).length,
+            completedAt: null,
+            signal: "none",
             starred: false,
             area: getProjectAreas(nextState)[0] ?? "Общее",
             milestoneId: activeMilestone.id,

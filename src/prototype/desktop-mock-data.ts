@@ -3,6 +3,8 @@ export type ProjectSection =
 
 export type OverviewLane = "now" | "next" | "later" | "done";
 
+export type TaskSignal = "none" | "green" | "yellow" | "red";
+
 export type TaskFilter =
   "all" | "today" | "important" | "upcoming" | "completed";
 
@@ -33,6 +35,9 @@ export type PrototypeTask = {
   projectId: string;
   title: string;
   overviewLane: OverviewLane;
+  overviewOrder: number;
+  completedAt: string | null;
+  signal: TaskSignal;
   starred: boolean;
   area?: string;
   milestoneId?: string;
@@ -254,6 +259,9 @@ export const initialTasks: PrototypeTask[] = [
     projectId: "lukomorie",
     title: "Собрать карту мотиваций ключевых персонажей",
     overviewLane: "now",
+    overviewOrder: 0,
+    completedAt: null,
+    signal: "red",
     starred: true,
     area: "Персонажи",
     milestoneId: "lukomorie-alpha",
@@ -284,6 +292,9 @@ export const initialTasks: PrototypeTask[] = [
     projectId: "lukomorie",
     title: "Переписать вход в первую сцену через действие",
     overviewLane: "now",
+    overviewOrder: 1,
+    completedAt: null,
+    signal: "yellow",
     starred: false,
     area: "Сценарии",
     milestoneId: "lukomorie-alpha",
@@ -308,6 +319,9 @@ export const initialTasks: PrototypeTask[] = [
     projectId: "lukomorie",
     title: "Согласовать три правила путешествия между островами",
     overviewLane: "next",
+    overviewOrder: 0,
+    completedAt: null,
+    signal: "green",
     starred: true,
     area: "Мир",
     milestoneId: "lukomorie-world",
@@ -331,6 +345,9 @@ export const initialTasks: PrototypeTask[] = [
     projectId: "lukomorie",
     title: "Собрать визуальные референсы для первой локации",
     overviewLane: "next",
+    overviewOrder: 1,
+    completedAt: null,
+    signal: "none",
     starred: false,
     area: "Визуальная разработка",
     milestoneId: "lukomorie-alpha",
@@ -353,6 +370,9 @@ export const initialTasks: PrototypeTask[] = [
     projectId: "lukomorie",
     title: "Определить минимальный производственный цикл",
     overviewLane: "later",
+    overviewOrder: 0,
+    completedAt: null,
+    signal: "yellow",
     starred: false,
     area: "Производство",
     milestoneId: "lukomorie-alpha",
@@ -375,6 +395,9 @@ export const initialTasks: PrototypeTask[] = [
     projectId: "lukomorie",
     title: "Свести brief по текущей версии проекта",
     overviewLane: "done",
+    overviewOrder: 0,
+    completedAt: "2026-07-10T12:00:00.000Z",
+    signal: "green",
     starred: true,
     area: "Производство",
     milestoneId: "lukomorie-alpha",
@@ -394,6 +417,9 @@ export const initialTasks: PrototypeTask[] = [
     projectId: "ammonit",
     title: "Разложить находки по темам",
     overviewLane: "now",
+    overviewOrder: 0,
+    completedAt: null,
+    signal: "none",
     starred: true,
     area: "Исследование",
     milestoneId: "ammonit-research",
@@ -417,6 +443,9 @@ export const initialTasks: PrototypeTask[] = [
     projectId: "ammonit",
     title: "Подготовить вопросы для следующего разговора",
     overviewLane: "next",
+    overviewOrder: 0,
+    completedAt: null,
+    signal: "none",
     starred: false,
     area: "Интервью",
     milestoneId: "ammonit-research",
@@ -434,6 +463,9 @@ export const initialTasks: PrototypeTask[] = [
     projectId: "voice-studio",
     title: "Сократить сценарий демо до двух минут",
     overviewLane: "now",
+    overviewOrder: 0,
+    completedAt: null,
+    signal: "none",
     starred: true,
     area: "Сценарий",
     milestoneId: "voice-demo",
@@ -457,6 +489,9 @@ export const initialTasks: PrototypeTask[] = [
     projectId: "personal",
     title: "Убрать лишние обещания из календаря",
     overviewLane: "now",
+    overviewOrder: 0,
+    completedAt: null,
+    signal: "none",
     starred: true,
     area: "Неделя",
     milestoneId: "personal-week",
