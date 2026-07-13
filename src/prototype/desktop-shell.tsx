@@ -1125,11 +1125,17 @@ function ContextPanelSlot({
   if (!contextPanel) return null;
   return (
     <aside className="context-panel" aria-label="Контекстная панель">
-      <header>
-        <div>
-          <span>Контекст</span>
-          <h2>{contextTitle(contextPanel)}</h2>
-        </div>
+      <header
+        className={
+          contextPanel.kind === "task" ? "task-context-header" : undefined
+        }
+      >
+        {contextPanel.kind === "task" ? null : (
+          <div>
+            <span>Контекст</span>
+            <h2>{contextTitle(contextPanel)}</h2>
+          </div>
+        )}
         <PrototypeButton
           onClick={() =>
             dispatch({
@@ -1149,8 +1155,9 @@ function ContextPanelSlot({
   );
 }
 
-function contextTitle(contextPanel: Exclude<ContextPanelState, null>): string {
-  if (contextPanel.kind === "task") return "Детали задачи";
+function contextTitle(
+  contextPanel: Exclude<NonNullable<ContextPanelState>, { kind: "task" }>,
+): string {
   if (contextPanel.kind === "document-context") return "Документ";
   if (contextPanel.kind === "canvas-inspector") return "Инспектор";
   if (contextPanel.kind === "inbox-item") return "Захват";
@@ -1165,7 +1172,7 @@ function renderContextPanelContent(
   if (contextPanel.kind === "task") {
     const task = getTaskById(state, contextPanel.taskId);
     return task ? (
-      <TaskDetailsPanel dispatch={dispatch} state={state} task={task} />
+      <TaskDetailsPanel dispatch={dispatch} task={task} />
     ) : (
       <p>Задача не найдена.</p>
     );
@@ -1207,13 +1214,10 @@ function renderContextPanelContent(
 function TaskDetailsPanel({
   task,
   dispatch,
-  state,
 }: {
   task: PrototypeTask;
   dispatch: Dispatch;
-  state: DesktopPrototypeState;
 }): React.JSX.Element {
-  const directions = getProjectOverviewDirections(state, task.projectId);
   return (
     <div className="panel-stack">
       <label className="field">
@@ -1229,13 +1233,6 @@ function TaskDetailsPanel({
           value={task.title}
         />
       </label>
-      <button
-        className={task.starred ? "wide-toggle active" : "wide-toggle"}
-        onClick={() => dispatch({ type: "toggle-task-star", taskId: task.id })}
-        type="button"
-      >
-        {task.starred ? "★ Важная задача" : "☆ Сделать важной"}
-      </button>
       <fieldset className="task-signal-selector">
         <legend>Сигнал задачи</legend>
         <div className="task-signal-options">
@@ -1264,38 +1261,6 @@ function TaskDetailsPanel({
           ))}
         </div>
       </fieldset>
-      <label className="field">
-        Срок
-        <input
-          onChange={(event) =>
-            dispatch({
-              type: "set-task-due-date",
-              taskId: task.id,
-              dueDate: event.target.value,
-            })
-          }
-          value={task.dueDate ?? ""}
-        />
-      </label>
-      <label className="field">
-        Направление проекта
-        <select
-          onChange={(event) =>
-            dispatch({
-              type: "move-task",
-              taskId: task.id,
-              overviewDirectionId: event.target.value,
-            })
-          }
-          value={task.overviewDirectionId}
-        >
-          {directions.map((direction) => (
-            <option key={direction.id} value={direction.id}>
-              {direction.title}
-            </option>
-          ))}
-        </select>
-      </label>
       <ContextPanelSection title="Подзадачи">
         {task.subtasks.length > 0 ? (
           task.subtasks.map((subtask) => (

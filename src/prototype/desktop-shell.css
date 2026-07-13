@@ -1251,6 +1251,13 @@
     border-bottom: 1px solid var(--border);
   }
 
+  .context-panel .task-context-header {
+    justify-content: flex-end;
+    margin-bottom: 8px;
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+
   .context-panel header span {
     color: var(--text-3);
     font-size: 12px;
