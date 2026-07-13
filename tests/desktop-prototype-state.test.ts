@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { taskFilters } from "@/prototype/desktop-mock-data";
 import type { DesktopPrototypeState } from "@/prototype/desktop-state";
 import {
-  ALL_AREAS,
   desktopPrototypeReducer,
   getCommandResults,
   getDocumentAncestorFolderIds,
@@ -20,9 +20,6 @@ function freshState(): DesktopPrototypeState {
     ...initialDesktopPrototypeState,
     projects: initialDesktopPrototypeState.projects.map((project) => ({
       ...project,
-    })),
-    milestones: initialDesktopPrototypeState.milestones.map((milestone) => ({
-      ...milestone,
     })),
     overviewDirections: initialDesktopPrototypeState.overviewDirections.map(
       (direction) => ({ ...direction }),
@@ -45,7 +42,6 @@ function freshState(): DesktopPrototypeState {
     inboxItems: initialDesktopPrototypeState.inboxItems.map((item) => ({
       ...item,
     })),
-    filters: { ...initialDesktopPrototypeState.filters },
     expandedFolderIds: [...initialDesktopPrototypeState.expandedFolderIds],
     openDocumentIds: [...initialDesktopPrototypeState.openDocumentIds],
     documentHistoryBack: [...initialDesktopPrototypeState.documentHistoryBack],
@@ -67,6 +63,14 @@ function directionTaskIds(
 }
 
 describe("desktop structural prototype state", () => {
+  it("exposes only non-temporal Tasks filters", () => {
+    expect(taskFilters.map((filter) => filter.id)).toEqual([
+      "all",
+      "important",
+      "completed",
+    ]);
+  });
+
   it("collapses the project rail without changing project navigation state", () => {
     const state = desktopPrototypeReducer(freshState(), {
       type: "toggle-project-rail",
@@ -100,7 +104,6 @@ describe("desktop structural prototype state", () => {
     expect(state.selectedDocumentId).toBe("doc-a-index");
     expect(state.selectedDocumentFolder).toBe("Исследование");
     expect(state.contextPanel).toBeNull();
-    expect(state.filters.milestoneId).toBe("ammonit-research");
   });
 
   it("switches sections and closes the shared context slot", () => {
@@ -320,7 +323,7 @@ describe("desktop structural prototype state", () => {
     });
   });
 
-  it("opens a cross-project task from the command palette and synchronizes project filters", () => {
+  it("opens a cross-project task from the command palette", () => {
     let state = freshState();
     const result = getCommandResults(state, "Разложить находки").find(
       (item) => item.kind === "task",
@@ -337,11 +340,6 @@ describe("desktop structural prototype state", () => {
     expect(state.activeProjectId).toBe("ammonit");
     expect(state.activeSection).toBe("tasks");
     expect(state.selectedTaskId).toBe("ammonit-index");
-    expect(state.filters).toMatchObject({
-      area: ALL_AREAS,
-      milestoneId: "ammonit-research",
-      starredOnly: false,
-    });
     expect(state.contextPanel).toEqual({
       kind: "task",
       taskId: "ammonit-index",
@@ -481,6 +479,60 @@ describe("desktop structural prototype state", () => {
     ]);
   });
 
+  it("uses overviewOrder only for manual order inside one direction", () => {
+    let state = freshState();
+    const tasksListBefore = getVisibleTaskList(state).map((task) => task.id);
+
+    state = desktopPrototypeReducer(state, {
+      type: "move-overview-task",
+      taskId: "luko-first-scene",
+      targetDirectionId: "lukomorie-scenario",
+      targetIndex: 0,
+    });
+
+    expect(directionTaskIds(state, "lukomorie-scenario").slice(0, 2)).toEqual([
+      "luko-first-scene",
+      "luko-world-rules",
+    ]);
+    expect(getVisibleTaskList(state).map((task) => task.id)).toEqual(
+      tasksListBefore,
+    );
+  });
+
+  it("keeps Tasks filter membership stable when Overview order changes", () => {
+    let state = freshState();
+    const filters = ["all", "important", "completed"] as const;
+    const membershipBefore = Object.fromEntries(
+      filters.map((filter) => {
+        const filteredState = desktopPrototypeReducer(state, {
+          type: "set-task-filter",
+          filter,
+        });
+        return [
+          filter,
+          getVisibleTaskList(filteredState).map((task) => task.id),
+        ];
+      }),
+    );
+
+    state = desktopPrototypeReducer(state, {
+      type: "move-overview-task",
+      taskId: "luko-first-scene",
+      targetDirectionId: "lukomorie-scenario",
+      targetIndex: 0,
+    });
+
+    for (const filter of filters) {
+      const filteredState = desktopPrototypeReducer(state, {
+        type: "set-task-filter",
+        filter,
+      });
+      expect(getVisibleTaskList(filteredState).map((task) => task.id)).toEqual(
+        membershipBefore[filter],
+      );
+    }
+  });
+
   it("moves tasks into an emptied direction without duplicates", () => {
     let state = freshState();
     state = desktopPrototypeReducer(state, {
@@ -573,26 +625,6 @@ describe("desktop structural prototype state", () => {
       kind: "task",
       taskId: "luko-characters-map",
     });
-  });
-
-  it("does not apply obsolete area, milestone or star filters to Overview", () => {
-    const state = {
-      ...freshState(),
-      filters: {
-        area: "Несуществующая область",
-        milestoneId: "несуществующий-рубеж",
-        starredOnly: true,
-      },
-    };
-
-    expect(getVisibleOverviewTasks(state).map((task) => task.id)).toEqual(
-      expect.arrayContaining([
-        "luko-characters-map",
-        "luko-first-scene",
-        "luko-shot-list",
-        "luko-production-plan",
-      ]),
-    );
   });
 
   it("renames an active project direction with trimmed non-empty text", () => {
@@ -707,7 +739,15 @@ describe("desktop structural prototype state", () => {
     expect(state.tasks[0]).toMatchObject({
       projectId: "lukomorie",
       overviewDirectionId: "lukomorie-scenario",
+      overviewOrder: 2,
+      completedAt: null,
+      signal: "none",
+      starred: false,
+      linkedDocumentIds: [],
     });
+    expect(directionTaskIds(state, "lukomorie-scenario").at(-1)).toBe(
+      "ai-task-1",
+    );
     expect(state.aiActivityLog.length).toBeGreaterThan(0);
     expect(state.selectedAiProposalIds).toEqual([]);
   });
@@ -738,8 +778,12 @@ describe("desktop structural prototype state", () => {
       projectId: "lukomorie",
       title: "Новая задача",
       overviewDirectionId: "lukomorie-scenario",
+      overviewOrder: 2,
       signal: "none",
+      starred: false,
       completedAt: null,
+      linkedDocumentIds: [],
+      subtasks: [],
     });
     expect(directionTaskIds(state, "lukomorie-scenario").at(-1)).toBe(
       "mock-task-1",
@@ -793,6 +837,24 @@ describe("desktop structural prototype state", () => {
     expect(state.knowledgeSearchQuery).toBe("тварь из бездны");
     expect(JSON.stringify(tree)).toContain("doc-l-abyss-relationship");
     expect(firstBranch?.kind).toBe("folder");
+  });
+
+  it("places a Knowledge document with no folder path at the tree root", () => {
+    const state = freshState();
+    state.documents = state.documents.map((document) =>
+      document.id === "doc-l-nastenka"
+        ? { ...document, folder: "", folderPath: [] }
+        : document,
+    );
+
+    const tree = getKnowledgeTree(state);
+
+    expect(tree).toContainEqual(
+      expect.objectContaining({
+        kind: "document",
+        id: "doc-l-nastenka",
+      }),
+    );
   });
 
   it("selects a nested Knowledge document, expands ancestors and opens a tab", () => {

@@ -34,6 +34,7 @@ import {
   type PrototypeTask,
   type TaskSignal,
 } from "@/prototype/desktop-mock-data";
+import { getOverviewInsertionIndex } from "@/prototype/desktop-overview-dnd";
 import {
   desktopPrototypeReducer,
   getActiveProject,
@@ -477,11 +478,17 @@ function getOverviewDropTarget(
   const overData = over.data.current;
 
   if (isOverviewDirectionDropData(overData)) {
+    const targetCount = getTasksForDirection(
+      state,
+      overData.directionId,
+    ).filter((task) => task.id !== activeTaskId).length;
     return {
       directionId: overData.directionId,
-      index: getTasksForDirection(state, overData.directionId).filter(
-        (task) => task.id !== activeTaskId,
-      ).length,
+      index: getOverviewInsertionIndex({
+        targetCount,
+        overIndex: null,
+        geometry: null,
+      }),
     };
   }
 
@@ -504,13 +511,20 @@ function getOverviewDropTarget(
   }
 
   const translatedRect = event.active.rect.current.translated;
-  const insertAfter = translatedRect
-    ? translatedRect.top + translatedRect.height / 2 >
-      over.rect.top + over.rect.height / 2
-    : false;
   return {
     directionId: overData.directionId,
-    index: overIndex + (insertAfter ? 1 : 0),
+    index: getOverviewInsertionIndex({
+      targetCount: targetTasks.length,
+      overIndex,
+      geometry: translatedRect
+        ? {
+            activeTop: translatedRect.top,
+            activeHeight: translatedRect.height,
+            overTop: over.rect.top,
+            overHeight: over.rect.height,
+          }
+        : null,
+    }),
   };
 }
 

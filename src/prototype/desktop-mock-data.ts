@@ -5,8 +5,7 @@ export type OverviewDirectionId = string;
 
 export type TaskSignal = "none" | "green" | "yellow" | "red";
 
-export type TaskFilter =
-  "all" | "today" | "important" | "upcoming" | "completed";
+export type TaskFilter = "all" | "important" | "completed";
 
 export type InboxFilter = "all" | "text" | "links" | "files" | "audio";
 
@@ -14,13 +13,6 @@ export type PrototypeProject = {
   id: string;
   name: string;
   shortName: string;
-  description: string;
-};
-
-export type PrototypeMilestone = {
-  id: string;
-  projectId: string;
-  title: string;
   description: string;
 };
 
@@ -47,7 +39,6 @@ export type PrototypeTask = {
   signal: TaskSignal;
   starred: boolean;
   area?: string;
-  milestoneId?: string;
   dueDate?: string;
   linkedDocumentIds: string[];
   subtasks: PrototypeSubtask[];
@@ -100,12 +91,7 @@ export type AiProposal = {
   id: string;
   title: string;
   description: string;
-  kind:
-    | "clarify-task"
-    | "create-next-step"
-    | "move-to-milestone"
-    | "add-question"
-    | "find-documents";
+  kind: "clarify-task" | "create-next-step" | "add-question" | "find-documents";
 };
 
 export const projectSections: {
@@ -146,13 +132,7 @@ export const taskFilters: {
   description: string;
 }[] = [
   { id: "all", label: "Все", description: "Все задачи проекта." },
-  { id: "today", label: "Сегодня", description: "Текущая активная работа." },
   { id: "important", label: "Важные", description: "Отмеченные звездой." },
-  {
-    id: "upcoming",
-    label: "Предстоящие",
-    description: "Следующие и отложенные задачи.",
-  },
   {
     id: "completed",
     label: "Завершённые",
@@ -249,41 +229,6 @@ export const initialOverviewDirections: PrototypeOverviewDirection[] = [
   },
 ];
 
-export const initialMilestones: PrototypeMilestone[] = [
-  {
-    id: "lukomorie-alpha",
-    projectId: "lukomorie",
-    title: "Собрать основу первой главы",
-    description:
-      "Превратить разрозненные материалы в рабочий набор сцен, персонажей и визуальных ориентиров.",
-  },
-  {
-    id: "lukomorie-world",
-    projectId: "lukomorie",
-    title: "Зафиксировать правила мира",
-    description:
-      "Убрать противоречия в географии, магии и правилах путешествий.",
-  },
-  {
-    id: "ammonit-research",
-    projectId: "ammonit",
-    title: "Свести исследовательские заметки",
-    description: "Отделить факты, гипотезы и вопросы для следующего интервью.",
-  },
-  {
-    id: "voice-demo",
-    projectId: "voice-studio",
-    title: "Подготовить демо-сессию",
-    description: "Собрать сценарий, прогон и список технических проверок.",
-  },
-  {
-    id: "personal-week",
-    projectId: "personal",
-    title: "Навести порядок недели",
-    description: "Оставить только реальные обязательства и ближайшие действия.",
-  },
-];
-
 export const initialTasks: PrototypeTask[] = [
   {
     id: "luko-characters-map",
@@ -295,7 +240,6 @@ export const initialTasks: PrototypeTask[] = [
     signal: "red",
     starred: true,
     area: "Персонажи",
-    milestoneId: "lukomorie-alpha",
     dueDate: "18 июл",
     linkedDocumentIds: ["doc-l-nastenka", "doc-l-baba-yaga"],
     subtasks: [
@@ -328,7 +272,6 @@ export const initialTasks: PrototypeTask[] = [
     signal: "yellow",
     starred: false,
     area: "Сценарии",
-    milestoneId: "lukomorie-alpha",
     dueDate: "19 июл",
     linkedDocumentIds: ["doc-l-first-chapter"],
     subtasks: [
@@ -355,7 +298,6 @@ export const initialTasks: PrototypeTask[] = [
     signal: "green",
     starred: true,
     area: "Мир",
-    milestoneId: "lukomorie-world",
     dueDate: "22 июл",
     linkedDocumentIds: ["doc-l-geography", "doc-l-magic"],
     subtasks: [
@@ -381,7 +323,6 @@ export const initialTasks: PrototypeTask[] = [
     signal: "none",
     starred: false,
     area: "Визуальная разработка",
-    milestoneId: "lukomorie-alpha",
     linkedDocumentIds: ["doc-l-scenes"],
     subtasks: [
       {
@@ -406,7 +347,6 @@ export const initialTasks: PrototypeTask[] = [
     signal: "yellow",
     starred: false,
     area: "Производство",
-    milestoneId: "lukomorie-alpha",
     linkedDocumentIds: ["doc-l-production"],
     subtasks: [
       {
@@ -431,7 +371,6 @@ export const initialTasks: PrototypeTask[] = [
     signal: "green",
     starred: true,
     area: "Производство",
-    milestoneId: "lukomorie-alpha",
     dueDate: "15 июл",
     linkedDocumentIds: ["doc-l-production"],
     subtasks: [
@@ -453,7 +392,6 @@ export const initialTasks: PrototypeTask[] = [
     signal: "none",
     starred: true,
     area: "Исследование",
-    milestoneId: "ammonit-research",
     dueDate: "20 июл",
     linkedDocumentIds: ["doc-a-index"],
     subtasks: [
@@ -479,7 +417,6 @@ export const initialTasks: PrototypeTask[] = [
     signal: "none",
     starred: false,
     area: "Интервью",
-    milestoneId: "ammonit-research",
     linkedDocumentIds: ["doc-a-questions"],
     subtasks: [
       {
@@ -499,7 +436,6 @@ export const initialTasks: PrototypeTask[] = [
     signal: "none",
     starred: true,
     area: "Сценарий",
-    milestoneId: "voice-demo",
     dueDate: "17 июл",
     linkedDocumentIds: ["doc-v-script"],
     subtasks: [
@@ -525,7 +461,6 @@ export const initialTasks: PrototypeTask[] = [
     signal: "none",
     starred: true,
     area: "Неделя",
-    milestoneId: "personal-week",
     linkedDocumentIds: ["doc-p-week"],
     subtasks: [
       {
