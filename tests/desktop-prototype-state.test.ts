@@ -6,6 +6,7 @@ import {
   getCommandResults,
   getDocumentAncestorFolderIds,
   getDocumentById,
+  getKeyDocuments,
   getKnowledgeTree,
   getTasksForLane,
   getVisibleOverviewTasks,
@@ -55,6 +56,16 @@ function freshState(): DesktopPrototypeState {
 }
 
 describe("desktop structural prototype state", () => {
+  it("collapses the project rail without changing project navigation state", () => {
+    const state = desktopPrototypeReducer(freshState(), {
+      type: "toggle-project-rail",
+    });
+
+    expect(state.projectRailCollapsed).toBe(true);
+    expect(state.activeProjectId).toBe("lukomorie");
+    expect(state.activeSection).toBe("overview");
+  });
+
   it("switches projects from the rail and resets project-specific selections", () => {
     let state = freshState();
     state = desktopPrototypeReducer(state, {
@@ -498,6 +509,25 @@ describe("desktop structural prototype state", () => {
     expect(state.openDocumentIds).toContain("doc-l-routes");
     expect(state.expandedFolderIds).toContain("lukomorie:Мир");
     expect(state.expandedFolderIds).toContain("lukomorie:Мир/География");
+  });
+
+  it("maintains a manual mock-only group of key Knowledge documents", () => {
+    let state = freshState();
+    expect(getKeyDocuments(state).map((document) => document.id)).toEqual([
+      "doc-l-nastenka",
+      "doc-l-magic",
+      "doc-l-routes",
+    ]);
+
+    state = desktopPrototypeReducer(state, {
+      type: "toggle-key-document",
+      documentId: "doc-l-magic",
+    });
+
+    expect(getKeyDocuments(state).map((document) => document.id)).toEqual([
+      "doc-l-nastenka",
+      "doc-l-routes",
+    ]);
   });
 
   it("closes document tabs and switches the active tab to the remaining document", () => {

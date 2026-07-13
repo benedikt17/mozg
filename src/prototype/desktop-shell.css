@@ -45,6 +45,10 @@
     line-height: 20px;
   }
 
+  :scope.project-rail-collapsed {
+    --rail-width: 56px;
+  }
+
   *,
   *::before,
   *::after {
@@ -161,12 +165,20 @@
   }
 
   .rail-brand {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
     min-height: var(--header-height);
     padding: 0 12px;
     border-bottom: 1px solid var(--border);
+  }
+
+  .rail-brand-identity {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
   .rail-brand-mark {
@@ -181,10 +193,15 @@
     font-weight: 600;
   }
 
-  .rail-brand strong {
+  .rail-brand strong,
+  .rail-brand-identity strong {
     font-size: 14px;
     line-height: 20px;
     font-weight: 600;
+  }
+
+  .rail-collapse-control {
+    flex: 0 0 auto;
   }
 
   .project-list {
@@ -201,6 +218,20 @@
     width: 100%;
     justify-content: flex-start;
     padding-inline: 8px;
+  }
+
+  .project-row-mark {
+    width: 24px;
+    height: 24px;
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text-2);
+    font-size: 12px;
+    font-weight: 600;
   }
 
   .project-row strong {
@@ -224,6 +255,41 @@
 
   .create-project {
     margin: 8px;
+  }
+
+  .project-rail[data-collapsed="true"] .rail-brand {
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-items: center;
+    padding-inline: 8px;
+  }
+
+  .project-rail[data-collapsed="true"] .rail-brand-identity,
+  .project-rail[data-collapsed="true"] .project-row strong,
+  .project-rail[data-collapsed="true"] .create-project-label {
+    display: none;
+  }
+
+  .project-rail[data-collapsed="true"] .project-list {
+    padding-inline: 6px;
+  }
+
+  .project-rail[data-collapsed="true"] .project-row {
+    justify-content: center;
+    padding: 4px;
+  }
+
+  .project-rail[data-collapsed="true"] .project-row-indicator {
+    position: absolute;
+    left: 0;
+  }
+
+  .project-rail[data-collapsed="true"] .create-project {
+    width: 40px;
+    min-height: 36px;
+    margin-inline: 8px;
+    padding: 0;
+    font-size: 18px;
   }
 
   .project-workspace {
@@ -422,8 +488,7 @@
   }
 
   .workspace-header,
-  .project-summary,
-  .overview-controls,
+  .overview-command-bar,
   .canvas-toolbar,
   .document-tabs,
   .workspace-footer {
@@ -441,8 +506,8 @@
 
   .workspace-header h1,
   .section-title h1,
-  .project-summary h1,
-  .project-summary h2,
+  .overview-command-bar h1,
+  .overview-command-bar h2,
   .document-page h1,
   .canvas-toolbar h1,
   .context-panel h2 {
@@ -456,20 +521,25 @@
     line-height: 28px;
   }
 
-  .project-summary {
+  .overview-command-bar {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 240px;
-    gap: 16px;
-    padding: 0 0 12px;
+    grid-template-columns: minmax(260px, 1.2fr) auto auto;
+    align-items: end;
+    gap: 12px 16px;
+    padding: 0 0 10px;
   }
 
-  .project-summary h2 {
-    margin-top: 4px;
-    font-size: 20px;
-    line-height: 28px;
+  .overview-goal {
+    min-width: 0;
   }
 
-  .project-summary p,
+  .overview-goal h2 {
+    margin-top: 1px;
+    font-size: 18px;
+    line-height: 24px;
+  }
+
+  .overview-goal p,
   .section-title p,
   .panel-block p,
   .context-section p,
@@ -479,13 +549,16 @@
   }
 
   .progress-box {
-    display: grid;
-    align-content: center;
-    gap: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
     border-left: 1px solid var(--border);
     padding-left: 16px;
+    white-space: nowrap;
   }
 
+  .progress-box span,
   .progress-box strong {
     font-size: 13px;
     line-height: 18px;
@@ -494,10 +567,10 @@
 
   .overview-controls {
     display: flex;
-    flex-wrap: wrap;
-    align-items: end;
-    gap: 8px;
-    padding-bottom: 12px;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 0;
   }
 
   .overview-controls label,
@@ -508,6 +581,19 @@
     font-size: 12px;
     line-height: 16px;
     font-weight: 500;
+  }
+
+  .overview-controls label {
+    position: relative;
+  }
+
+  .overview-controls label > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 
   .overview-controls select,
@@ -562,7 +648,8 @@
   }
 
   .overview-controls select {
-    min-width: 180px;
+    min-width: 154px;
+    max-width: 188px;
   }
 
   .overview-board {
@@ -655,7 +742,12 @@
   .task-star-control {
     grid-column: 2;
     grid-row: 1;
+    width: 32px;
+    min-height: 32px;
+    justify-content: center;
     color: var(--text-3);
+    font-size: 20px;
+    line-height: 1;
   }
 
   .task-star-control.is-active,
@@ -1155,15 +1247,22 @@
       justify-content: flex-end;
     }
 
-    .project-summary {
+    .overview-command-bar {
       grid-template-columns: 1fr;
+      align-items: start;
     }
 
     .progress-box {
       border-left: 0;
       border-top: 1px solid var(--border);
-      padding-top: 12px;
+      justify-content: flex-start;
+      padding-top: 8px;
       padding-left: 0;
+    }
+
+    .overview-controls {
+      justify-content: flex-start;
+      flex-wrap: wrap;
     }
   }
 }

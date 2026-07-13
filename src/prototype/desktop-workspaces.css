@@ -19,11 +19,11 @@
   }
 
   .workspace-policy-bounded-cluster.section-tasks {
-    width: min(100%, 1440px);
+    width: min(100%, 1540px);
   }
 
   .workspace-policy-bounded-cluster.section-inbox {
-    width: min(100%, 1380px);
+    width: min(100%, 1500px);
   }
 
   .workspace-policy-bounded-cluster.section-overview.has-context-panel {
@@ -62,7 +62,7 @@
   }
 
   .task-list-workspace {
-    width: min(100%, 960px);
+    width: min(100%, 1040px);
     max-width: none;
     justify-self: end;
   }
@@ -77,7 +77,7 @@
   }
 
   .inbox-workspace {
-    width: min(100%, 900px);
+    width: min(100%, 980px);
     max-width: none;
     justify-self: end;
   }
@@ -105,11 +105,19 @@
 
   @media (min-width: 2200px) {
     .workspace-policy-bounded-cluster.section-tasks {
-      width: min(100%, 1536px);
+      width: min(calc(100% - 10vw), 1920px);
     }
 
     .workspace-policy-bounded-cluster.section-inbox {
-      width: min(100%, 1460px);
+      width: min(calc(100% - 10vw), 1880px);
+    }
+
+    .task-list-workspace {
+      width: min(100%, 1160px);
+    }
+
+    .inbox-workspace {
+      width: min(100%, 1120px);
     }
 
     .overview-workspace {

@@ -47,6 +47,7 @@ export type PrototypeDocument = {
   projectId: string;
   folder: string;
   folderPath?: string[];
+  isKeyDocument?: boolean;
   title: string;
   excerpt: string;
   content: string[];
@@ -480,6 +481,7 @@ export const initialDocuments: PrototypeDocument[] = [
     id: "doc-l-nastenka",
     projectId: "lukomorie",
     folder: "Персонажи",
+    isKeyDocument: true,
     title: "Настенька",
     excerpt: "Главная точка зрения первой главы и её активная цель.",
     content: [
@@ -536,6 +538,7 @@ export const initialDocuments: PrototypeDocument[] = [
     id: "doc-l-magic",
     projectId: "lukomorie",
     folder: "Мир",
+    isKeyDocument: true,
     title: "Правила магии",
     excerpt: "Три ограничения, которые нельзя нарушать ради удобства сцены.",
     content: [
@@ -757,6 +760,7 @@ const extraLukomorieDocuments: PrototypeDocument[] = [
     projectId: "lukomorie",
     folder: "Мир",
     folderPath: ["Мир", "География"],
+    isKeyDocument: true,
     title: "Пути между островами",
     excerpt: "Черновые правила перемещения, цены и исключения.",
     content: [

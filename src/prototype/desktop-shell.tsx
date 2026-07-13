@@ -27,6 +27,7 @@ import {
   getDocumentById,
   getDocumentFolderPath,
   getInboxItemById,
+  getKeyDocuments,
   getKnowledgeTree,
   getMilestoneProgress,
   getOpenDocuments,
@@ -149,6 +150,9 @@ export function DesktopPrototypeShell(): React.JSX.Element {
     if (params.get("command") === "1") {
       dispatch({ type: "open-command-palette" });
     }
+    if (params.get("rail") === "collapsed") {
+      dispatch({ type: "toggle-project-rail" });
+    }
   }, []);
 
   const activateCommandResult = (result: CommandResult): void => {
@@ -159,7 +163,14 @@ export function DesktopPrototypeShell(): React.JSX.Element {
   const activeProject = getActiveProject(state);
 
   return (
-    <main className="desktop-prototype">
+    <main
+      className={[
+        "desktop-prototype",
+        state.projectRailCollapsed ? "project-rail-collapsed" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <ProjectRail state={state} dispatch={dispatch} />
       <div className="project-workspace">
         <ApplicationHeader state={state} dispatch={dispatch} />
@@ -189,15 +200,42 @@ function ProjectRail({
   dispatch: Dispatch;
 }): React.JSX.Element {
   return (
-    <aside className="project-rail" aria-label="Проекты">
+    <aside
+      className="project-rail"
+      aria-label="Проекты"
+      data-collapsed={state.projectRailCollapsed}
+    >
       <div className="rail-brand">
-        <span className="rail-brand-mark">M</span>
-        <strong>mozg</strong>
+        <div className="rail-brand-identity">
+          <span className="rail-brand-mark">M</span>
+          <strong>mozg</strong>
+        </div>
+        <IconButton
+          className="rail-collapse-control"
+          icon={
+            <UiIcon
+              name={state.projectRailCollapsed ? "panel-right" : "panel-left"}
+            />
+          }
+          label={
+            state.projectRailCollapsed
+              ? "Развернуть панель проектов"
+              : "Свернуть панель проектов"
+          }
+          onClick={() => dispatch({ type: "toggle-project-rail" })}
+          title={
+            state.projectRailCollapsed
+              ? "Развернуть панель проектов"
+              : "Свернуть панель проектов"
+          }
+          variant="ghost"
+        />
       </div>
       <nav className="project-list" aria-label="Выбор проекта">
         {state.projects.map((project) => (
           <PrototypeButton
             active={project.id === state.activeProjectId}
+            aria-label={project.name}
             className="project-row"
             key={project.id}
             onClick={() =>
@@ -207,16 +245,22 @@ function ProjectRail({
             variant="ghost"
           >
             <span className="project-row-indicator" />
+            <span className="project-row-mark" aria-hidden="true">
+              {project.shortName.slice(0, 1)}
+            </span>
             <strong>{project.name}</strong>
           </PrototypeButton>
         ))}
       </nav>
       <PrototypeButton
+        aria-label="Создать проект"
         className="create-project"
         onClick={() => dispatch({ type: "create-project" })}
+        title="Создать проект"
         variant="quiet"
       >
-        + Создать проект
+        <span aria-hidden="true">+</span>
+        <span className="create-project-label">Создать проект</span>
       </PrototypeButton>
     </aside>
   );
@@ -375,75 +419,83 @@ function OverviewWorkspace({
   const milestones = getProjectMilestones(state);
   return (
     <div className="overview-workspace">
-      <section className="project-summary">
-        <div>
+      <section className="overview-command-bar">
+        <div className="overview-goal">
           <span className="ui-eyebrow">Ближайшая цель</span>
           <h2>{activeMilestone.title}</h2>
           <p>{activeMilestone.description}</p>
         </div>
+        <div className="overview-controls" aria-label="Фильтры обзора">
+          <label>
+            <span>Область</span>
+            <select
+              aria-label="Фильтр по области"
+              onChange={(event) =>
+                dispatch({ type: "set-area-filter", area: event.target.value })
+              }
+              value={state.filters.area}
+            >
+              <option value={ALL_AREAS}>Все области</option>
+              {areas.map((area) => (
+                <option key={area} value={area}>
+                  {area}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Рубеж</span>
+            <select
+              aria-label="Фильтр по рубежу"
+              onChange={(event) =>
+                dispatch({
+                  type: "set-milestone-filter",
+                  milestoneId: event.target.value,
+                })
+              }
+              value={state.filters.milestoneId}
+            >
+              <option value={ALL_MILESTONES}>Все рубежи</option>
+              {milestones.map((milestone) => (
+                <option key={milestone.id} value={milestone.id}>
+                  {milestone.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <IconButton
+            active={state.filters.starredOnly}
+            icon="★"
+            label="Только важные"
+            onClick={() => dispatch({ type: "toggle-starred-filter" })}
+            title="Только важные"
+            variant="quiet"
+          />
+          <PrototypeButton
+            onClick={() => dispatch({ type: "create-task" })}
+            size="compact"
+            variant="primary"
+          >
+            + Задача
+          </PrototypeButton>
+        </div>
         <div className="progress-box">
-          <strong>
-            {progress.completed} из {progress.total} задач завершено
-          </strong>
+          <span>
+            <strong>
+              {progress.completed}/{progress.total}
+            </strong>{" "}
+            завершено
+          </span>
           <PrototypeButton
             onClick={() =>
               dispatch({ type: "switch-section", section: "tasks" })
             }
+            size="compact"
             variant="quiet"
           >
             Открыть задачи
           </PrototypeButton>
         </div>
-      </section>
-      <section className="overview-controls" aria-label="Фильтры обзора">
-        <label>
-          Область
-          <select
-            onChange={(event) =>
-              dispatch({ type: "set-area-filter", area: event.target.value })
-            }
-            value={state.filters.area}
-          >
-            <option value={ALL_AREAS}>Все области</option>
-            {areas.map((area) => (
-              <option key={area} value={area}>
-                {area}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Рубеж
-          <select
-            onChange={(event) =>
-              dispatch({
-                type: "set-milestone-filter",
-                milestoneId: event.target.value,
-              })
-            }
-            value={state.filters.milestoneId}
-          >
-            <option value={ALL_MILESTONES}>Все рубежи</option>
-            {milestones.map((milestone) => (
-              <option key={milestone.id} value={milestone.id}>
-                {milestone.title}
-              </option>
-            ))}
-          </select>
-        </label>
-        <PrototypeButton
-          active={state.filters.starredOnly}
-          onClick={() => dispatch({ type: "toggle-starred-filter" })}
-          variant="quiet"
-        >
-          Только важные
-        </PrototypeButton>
-        <PrototypeButton
-          onClick={() => dispatch({ type: "create-task" })}
-          variant="primary"
-        >
-          + Создать задачу
-        </PrototypeButton>
       </section>
       <section className="overview-board" aria-label="Доска проекта">
         {overviewLanes.map((lane) => (
@@ -544,55 +596,23 @@ function KnowledgeSidebar({
   dispatch: Dispatch;
 }): React.JSX.Element {
   const tree = getKnowledgeTree(state);
+  const keyDocuments = getKeyDocuments(state);
   return (
     <aside
       className="tool-sidebar knowledge-sidebar"
       aria-label="Дерево документов"
     >
       <header className="knowledge-sidebar-header">
-        <div>
-          <span>Знания</span>
-          <strong>Документы</strong>
-        </div>
+        <strong>Документы</strong>
         <div
           className="knowledge-toolbar"
           aria-label="Действия с деревом документов"
         >
           <IconButton
-            icon={<UiIcon name="search" />}
-            label="Найти в знаниях"
-            title="Найти в знаниях"
-            variant="ghost"
-          />
-          <IconButton
-            icon={<UiIcon name="file-plus" />}
-            label="Создать документ"
-            title="Создать документ"
-            variant="ghost"
-          />
-          <IconButton
-            icon={<UiIcon name="folder-plus" />}
-            label="Создать папку"
-            title="Создать папку"
-            variant="ghost"
-          />
-          <IconButton
-            icon={<UiIcon name="sort" />}
-            label="Сортировать"
-            title="Сортировать"
-            variant="ghost"
-          />
-          <IconButton
             icon={<UiIcon name="collapse" />}
             label="Свернуть все папки"
             onClick={() => dispatch({ type: "collapse-all-knowledge-folders" })}
             title="Свернуть все папки"
-            variant="ghost"
-          />
-          <IconButton
-            icon={<UiIcon name="more" />}
-            label="Дополнительное меню"
-            title="Дополнительное меню"
             variant="ghost"
           />
         </div>
@@ -610,6 +630,33 @@ function KnowledgeSidebar({
           value={state.knowledgeSearchQuery}
         />
       </label>
+      <section
+        className="knowledge-key-documents"
+        aria-labelledby="knowledge-key-documents-title"
+      >
+        <div>
+          <strong id="knowledge-key-documents-title">Ключевые документы</strong>
+          <span>Отмечены вручную для быстрого доступа</span>
+        </div>
+        <nav aria-label="Ключевые документы проекта">
+          {keyDocuments.map((document) => (
+            <button
+              className={
+                state.selectedDocumentId === document.id ? "is-active" : ""
+              }
+              key={document.id}
+              onClick={() =>
+                dispatch({ type: "select-document", documentId: document.id })
+              }
+              title={`${document.title} — ключевой документ проекта`}
+              type="button"
+            >
+              <UiIcon name="pin" />
+              <span>{document.title}</span>
+            </button>
+          ))}
+        </nav>
+      </section>
       <nav className="knowledge-tree" aria-label="Иерархия документов">
         {tree.length > 0 ? (
           tree.map((node) => (
@@ -719,60 +766,57 @@ function KnowledgeWorkspace({
         aria-label="Открытые документы"
       >
         {openTabs.map((document) => (
-          <button
-            aria-selected={document.id === selectedDocument.id}
-            className={document.id === selectedDocument.id ? "active" : ""}
+          <div
+            className={[
+              "document-tab-item",
+              document.id === selectedDocument.id ? "active" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
             key={document.id}
-            onClick={() =>
-              dispatch({
-                type: "activate-document-tab",
-                documentId: document.id,
-              })
-            }
-            role="tab"
-            type="button"
           >
-            <span>{document.title}</span>
-            {document.id === "doc-l-magic" ? (
-              <span
-                className="tab-unsaved"
-                aria-label="Есть несохранённые mock-правки"
-              />
-            ) : null}
-            <span
-              aria-label={`Закрыть ${document.title}`}
+            <button
+              aria-selected={document.id === selectedDocument.id}
+              className="document-tab-activate"
+              onClick={() =>
+                dispatch({
+                  type: "activate-document-tab",
+                  documentId: document.id,
+                })
+              }
+              role="tab"
+              type="button"
+            >
+              <span>{document.title}</span>
+              {document.id === "doc-l-magic" ? (
+                <span
+                  className="tab-unsaved"
+                  aria-label="Есть несохранённые mock-правки"
+                />
+              ) : null}
+            </button>
+            <IconButton
               className="tab-close"
-              onClick={(event) => {
-                event.stopPropagation();
+              icon={<UiIcon name="close" />}
+              label={`Закрыть ${document.title}`}
+              onClick={() =>
                 dispatch({
                   type: "close-document-tab",
                   documentId: document.id,
-                });
-              }}
-              role="button"
-              tabIndex={0}
+                })
+              }
               title={`Закрыть ${document.title}`}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  dispatch({
-                    type: "close-document-tab",
-                    documentId: document.id,
-                  });
-                }
-              }}
-            >
-              ×
-            </span>
-          </button>
+              variant="ghost"
+            />
+          </div>
         ))}
         <button
           className="document-tab-add"
           type="button"
           title="Открыть новую вкладку"
+          aria-label="Открыть новую вкладку"
         >
-          +
+          <UiIcon name="plus" />
         </button>
       </div>
       <nav className="document-nav" aria-label="Навигация документа">
@@ -801,6 +845,21 @@ function KnowledgeWorkspace({
           <li aria-current="page">{selectedDocument.title}</li>
         </ol>
         <div className="document-actions">
+          <PrototypeButton
+            active={selectedDocument.isKeyDocument === true}
+            onClick={() =>
+              dispatch({
+                type: "toggle-key-document",
+                documentId: selectedDocument.id,
+              })
+            }
+            size="compact"
+            title="Добавить или убрать из ключевых документов проекта"
+            variant="quiet"
+          >
+            <UiIcon name="pin" />
+            Ключевой
+          </PrototypeButton>
           <PrototypeButton
             active={Boolean(state.splitViewDocumentId)}
             onClick={() => dispatch({ type: "toggle-knowledge-split-view" })}
@@ -832,18 +891,21 @@ function KnowledgeWorkspace({
           </PrototypeButton>
         </div>
       </nav>
-      <div
-        className={[
-          "document-editor-surface",
-          splitDocument ? "is-split-view" : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-      >
-        <DocumentArticle document={selectedDocument} />
-        {splitDocument ? (
-          <DocumentArticle document={splitDocument} secondary />
-        ) : null}
+      <div className="document-body">
+        <DocumentOutline document={selectedDocument} />
+        <div
+          className={[
+            "document-editor-surface",
+            splitDocument ? "is-split-view" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          <DocumentArticle document={selectedDocument} />
+          {splitDocument ? (
+            <DocumentArticle document={splitDocument} secondary />
+          ) : null}
+        </div>
       </div>
       <footer className="workspace-footer">
         <PrototypeButton
@@ -868,6 +930,59 @@ function KnowledgeWorkspace({
   );
 }
 
+type DocumentHeading = {
+  id: string;
+  label: string;
+  level: 1 | 2;
+};
+
+function getDocumentHeadings(document: PrototypeDocument): DocumentHeading[] {
+  return document.content.flatMap((line, index) => {
+    const match = /^(#{1,2})\s+(.+)$/.exec(line);
+    if (!match) return [];
+    return [
+      {
+        id: `document-${document.id}-heading-${index}`,
+        label: match[2] ?? line,
+        level: match[1]?.length === 2 ? 2 : 1,
+      } satisfies DocumentHeading,
+    ];
+  });
+}
+
+function DocumentOutline({
+  document,
+}: {
+  document: PrototypeDocument;
+}): React.JSX.Element {
+  const headings = getDocumentHeadings(document);
+  return (
+    <aside className="document-outline" aria-label="Содержание документа">
+      <div>
+        <strong>Содержание</strong>
+        <span>Переходы по заголовкам</span>
+      </div>
+      <nav>
+        {headings.map((heading) => (
+          <button
+            className={heading.level === 2 ? "level-two" : "level-one"}
+            key={heading.id}
+            onClick={() =>
+              window.document
+                .getElementById(heading.id)
+                ?.scrollIntoView({ behavior: "smooth", block: "start" })
+            }
+            type="button"
+          >
+            <span aria-hidden="true" />
+            {heading.label}
+          </button>
+        ))}
+      </nav>
+    </aside>
+  );
+}
+
 function DocumentArticle({
   document,
   secondary = false,
@@ -875,21 +990,37 @@ function DocumentArticle({
   document: PrototypeDocument;
   secondary?: boolean;
 }): React.JSX.Element {
+  const headings = getDocumentHeadings(document);
   return (
     <article
       className={secondary ? "document-page secondary" : "document-page"}
     >
       <span>{getDocumentBreadcrumb(document)}</span>
-      {document.content.map((line, index) => (
-        <MarkdownPreviewBlock key={`${document.id}-${index}`} line={line} />
-      ))}
+      {document.content.map((line, index) => {
+        const heading = headings.find(
+          (item) => item.id === `document-${document.id}-heading-${index}`,
+        );
+        return (
+          <MarkdownPreviewBlock
+            anchorId={heading?.id}
+            key={`${document.id}-${index}`}
+            line={line}
+          />
+        );
+      })}
     </article>
   );
 }
 
-function MarkdownPreviewBlock({ line }: { line: string }): React.JSX.Element {
-  if (line.startsWith("# ")) return <h1>{line.slice(2)}</h1>;
-  if (line.startsWith("## ")) return <h2>{line.slice(3)}</h2>;
+function MarkdownPreviewBlock({
+  line,
+  anchorId,
+}: {
+  line: string;
+  anchorId?: string;
+}): React.JSX.Element {
+  if (line.startsWith("# ")) return <h1 id={anchorId}>{line.slice(2)}</h1>;
+  if (line.startsWith("## ")) return <h2 id={anchorId}>{line.slice(3)}</h2>;
   if (line.startsWith("- "))
     return <p className="document-list-item">• {line.slice(2)}</p>;
   if (/^\d+\.\s/.test(line))
@@ -1612,6 +1743,7 @@ type UiIconName =
   | "arrow-right"
   | "chevron-down"
   | "chevron-right"
+  | "close"
   | "collapse"
   | "file"
   | "file-plus"
@@ -1619,6 +1751,10 @@ type UiIconName =
   | "folder-open"
   | "folder-plus"
   | "more"
+  | "panel-left"
+  | "panel-right"
+  | "pin"
+  | "plus"
   | "search"
   | "sort";
 
@@ -1638,6 +1774,12 @@ function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
     "arrow-right": <path d="M9 6l6 6-6 6" />,
     "chevron-down": <path d="M7 10l5 5 5-5" />,
     "chevron-right": <path d="M10 7l5 5-5 5" />,
+    close: (
+      <>
+        <path d="M7 7l10 10" />
+        <path d="M17 7L7 17" />
+      </>
+    ),
     collapse: (
       <>
         <path d="M8 7h8" />
@@ -1683,6 +1825,32 @@ function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
         <path d="M6 12h.01" />
         <path d="M12 12h.01" />
         <path d="M18 12h.01" />
+      </>
+    ),
+    "panel-left": (
+      <>
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M9 4v16" />
+        <path d="M15 9l-3 3 3 3" />
+      </>
+    ),
+    "panel-right": (
+      <>
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M9 4v16" />
+        <path d="M12 9l3 3-3 3" />
+      </>
+    ),
+    pin: (
+      <>
+        <path d="M9 4h6l-1 5 3 3H7l3-3z" />
+        <path d="M12 12v8" />
+      </>
+    ),
+    plus: (
+      <>
+        <path d="M12 5v14" />
+        <path d="M5 12h14" />
       </>
     ),
     search: (

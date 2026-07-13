@@ -68,6 +68,7 @@ export type CommandResult =
 export type DesktopPrototypeState = {
   activeProjectId: string;
   activeSection: ProjectSection;
+  projectRailCollapsed: boolean;
   selectedTaskId: string | null;
   selectedDocumentId: string | null;
   selectedCanvasId: string | null;
@@ -101,6 +102,7 @@ export type DesktopPrototypeState = {
 
 export type DesktopPrototypeAction =
   | { type: "switch-project"; projectId: string }
+  | { type: "toggle-project-rail" }
   | { type: "create-project" }
   | { type: "switch-section"; section: ProjectSection }
   | { type: "select-task"; taskId: string; section?: "overview" | "tasks" }
@@ -118,6 +120,7 @@ export type DesktopPrototypeAction =
   | { type: "set-inbox-filter"; filter: InboxFilter }
   | { type: "create-task" }
   | { type: "select-document"; documentId: string }
+  | { type: "toggle-key-document"; documentId: string }
   | { type: "toggle-knowledge-folder"; folderId: string }
   | { type: "collapse-all-knowledge-folders" }
   | { type: "set-knowledge-search"; query: string }
@@ -175,6 +178,7 @@ const documentFolderPathOverrides: Record<string, string[]> = {
 export const initialDesktopPrototypeState: DesktopPrototypeState = {
   activeProjectId: initialProjectId,
   activeSection: "overview",
+  projectRailCollapsed: false,
   selectedTaskId: null,
   selectedDocumentId: initialDocumentId,
   selectedCanvasId: "canvas-l-characters",
@@ -294,6 +298,14 @@ export function getProjectDocuments(
   projectId = state.activeProjectId,
 ): PrototypeDocument[] {
   return state.documents.filter((document) => document.projectId === projectId);
+}
+
+export function getKeyDocuments(
+  state: DesktopPrototypeState,
+): PrototypeDocument[] {
+  return getProjectDocuments(state).filter(
+    (document) => document.isKeyDocument === true,
+  );
 }
 
 export function knowledgeFolderId(projectId: string, path: string[]): string {
@@ -873,6 +885,11 @@ export function desktopPrototypeReducer(
   switch (action.type) {
     case "switch-project":
       return switchToProject(state, action.projectId);
+    case "toggle-project-rail":
+      return {
+        ...state,
+        projectRailCollapsed: !state.projectRailCollapsed,
+      };
     case "create-project": {
       const id = `mock-project-${state.nextProjectNumber}`;
       const project: PrototypeProject = {
@@ -1032,6 +1049,20 @@ export function desktopPrototypeReducer(
       const document = getDocumentById(state, action.documentId);
       if (!document) return state;
       return selectKnowledgeDocument(state, document);
+    }
+    case "toggle-key-document": {
+      const document = getDocumentById(state, action.documentId);
+      if (!document || document.projectId !== state.activeProjectId) {
+        return state;
+      }
+      return {
+        ...state,
+        documents: state.documents.map((item) =>
+          item.id === document.id
+            ? { ...item, isKeyDocument: !item.isKeyDocument }
+            : item,
+        ),
+      };
     }
     case "toggle-knowledge-folder": {
       const expanded = state.expandedFolderIds.includes(action.folderId);
