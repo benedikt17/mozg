@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, type Dispatch, type JSX } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type JSX,
+} from "react";
 import {
   closestCenter,
   DndContext,
@@ -15,6 +21,7 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import type {
+  PrototypeDocument,
   PrototypeOverviewDirection,
   PrototypeTask,
 } from "@/prototype/desktop-mock-data";
@@ -30,19 +37,29 @@ import { TaskDragOverlay } from "@/prototype/overview/task-card";
 
 export type OverviewWorkspaceProps = {
   directions: PrototypeOverviewDirection[];
+  documents: PrototypeDocument[];
   tasks: PrototypeTask[];
-  editingTaskTitleId: string | null;
   dispatch: Dispatch<DesktopPrototypeAction>;
+  expandedTaskId: string | null;
+  hiddenDirectionIds: string[];
+  openTaskId: string | null;
+  overviewScrollLeft: number;
 };
 
 export function OverviewWorkspace({
   directions,
+  documents,
   tasks,
-  editingTaskTitleId,
   dispatch,
+  expandedTaskId,
+  hiddenDirectionIds,
+  openTaskId,
+  overviewScrollLeft,
 }: OverviewWorkspaceProps): JSX.Element {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [dropTarget, setDropTarget] = useState<OverviewDropTarget | null>(null);
+  const boardRef = useRef<HTMLElement>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, {
@@ -50,11 +67,24 @@ export function OverviewWorkspace({
     }),
   );
   const activeTask = tasks.find((task) => task.id === activeTaskId);
-  const activeTaskDirection = activeTask
-    ? directions.find(
-        (direction) => direction.id === activeTask.overviewDirectionId,
-      )
-    : undefined;
+  const visibleDirections = directions.filter(
+    (direction) => !hiddenDirectionIds.includes(direction.id),
+  );
+
+  useLayoutEffect(() => {
+    const board = boardRef.current;
+    if (board && board.scrollLeft !== overviewScrollLeft) {
+      board.scrollLeft = overviewScrollLeft;
+    }
+  }, [overviewScrollLeft]);
+
+  const setDirectionVisible = (directionId: string, visible: boolean): void => {
+    dispatch({
+      type: "set-overview-direction-visible",
+      directionId,
+      visible,
+    });
+  };
 
   const clearDragState = (): void => {
     setActiveTaskId(null);
@@ -90,13 +120,57 @@ export function OverviewWorkspace({
     <div className="overview-workspace">
       <section className="overview-command-bar" aria-label="Действия доски">
         <div className="overview-controls">
-          <PrototypeButton
-            onClick={() => dispatch({ type: "create-task" })}
-            size="compact"
-            variant="primary"
+          <div
+            className="overview-view-control"
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              event.preventDefault();
+              event.stopPropagation();
+              setViewMenuOpen(false);
+            }}
           >
-            + Задача
-          </PrototypeButton>
+            <PrototypeButton
+              aria-expanded={viewMenuOpen}
+              aria-haspopup="menu"
+              onClick={() => setViewMenuOpen((open) => !open)}
+              size="compact"
+              variant="quiet"
+            >
+              Вид
+            </PrototypeButton>
+            {viewMenuOpen ? (
+              <>
+                <button
+                  aria-label="Закрыть меню вида"
+                  className="overview-view-dismiss"
+                  onClick={() => setViewMenuOpen(false)}
+                  tabIndex={-1}
+                  type="button"
+                />
+                <div
+                  aria-label="Видимые направления проекта"
+                  className="overview-view-menu"
+                  role="menu"
+                >
+                  {directions.map((direction) => (
+                    <label className="overview-view-option" key={direction.id}>
+                      <input
+                        checked={!hiddenDirectionIds.includes(direction.id)}
+                        onChange={(event) =>
+                          setDirectionVisible(
+                            direction.id,
+                            event.currentTarget.checked,
+                          )
+                        }
+                        type="checkbox"
+                      />
+                      <span>{direction.title}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            ) : null}
+          </div>
         </div>
       </section>
       <DndContext
@@ -108,30 +182,40 @@ export function OverviewWorkspace({
         sensors={sensors}
       >
         <section
-          className={["overview-board", `directions-${directions.length}`]
+          className={[
+            "overview-board",
+            `directions-${visibleDirections.length}`,
+          ]
             .filter(Boolean)
             .join(" ")}
           aria-label="Рабочие направления проекта"
+          onScroll={(event) =>
+            dispatch({
+              type: "set-overview-scroll-left",
+              scrollLeft: event.currentTarget.scrollLeft,
+            })
+          }
+          ref={boardRef}
         >
-          {directions.map((direction) => (
+          {visibleDirections.map((direction) => (
             <OverviewDirectionColumn
               activeTaskId={activeTaskId}
               direction={direction}
               dispatch={dispatch}
+              documents={documents}
               dropTarget={dropTarget}
-              editingTaskTitleId={editingTaskTitleId}
+              expandedTaskId={expandedTaskId}
               key={direction.id}
+              openTaskId={openTaskId}
+              onToggleTaskExpanded={(taskId) =>
+                dispatch({ type: "toggle-overview-task-expanded", taskId })
+              }
               tasks={tasks}
             />
           ))}
         </section>
         <DragOverlay dropAnimation={null}>
-          {activeTask ? (
-            <TaskDragOverlay
-              directionTitle={activeTaskDirection?.title ?? "Направление"}
-              task={activeTask}
-            />
-          ) : null}
+          {activeTask ? <TaskDragOverlay task={activeTask} /> : null}
         </DragOverlay>
       </DndContext>
     </div>

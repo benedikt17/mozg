@@ -7,6 +7,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import type {
+  PrototypeDocument,
   PrototypeOverviewDirection,
   PrototypeTask,
 } from "@/prototype/desktop-mock-data";
@@ -22,18 +23,24 @@ import { TaskCard } from "@/prototype/overview/task-card";
 
 export function OverviewDirectionColumn({
   tasks: overviewTasks,
+  documents,
   dispatch,
   direction,
   activeTaskId,
   dropTarget,
-  editingTaskTitleId,
+  expandedTaskId,
+  openTaskId,
+  onToggleTaskExpanded,
 }: {
   tasks: PrototypeTask[];
+  documents: PrototypeDocument[];
   dispatch: Dispatch<DesktopPrototypeAction>;
   direction: PrototypeOverviewDirection;
   activeTaskId: string | null;
   dropTarget: OverviewDropTarget | null;
-  editingTaskTitleId: string | null;
+  expandedTaskId: string | null;
+  openTaskId: string | null;
+  onToggleTaskExpanded: (taskId: string) => void;
 }): JSX.Element {
   const tasks = getOverviewDirectionTasks(overviewTasks, direction.id);
   const positionedTasks = tasks.filter((task) => task.id !== activeTaskId);
@@ -55,7 +62,20 @@ export function OverviewDirectionColumn({
       <header>
         <DirectionTitleInput direction={direction} dispatch={dispatch} />
         <div className="lane-header-actions">
-          <span className="lane-task-count">{tasks.length}</span>
+          <button
+            aria-label={`Создать задачу в направлении «${direction.title}»`}
+            className="lane-add-task"
+            onClick={() =>
+              dispatch({
+                type: "create-task",
+                overviewDirectionId: direction.id,
+              })
+            }
+            title="Добавить задачу"
+            type="button"
+          >
+            +
+          </button>
         </div>
       </header>
       <div className="task-stack" ref={setNodeRef}>
@@ -76,7 +96,10 @@ export function OverviewDirectionColumn({
                   {showIndicatorBefore ? <TaskDropIndicator /> : null}
                   <TaskCard
                     dispatch={dispatch}
-                    editing={editingTaskTitleId === task.id}
+                    documents={documents}
+                    drawerOpen={openTaskId === task.id}
+                    expanded={expandedTaskId === task.id}
+                    onToggleExpanded={onToggleTaskExpanded}
                     task={task}
                     taskCount={tasks.length}
                     taskIndex={taskIndex}

@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type Dispatch,
@@ -10,7 +11,10 @@ import {
 } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { PrototypeTask } from "@/prototype/desktop-mock-data";
+import type {
+  PrototypeDocument,
+  PrototypeTask,
+} from "@/prototype/desktop-mock-data";
 import type { DesktopPrototypeAction } from "@/prototype/desktop-state";
 import { IconButton } from "@/prototype/desktop-ui";
 import {
@@ -20,43 +24,123 @@ import {
 
 export function TaskDragOverlay({
   task,
-  directionTitle,
 }: {
   task: PrototypeTask;
-  directionTitle: string;
 }): JSX.Element {
   return (
     <article className={`task-card task-signal-${task.signal} drag-overlay`}>
       <div className="task-hit-area">
-        <strong>{task.title}</strong>
-        <span className="metadata-line">
-          {task.area ?? "Общее"} · {directionTitle}
-        </span>
+        <strong className="task-card-title">{task.title}</strong>
       </div>
     </article>
   );
 }
 
-export function TaskCard({
+function EditableTaskTitle({
   task,
   dispatch,
-  editing,
+}: {
+  task: PrototypeTask;
+  dispatch: Dispatch<DesktopPrototypeAction>;
+}): JSX.Element {
+  const titleEditorRef = useRef<HTMLTextAreaElement>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(task.title);
+
+  useLayoutEffect(() => {
+    if (!editing) return;
+    const editor = titleEditorRef.current;
+    if (!editor) return;
+    resizeTitleEditor(editor);
+    editor.focus();
+    const caretPosition = editor.value.length;
+    editor.setSelectionRange(caretPosition, caretPosition);
+  }, [editing]);
+
+  const commitTitle = (value: string): void => {
+    const title = value.trim();
+    const nextTitle = title.length > 0 ? title : task.title;
+    setDraft(nextTitle);
+    setEditing(false);
+    if (nextTitle === task.title) return;
+    dispatch({ type: "edit-task-title", taskId: task.id, title: nextTitle });
+  };
+
+  if (!editing) {
+    return (
+      <button
+        className="task-card-title task-card-title-edit-trigger"
+        onClick={(event) => {
+          event.stopPropagation();
+          setDraft(task.title);
+          setEditing(true);
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+        title="Изменить название задачи"
+        type="button"
+      >
+        {task.title}
+      </button>
+    );
+  }
+
+  return (
+    <textarea
+      aria-label={`Название задачи ${task.title}`}
+      className="task-card-title-input"
+      onBlur={(event) => commitTitle(event.currentTarget.value)}
+      onChange={(event) => {
+        setDraft(event.currentTarget.value);
+        resizeTitleEditor(event.currentTarget);
+      }}
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          event.currentTarget.blur();
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setDraft(task.title);
+          setEditing(false);
+        }
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
+      ref={titleEditorRef}
+      rows={1}
+      value={draft}
+    />
+  );
+}
+
+export function TaskCard({
+  task,
+  documents,
+  dispatch,
+  drawerOpen,
+  expanded,
+  onToggleExpanded,
   taskCount,
   taskIndex,
 }: {
   task: PrototypeTask;
+  documents: PrototypeDocument[];
   dispatch: Dispatch<DesktopPrototypeAction>;
-  editing: boolean;
+  drawerOpen: boolean;
+  expanded: boolean;
+  onToggleExpanded: (taskId: string) => void;
   taskCount: number;
   taskIndex: number;
 }): JSX.Element {
-  const [titleDraft, setTitleDraft] = useState(task.title);
-  const titleInputRef = useRef<HTMLInputElement>(null);
-  const titleClickTimerRef = useRef<number | null>(null);
-  const cancelledRef = useRef(false);
   const wasDraggingRef = useRef(false);
   const suppressCardClickUntilRef = useRef(0);
-  const doneSubtasks = task.subtasks.filter((subtask) => subtask.done).length;
+  const attachedDocuments = task.linkedDocumentIds
+    .map((documentId) =>
+      documents.find((document) => document.id === documentId),
+    )
+    .filter(
+      (document): document is PrototypeDocument => document !== undefined,
+    );
   const {
     attributes,
     isDragging,
@@ -75,32 +159,9 @@ export function TaskCard({
   });
 
   useEffect(() => {
-    if (!editing) return;
-    cancelledRef.current = false;
-    titleInputRef.current?.focus();
-    titleInputRef.current?.select();
-  }, [editing]);
-
-  useEffect(
-    () => () => {
-      if (titleClickTimerRef.current !== null) {
-        window.clearTimeout(titleClickTimerRef.current);
-      }
-    },
-    [],
-  );
-
-  const clearPendingTitleClick = (): void => {
-    if (titleClickTimerRef.current === null) return;
-    window.clearTimeout(titleClickTimerRef.current);
-    titleClickTimerRef.current = null;
-  };
-
-  useEffect(() => {
     if (isDragging) {
       wasDraggingRef.current = true;
       suppressCardClickUntilRef.current = Date.now() + 500;
-      clearPendingTitleClick();
       return;
     }
 
@@ -109,53 +170,17 @@ export function TaskCard({
     suppressCardClickUntilRef.current = Date.now() + 400;
   }, [isDragging]);
 
-  const openTaskDetails = (): void => {
-    dispatch({
-      type: "select-task",
-      taskId: task.id,
-      section: "overview",
-    });
-  };
-
-  const beginTitleEdit = (): void => {
-    clearPendingTitleClick();
-    setTitleDraft(task.title);
-    dispatch({ type: "begin-task-title-edit", taskId: task.id });
-  };
-
-  const commitTitle = (): void => {
-    dispatch({
-      type: "commit-task-title-edit",
-      taskId: task.id,
-      title: titleDraft,
-    });
-  };
-
   const handleCardClick = (event: MouseEvent<HTMLElement>): void => {
     if (Date.now() < suppressCardClickUntilRef.current) return;
 
     const target = event.target;
     if (!(target instanceof Element)) return;
 
-    const titleTrigger = target.closest(".task-title-trigger");
-    const detailsTrigger = target.closest(".task-details-trigger");
     const interactiveControl = target.closest(
       "button, input, textarea, select, a, [role='button']",
     );
-
-    if (interactiveControl && !titleTrigger && !detailsTrigger) return;
-
-    if (titleTrigger) {
-      clearPendingTitleClick();
-      titleClickTimerRef.current = window.setTimeout(() => {
-        titleClickTimerRef.current = null;
-        openTaskDetails();
-      }, 300);
-      return;
-    }
-
-    clearPendingTitleClick();
-    openTaskDetails();
+    if (interactiveControl) return;
+    onToggleExpanded(task.id);
   };
 
   return (
@@ -175,9 +200,26 @@ export function TaskCard({
       }}
     >
       <IconButton
-        active={task.starred}
-        className="task-star-control"
-        icon={task.starred ? "★" : "☆"}
+        aria-pressed={task.starred}
+        className={["task-star-control", task.starred ? "is-starred" : ""]
+          .filter(Boolean)
+          .join(" ")}
+        icon={
+          <svg
+            aria-hidden="true"
+            fill={task.starred ? "#facc15" : "transparent"}
+            height="16"
+            viewBox="0 0 24 24"
+            width="16"
+          >
+            <path
+              d="m12 2.75 2.78 5.63 6.22.9-4.5 4.39 1.06 6.2L12 16.94l-5.56 2.93 1.06-6.2L3 9.28l6.22-.9L12 2.75Z"
+              stroke="#111111"
+              strokeLinejoin="round"
+              strokeWidth="1"
+            />
+          </svg>
+        }
         label={task.starred ? "Убрать из важных" : "Пометить важной"}
         onClick={(event) => {
           event.stopPropagation();
@@ -219,68 +261,159 @@ export function TaskCard({
       >
         ⠿
       </button>
-      <div className="task-hit-area" {...listeners}>
-        {editing ? (
-          <input
-            aria-label={`Редактировать название задачи ${task.title}`}
-            className="task-title-input"
-            onBlur={() => {
-              if (cancelledRef.current) {
-                cancelledRef.current = false;
-                return;
-              }
-              commitTitle();
+      <div className="task-hit-area">
+        <div
+          className="task-card-heading"
+          style={{ gridTemplateColumns: "minmax(0, 1fr) auto" }}
+        >
+          {expanded ? (
+            <EditableTaskTitle dispatch={dispatch} key={task.id} task={task} />
+          ) : (
+            <strong className="task-card-title">{task.title}</strong>
+          )}
+          <IconButton
+            aria-controls={`task-card-details-${task.id}`}
+            aria-expanded={expanded}
+            icon={
+              <svg
+                aria-hidden="true"
+                fill="none"
+                height="16"
+                viewBox="0 0 24 24"
+                width="16"
+              >
+                <path
+                  d={expanded ? "M7 10l5 5 5-5" : "M10 7l5 5-5 5"}
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.5"
+                />
+              </svg>
+            }
+            label={
+              expanded
+                ? `Свернуть задачу ${task.title}`
+                : `Развернуть задачу ${task.title}`
+            }
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleExpanded(task.id);
             }}
-            onChange={(event) => setTitleDraft(event.target.value)}
-            onClick={(event) => event.stopPropagation()}
-            onDoubleClick={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                event.stopPropagation();
-                commitTitle();
-              }
-              if (event.key === "Escape") {
-                event.preventDefault();
-                event.stopPropagation();
-                cancelledRef.current = true;
-                dispatch({ type: "cancel-task-title-edit" });
-              }
-            }}
-            ref={titleInputRef}
-            value={titleDraft}
+            variant="ghost"
           />
-        ) : (
-          <button
-            className="task-title-trigger"
-            onDoubleClick={(event) => {
-              event.preventDefault();
-              beginTitleEdit();
-            }}
-            onKeyDown={(event) => {
-              if (event.key !== "Enter") return;
-              event.preventDefault();
-              beginTitleEdit();
-            }}
-            title="Двойной щелчок или Enter — изменить название"
-            type="button"
+        </div>
+        {expanded ? (
+          <div
+            className="task-card-expanded"
+            id={`task-card-details-${task.id}`}
           >
-            <strong>{task.title}</strong>
-          </button>
-        )}
+            {task.subtasks.length > 0 ? (
+              <section className="task-card-expanded-section">
+                <h4>Подзадачи</h4>
+                <ul className="task-card-subtasks">
+                  {task.subtasks.map((subtask) => (
+                    <li
+                      aria-label={`${subtask.done ? "Выполнено" : "Не выполнено"}: ${subtask.title}`}
+                      className={subtask.done ? "is-complete" : ""}
+                      key={subtask.id}
+                    >
+                      <input
+                        aria-label={`${subtask.done ? "Отметить невыполненной" : "Отметить выполненной"}: ${subtask.title}`}
+                        checked={subtask.done}
+                        onChange={() =>
+                          dispatch({
+                            type: "toggle-subtask",
+                            taskId: task.id,
+                            subtaskId: subtask.id,
+                          })
+                        }
+                        onClick={(event) => event.stopPropagation()}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        type="checkbox"
+                      />
+                      <span>{subtask.title}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+            {task.links.length > 0 ? (
+              <section className="task-card-expanded-section">
+                <h4>Ссылки</h4>
+                <ul className="task-card-resource-list">
+                  {task.links.map((link) => (
+                    <li key={link.id}>
+                      <a
+                        href={link.url}
+                        onClick={(event) => event.stopPropagation()}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        {link.title}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+            {attachedDocuments.length > 0 ? (
+              <section className="task-card-expanded-section">
+                <h4>Статьи</h4>
+                <ul className="task-card-resource-list">
+                  {attachedDocuments.map((document) => (
+                    <li key={document.id}>
+                      <button
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          dispatch({
+                            type: "open-overview-task-article",
+                            taskId: task.id,
+                            documentId: document.id,
+                          });
+                        }}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        type="button"
+                      >
+                        {document.title}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+      {expanded ? (
         <button
-          aria-label={`Открыть детали задачи ${task.title}`}
-          className="task-details-trigger"
+          className="quiet-text-link task-card-details-link"
+          onClick={(event) => {
+            event.stopPropagation();
+            if (drawerOpen) {
+              dispatch({ type: "close-context-panel" });
+              return;
+            }
+            dispatch({
+              type: "select-task",
+              taskId: task.id,
+              section: "overview",
+            });
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
           type="button"
         >
-          <span className="metadata-line">
-            {task.area ?? "Общее"} · {task.dueDate ?? "без срока"} ·{" "}
-            {task.linkedDocumentIds.length} док. · {doneSubtasks}/
-            {task.subtasks.length || 0}
-          </span>
+          {drawerOpen ? "← Проще" : "Подробнее →"}
         </button>
-      </div>
+      ) : null}
     </article>
   );
+}
+
+function resizeTitleEditor(editor: HTMLTextAreaElement): void {
+  editor.style.height = "auto";
+  const borderHeight = editor.offsetHeight - editor.clientHeight;
+  editor.style.height = `${editor.scrollHeight + borderHeight}px`;
 }
