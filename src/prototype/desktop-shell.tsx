@@ -2,11 +2,9 @@
 
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
-  inboxFilters,
   projectSections,
   type ProjectSection,
   type PrototypeDocument,
-  type PrototypeInboxItem,
   type PrototypeTask,
 } from "@/prototype/desktop-mock-data";
 import {
@@ -17,7 +15,6 @@ import {
   getProjectDocuments,
   getProjectOverviewDirections,
   getTaskById,
-  getVisibleInboxItems,
   getVisibleOverviewTasks,
   initialDesktopPrototypeState,
   type CommandResult,
@@ -34,11 +31,9 @@ import { TasksSidebar } from "@/prototype/tasks/tasks-sidebar";
 import { TasksWorkspace } from "@/prototype/tasks/tasks-workspace";
 import { CanvasesSidebar } from "@/prototype/canvases/canvases-sidebar";
 import { CanvasesWorkspace } from "@/prototype/canvases/canvases-workspace";
-import {
-  IconButton,
-  PrototypeButton,
-  ToolSidebarItem,
-} from "@/prototype/desktop-ui";
+import { InboxSidebar } from "@/prototype/inbox/inbox-sidebar";
+import { InboxWorkspace } from "@/prototype/inbox/inbox-workspace";
+import { IconButton, PrototypeButton } from "@/prototype/desktop-ui";
 import { ApplicationHeader } from "@/prototype/shell/application-header";
 import { SectionRail } from "@/prototype/shell/section-rail";
 import "./desktop-shell.css";
@@ -669,77 +664,6 @@ function renderMainWorkspace(
     return <InboxWorkspace state={state} dispatch={dispatch} />;
   }
   return <OverviewSectionWorkspace state={state} dispatch={dispatch} />;
-}
-
-function InboxSidebar({
-  state,
-  dispatch,
-}: {
-  state: DesktopPrototypeState;
-  dispatch: Dispatch;
-}): React.JSX.Element {
-  return (
-    <aside className="tool-sidebar" aria-label="Фильтры входящих">
-      <header>
-        <span>Входящие</span>
-        <strong>Источники</strong>
-      </header>
-      <nav className="vertical-menu compact">
-        {inboxFilters.map((filter) => (
-          <ToolSidebarItem
-            active={state.inboxFilter === filter.id}
-            key={filter.id}
-            onClick={() =>
-              dispatch({ type: "set-inbox-filter", filter: filter.id })
-            }
-          >
-            {filter.label}
-          </ToolSidebarItem>
-        ))}
-      </nav>
-    </aside>
-  );
-}
-
-function InboxWorkspace({
-  state,
-  dispatch,
-}: {
-  state: DesktopPrototypeState;
-  dispatch: Dispatch;
-}): React.JSX.Element {
-  const items = getVisibleInboxItems(state);
-  return (
-    <div className="inbox-workspace">
-      <div className="inbox-grid">
-        {items.map((item) => (
-          <InboxItemCard dispatch={dispatch} item={item} key={item.id} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function InboxItemCard({
-  item,
-  dispatch,
-}: {
-  item: PrototypeInboxItem;
-  dispatch: Dispatch;
-}): React.JSX.Element {
-  return (
-    <article className="inbox-item">
-      <button
-        onClick={() => dispatch({ type: "select-inbox-item", itemId: item.id })}
-        type="button"
-      >
-        <span>{item.source}</span>
-        <strong>{item.title}</strong>
-        <p>{item.preview}</p>
-        <small>{item.capturedAt}</small>
-      </button>
-    </article>
-  );
 }
 
 function CommandPalette({
