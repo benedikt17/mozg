@@ -12,10 +12,8 @@ import {
 import {
   desktopPrototypeReducer,
   getActiveProject,
-  getCanvasById,
   getCommandResults,
   getDocumentById,
-  getProjectCanvases,
   getProjectDocuments,
   getProjectOverviewDirections,
   getTaskById,
@@ -28,13 +26,14 @@ import {
 } from "@/prototype/desktop-state";
 import { OverviewWorkspace } from "@/prototype/overview";
 import { UiIcon } from "@/prototype/desktop-icons";
-import { EmptySection } from "@/prototype/empty-section";
 import { KnowledgeSidebar } from "@/prototype/knowledge/knowledge-sidebar";
 import { KnowledgeWorkspace } from "@/prototype/knowledge/knowledge-workspace";
 import { MarkdownDocumentPreview } from "@/prototype/knowledge/markdown-document-preview";
 import { ContextPanelSlot } from "@/prototype/context-panels/context-panel-slot";
 import { TasksSidebar } from "@/prototype/tasks/tasks-sidebar";
 import { TasksWorkspace } from "@/prototype/tasks/tasks-workspace";
+import { CanvasesSidebar } from "@/prototype/canvases/canvases-sidebar";
+import { CanvasesWorkspace } from "@/prototype/canvases/canvases-workspace";
 import {
   IconButton,
   PrototypeButton,
@@ -670,83 +669,6 @@ function renderMainWorkspace(
     return <InboxWorkspace state={state} dispatch={dispatch} />;
   }
   return <OverviewSectionWorkspace state={state} dispatch={dispatch} />;
-}
-
-function CanvasesSidebar({
-  state,
-  dispatch,
-}: {
-  state: DesktopPrototypeState;
-  dispatch: Dispatch;
-}): React.JSX.Element {
-  const canvases = getProjectCanvases(state);
-  return (
-    <aside className="tool-sidebar" aria-label="Список холстов">
-      <header>
-        <span>Холсты</span>
-        <strong>Карты</strong>
-      </header>
-      <nav className="vertical-menu">
-        {canvases.map((canvas) => (
-          <ToolSidebarItem
-            active={state.selectedCanvasId === canvas.id}
-            key={canvas.id}
-            onClick={() =>
-              dispatch({ type: "select-canvas", canvasId: canvas.id })
-            }
-          >
-            <strong>{canvas.title}</strong>
-            <span>{canvas.description}</span>
-          </ToolSidebarItem>
-        ))}
-      </nav>
-    </aside>
-  );
-}
-
-function CanvasesWorkspace({
-  state,
-  dispatch,
-}: {
-  state: DesktopPrototypeState;
-  dispatch: Dispatch;
-}): React.JSX.Element {
-  const canvas = getCanvasById(state, state.selectedCanvasId);
-  if (!canvas) {
-    return <EmptySection title="Холсты" />;
-  }
-  return (
-    <div className="canvas-workspace">
-      <div className="canvas-surface">
-        <div className="canvas-line line-one" />
-        <div className="canvas-line line-two" />
-        {canvas.objects.map((object) => (
-          <button
-            className={[
-              "canvas-object",
-              object.type,
-              state.selectedCanvasObjectId === object.id ? "active" : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-            key={object.id}
-            onClick={() =>
-              dispatch({
-                type: "select-canvas-object",
-                canvasId: canvas.id,
-                objectId: object.id,
-              })
-            }
-            style={{ left: `${object.x}%`, top: `${object.y}%` }}
-            type="button"
-          >
-            <strong>{object.title}</strong>
-            <span>{object.body}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 function InboxSidebar({
