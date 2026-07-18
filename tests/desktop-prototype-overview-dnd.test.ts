@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getOverviewInsertionIndex } from "@/prototype/desktop-overview-dnd";
+import { getOverviewInsertionIndex } from "@/prototype/overview/overview-dnd";
 
 describe("Overview insertion geometry", () => {
   it("resolves beginning, middle, end and empty-direction positions", () => {

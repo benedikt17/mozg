@@ -1,40 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
-  closestCenter,
-  DndContext,
-  DragOverlay,
-  KeyboardSensor,
-  PointerSensor,
-  useDroppable,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-  type DragOverEvent,
-  type DragStartEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type DragEvent,
+} from "react";
 import {
   aiProposals,
   inboxFilters,
   projectSections,
-  taskFilters,
-  type OverviewDirectionId,
   type ProjectSection,
   type PrototypeDocument,
   type PrototypeInboxItem,
-  type PrototypeOverviewDirection,
   type PrototypeTask,
   type TaskSignal,
 } from "@/prototype/desktop-mock-data";
-import { getOverviewInsertionIndex } from "@/prototype/desktop-overview-dnd";
 import {
   desktopPrototypeReducer,
   getActiveProject,
@@ -46,17 +31,20 @@ import {
   getDocumentById,
   getDocumentFolderPath,
   getInboxItemById,
+  getKnowledgePaneState,
   getKnowledgeTree,
   getOpenDocuments,
   getProjectCanvases,
   getProjectDocuments,
-  getOverviewDirectionById,
+  getProjectTasks,
+  getProjectTaskFolders,
   getProjectOverviewDirections,
   getTaskById,
-  getTasksForDirection,
   getVisibleInboxItems,
+  getVisibleOverviewTasks,
   getVisibleTaskList,
   initialDesktopPrototypeState,
+  isValidTaskLinkUrl,
   type CommandResult,
   type ContextPanelState,
   type DesktopPrototypeAction,
@@ -64,13 +52,12 @@ import {
   type KnowledgeContextMode,
   type KnowledgeTreeNode,
 } from "@/prototype/desktop-state";
+import { OverviewWorkspace } from "@/prototype/overview";
 import {
   ContextPanelSection,
   IconButton,
-  MetadataLine,
   PrototypeButton,
   ToolSidebarItem,
-  WorkspaceHeader,
 } from "@/prototype/desktop-ui";
 import "./desktop-shell.css";
 import "./desktop-workspaces.css";
@@ -78,35 +65,14 @@ import "./desktop-knowledge.css";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 
-type OverviewDropTarget = {
-  directionId: OverviewDirectionId;
-  index: number;
-};
-
-type OverviewDragData = {
-  type: "overview-task";
-  taskId: string;
-  directionId: OverviewDirectionId;
-};
-
-type OverviewDirectionDropData = {
-  type: "overview-direction";
-  directionId: OverviewDirectionId;
-};
-
-const taskDragId = (taskId: string): string => `overview-task:${taskId}`;
-const directionDropId = (directionId: OverviewDirectionId): string =>
-  `overview-direction:${directionId}`;
-
 const taskSignalOptions: {
   id: TaskSignal;
   label: string;
-  description: string;
 }[] = [
-  { id: "none", label: "Без сигнала", description: "Нейтральная задача" },
-  { id: "green", label: "Зелёный", description: "Движется по плану" },
-  { id: "yellow", label: "Жёлтый", description: "Требует внимания" },
-  { id: "red", label: "Красный", description: "Есть блокировка" },
+  { id: "none", label: "Без сигнала" },
+  { id: "green", label: "Зелёный" },
+  { id: "yellow", label: "Жёлтый" },
+  { id: "red", label: "Красный" },
 ];
 
 const commandKindLabels: Record<CommandResult["kind"], string> = {
@@ -116,6 +82,14 @@ const commandKindLabels: Record<CommandResult["kind"], string> = {
   document: "Документ",
   canvas: "Холст",
   inbox: "Входящее",
+};
+
+const sectionRailIcons: Record<ProjectSection, UiIconName> = {
+  overview: "layout",
+  knowledge: "book",
+  tasks: "check-circle",
+  canvases: "nodes",
+  inbox: "inbox",
 };
 
 export function DesktopPrototypeShell(): React.JSX.Element {
@@ -206,17 +180,41 @@ export function DesktopPrototypeShell(): React.JSX.Element {
   };
 
   const activeProject = getActiveProject(state);
+  const overviewReaderActive =
+    state.activeSection === "overview" &&
+    state.overviewArticleSourceTaskId !== null &&
+    state.overviewArticlePreviewDocumentId !== null;
 
   return (
     <main
       className={[
         "desktop-prototype",
+        state.activeSection === "knowledge" ? "knowledge-active" : "",
+        state.activeSection === "knowledge" && state.splitViewDocumentId
+          ? "knowledge-split-active"
+          : "",
         state.projectRailCollapsed ? "project-rail-collapsed" : "",
+        state.activeSection === "overview" &&
+        state.contextPanel?.kind === "task" &&
+        !overviewReaderActive
+          ? "overview-task-drawer-open"
+          : "",
+        state.activeSection === "tasks" && state.contextPanel?.kind === "task"
+          ? "tasks-task-drawer-open"
+          : "",
+        state.activeSection === "knowledge" &&
+        state.contextPanel?.kind === "knowledge-tasks"
+          ? "knowledge-task-link-drawer-open"
+          : "",
+        state.activeSection === "knowledge" &&
+        state.contextPanel?.kind === "knowledge-task-reference"
+          ? "knowledge-task-reference-drawer-open"
+          : "",
       ]
         .filter(Boolean)
         .join(" ")}
     >
-      <ProjectRail state={state} dispatch={dispatch} />
+      <SectionRail state={state} dispatch={dispatch} />
       <div className="project-workspace">
         <ApplicationHeader state={state} dispatch={dispatch} />
         <SectionWorkspace state={state} dispatch={dispatch} />
@@ -237,7 +235,7 @@ export function DesktopPrototypeShell(): React.JSX.Element {
   );
 }
 
-function ProjectRail({
+function SectionRail({
   state,
   dispatch,
 }: {
@@ -245,69 +243,279 @@ function ProjectRail({
   dispatch: Dispatch;
 }): React.JSX.Element {
   return (
-    <aside
-      className="project-rail"
-      aria-label="Проекты"
-      data-collapsed={state.projectRailCollapsed}
-    >
+    <aside className="project-rail" aria-label="Разделы" data-collapsed="true">
       <div className="rail-brand">
         <div className="rail-brand-identity">
           <span className="rail-brand-mark">M</span>
           <strong>mozg</strong>
         </div>
-        <IconButton
-          className="rail-collapse-control"
-          icon={
-            <UiIcon
-              name={state.projectRailCollapsed ? "panel-right" : "panel-left"}
-            />
-          }
-          label={
-            state.projectRailCollapsed
-              ? "Развернуть панель проектов"
-              : "Свернуть панель проектов"
-          }
-          onClick={() => dispatch({ type: "toggle-project-rail" })}
-          title={
-            state.projectRailCollapsed
-              ? "Развернуть панель проектов"
-              : "Свернуть панель проектов"
-          }
-          variant="ghost"
-        />
       </div>
-      <nav className="project-list" aria-label="Выбор проекта">
-        {state.projects.map((project) => (
-          <PrototypeButton
-            active={project.id === state.activeProjectId}
-            aria-label={project.name}
-            className="project-row"
-            key={project.id}
+      <nav className="rail-section-list" aria-label="Разделы">
+        {projectSections.map((section) => (
+          <IconButton
+            active={state.activeSection === section.id}
+            className="rail-section-item"
+            icon={<UiIcon name={sectionRailIcons[section.id]} />}
+            key={section.id}
+            label={section.label}
             onClick={() =>
-              dispatch({ type: "switch-project", projectId: project.id })
+              dispatch({ type: "switch-section", section: section.id })
             }
-            title={project.description}
+            title={section.label}
             variant="ghost"
-          >
-            <span className="project-row-indicator" />
-            <span className="project-row-mark" aria-hidden="true">
-              {project.shortName.slice(0, 1)}
-            </span>
-            <strong>{project.name}</strong>
-          </PrototypeButton>
+          />
         ))}
       </nav>
+    </aside>
+  );
+}
+
+function ProjectSelector({
+  state,
+  dispatch,
+}: {
+  state: DesktopPrototypeState;
+  dispatch: Dispatch;
+}): React.JSX.Element {
+  const activeProject = getActiveProject(state);
+  const [open, setOpen] = useState(false);
+  const selectorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent): void => {
+      if (
+        event.target instanceof Node &&
+        selectorRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="project-selector" ref={selectorRef}>
       <PrototypeButton
-        aria-label="Создать проект"
-        className="create-project"
-        onClick={() => dispatch({ type: "create-project" })}
-        title="Создать проект"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className="project-selector-trigger"
+        onClick={() => setOpen((value) => !value)}
+        title={activeProject.name}
+        variant="ghost"
+      >
+        <strong>{activeProject.name}</strong>
+        <UiIcon name="chevron-down" />
+      </PrototypeButton>
+      {open ? (
+        <div className="project-selector-menu" role="menu">
+          {state.projects.map((project) => (
+            <PrototypeButton
+              active={project.id === state.activeProjectId}
+              aria-current={
+                project.id === state.activeProjectId ? "true" : undefined
+              }
+              className="project-selector-option"
+              key={project.id}
+              onClick={() => {
+                dispatch({ type: "switch-project", projectId: project.id });
+                setOpen(false);
+              }}
+              role="menuitem"
+              title={project.description}
+              variant="ghost"
+            >
+              <span>{project.name}</span>
+              {project.id === state.activeProjectId ? (
+                <UiIcon name="check" />
+              ) : null}
+            </PrototypeButton>
+          ))}
+          <div className="project-selector-divider" />
+          <PrototypeButton
+            className="project-selector-option"
+            onClick={() => {
+              dispatch({ type: "create-project" });
+              setOpen(false);
+            }}
+            role="menuitem"
+            variant="ghost"
+          >
+            <UiIcon name="plus" />
+            <span>Создать проект</span>
+          </PrototypeButton>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function OverviewHeaderControls({
+  directions,
+  hiddenDirectionIds,
+  dispatch,
+}: {
+  directions: ReturnType<typeof getProjectOverviewDirections>;
+  hiddenDirectionIds: string[];
+  dispatch: Dispatch;
+}): React.JSX.Element {
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  return (
+    <div
+      className="overview-view-control"
+      onKeyDown={(event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        event.stopPropagation();
+        setViewMenuOpen(false);
+      }}
+    >
+      <PrototypeButton
+        aria-expanded={viewMenuOpen}
+        aria-haspopup="menu"
+        onClick={() => setViewMenuOpen((open) => !open)}
+        size="compact"
         variant="quiet"
       >
-        <span aria-hidden="true">+</span>
-        <span className="create-project-label">Создать проект</span>
+        Вид
       </PrototypeButton>
-    </aside>
+      {viewMenuOpen ? (
+        <>
+          <button
+            aria-label="Закрыть меню вида"
+            className="overview-view-dismiss"
+            onClick={() => setViewMenuOpen(false)}
+            tabIndex={-1}
+            type="button"
+          />
+          <div
+            aria-label="Видимые направления проекта"
+            className="overview-view-menu"
+            role="menu"
+          >
+            {directions.map((direction) => (
+              <label className="overview-view-option" key={direction.id}>
+                <input
+                  checked={!hiddenDirectionIds.includes(direction.id)}
+                  onChange={(event) =>
+                    dispatch({
+                      type: "set-overview-direction-visible",
+                      directionId: direction.id,
+                      visible: event.currentTarget.checked,
+                    })
+                  }
+                  type="checkbox"
+                />
+                <span>{direction.title}</span>
+              </label>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function getTaskViewTitle(state: DesktopPrototypeState): string {
+  const selectedFolder = getProjectTaskFolders(state).find(
+    (folder) => folder.id === state.selectedTaskFolderId,
+  );
+  const selectedDirection = getProjectOverviewDirections(state).find(
+    (direction) => direction.id === state.selectedTaskDirectionId,
+  );
+  if (selectedFolder) return selectedFolder.title;
+  if (selectedDirection) return selectedDirection.title;
+  if (state.taskDayViewActive) return "Задачи на день";
+  if (state.taskFilter === "important") return "Важные";
+  if (state.taskFilter === "completed") return "Завершённые";
+  return "Все";
+}
+
+function ApplicationSectionHeader({
+  state,
+  dispatch,
+}: {
+  state: DesktopPrototypeState;
+  dispatch: Dispatch;
+}): React.JSX.Element {
+  if (state.activeSection === "overview") {
+    return (
+      <div className="application-section-header">
+        <div className="application-section-title">
+          <strong>Обзор</strong>
+        </div>
+        <div className="application-section-actions">
+          <OverviewHeaderControls
+            directions={getProjectOverviewDirections(state)}
+            dispatch={dispatch}
+            hiddenDirectionIds={state.overviewHiddenDirectionIds}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (state.activeSection === "knowledge") {
+    const selectedDocument = getDocumentById(state, state.selectedDocumentId);
+    return (
+      <div className="application-section-header">
+        <div className="application-section-title">
+          <span>Знания</span>
+          <strong>{selectedDocument?.title ?? "Документ"}</strong>
+        </div>
+      </div>
+    );
+  }
+
+  if (state.activeSection === "tasks") {
+    return (
+      <div className="application-section-header">
+        <div className="application-section-title">
+          <span>Задачи</span>
+          <strong>{getTaskViewTitle(state)}</strong>
+        </div>
+      </div>
+    );
+  }
+
+  if (state.activeSection === "canvases") {
+    const canvas = getCanvasById(state, state.selectedCanvasId);
+    return (
+      <div className="application-section-header">
+        <div className="application-section-title">
+          <span>Холсты</span>
+          <strong>{canvas?.title ?? "Карты"}</strong>
+        </div>
+        {canvas ? (
+          <div className="application-section-actions canvas-header-actions">
+            <button type="button">−</button>
+            <button type="button">100%</button>
+            <button type="button">+</button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  const inboxFilter = inboxFilters.find(
+    (filter) => filter.id === state.inboxFilter,
+  );
+  return (
+    <div className="application-section-header">
+      <div className="application-section-title">
+        <span>Входящие</span>
+        <strong>{inboxFilter?.label ?? "Входящие"}</strong>
+      </div>
+    </div>
   );
 }
 
@@ -318,29 +526,10 @@ function ApplicationHeader({
   state: DesktopPrototypeState;
   dispatch: Dispatch;
 }): React.JSX.Element {
-  const activeProject = getActiveProject(state);
   return (
-    <header className="application-header">
-      <div className="header-project">
-        <strong>{activeProject.name}</strong>
-        <MetadataLine>{activeProject.description}</MetadataLine>
-      </div>
-      <nav className="section-navigation" aria-label="Разделы проекта">
-        {projectSections.map((section) => (
-          <PrototypeButton
-            active={state.activeSection === section.id}
-            className="section-nav-item"
-            key={section.id}
-            onClick={() =>
-              dispatch({ type: "switch-section", section: section.id })
-            }
-            title={section.description}
-            variant="ghost"
-          >
-            {section.label}
-          </PrototypeButton>
-        ))}
-      </nav>
+    <header className="application-header knowledge-application-header">
+      <ProjectSelector state={state} dispatch={dispatch} />
+      <ApplicationSectionHeader state={state} dispatch={dispatch} />
       <div className="header-tools" aria-label="Глобальные инструменты">
         <PrototypeButton
           onClick={() => dispatch({ type: "open-command-palette" })}
@@ -368,8 +557,23 @@ function SectionWorkspace({
   state: DesktopPrototypeState;
   dispatch: Dispatch;
 }): React.JSX.Element {
-  const sidebar = renderToolSidebar(state, dispatch);
-  const hasContextPanel = state.contextPanel !== null;
+  const [knowledgeTreeOverlayOpen, setKnowledgeTreeOverlayOpen] =
+    useState(false);
+  const sidebar = renderToolSidebar(state, dispatch, {
+    onCloseKnowledgeTree: () => setKnowledgeTreeOverlayOpen(false),
+  });
+  const overviewReaderActive =
+    state.activeSection === "overview" &&
+    state.overviewArticleSourceTaskId !== null &&
+    state.overviewArticlePreviewDocumentId !== null;
+  const hasContextPanel =
+    state.contextPanel !== null &&
+    (state.activeSection !== "overview" ||
+      (state.contextPanel.kind === "task" && !overviewReaderActive));
+  const hasFullHeightDrawer =
+    state.contextPanel?.kind === "knowledge-tasks" ||
+    state.contextPanel?.kind === "knowledge-task-reference" ||
+    (state.activeSection === "tasks" && state.contextPanel?.kind === "task");
   return (
     <div
       className={[
@@ -378,14 +582,35 @@ function SectionWorkspace({
         `section-${state.activeSection}`,
         sidebar ? "has-tool-sidebar" : "",
         hasContextPanel ? "has-context-panel" : "",
+        hasFullHeightDrawer ? "has-full-height-drawer" : "",
+        overviewReaderActive ? "has-overview-contextual-reader" : "",
+        state.activeSection === "knowledge" && state.splitViewDocumentId
+          ? "has-split-view"
+          : "",
+        state.activeSection === "knowledge" && knowledgeTreeOverlayOpen
+          ? "is-knowledge-tree-open"
+          : "",
+        state.activeSection === "knowledge" && state.contextPanel?.kind === "ai"
+          ? "has-wide-context-panel"
+          : "",
       ]
         .filter(Boolean)
         .join(" ")}
     >
       {sidebar}
       <section className="main-workspace" aria-label="Рабочая область">
-        {renderMainWorkspace(state, dispatch)}
+        {renderMainWorkspace(state, dispatch, {
+          onOpenKnowledgeTree: () => setKnowledgeTreeOverlayOpen(true),
+        })}
       </section>
+      {state.activeSection === "knowledge" && knowledgeTreeOverlayOpen ? (
+        <button
+          aria-label="Закрыть дополнительную панель"
+          className="knowledge-overlay-backdrop"
+          onClick={() => setKnowledgeTreeOverlayOpen(false)}
+          type="button"
+        />
+      ) : null}
       {hasContextPanel ? (
         <ContextPanelSlot
           contextPanel={state.contextPanel}
@@ -404,6 +629,340 @@ function workspaceWidthPolicy(
   return "full-surface";
 }
 
+function OverviewSectionWorkspace({
+  state,
+  dispatch,
+}: {
+  state: DesktopPrototypeState;
+  dispatch: Dispatch;
+}): React.JSX.Element {
+  const directions = getProjectOverviewDirections(state);
+  const documents = getProjectDocuments(state);
+  const sourceTask = getTaskById(state, state.overviewArticleSourceTaskId);
+  const activeDocument = getDocumentById(
+    state,
+    state.overviewArticlePreviewDocumentId,
+  );
+  const sourceDirection = sourceTask
+    ? directions.find(
+        (direction) => direction.id === sourceTask.overviewDirectionId,
+      )
+    : undefined;
+  const readerActive =
+    sourceTask !== undefined &&
+    activeDocument !== undefined &&
+    sourceDirection !== undefined &&
+    sourceTask.projectId === state.activeProjectId &&
+    activeDocument.projectId === sourceTask.projectId &&
+    sourceTask.linkedDocumentIds.includes(activeDocument.id);
+
+  return (
+    <div
+      className={[
+        "overview-mode-stage",
+        readerActive ? "is-contextual-reader-active" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <div aria-hidden={readerActive} className="overview-board-mode">
+        <OverviewWorkspace
+          directions={directions}
+          dispatch={dispatch}
+          documents={documents}
+          expandedTaskId={state.overviewExpandedTaskId}
+          hiddenDirectionIds={state.overviewHiddenDirectionIds}
+          openTaskId={
+            state.contextPanel?.kind === "task"
+              ? state.contextPanel.taskId
+              : null
+          }
+          overviewScrollLeft={state.overviewScrollLeft}
+          tasks={getVisibleOverviewTasks(state)}
+        />
+      </div>
+      {readerActive ? (
+        <OverviewContextualReader
+          activeDocument={activeDocument}
+          direction={sourceDirection}
+          dispatch={dispatch}
+          documents={documents}
+          task={sourceTask}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function OverviewContextualReader({
+  activeDocument,
+  direction,
+  dispatch,
+  documents,
+  task,
+}: {
+  activeDocument: PrototypeDocument;
+  direction: ReturnType<typeof getProjectOverviewDirections>[number];
+  dispatch: Dispatch;
+  documents: PrototypeDocument[];
+  task: PrototypeTask;
+}): React.JSX.Element {
+  const [contextCollapsed, setContextCollapsed] = useState(false);
+  const [mobileContextOpen, setMobileContextOpen] = useState(false);
+  const articleRef = useRef<HTMLElement>(null);
+  const articleScrollDocumentIdRef = useRef(activeDocument.id);
+  const articleScrollPositionsRef = useRef(new Map<string, number>());
+  const mobileContextCloseRef = useRef<HTMLButtonElement>(null);
+  const mobileContextTriggerRef = useRef<HTMLButtonElement>(null);
+  const attachedDocuments = task.linkedDocumentIds
+    .map((documentId) =>
+      documents.find((document) => document.id === documentId),
+    )
+    .filter(
+      (document): document is PrototypeDocument => document !== undefined,
+    );
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const article = articleRef.current;
+      if (!article) return;
+      article.scrollTop =
+        articleScrollPositionsRef.current.get(activeDocument.id) ?? 0;
+      articleScrollDocumentIdRef.current = activeDocument.id;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeDocument.id]);
+
+  useEffect(() => {
+    if (!mobileContextOpen) return;
+    const frame = window.requestAnimationFrame(() => {
+      mobileContextCloseRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [mobileContextOpen]);
+
+  const returnToBoard = (): void => {
+    dispatch({ type: "close-overview-article-preview" });
+  };
+
+  const openTaskOnBoard = (): void => {
+    dispatch({ type: "close-overview-article-preview" });
+    dispatch({ type: "select-task", taskId: task.id, section: "overview" });
+  };
+
+  const closeMobileContext = (): void => {
+    setMobileContextOpen(false);
+    window.requestAnimationFrame(() => {
+      mobileContextTriggerRef.current?.focus();
+    });
+  };
+
+  return (
+    <section
+      className={[
+        "overview-contextual-reader",
+        contextCollapsed ? "is-context-collapsed" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || !mobileContextOpen) return;
+        event.preventDefault();
+        closeMobileContext();
+      }}
+    >
+      {mobileContextOpen ? (
+        <button
+          aria-label="Закрыть контекст задачи"
+          className="overview-reader-context-backdrop"
+          onClick={closeMobileContext}
+          type="button"
+        />
+      ) : null}
+      <aside
+        aria-hidden={contextCollapsed && !mobileContextOpen}
+        aria-label={`Контекст задачи: ${task.title}`}
+        aria-modal={mobileContextOpen || undefined}
+        className={[
+          "overview-reader-task-context",
+          `task-signal-${task.signal}`,
+          mobileContextOpen ? "is-mobile-open" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        role={mobileContextOpen ? "dialog" : undefined}
+      >
+        <button
+          aria-label="Закрыть контекст задачи"
+          className="overview-reader-mobile-close"
+          onClick={closeMobileContext}
+          ref={mobileContextCloseRef}
+          title="Закрыть контекст задачи"
+          type="button"
+        >
+          <span aria-hidden="true">×</span>
+        </button>
+        <PrototypeButton
+          aria-label="Вернуться к доске Обзора"
+          className="overview-reader-back"
+          onClick={returnToBoard}
+          size="compact"
+          variant="ghost"
+        >
+          ← К доске
+        </PrototypeButton>
+        <div className="overview-reader-task-card">
+          <h2>{task.title}</h2>
+          {task.subtasks.length > 0 ? (
+            <section className="overview-reader-context-section">
+              <h3>Подзадачи</h3>
+              <ul className="overview-reader-subtasks">
+                {task.subtasks.map((subtask) => (
+                  <li
+                    className={subtask.done ? "is-complete" : ""}
+                    key={subtask.id}
+                  >
+                    <input
+                      aria-label={subtask.title}
+                      checked={subtask.done}
+                      onChange={() =>
+                        dispatch({
+                          type: "toggle-subtask",
+                          taskId: task.id,
+                          subtaskId: subtask.id,
+                        })
+                      }
+                      type="checkbox"
+                    />
+                    <span>{subtask.title}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+          {task.links.length > 0 ? (
+            <section className="overview-reader-context-section">
+              <h3>Ссылки</h3>
+              <ul className="overview-reader-resources">
+                {task.links.map((link) => (
+                  <li key={link.id}>
+                    <a href={link.url} rel="noreferrer" target="_blank">
+                      {link.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+          <section className="overview-reader-context-section">
+            <h3>Статьи</h3>
+            <ul className="overview-reader-articles">
+              {attachedDocuments.map((document) => (
+                <li key={document.id}>
+                  <button
+                    aria-current={
+                      document.id === activeDocument.id ? "page" : undefined
+                    }
+                    className={
+                      document.id === activeDocument.id ? "is-active" : ""
+                    }
+                    onClick={() =>
+                      dispatch({
+                        type: "open-overview-task-article",
+                        taskId: task.id,
+                        documentId: document.id,
+                      })
+                    }
+                    type="button"
+                  >
+                    {document.title}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+      </aside>
+      <IconButton
+        className="overview-reader-context-toggle"
+        icon={<UiIcon name={contextCollapsed ? "panel-right" : "panel-left"} />}
+        label={
+          contextCollapsed
+            ? "Показать контекст задачи"
+            : "Скрыть контекст задачи"
+        }
+        onClick={() => setContextCollapsed((collapsed) => !collapsed)}
+        title={
+          contextCollapsed
+            ? "Показать контекст задачи"
+            : "Скрыть контекст задачи"
+        }
+        variant="quiet"
+      />
+      <article
+        className="document-page overview-reader-article"
+        onScroll={(event) => {
+          articleScrollPositionsRef.current.set(
+            articleScrollDocumentIdRef.current,
+            event.currentTarget.scrollTop,
+          );
+        }}
+        ref={articleRef}
+      >
+        <div className="document-page-inner">
+          <div className="overview-reader-mobile-actions">
+            <button
+              className="ui-button ui-button-quiet ui-button-compact"
+              onClick={() => setMobileContextOpen(true)}
+              ref={mobileContextTriggerRef}
+              type="button"
+            >
+              Контекст задачи
+            </button>
+            <PrototypeButton
+              onClick={returnToBoard}
+              size="compact"
+              variant="ghost"
+            >
+              ← К доске
+            </PrototypeButton>
+          </div>
+          <nav
+            aria-label="Контекст статьи"
+            className="overview-reader-breadcrumb"
+          >
+            <ol>
+              <li>
+                <button
+                  onClick={returnToBoard}
+                  title={`К направлению «${direction.title}»`}
+                  type="button"
+                >
+                  {direction.title}
+                </button>
+              </li>
+              <li className="is-task">
+                <button
+                  onClick={openTaskOnBoard}
+                  title={task.title}
+                  type="button"
+                >
+                  {task.title}
+                </button>
+              </li>
+              <li aria-current="page" title={activeDocument.title}>
+                <span>{activeDocument.title}</span>
+              </li>
+            </ol>
+          </nav>
+          <h1>{activeDocument.title}</h1>
+          <MarkdownDocumentPreview document={activeDocument} hideLeadingTitle />
+        </div>
+      </article>
+    </section>
+  );
+}
+
 function getInitialCommandQuery(): string {
   if (typeof window === "undefined") return "";
   return new URLSearchParams(window.location.search).get("commandQuery") ?? "";
@@ -412,9 +971,16 @@ function getInitialCommandQuery(): string {
 function renderToolSidebar(
   state: DesktopPrototypeState,
   dispatch: Dispatch,
+  options?: { onCloseKnowledgeTree?: () => void },
 ): React.JSX.Element | null {
   if (state.activeSection === "knowledge") {
-    return <KnowledgeSidebar state={state} dispatch={dispatch} />;
+    return (
+      <KnowledgeSidebar
+        state={state}
+        dispatch={dispatch}
+        onClose={options?.onCloseKnowledgeTree}
+      />
+    );
   }
   if (state.activeSection === "tasks") {
     return <TasksSidebar state={state} dispatch={dispatch} />;
@@ -431,9 +997,18 @@ function renderToolSidebar(
 function renderMainWorkspace(
   state: DesktopPrototypeState,
   dispatch: Dispatch,
+  options?: {
+    onOpenKnowledgeTree?: () => void;
+  },
 ): React.JSX.Element {
   if (state.activeSection === "knowledge") {
-    return <KnowledgeWorkspace state={state} dispatch={dispatch} />;
+    return (
+      <KnowledgeWorkspace
+        state={state}
+        dispatch={dispatch}
+        onOpenTree={options?.onOpenKnowledgeTree}
+      />
+    );
   }
   if (state.activeSection === "tasks") {
     return <TasksWorkspace state={state} dispatch={dispatch} />;
@@ -444,593 +1019,38 @@ function renderMainWorkspace(
   if (state.activeSection === "inbox") {
     return <InboxWorkspace state={state} dispatch={dispatch} />;
   }
-  return <OverviewWorkspace state={state} dispatch={dispatch} />;
-}
-
-function isOverviewTaskDragData(value: unknown): value is OverviewDragData {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Record<string, unknown>;
-  return (
-    candidate.type === "overview-task" &&
-    typeof candidate.taskId === "string" &&
-    typeof candidate.directionId === "string"
-  );
-}
-
-function isOverviewDirectionDropData(
-  value: unknown,
-): value is OverviewDirectionDropData {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Record<string, unknown>;
-  return (
-    candidate.type === "overview-direction" &&
-    typeof candidate.directionId === "string"
-  );
-}
-
-function getOverviewDropTarget(
-  state: DesktopPrototypeState,
-  activeTaskId: string,
-  event: DragOverEvent | DragEndEvent,
-): OverviewDropTarget | null {
-  const over = event.over;
-  if (!over) return null;
-  const overData = over.data.current;
-
-  if (isOverviewDirectionDropData(overData)) {
-    const targetCount = getTasksForDirection(
-      state,
-      overData.directionId,
-    ).filter((task) => task.id !== activeTaskId).length;
-    return {
-      directionId: overData.directionId,
-      index: getOverviewInsertionIndex({
-        targetCount,
-        overIndex: null,
-        geometry: null,
-      }),
-    };
-  }
-
-  if (!isOverviewTaskDragData(overData)) return null;
-  const targetTasks = getTasksForDirection(state, overData.directionId).filter(
-    (task) => task.id !== activeTaskId,
-  );
-  const overIndex = targetTasks.findIndex(
-    (task) => task.id === overData.taskId,
-  );
-  if (overIndex < 0) {
-    const currentIndex = getTasksForDirection(
-      state,
-      overData.directionId,
-    ).findIndex((task) => task.id === activeTaskId);
-    return {
-      directionId: overData.directionId,
-      index: Math.min(Math.max(currentIndex, 0), targetTasks.length),
-    };
-  }
-
-  const translatedRect = event.active.rect.current.translated;
-  return {
-    directionId: overData.directionId,
-    index: getOverviewInsertionIndex({
-      targetCount: targetTasks.length,
-      overIndex,
-      geometry: translatedRect
-        ? {
-            activeTop: translatedRect.top,
-            activeHeight: translatedRect.height,
-            overTop: over.rect.top,
-            overHeight: over.rect.height,
-          }
-        : null,
-    }),
-  };
-}
-
-function OverviewWorkspace({
-  state,
-  dispatch,
-}: {
-  state: DesktopPrototypeState;
-  dispatch: Dispatch;
-}): React.JSX.Element {
-  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<OverviewDropTarget | null>(null);
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
-  const directions = getProjectOverviewDirections(state);
-  const activeTask = getTaskById(state, activeTaskId);
-  const activeTaskDirection = activeTask
-    ? getOverviewDirectionById(state, activeTask.overviewDirectionId)
-    : undefined;
-
-  const clearDragState = (): void => {
-    setActiveTaskId(null);
-    setDropTarget(null);
-  };
-
-  const handleDragStart = (event: DragStartEvent): void => {
-    const dragData = event.active.data.current;
-    if (!isOverviewTaskDragData(dragData)) return;
-    setActiveTaskId(dragData.taskId);
-  };
-
-  const handleDragOver = (event: DragOverEvent): void => {
-    if (!activeTaskId) return;
-    setDropTarget(getOverviewDropTarget(state, activeTaskId, event));
-  };
-
-  const handleDragEnd = (event: DragEndEvent): void => {
-    if (!activeTaskId) return;
-    const target = getOverviewDropTarget(state, activeTaskId, event);
-    if (target) {
-      dispatch({
-        type: "move-overview-task",
-        taskId: activeTaskId,
-        targetDirectionId: target.directionId,
-        targetIndex: target.index,
-      });
-    }
-    clearDragState();
-  };
-
-  return (
-    <div className="overview-workspace">
-      <section className="overview-command-bar" aria-label="Действия доски">
-        <div className="overview-controls">
-          <PrototypeButton
-            onClick={() => dispatch({ type: "create-task" })}
-            size="compact"
-            variant="primary"
-          >
-            + Задача
-          </PrototypeButton>
-        </div>
-      </section>
-      <DndContext
-        collisionDetection={closestCenter}
-        onDragCancel={clearDragState}
-        onDragEnd={handleDragEnd}
-        onDragOver={handleDragOver}
-        onDragStart={handleDragStart}
-        sensors={sensors}
-      >
-        <section
-          className={["overview-board", `directions-${directions.length}`]
-            .filter(Boolean)
-            .join(" ")}
-          aria-label="Рабочие направления проекта"
-        >
-          {directions.map((direction) => (
-            <OverviewDirectionColumn
-              activeTaskId={activeTaskId}
-              direction={direction}
-              dispatch={dispatch}
-              dropTarget={dropTarget}
-              key={direction.id}
-              state={state}
-            />
-          ))}
-        </section>
-        <DragOverlay dropAnimation={null}>
-          {activeTask ? (
-            <TaskDragOverlay
-              directionTitle={activeTaskDirection?.title ?? "Направление"}
-              task={activeTask}
-            />
-          ) : null}
-        </DragOverlay>
-      </DndContext>
-    </div>
-  );
-}
-
-function OverviewDirectionColumn({
-  state,
-  dispatch,
-  direction,
-  activeTaskId,
-  dropTarget,
-}: {
-  state: DesktopPrototypeState;
-  dispatch: Dispatch;
-  direction: PrototypeOverviewDirection;
-  activeTaskId: string | null;
-  dropTarget: OverviewDropTarget | null;
-}): React.JSX.Element {
-  const tasks = getTasksForDirection(state, direction.id);
-  const positionedTasks = tasks.filter((task) => task.id !== activeTaskId);
-  const { isOver, setNodeRef } = useDroppable({
-    id: directionDropId(direction.id),
-    data: {
-      type: "overview-direction",
-      directionId: direction.id,
-    } satisfies OverviewDirectionDropData,
-  });
-  const directionDropTarget =
-    dropTarget?.directionId === direction.id ? dropTarget : null;
-  return (
-    <article
-      className={["board-column", isOver ? "is-drag-over" : ""]
-        .filter(Boolean)
-        .join(" ")}
-    >
-      <header>
-        <DirectionTitleInput direction={direction} dispatch={dispatch} />
-        <div className="lane-header-actions">
-          <span className="lane-task-count">{tasks.length}</span>
-        </div>
-      </header>
-      <div className="task-stack" ref={setNodeRef}>
-        <SortableContext
-          items={tasks.map((task) => taskDragId(task.id))}
-          strategy={verticalListSortingStrategy}
-        >
-          {tasks.length > 0 ? (
-            tasks.map((task, taskIndex) => {
-              const visibleIndex = positionedTasks.findIndex(
-                (item) => item.id === task.id,
-              );
-              const showIndicatorBefore =
-                task.id !== activeTaskId &&
-                directionDropTarget?.index === visibleIndex;
-              return (
-                <div className="task-sort-slot" key={task.id}>
-                  {showIndicatorBefore ? <TaskDropIndicator /> : null}
-                  <TaskCard
-                    dispatch={dispatch}
-                    editing={state.editingTaskTitleId === task.id}
-                    task={task}
-                    taskCount={tasks.length}
-                    taskIndex={taskIndex}
-                  />
-                </div>
-              );
-            })
-          ) : (
-            <p className="empty-state">Нет задач в этом направлении.</p>
-          )}
-          {directionDropTarget?.index === positionedTasks.length ? (
-            <TaskDropIndicator />
-          ) : null}
-        </SortableContext>
-      </div>
-    </article>
-  );
-}
-
-function DirectionTitleInput({
-  direction,
-  dispatch,
-}: {
-  direction: PrototypeOverviewDirection;
-  dispatch: Dispatch;
-}): React.JSX.Element {
-  const [draft, setDraft] = useState(direction.title);
-
-  const commit = (value: string): void => {
-    const title = value.trim();
-    if (title.length === 0) {
-      setDraft(direction.title);
-      return;
-    }
-    dispatch({
-      type: "rename-overview-direction",
-      directionId: direction.id,
-      title,
-    });
-    setDraft(title);
-  };
-
-  return (
-    <input
-      aria-label={`Название направления ${direction.title}`}
-      className="direction-title-input"
-      onBlur={(event) => commit(event.currentTarget.value)}
-      onChange={(event) => setDraft(event.target.value)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          event.currentTarget.blur();
-        }
-        if (event.key === "Escape") {
-          event.preventDefault();
-          event.currentTarget.value = direction.title;
-          setDraft(direction.title);
-          event.currentTarget.blur();
-        }
-      }}
-      title="Изменить название направления"
-      value={draft}
-    />
-  );
-}
-
-function TaskDropIndicator(): React.JSX.Element {
-  return <div className="task-drop-indicator" aria-hidden="true" />;
-}
-
-function TaskDragOverlay({
-  task,
-  directionTitle,
-}: {
-  task: PrototypeTask;
-  directionTitle: string;
-}): React.JSX.Element {
-  return (
-    <article className={`task-card task-signal-${task.signal} drag-overlay`}>
-      <div className="task-hit-area">
-        <strong>{task.title}</strong>
-        <span className="metadata-line">
-          {task.area ?? "Общее"} · {directionTitle}
-        </span>
-      </div>
-    </article>
-  );
-}
-
-function TaskCard({
-  task,
-  dispatch,
-  editing,
-  taskCount,
-  taskIndex,
-}: {
-  task: PrototypeTask;
-  dispatch: Dispatch;
-  editing: boolean;
-  taskCount: number;
-  taskIndex: number;
-}): React.JSX.Element {
-  const [titleDraft, setTitleDraft] = useState(task.title);
-  const titleInputRef = useRef<HTMLInputElement>(null);
-  const titleClickTimerRef = useRef<number | null>(null);
-  const cancelledRef = useRef(false);
-  const wasDraggingRef = useRef(false);
-  const suppressCardClickUntilRef = useRef(0);
-  const doneSubtasks = task.subtasks.filter((subtask) => subtask.done).length;
-  const {
-    attributes,
-    isDragging,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-  } = useSortable({
-    id: taskDragId(task.id),
-    data: {
-      type: "overview-task",
-      taskId: task.id,
-      directionId: task.overviewDirectionId,
-    } satisfies OverviewDragData,
-  });
-
-  useEffect(() => {
-    if (!editing) return;
-    cancelledRef.current = false;
-    titleInputRef.current?.focus();
-    titleInputRef.current?.select();
-  }, [editing]);
-
-  useEffect(
-    () => () => {
-      if (titleClickTimerRef.current !== null) {
-        window.clearTimeout(titleClickTimerRef.current);
-      }
-    },
-    [],
-  );
-
-  const clearPendingTitleClick = (): void => {
-    if (titleClickTimerRef.current === null) return;
-    window.clearTimeout(titleClickTimerRef.current);
-    titleClickTimerRef.current = null;
-  };
-
-  useEffect(() => {
-    if (isDragging) {
-      wasDraggingRef.current = true;
-      suppressCardClickUntilRef.current = Date.now() + 500;
-      clearPendingTitleClick();
-      return;
-    }
-
-    if (!wasDraggingRef.current) return;
-    wasDraggingRef.current = false;
-    suppressCardClickUntilRef.current = Date.now() + 400;
-  }, [isDragging]);
-
-  const openTaskDetails = (): void => {
-    dispatch({
-      type: "select-task",
-      taskId: task.id,
-      section: "overview",
-    });
-  };
-
-  const beginTitleEdit = (): void => {
-    clearPendingTitleClick();
-    setTitleDraft(task.title);
-    dispatch({ type: "begin-task-title-edit", taskId: task.id });
-  };
-
-  const commitTitle = (): void => {
-    dispatch({
-      type: "commit-task-title-edit",
-      taskId: task.id,
-      title: titleDraft,
-    });
-  };
-
-  const handleCardClick = (event: React.MouseEvent<HTMLElement>): void => {
-    if (Date.now() < suppressCardClickUntilRef.current) return;
-
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-
-    const titleTrigger = target.closest(".task-title-trigger");
-    const detailsTrigger = target.closest(".task-details-trigger");
-    const interactiveControl = target.closest(
-      "button, input, textarea, select, a, [role='button']",
-    );
-
-    if (interactiveControl && !titleTrigger && !detailsTrigger) return;
-
-    if (titleTrigger) {
-      clearPendingTitleClick();
-      titleClickTimerRef.current = window.setTimeout(() => {
-        titleClickTimerRef.current = null;
-        openTaskDetails();
-      }, 300);
-      return;
-    }
-
-    clearPendingTitleClick();
-    openTaskDetails();
-  };
-
-  return (
-    <article
-      className={[
-        "task-card",
-        `task-signal-${task.signal}`,
-        isDragging ? "is-dragging" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      onClick={handleCardClick}
-      ref={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-      }}
-    >
-      <IconButton
-        active={task.starred}
-        className="task-star-control"
-        icon={task.starred ? "★" : "☆"}
-        label={task.starred ? "Убрать из важных" : "Пометить важной"}
-        onClick={(event) => {
-          event.stopPropagation();
-          dispatch({ type: "toggle-task-star", taskId: task.id });
-        }}
-        onPointerDown={(event) => event.stopPropagation()}
-        variant="ghost"
-      />
-      <button
-        {...attributes}
-        {...listeners}
-        aria-label={`Перетащить задачу ${task.title}`}
-        className="task-drag-handle"
-        onClick={(event) => event.stopPropagation()}
-        onKeyDownCapture={(event) => {
-          if (
-            !event.altKey ||
-            (event.key !== "ArrowUp" && event.key !== "ArrowDown")
-          ) {
-            return;
-          }
-          event.preventDefault();
-          event.stopPropagation();
-          const targetIndex =
-            event.key === "ArrowUp"
-              ? Math.max(0, taskIndex - 1)
-              : Math.min(taskCount - 1, taskIndex + 1);
-          if (targetIndex === taskIndex) return;
-          dispatch({
-            type: "move-overview-task",
-            taskId: task.id,
-            targetDirectionId: task.overviewDirectionId,
-            targetIndex,
-          });
-        }}
-        ref={setActivatorNodeRef}
-        title="Перетащить задачу; Alt+↑/↓ — изменить приоритет"
-        type="button"
-      >
-        ⠿
-      </button>
-      <div className="task-hit-area" {...listeners}>
-        {editing ? (
-          <input
-            aria-label={`Редактировать название задачи ${task.title}`}
-            className="task-title-input"
-            onBlur={() => {
-              if (cancelledRef.current) {
-                cancelledRef.current = false;
-                return;
-              }
-              commitTitle();
-            }}
-            onChange={(event) => setTitleDraft(event.target.value)}
-            onClick={(event) => event.stopPropagation()}
-            onDoubleClick={(event) => event.stopPropagation()}
-            onPointerDown={(event) => event.stopPropagation()}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                event.stopPropagation();
-                commitTitle();
-              }
-              if (event.key === "Escape") {
-                event.preventDefault();
-                event.stopPropagation();
-                cancelledRef.current = true;
-                dispatch({ type: "cancel-task-title-edit" });
-              }
-            }}
-            ref={titleInputRef}
-            value={titleDraft}
-          />
-        ) : (
-          <button
-            className="task-title-trigger"
-            onDoubleClick={(event) => {
-              event.preventDefault();
-              beginTitleEdit();
-            }}
-            onKeyDown={(event) => {
-              if (event.key !== "Enter") return;
-              event.preventDefault();
-              beginTitleEdit();
-            }}
-            title="Двойной щелчок или Enter — изменить название"
-            type="button"
-          >
-            <strong>{task.title}</strong>
-          </button>
-        )}
-        <button
-          aria-label={`Открыть детали задачи ${task.title}`}
-          className="task-details-trigger"
-          type="button"
-        >
-          <span className="metadata-line">
-            {task.area ?? "Общее"} · {task.dueDate ?? "без срока"} ·{" "}
-            {task.linkedDocumentIds.length} док. · {doneSubtasks}/
-            {task.subtasks.length || 0}
-          </span>
-        </button>
-      </div>
-    </article>
-  );
+  return <OverviewSectionWorkspace state={state} dispatch={dispatch} />;
 }
 
 function KnowledgeSidebar({
   state,
   dispatch,
+  onClose,
 }: {
   state: DesktopPrototypeState;
   dispatch: Dispatch;
+  onClose?: () => void;
 }): React.JSX.Element {
   const tree = getKnowledgeTree(state);
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  const treeRef = useRef<HTMLElement>(null);
+  const [knowledgeDropTarget, setKnowledgeDropTarget] =
+    useState<KnowledgeDropTarget>(null);
+  const [revealDocumentId, setRevealDocumentId] = useState<string | null>(null);
+  const treeCollapsed = state.knowledgeExpandedBeforeCollapse !== null;
+
+  useEffect(() => {
+    if (!revealDocumentId) return;
+    const frame = window.requestAnimationFrame(() => {
+      treeRef.current
+        ?.querySelector<HTMLElement>(
+          `[data-knowledge-document-id="${revealDocumentId}"]`,
+        )
+        ?.scrollIntoView({ block: "nearest" });
+      setRevealDocumentId(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [revealDocumentId, state.expandedFolderIds]);
+
   return (
     <aside
       className="tool-sidebar knowledge-sidebar"
@@ -1042,39 +1062,51 @@ function KnowledgeSidebar({
           aria-label="Действия с деревом документов"
         >
           <IconButton
-            icon={<UiIcon name="search" />}
-            label="Перейти к поиску документов"
-            onClick={() => searchInputRef.current?.focus()}
-            title="Поиск по документам"
-            variant="ghost"
-          />
-          <IconButton
-            disabled
             icon={<UiIcon name="file-plus" />}
             label="Создать документ"
-            title="Создать документ — недоступно в mock-прототипе"
+            onClick={() => dispatch({ type: "create-knowledge-document" })}
+            title="Создать документ"
             variant="ghost"
           />
           <IconButton
-            disabled
             icon={<UiIcon name="folder-plus" />}
             label="Создать папку"
-            title="Создать папку — недоступно в mock-прототипе"
+            onClick={() => dispatch({ type: "create-knowledge-folder" })}
+            title="Создать папку"
             variant="ghost"
           />
           <IconButton
-            icon={<UiIcon name="collapse" />}
-            label="Свернуть все папки"
-            onClick={() => dispatch({ type: "collapse-all-knowledge-folders" })}
-            title="Свернуть все папки"
+            disabled={!state.selectedDocumentId}
+            icon={<UiIcon name="locate" />}
+            label="Показать текущий документ в дереве"
+            onClick={() => {
+              if (!state.selectedDocumentId) return;
+              dispatch({ type: "reveal-current-knowledge-document" });
+              setRevealDocumentId(state.selectedDocumentId);
+            }}
+            title="Показать текущий документ в дереве"
+            variant="ghost"
+          />
+          <IconButton
+            icon={<UiIcon name={treeCollapsed ? "expand" : "collapse"} />}
+            label={treeCollapsed ? "Восстановить папки" : "Свернуть все папки"}
+            onClick={() => dispatch({ type: "toggle-all-knowledge-folders" })}
+            title={treeCollapsed ? "Восстановить папки" : "Свернуть все папки"}
             variant="ghost"
           />
         </div>
+        <IconButton
+          className="knowledge-responsive-close"
+          icon={<UiIcon name="close" />}
+          label="Закрыть дерево документов"
+          onClick={onClose}
+          title="Закрыть дерево документов"
+          variant="ghost"
+        />
       </header>
-      <label className="knowledge-search">
-        <span>Поиск по проекту</span>
+      <div className="knowledge-search">
         <input
-          ref={searchInputRef}
+          aria-label="Поиск по проекту"
           onChange={(event) =>
             dispatch({
               type: "set-knowledge-search",
@@ -1084,14 +1116,20 @@ function KnowledgeSidebar({
           placeholder="Документ, папка или связь"
           value={state.knowledgeSearchQuery}
         />
-      </label>
-      <nav className="knowledge-tree" aria-label="Иерархия документов">
+      </div>
+      <nav
+        className="knowledge-tree"
+        aria-label="Иерархия документов"
+        ref={treeRef}
+      >
         {tree.length > 0 ? (
           tree.map((node) => (
             <KnowledgeTreeNodeView
               dispatch={dispatch}
+              dropTarget={knowledgeDropTarget}
               key={node.id}
               node={node}
+              onDropTargetChange={setKnowledgeDropTarget}
               state={state}
             />
           ))
@@ -1103,27 +1141,76 @@ function KnowledgeSidebar({
   );
 }
 
+type KnowledgeDropTarget =
+  | { kind: "folder"; id: string }
+  | { kind: "document"; id: string; position: "before" | "after" }
+  | null;
+
+const knowledgeDocumentDragType = "application/x-mozg-knowledge-document";
+
 function KnowledgeTreeNodeView({
   node,
   state,
   dispatch,
+  dropTarget,
+  onDropTargetChange,
 }: {
   node: KnowledgeTreeNode;
   state: DesktopPrototypeState;
   dispatch: Dispatch;
+  dropTarget: KnowledgeDropTarget;
+  onDropTargetChange: (target: KnowledgeDropTarget) => void;
 }): React.JSX.Element {
   const depth = Math.max(node.path.length - 1, 0);
+
   if (node.kind === "folder") {
     const expanded =
       state.knowledgeSearchQuery.trim().length > 0 ||
       state.expandedFolderIds.includes(node.id);
+    const editing = state.editingKnowledgeFolderId === node.id;
     return (
       <div className="knowledge-tree-branch">
         <button
           aria-expanded={expanded}
-          className="knowledge-tree-row folder"
+          className={[
+            "knowledge-tree-row",
+            "folder",
+            state.selectedKnowledgeFolderPath?.join("/") === node.path.join("/")
+              ? "is-selected-folder"
+              : "",
+            dropTarget?.kind === "folder" && dropTarget.id === node.id
+              ? "is-drop-target"
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          onDragOver={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            event.dataTransfer.dropEffect = "move";
+            onDropTargetChange({ kind: "folder", id: node.id });
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const documentId = event.dataTransfer.getData(
+              knowledgeDocumentDragType,
+            );
+            onDropTargetChange(null);
+            if (!documentId) return;
+            dispatch({
+              type: "move-knowledge-document",
+              documentId,
+              targetFolderPath: node.path,
+              position: "end",
+            });
+          }}
           onClick={() =>
-            dispatch({ type: "toggle-knowledge-folder", folderId: node.id })
+            dispatch({
+              type: "toggle-knowledge-folder",
+              folderId: node.id,
+              path: node.path,
+            })
           }
           style={treeDepthStyle(depth)}
           title={node.path.join(" / ")}
@@ -1131,15 +1218,25 @@ function KnowledgeTreeNodeView({
         >
           <UiIcon name={expanded ? "chevron-down" : "chevron-right"} />
           <UiIcon name={expanded ? "folder-open" : "folder"} />
-          <span>{node.title}</span>
+          {editing ? (
+            <KnowledgeFolderTitleEditor
+              dispatch={dispatch}
+              folderId={node.id}
+              title={node.title}
+            />
+          ) : (
+            <span>{node.title}</span>
+          )}
         </button>
         {expanded ? (
           <div className="knowledge-tree-children">
             {node.children.map((child) => (
               <KnowledgeTreeNodeView
                 dispatch={dispatch}
+                dropTarget={dropTarget}
                 key={child.id}
                 node={child}
+                onDropTargetChange={onDropTargetChange}
                 state={state}
               />
             ))}
@@ -1154,9 +1251,52 @@ function KnowledgeTreeNodeView({
         "knowledge-tree-row",
         "document",
         state.selectedDocumentId === node.document.id ? "is-active" : "",
+        dropTarget?.kind === "document" && dropTarget.id === node.document.id
+          ? `drop-${dropTarget.position}`
+          : "",
       ]
         .filter(Boolean)
         .join(" ")}
+      data-knowledge-document-id={node.document.id}
+      draggable
+      onDragEnd={() => onDropTargetChange(null)}
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = "move";
+        const bounds = event.currentTarget.getBoundingClientRect();
+        const position =
+          event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
+        onDropTargetChange({
+          kind: "document",
+          id: node.document.id,
+          position,
+        });
+      }}
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData(knowledgeDocumentDragType, node.document.id);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const documentId = event.dataTransfer.getData(
+          knowledgeDocumentDragType,
+        );
+        const position =
+          dropTarget?.kind === "document" && dropTarget.id === node.document.id
+            ? dropTarget.position
+            : "before";
+        onDropTargetChange(null);
+        if (!documentId) return;
+        dispatch({
+          type: "move-knowledge-document",
+          documentId,
+          targetFolderPath: getDocumentFolderPath(node.document),
+          targetDocumentId: node.document.id,
+          position,
+        });
+      }}
       onClick={() =>
         dispatch({ type: "select-document", documentId: node.document.id })
       }
@@ -1171,108 +1311,375 @@ function KnowledgeTreeNodeView({
   );
 }
 
+function KnowledgeFolderTitleEditor({
+  dispatch,
+  folderId,
+  title,
+}: {
+  dispatch: Dispatch;
+  folderId: string;
+  title: string;
+}): React.JSX.Element {
+  const [draft, setDraft] = useState(title);
+
+  return (
+    <input
+      aria-label="Название папки"
+      autoFocus
+      className="knowledge-folder-title-input"
+      onBlur={() =>
+        dispatch({
+          type: "rename-knowledge-folder",
+          folderId,
+          title: draft,
+        })
+      }
+      onChange={(event) => setDraft(event.target.value)}
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+        if (event.key === "Escape") {
+          event.preventDefault();
+          dispatch({ type: "finish-editing-knowledge-folder" });
+        }
+      }}
+      value={draft}
+    />
+  );
+}
+
+type DocumentScrollSnapshot = {
+  availableScroll: number;
+  documentId: string;
+  progress: number;
+  scrollTop: number;
+};
+
+function getKnowledgeDocumentPage(documentId: string): HTMLElement | null {
+  return (
+    Array.from(
+      window.document.querySelectorAll<HTMLElement>(".document-page"),
+    ).find((element) => element.dataset.documentId === documentId) ?? null
+  );
+}
+
+function markdownDownloadName(title: string): string {
+  const safeTitle = title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-").trim();
+  return `${safeTitle || "document"}.md`;
+}
+
 function KnowledgeWorkspace({
   state,
   dispatch,
+  onOpenTree,
 }: {
   state: DesktopPrototypeState;
   dispatch: Dispatch;
+  onOpenTree?: () => void;
 }): React.JSX.Element {
-  const documents = getProjectDocuments(state);
-  const selectedDocument =
-    getDocumentById(state, state.selectedDocumentId) ?? documents[0];
+  const {
+    primaryDocument: selectedDocument,
+    secondaryDocument: splitDocument,
+    activePane,
+    activeDocument,
+  } = getKnowledgePaneState(state);
+  const activePaneDocumentId = activeDocument?.id ?? "";
+  const openTabs = getOpenDocuments(state);
+  const editingDocumentId = state.editingKnowledgeDocumentId;
+  const currentDocument = activeDocument ?? selectedDocument;
+  const markdownFileInputRef = useRef<HTMLInputElement>(null);
+  const printDocumentRef = useRef<HTMLElement>(null);
+  const shareMenuRef = useRef<HTMLDivElement>(null);
+  const shareMenuPanelRef = useRef<HTMLDivElement>(null);
+  const pendingScrollRestoreRef = useRef<DocumentScrollSnapshot | null>(null);
+  const [shareMenuOpen, setShareMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!shareMenuOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent): void => {
+      if (
+        event.target instanceof Node &&
+        !shareMenuRef.current?.contains(event.target) &&
+        !shareMenuPanelRef.current?.contains(event.target)
+      ) {
+        setShareMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setShareMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePointer);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [shareMenuOpen]);
+
+  useLayoutEffect(() => {
+    const snapshot = pendingScrollRestoreRef.current;
+    if (!snapshot || snapshot.documentId !== activePaneDocumentId) return;
+    const page = getKnowledgeDocumentPage(snapshot.documentId);
+    pendingScrollRestoreRef.current = null;
+    if (!page) return;
+    const editor = page.querySelector<HTMLElement>(".markdown-source-editor");
+    if (editor) {
+      const pagePaddingBottom = Number.parseFloat(
+        window.getComputedStyle(page).paddingBottom,
+      );
+      editor.style.minHeight = `${Math.max(
+        page.clientHeight + snapshot.availableScroll - pagePaddingBottom,
+        0,
+      )}px`;
+    }
+    const availableScroll = Math.max(page.scrollHeight - page.clientHeight, 0);
+    page.scrollTop =
+      availableScroll > 0
+        ? snapshot.progress * availableScroll
+        : snapshot.scrollTop;
+  }, [activePaneDocumentId, editingDocumentId]);
+
+  const activatePane = (pane: "primary" | "secondary"): void => {
+    dispatch({ type: "activate-knowledge-pane", pane });
+  };
+
+  const toggleMarkdownEditing = (): void => {
+    const page = getKnowledgeDocumentPage(activePaneDocumentId);
+    if (page) {
+      const availableScroll = Math.max(
+        page.scrollHeight - page.clientHeight,
+        0,
+      );
+      pendingScrollRestoreRef.current = {
+        availableScroll,
+        documentId: activePaneDocumentId,
+        progress: availableScroll > 0 ? page.scrollTop / availableScroll : 0,
+        scrollTop: page.scrollTop,
+      };
+    }
+    dispatch({
+      type: "toggle-knowledge-document-edit",
+      documentId: activePaneDocumentId,
+    });
+  };
+
+  const loadMarkdown = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ): Promise<void> => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file || !currentDocument) return;
+    try {
+      dispatch({
+        type: "update-knowledge-document-markdown",
+        documentId: currentDocument.id,
+        markdown: await file.text(),
+      });
+    } finally {
+      input.value = "";
+    }
+  };
+
+  const saveMarkdown = (): void => {
+    if (!currentDocument) return;
+    const blob = new Blob([currentDocument.content.join("\n")], {
+      type: "text/markdown;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = window.document.createElement("a");
+    link.download = markdownDownloadName(currentDocument.title);
+    link.href = url;
+    link.click();
+    queueMicrotask(() => URL.revokeObjectURL(url));
+  };
+
+  const printArticleAsPdf = (): void => {
+    if (!currentDocument || !printDocumentRef.current) return;
+    const printWindow = window.open(
+      "",
+      "_blank",
+      "popup,width=900,height=1000",
+    );
+    if (!printWindow) return;
+    printWindow.opener = null;
+    printWindow.document.open();
+    printWindow.document.write(
+      '<!doctype html><html lang="ru"><head><meta charset="utf-8"><style>' +
+        "@page{margin:20mm}body{margin:0;color:#1f2328;font:16px/1.65 Arial,sans-serif}" +
+        "main{max-width:720px;margin:0 auto}small{display:block;margin-bottom:24px;color:#6b7280}" +
+        "h1{font-size:32px;line-height:1.25}h2{margin-top:28px;font-size:22px}h3{margin-top:22px;font-size:18px}" +
+        "p{margin:10px 0}pre{overflow-wrap:anywhere;white-space:pre-wrap;background:#f5f5f5;padding:14px}" +
+        "blockquote{border-left:3px solid #bbb;margin-left:0;padding-left:16px}a{color:#303f9f}" +
+        'hr{border:0;border-top:1px solid #ddd}</style></head><body><main id="article"></main></body></html>',
+    );
+    printWindow.document.close();
+    printWindow.document.title = currentDocument.title;
+    const printTarget = printWindow.document.getElementById("article");
+    if (printTarget) printTarget.innerHTML = printDocumentRef.current.innerHTML;
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+  };
+
+  const shareArticle = (channel: "email" | "telegram" | "whatsapp"): void => {
+    if (!currentDocument) return;
+    const articleUrl = window.location.href;
+    const title = `Статья «${currentDocument.title}»`;
+    const urls = {
+      email: `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(`${title}\n\n${articleUrl}`)}`,
+      telegram: `https://t.me/share/url?url=${encodeURIComponent(articleUrl)}&text=${encodeURIComponent(title)}`,
+      whatsapp: `https://wa.me/?text=${encodeURIComponent(`${title}\n${articleUrl}`)}`,
+    };
+    if (channel === "email") {
+      window.location.href = urls.email;
+    } else {
+      window.open(urls[channel], "_blank", "noopener,noreferrer");
+    }
+    setShareMenuOpen(false);
+  };
+
   if (!selectedDocument) {
     return <EmptySection title="Знания" />;
   }
-  const openTabs = getOpenDocuments(state);
-  const splitDocument = getDocumentById(state, state.splitViewDocumentId);
+
   return (
     <div className="document-workspace">
-      <div
-        className="document-tabs"
-        role="tablist"
-        aria-label="Открытые документы"
-      >
-        {openTabs.map((document) => (
-          <div
-            className={[
-              "document-tab-item",
-              document.id === selectedDocument.id ? "active" : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-            key={document.id}
-          >
-            <button
-              aria-selected={document.id === selectedDocument.id}
-              className="document-tab-activate"
-              onClick={() =>
-                dispatch({
-                  type: "activate-document-tab",
-                  documentId: document.id,
-                })
-              }
-              role="tab"
-              type="button"
-            >
-              <span>{document.title}</span>
-              {document.id === "doc-l-magic" ? (
-                <span
-                  className="tab-unsaved"
-                  aria-label="Есть несохранённые mock-правки"
-                />
-              ) : null}
-            </button>
-            <IconButton
-              className="tab-close"
-              icon={<UiIcon name="close" />}
-              label={`Закрыть ${document.title}`}
-              onClick={() =>
-                dispatch({
-                  type: "close-document-tab",
-                  documentId: document.id,
-                })
-              }
-              title={`Закрыть ${document.title}`}
-              variant="ghost"
-            />
-          </div>
-        ))}
-        <button
-          className="document-tab-add"
-          type="button"
-          title="Открыть новую вкладку"
-          aria-label="Открыть новую вкладку"
+      <div className="document-tabs-row">
+        <div
+          className="document-tabs"
+          role="tablist"
+          aria-label="Открытые документы"
         >
-          <UiIcon name="plus" />
-        </button>
-      </div>
-      <nav className="document-nav" aria-label="Навигация документа">
-        <div className="document-history-controls">
-          <IconButton
-            disabled={state.documentHistoryBack.length === 0}
-            icon={<UiIcon name="arrow-left" />}
-            label="Назад"
-            onClick={() => dispatch({ type: "go-document-back" })}
-            title="Назад"
-            variant="ghost"
-          />
-          <IconButton
-            disabled={state.documentHistoryForward.length === 0}
-            icon={<UiIcon name="arrow-right" />}
-            label="Вперёд"
-            onClick={() => dispatch({ type: "go-document-forward" })}
-            title="Вперёд"
-            variant="ghost"
-          />
-        </div>
-        <ol className="document-breadcrumb">
-          {getDocumentFolderPath(selectedDocument).map((part) => (
-            <li key={part}>{part}</li>
+          {openTabs.map((document) => (
+            <div
+              className={[
+                "document-tab-item",
+                document.id === selectedDocument.id ? "active" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              key={document.id}
+            >
+              <button
+                aria-selected={document.id === selectedDocument.id}
+                className="document-tab-activate"
+                onClick={() =>
+                  dispatch({
+                    type: "activate-document-tab",
+                    documentId: document.id,
+                  })
+                }
+                role="tab"
+                type="button"
+              >
+                <span>{document.title}</span>
+                {document.id === "doc-l-magic" ? (
+                  <span
+                    className="tab-unsaved"
+                    aria-label="Есть несохранённые mock-правки"
+                  />
+                ) : null}
+              </button>
+              <IconButton
+                className="tab-close"
+                icon={<UiIcon name="close" />}
+                label={`Закрыть ${document.title}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  dispatch({
+                    type: "close-document-tab",
+                    documentId: document.id,
+                  });
+                }}
+                title={`Закрыть ${document.title}`}
+                variant="ghost"
+              />
+            </div>
           ))}
-          <li aria-current="page">{selectedDocument.title}</li>
-        </ol>
+          <button
+            className="document-tab-add"
+            onClick={() => dispatch({ type: "create-knowledge-document" })}
+            type="button"
+            title="Создать документ"
+            aria-label="Создать документ"
+          >
+            <UiIcon name="plus" />
+          </button>
+        </div>
         <div className="document-actions">
+          <div className="knowledge-responsive-actions">
+            <PrototypeButton
+              onClick={onOpenTree}
+              size="compact"
+              variant="quiet"
+            >
+              Дерево
+            </PrototypeButton>
+          </div>
+          <IconButton
+            active={editingDocumentId === activePaneDocumentId}
+            icon={
+              <UiIcon
+                name={
+                  editingDocumentId === activePaneDocumentId ? "eye" : "pencil"
+                }
+              />
+            }
+            label={
+              editingDocumentId === activePaneDocumentId
+                ? "Перейти в режим чтения"
+                : "Редактировать Markdown"
+            }
+            onClick={toggleMarkdownEditing}
+            title={
+              editingDocumentId === activePaneDocumentId
+                ? "Режим чтения"
+                : "Редактировать Markdown"
+            }
+            variant="quiet"
+          />
+          <input
+            accept=".md,text/markdown,text/plain"
+            className="knowledge-document-file-input"
+            onChange={loadMarkdown}
+            ref={markdownFileInputRef}
+            type="file"
+          />
+          <PrototypeButton
+            aria-label="Загрузить Markdown в текущую статью"
+            onClick={() => markdownFileInputRef.current?.click()}
+            size="compact"
+            variant="quiet"
+          >
+            Load
+          </PrototypeButton>
+          <PrototypeButton
+            aria-label="Скачать текущую статью в Markdown"
+            onClick={saveMarkdown}
+            size="compact"
+            variant="quiet"
+          >
+            Save
+          </PrototypeButton>
+          <div className="document-share-control" ref={shareMenuRef}>
+            <PrototypeButton
+              aria-expanded={shareMenuOpen}
+              aria-haspopup="menu"
+              onClick={() => setShareMenuOpen((open) => !open)}
+              size="compact"
+              variant="quiet"
+            >
+              Поделиться
+            </PrototypeButton>
+          </div>
+          <PrototypeButton
+            active={state.contextPanel?.kind === "knowledge-tasks"}
+            onClick={() => dispatch({ type: "open-knowledge-task-linker" })}
+            size="compact"
+            variant="quiet"
+          >
+            Задачи
+          </PrototypeButton>
           <PrototypeButton
             active={selectedDocument.isKeyDocument === true}
             onClick={() =>
@@ -1318,9 +1725,105 @@ function KnowledgeWorkspace({
             AI
           </PrototypeButton>
         </div>
-      </nav>
-      <div className="document-body">
-        <DocumentOutline document={selectedDocument} />
+      </div>
+      {shareMenuOpen ? (
+        <div
+          aria-label="Поделиться статьёй"
+          className="document-share-menu"
+          ref={shareMenuPanelRef}
+          role="menu"
+        >
+          <span>PDF</span>
+          <PrototypeButton
+            onClick={printArticleAsPdf}
+            role="menuitem"
+            size="compact"
+            variant="quiet"
+          >
+            Сохранить PDF
+          </PrototypeButton>
+          <span>Отправить</span>
+          <div className="document-share-channels">
+            <PrototypeButton
+              onClick={() => shareArticle("email")}
+              role="menuitem"
+              size="compact"
+              variant="quiet"
+            >
+              Почта
+            </PrototypeButton>
+            <PrototypeButton
+              onClick={() => shareArticle("telegram")}
+              role="menuitem"
+              size="compact"
+              variant="quiet"
+            >
+              Telegram
+            </PrototypeButton>
+            <PrototypeButton
+              onClick={() => shareArticle("whatsapp")}
+              role="menuitem"
+              size="compact"
+              variant="quiet"
+            >
+              WhatsApp
+            </PrototypeButton>
+          </div>
+          <small>Прикрепите сохранённый PDF в выбранном сервисе.</small>
+        </div>
+      ) : null}
+      <div
+        className={[
+          "document-body",
+          splitDocument ? "is-split-view" : "",
+          editingDocumentId ? "is-markdown-editing" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        {splitDocument ? null : <DocumentOutline document={selectedDocument} />}
+        <div
+          className={`document-breadcrumb-row is-primary ${
+            activePane === "primary" ? "is-active" : ""
+          }`}
+        >
+          {getDocumentBreadcrumb(selectedDocument)}
+        </div>
+        {splitDocument ? (
+          <div
+            className={`document-breadcrumb-row is-secondary ${
+              activePane === "secondary" ? "is-active" : ""
+            }`}
+          >
+            {getDocumentBreadcrumb(splitDocument)}
+          </div>
+        ) : null}
+        {splitDocument ? (
+          <div
+            aria-label="Выбор документа Split"
+            className="knowledge-split-switcher"
+            role="tablist"
+          >
+            <button
+              aria-selected={activePane === "primary"}
+              className={activePane === "primary" ? "active" : ""}
+              onClick={() => activatePane("primary")}
+              role="tab"
+              type="button"
+            >
+              Левый: {selectedDocument.title}
+            </button>
+            <button
+              aria-selected={activePane === "secondary"}
+              className={activePane === "secondary" ? "active" : ""}
+              onClick={() => activatePane("secondary")}
+              role="tab"
+              type="button"
+            >
+              Правый: {splitDocument.title}
+            </button>
+          </div>
+        ) : null}
         <div
           className={[
             "document-editor-surface",
@@ -1329,12 +1832,38 @@ function KnowledgeWorkspace({
             .filter(Boolean)
             .join(" ")}
         >
-          <DocumentArticle document={selectedDocument} />
+          <DocumentArticle
+            active={activePane === "primary"}
+            dispatch={dispatch}
+            document={selectedDocument}
+            editing={editingDocumentId === selectedDocument.id}
+            onActivate={() => activatePane("primary")}
+          />
           {splitDocument ? (
-            <DocumentArticle document={splitDocument} secondary />
+            <DocumentArticle
+              active={activePane === "secondary"}
+              dispatch={dispatch}
+              document={splitDocument}
+              editing={editingDocumentId === splitDocument.id}
+              onActivate={() => activatePane("secondary")}
+              secondary
+            />
           ) : null}
         </div>
       </div>
+      {currentDocument ? (
+        <article
+          className="knowledge-print-document"
+          data-print-document-id={currentDocument.id}
+          ref={printDocumentRef}
+        >
+          <small>{getDocumentBreadcrumb(currentDocument)}</small>
+          <MarkdownDocumentPreview
+            document={currentDocument}
+            headingIdPrefix="print-"
+          />
+        </article>
+      ) : null}
       <footer className="workspace-footer">
         <PrototypeButton
           onClick={() =>
@@ -1361,18 +1890,19 @@ function KnowledgeWorkspace({
 type DocumentHeading = {
   id: string;
   label: string;
-  level: 1 | 2;
+  level: 1 | 2 | 3;
 };
 
 function getDocumentHeadings(document: PrototypeDocument): DocumentHeading[] {
   return document.content.flatMap((line, index) => {
-    const match = /^(#{1,2})\s+(.+)$/.exec(line);
+    const match = /^(#{1,3})\s+(.+)$/.exec(line);
     if (!match) return [];
+    const level = match[1]?.length;
     return [
       {
         id: `document-${document.id}-heading-${index}`,
         label: match[2] ?? line,
-        level: match[1]?.length === 2 ? 2 : 1,
+        level: level === 3 ? 3 : level === 2 ? 2 : 1,
       } satisfies DocumentHeading,
     ];
   });
@@ -1383,17 +1913,15 @@ function DocumentOutline({
 }: {
   document: PrototypeDocument;
 }): React.JSX.Element {
-  const headings = getDocumentHeadings(document);
+  const headings = getDocumentHeadings(document).filter(
+    (heading) => heading.level <= 2,
+  );
   return (
-    <aside className="document-outline" aria-label="Содержание документа">
-      <div>
-        <strong>Содержание</strong>
-        <span>Переходы по заголовкам</span>
-      </div>
+    <aside className="document-outline" aria-label="Навигация по статье">
       <nav>
         {headings.map((heading) => (
           <button
-            className={heading.level === 2 ? "level-two" : "level-one"}
+            className={`level-${heading.level}`}
             key={heading.id}
             onClick={() =>
               window.document
@@ -1402,7 +1930,6 @@ function DocumentOutline({
             }
             type="button"
           >
-            <span aria-hidden="true" />
             {heading.label}
           </button>
         ))}
@@ -1414,30 +1941,337 @@ function DocumentOutline({
 function DocumentArticle({
   document,
   secondary = false,
+  active,
+  editing,
+  dispatch,
+  onActivate,
 }: {
   document: PrototypeDocument;
   secondary?: boolean;
+  active: boolean;
+  editing: boolean;
+  dispatch: Dispatch;
+  onActivate: () => void;
 }): React.JSX.Element {
-  const headings = getDocumentHeadings(document);
   return (
     <article
-      className={secondary ? "document-page secondary" : "document-page"}
+      className={[
+        "document-page",
+        secondary ? "secondary" : "",
+        active ? "is-active-pane" : "",
+        editing ? "is-editing" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      data-document-id={document.id}
+      onPointerDown={onActivate}
     >
-      <span>{getDocumentBreadcrumb(document)}</span>
-      {document.content.map((line, index) => {
-        const heading = headings.find(
-          (item) => item.id === `document-${document.id}-heading-${index}`,
-        );
-        return (
-          <MarkdownPreviewBlock
-            anchorId={heading?.id}
-            key={`${document.id}-${index}`}
-            line={line}
-          />
-        );
-      })}
+      {editing ? (
+        <MarkdownSourceEditor
+          dispatch={dispatch}
+          document={document}
+          key={document.id}
+        />
+      ) : (
+        <div className="document-page-inner">
+          <MarkdownDocumentPreview document={document} />
+        </div>
+      )}
     </article>
   );
+}
+
+type MarkdownEditAction =
+  | "undo"
+  | "redo"
+  | "h1"
+  | "h2"
+  | "h3"
+  | "bold"
+  | "italic"
+  | "strike"
+  | "inline-code"
+  | "link"
+  | "bullet"
+  | "numbered"
+  | "checklist"
+  | "quote"
+  | "code-block"
+  | "horizontal-rule";
+
+const markdownToolbarActions: Array<{
+  action: MarkdownEditAction;
+  label: string;
+  title: string;
+}> = [
+  { action: "undo", label: "↶", title: "Отменить" },
+  { action: "redo", label: "↷", title: "Повторить" },
+  { action: "h1", label: "H1", title: "Заголовок 1" },
+  { action: "h2", label: "H2", title: "Заголовок 2" },
+  { action: "h3", label: "H3", title: "Заголовок 3" },
+  { action: "bold", label: "B", title: "Жирный" },
+  { action: "italic", label: "I", title: "Курсив" },
+  { action: "strike", label: "S", title: "Зачёркнутый" },
+  { action: "inline-code", label: "`", title: "Встроенный код" },
+  { action: "link", label: "↗", title: "Ссылка" },
+  { action: "bullet", label: "•", title: "Маркированный список" },
+  { action: "numbered", label: "1.", title: "Нумерованный список" },
+  { action: "checklist", label: "☐", title: "Чек-лист" },
+  { action: "quote", label: "❯", title: "Цитата" },
+  { action: "code-block", label: "{}", title: "Блок кода" },
+  { action: "horizontal-rule", label: "—", title: "Горизонтальная линия" },
+];
+
+function MarkdownSourceEditor({
+  document,
+  dispatch,
+}: {
+  document: PrototypeDocument;
+  dispatch: Dispatch;
+}): React.JSX.Element {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const markdown = document.content.join("\n");
+  const historyRef = useRef<string[]>([markdown]);
+  const historyIndexRef = useRef(0);
+  const resizeTextarea = useCallback((textarea: HTMLTextAreaElement): void => {
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, []);
+  const mountTextarea = useCallback(
+    (textarea: HTMLTextAreaElement | null) => {
+      textareaRef.current = textarea;
+      if (!textarea) return;
+      resizeTextarea(textarea);
+      textarea.focus({ preventScroll: true });
+    },
+    [resizeTextarea],
+  );
+
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea) resizeTextarea(textarea);
+  }, [markdown, resizeTextarea]);
+
+  const updateMarkdown = (nextMarkdown: string, addToHistory = true): void => {
+    if (addToHistory) {
+      const history = historyRef.current.slice(0, historyIndexRef.current + 1);
+      if (history[history.length - 1] !== nextMarkdown) {
+        history.push(nextMarkdown);
+        historyRef.current = history;
+        historyIndexRef.current = history.length - 1;
+      }
+    }
+    dispatch({
+      type: "update-knowledge-document-markdown",
+      documentId: document.id,
+      markdown: nextMarkdown,
+    });
+  };
+
+  const restoreSelection = (start: number, end = start): void => {
+    window.requestAnimationFrame(() => {
+      textareaRef.current?.focus({ preventScroll: true });
+      textareaRef.current?.setSelectionRange(start, end);
+    });
+  };
+
+  const replaceSelection = (
+    replacement: string,
+    selectionStart: number,
+    selectionEnd: number,
+  ): void => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const next =
+      markdown.slice(0, textarea.selectionStart) +
+      replacement +
+      markdown.slice(textarea.selectionEnd);
+    updateMarkdown(next);
+    restoreSelection(selectionStart, selectionEnd);
+  };
+
+  const wrapSelection = (
+    before: string,
+    after: string,
+    placeholder: string,
+  ): void => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const selected = markdown.slice(
+      textarea.selectionStart,
+      textarea.selectionEnd,
+    );
+    const content = selected || placeholder;
+    const replacement = `${before}${content}${after}`;
+    const start = textarea.selectionStart + before.length;
+    replaceSelection(replacement, start, start + content.length);
+  };
+
+  const prefixSelectedLines = (
+    prefixForLine: (line: string, index: number) => string,
+  ): void => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const lineStart =
+      markdown.lastIndexOf("\n", textarea.selectionStart - 1) + 1;
+    const nextLineBreak = markdown.indexOf("\n", textarea.selectionEnd);
+    const lineEnd = nextLineBreak === -1 ? markdown.length : nextLineBreak;
+    const replacement = markdown
+      .slice(lineStart, lineEnd)
+      .split("\n")
+      .map(prefixForLine)
+      .join("\n");
+    const next =
+      markdown.slice(0, lineStart) + replacement + markdown.slice(lineEnd);
+    updateMarkdown(next);
+    restoreSelection(lineStart, lineStart + replacement.length);
+  };
+
+  const applyAction = (action: MarkdownEditAction): void => {
+    if (action === "undo") {
+      if (historyIndexRef.current === 0) return;
+      historyIndexRef.current -= 1;
+      const previous = historyRef.current[historyIndexRef.current] ?? "";
+      updateMarkdown(previous, false);
+      return;
+    }
+    if (action === "redo") {
+      if (historyIndexRef.current >= historyRef.current.length - 1) return;
+      historyIndexRef.current += 1;
+      const next = historyRef.current[historyIndexRef.current] ?? "";
+      updateMarkdown(next, false);
+      return;
+    }
+    if (action === "h1" || action === "h2" || action === "h3") {
+      const level = Number(action.slice(1));
+      prefixSelectedLines(
+        (line) => `${"#".repeat(level)} ${line.replace(/^#{1,6}\s+/, "")}`,
+      );
+      return;
+    }
+    if (action === "bullet") {
+      prefixSelectedLines((line) => `- ${line.replace(/^[-*+]\s+/, "")}`);
+      return;
+    }
+    if (action === "numbered") {
+      prefixSelectedLines(
+        (line, index) => `${index + 1}. ${line.replace(/^\d+\.\s+/, "")}`,
+      );
+      return;
+    }
+    if (action === "checklist") {
+      prefixSelectedLines(
+        (line) => `- [ ] ${line.replace(/^- \[[ x]\]\s+/, "")}`,
+      );
+      return;
+    }
+    if (action === "quote") {
+      prefixSelectedLines((line) => `> ${line.replace(/^>\s+/, "")}`);
+      return;
+    }
+    if (action === "bold") wrapSelection("**", "**", "текст");
+    if (action === "italic") wrapSelection("*", "*", "текст");
+    if (action === "strike") wrapSelection("~~", "~~", "текст");
+    if (action === "inline-code") wrapSelection("`", "`", "код");
+    if (action === "link") wrapSelection("[", "](https://)", "ссылка");
+    if (action === "code-block") wrapSelection("```\n", "\n```", "код");
+    if (action === "horizontal-rule") {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      const prefix = textarea.selectionStart > 0 ? "\n" : "";
+      replaceSelection(
+        `${prefix}---\n`,
+        textarea.selectionStart + prefix.length + 4,
+        textarea.selectionStart + prefix.length + 4,
+      );
+    }
+  };
+
+  return (
+    <div className="markdown-source-editor">
+      <div className="markdown-toolbar" aria-label="Форматирование Markdown">
+        {markdownToolbarActions.map((item) => (
+          <button
+            aria-label={item.title}
+            className="markdown-toolbar-button"
+            key={item.action}
+            onClick={() => applyAction(item.action)}
+            onMouseDown={(event) => event.preventDefault()}
+            title={item.title}
+            type="button"
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      <div className="markdown-source-content">
+        <textarea
+          aria-label={`Markdown: ${document.title}`}
+          className="markdown-source-textarea"
+          onChange={(event) => {
+            resizeTextarea(event.currentTarget);
+            updateMarkdown(event.currentTarget.value);
+          }}
+          ref={mountTextarea}
+          spellCheck
+          value={markdown}
+        />
+      </div>
+    </div>
+  );
+}
+
+function MarkdownDocumentPreview({
+  document,
+  hideLeadingTitle = false,
+  headingIdPrefix = "",
+}: {
+  document: PrototypeDocument;
+  hideLeadingTitle?: boolean;
+  headingIdPrefix?: string;
+}): React.JSX.Element {
+  const headings = getDocumentHeadings(document);
+  const blocks: React.ReactNode[] = [];
+  const firstContentIndex =
+    hideLeadingTitle && document.content[0]?.trim() === `# ${document.title}`
+      ? 1
+      : 0;
+  for (
+    let index = firstContentIndex;
+    index < document.content.length;
+    index += 1
+  ) {
+    const line = document.content[index] ?? "";
+    if (line.startsWith("```")) {
+      const code: string[] = [];
+      let codeIndex = index + 1;
+      while (
+        codeIndex < document.content.length &&
+        !(document.content[codeIndex] ?? "").startsWith("```")
+      ) {
+        code.push(document.content[codeIndex] ?? "");
+        codeIndex += 1;
+      }
+      blocks.push(
+        <pre className="document-code-block" key={`${document.id}-${index}`}>
+          <code>{code.join("\n")}</code>
+        </pre>,
+      );
+      index = codeIndex;
+      continue;
+    }
+    const heading = headings.find(
+      (item) => item.id === `document-${document.id}-heading-${index}`,
+    );
+    blocks.push(
+      <MarkdownPreviewBlock
+        anchorId={heading ? `${headingIdPrefix}${heading.id}` : undefined}
+        key={`${document.id}-${index}`}
+        line={line}
+      />,
+    );
+  }
+  return <>{blocks}</>;
 }
 
 function MarkdownPreviewBlock({
@@ -1447,14 +2281,85 @@ function MarkdownPreviewBlock({
   line: string;
   anchorId?: string;
 }): React.JSX.Element {
-  if (line.startsWith("# ")) return <h1 id={anchorId}>{line.slice(2)}</h1>;
-  if (line.startsWith("## ")) return <h2 id={anchorId}>{line.slice(3)}</h2>;
+  if (line === "---") return <hr />;
+  if (line.startsWith("# "))
+    return <h1 id={anchorId}>{renderInlineMarkdown(line.slice(2))}</h1>;
+  if (line.startsWith("## "))
+    return <h2 id={anchorId}>{renderInlineMarkdown(line.slice(3))}</h2>;
+  if (line.startsWith("### "))
+    return <h3 id={anchorId}>{renderInlineMarkdown(line.slice(4))}</h3>;
+  const checklist = /^- \[([ x])\]\s+(.+)$/.exec(line);
+  if (checklist) {
+    return (
+      <p className="document-list-item document-checklist-item">
+        <input
+          aria-label="Состояние пункта"
+          checked={checklist[1] === "x"}
+          disabled
+          type="checkbox"
+        />
+        <span>{renderInlineMarkdown(checklist[2] ?? "")}</span>
+      </p>
+    );
+  }
   if (line.startsWith("- "))
-    return <p className="document-list-item">• {line.slice(2)}</p>;
+    return (
+      <p className="document-list-item">
+        • {renderInlineMarkdown(line.slice(2))}
+      </p>
+    );
   if (/^\d+\.\s/.test(line))
-    return <p className="document-list-item">{line}</p>;
-  if (line.startsWith("> ")) return <blockquote>{line.slice(2)}</blockquote>;
-  return <p>{line}</p>;
+    return <p className="document-list-item">{renderInlineMarkdown(line)}</p>;
+  if (line.startsWith("> "))
+    return <blockquote>{renderInlineMarkdown(line.slice(2))}</blockquote>;
+  return <p>{renderInlineMarkdown(line)}</p>;
+}
+
+function renderInlineMarkdown(text: string): React.ReactNode[] {
+  const tokenPattern =
+    /(\*\*[^*\n]+\*\*|~~[^~\n]+~~|`[^`\n]+`|\[[^\]\n]+\]\(https?:\/\/[^)\s]+\)|\*[^*\n]+\*)/g;
+  const nodes: React.ReactNode[] = [];
+  let cursor = 0;
+  let match = tokenPattern.exec(text);
+  while (match) {
+    if (match.index > cursor) nodes.push(text.slice(cursor, match.index));
+    const token = match[0];
+    const key = `${match.index}-${token}`;
+    if (token.startsWith("**")) {
+      nodes.push(<strong key={key}>{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith("~~")) {
+      nodes.push(<del key={key}>{token.slice(2, -2)}</del>);
+    } else if (token.startsWith("`")) {
+      nodes.push(<code key={key}>{token.slice(1, -1)}</code>);
+    } else if (token.startsWith("[")) {
+      const link = /^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/.exec(token);
+      nodes.push(
+        link ? (
+          <a href={link[2]} key={key} rel="noreferrer" target="_blank">
+            {link[1]}
+          </a>
+        ) : (
+          token
+        ),
+      );
+    } else {
+      nodes.push(<em key={key}>{token.slice(1, -1)}</em>);
+    }
+    cursor = match.index + token.length;
+    match = tokenPattern.exec(text);
+  }
+  if (cursor < text.length) nodes.push(text.slice(cursor));
+  return nodes;
+}
+
+const taskDragMimeType = "application/x-mozg-task-id";
+
+function getDraggedTaskId(event: DragEvent<HTMLElement>): string | null {
+  return (
+    event.dataTransfer.getData(taskDragMimeType) ||
+    event.dataTransfer.getData("text/plain") ||
+    null
+  );
 }
 
 function TasksSidebar({
@@ -1464,26 +2369,241 @@ function TasksSidebar({
   state: DesktopPrototypeState;
   dispatch: Dispatch;
 }): React.JSX.Element {
+  const folders = getProjectTaskFolders(state);
+  const directions = getProjectOverviewDirections(state);
+  const [newFolderTitle, setNewFolderTitle] = useState("");
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [folderTitleDraft, setFolderTitleDraft] = useState("");
+
+  const commitFolderRename = (): void => {
+    if (!editingFolderId) return;
+    if (folderTitleDraft.trim()) {
+      dispatch({
+        type: "rename-task-folder",
+        folderId: editingFolderId,
+        title: folderTitleDraft,
+      });
+    }
+    setEditingFolderId(null);
+    setFolderTitleDraft("");
+  };
+
   return (
-    <aside className="tool-sidebar" aria-label="Фильтры задач">
-      <header>
-        <span>Задачи</span>
-        <strong>Списки</strong>
-      </header>
-      <nav className="vertical-menu">
-        {taskFilters.map((filter) => (
+    <aside className="tool-sidebar tasks-sidebar" aria-label="Фильтры задач">
+      <label className="task-sidebar-search">
+        <input
+          aria-label="Поиск задач"
+          onChange={(event) =>
+            dispatch({
+              type: "set-task-search-query",
+              query: event.target.value,
+            })
+          }
+          placeholder="Поиск задач"
+          type="search"
+          value={state.taskSearchQuery}
+        />
+      </label>
+      <nav className="vertical-menu task-sidebar-group">
+        <ToolSidebarItem
+          active={state.taskDayViewActive}
+          onClick={() => dispatch({ type: "select-task-day" })}
+        >
+          <strong>Задачи на день</strong>
+        </ToolSidebarItem>
+        <ToolSidebarItem
+          active={
+            !state.taskDayViewActive &&
+            state.selectedTaskDirectionId === null &&
+            state.selectedTaskFolderId === null &&
+            state.taskFilter === "important"
+          }
+          onClick={() =>
+            dispatch({ type: "set-task-filter", filter: "important" })
+          }
+        >
+          <strong>Важные</strong>
+        </ToolSidebarItem>
+        <div
+          className="task-sidebar-drop-target"
+          onDragOver={(event) => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            const taskId = getDraggedTaskId(event);
+            if (!taskId) return;
+            dispatch({ type: "assign-task-folder", taskId, folderId: null });
+          }}
+        >
           <ToolSidebarItem
-            active={state.taskFilter === filter.id}
-            key={filter.id}
+            active={
+              !state.taskDayViewActive &&
+              state.selectedTaskDirectionId === null &&
+              state.selectedTaskFolderId === null &&
+              state.taskFilter === "all"
+            }
+            onClick={() => dispatch({ type: "set-task-filter", filter: "all" })}
+          >
+            <strong>Все</strong>
+          </ToolSidebarItem>
+        </div>
+      </nav>
+      <div className="task-sidebar-separator" />
+      <nav
+        className="vertical-menu task-sidebar-group"
+        aria-label="Направления проекта"
+      >
+        {directions.map((direction) => (
+          <ToolSidebarItem
+            active={state.selectedTaskDirectionId === direction.id}
+            key={direction.id}
             onClick={() =>
-              dispatch({ type: "set-task-filter", filter: filter.id })
+              dispatch({
+                type: "select-task-direction",
+                directionId: direction.id,
+              })
             }
           >
-            <strong>{filter.label}</strong>
-            <span>{filter.description}</span>
+            <strong>{direction.title}</strong>
           </ToolSidebarItem>
         ))}
       </nav>
+      <div className="task-sidebar-separator" />
+      <section className="task-folders" aria-label="Папки задач">
+        <ToolSidebarItem
+          active={
+            !state.taskDayViewActive &&
+            state.selectedTaskDirectionId === null &&
+            state.selectedTaskFolderId === null &&
+            state.taskFilter === "completed"
+          }
+          onClick={() =>
+            dispatch({ type: "set-task-filter", filter: "completed" })
+          }
+        >
+          <strong>Завершённые</strong>
+        </ToolSidebarItem>
+        <div className="task-folders-heading">Папки</div>
+        <div className="task-folder-list">
+          {folders.map((folder) => {
+            const folderHasTasks = state.tasks.some(
+              (task) => task.taskFolderId === folder.id,
+            );
+            return (
+              <div
+                className={
+                  state.selectedTaskFolderId === folder.id
+                    ? "task-folder-row is-active"
+                    : "task-folder-row"
+                }
+                key={folder.id}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const taskId = getDraggedTaskId(event);
+                  if (!taskId) return;
+                  dispatch({
+                    type: "assign-task-folder",
+                    taskId,
+                    folderId: folder.id,
+                  });
+                }}
+              >
+                {editingFolderId === folder.id ? (
+                  <input
+                    aria-label={`Название папки: ${folder.title}`}
+                    autoFocus
+                    onBlur={commitFolderRename}
+                    onChange={(event) =>
+                      setFolderTitleDraft(event.target.value)
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        commitFolderRename();
+                      }
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        setEditingFolderId(null);
+                        setFolderTitleDraft("");
+                      }
+                    }}
+                    value={folderTitleDraft}
+                  />
+                ) : (
+                  <button
+                    className="task-folder-select"
+                    onClick={() =>
+                      dispatch({
+                        type: "select-task-folder",
+                        folderId: folder.id,
+                      })
+                    }
+                    type="button"
+                  >
+                    {folder.title}
+                  </button>
+                )}
+                <button
+                  aria-label={`Переименовать папку: ${folder.title}`}
+                  className="task-folder-action"
+                  onClick={() => {
+                    setEditingFolderId(folder.id);
+                    setFolderTitleDraft(folder.title);
+                  }}
+                  title="Переименовать папку"
+                  type="button"
+                >
+                  ✎
+                </button>
+                <button
+                  aria-label={`Удалить папку: ${folder.title}`}
+                  className="task-folder-action"
+                  disabled={folderHasTasks}
+                  onClick={() =>
+                    dispatch({
+                      type: "delete-task-folder",
+                      folderId: folder.id,
+                    })
+                  }
+                  title={
+                    folderHasTasks
+                      ? "Сначала переместите задачи из папки"
+                      : "Удалить папку"
+                  }
+                  type="button"
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <form
+          className="task-folder-create"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!newFolderTitle.trim()) return;
+            dispatch({ type: "create-task-folder", title: newFolderTitle });
+            setNewFolderTitle("");
+          }}
+        >
+          <input
+            aria-label="Название новой папки задач"
+            onChange={(event) => setNewFolderTitle(event.target.value)}
+            placeholder="Новая папка"
+            value={newFolderTitle}
+          />
+          <button aria-label="Создать папку" type="submit">
+            +
+          </button>
+        </form>
+      </section>
     </aside>
   );
 }
@@ -1495,30 +2615,102 @@ function TasksWorkspace({
   state: DesktopPrototypeState;
   dispatch: Dispatch;
 }): React.JSX.Element {
-  const tasks = getVisibleTaskList(state);
-  const currentFilter =
-    taskFilters.find((filter) => filter.id === state.taskFilter) ??
-    taskFilters[0];
+  const [taskComposerOpen, setTaskComposerOpen] = useState(false);
+  const [taskComposerDraft, setTaskComposerDraft] = useState("");
+  const taskComposerInputRef = useRef<HTMLInputElement>(null);
+  const focusedTask = getTaskById(state, state.taskDetailViewTaskId);
+  const tasks = state.taskDetailViewTaskId
+    ? focusedTask
+      ? [focusedTask]
+      : []
+    : getVisibleTaskList(state);
+
+  useEffect(() => {
+    if (!taskComposerOpen) return;
+    taskComposerInputRef.current?.focus();
+  }, [taskComposerOpen]);
+
+  const closeTaskComposer = (): void => {
+    setTaskComposerOpen(false);
+    setTaskComposerDraft("");
+  };
+
+  const createTaskFromComposer = (): void => {
+    const title = taskComposerDraft.trim();
+    if (title.length === 0) return;
+    dispatch({ type: "create-task", title });
+    closeTaskComposer();
+  };
+
   return (
     <div className="task-list-workspace">
-      <WorkspaceHeader
-        description={currentFilter.description}
-        eyebrow="Список задач"
-        title={currentFilter.label}
-      />
-      <div className="task-list">
-        {tasks.map((task) => (
-          <TaskListRow
-            directionTitle={
-              getOverviewDirectionById(state, task.overviewDirectionId)
-                ?.title ?? "Направление"
-            }
-            dispatch={dispatch}
-            key={task.id}
-            task={task}
+      {state.taskDetailViewTaskId ? (
+        <button
+          className="quiet-text-link task-list-back-link"
+          onClick={() => dispatch({ type: "close-task-detail-view" })}
+          type="button"
+        >
+          ← Все задачи
+        </button>
+      ) : null}
+      <div className="task-list-scroll">
+        <div className="task-list">
+          {tasks.map((task) => (
+            <TaskListRow dispatch={dispatch} key={task.id} task={task} />
+          ))}
+          <div
+            className="task-list-drop-end"
+            onDragOver={(event) => {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              const taskId = getDraggedTaskId(event);
+              if (!taskId) return;
+              dispatch({ type: "move-task-list", taskId, targetTaskId: null });
+            }}
           />
-        ))}
+        </div>
       </div>
+      {state.taskDetailViewTaskId ? null : (
+        <div className="task-list-composer">
+          {taskComposerOpen ? (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                createTaskFromComposer();
+              }}
+            >
+              <input
+                aria-label="Название новой задачи"
+                onBlur={() => {
+                  if (taskComposerDraft.trim().length === 0) {
+                    closeTaskComposer();
+                  }
+                }}
+                onChange={(event) => setTaskComposerDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Escape") return;
+                  event.preventDefault();
+                  closeTaskComposer();
+                }}
+                placeholder="Название задачи"
+                ref={taskComposerInputRef}
+                value={taskComposerDraft}
+              />
+            </form>
+          ) : (
+            <button
+              className="task-list-add"
+              onClick={() => setTaskComposerOpen(true)}
+              type="button"
+            >
+              + Добавить задачу
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1526,31 +2718,81 @@ function TasksWorkspace({
 function TaskListRow({
   task,
   dispatch,
-  directionTitle,
 }: {
   task: PrototypeTask;
   dispatch: Dispatch;
-  directionTitle: string;
 }): React.JSX.Element {
-  const doneSubtasks = task.subtasks.filter((subtask) => subtask.done).length;
   return (
-    <article className={`task-row task-signal-${task.signal}`}>
+    <article
+      className={`task-row task-signal-${task.signal}`}
+      onClick={() =>
+        dispatch({ type: "select-task", taskId: task.id, section: "tasks" })
+      }
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const taskId = getDraggedTaskId(event);
+        if (!taskId || taskId === task.id) return;
+        dispatch({
+          type: "move-task-list",
+          taskId,
+          targetTaskId: task.id,
+        });
+      }}
+    >
       <button
-        onClick={() =>
-          dispatch({ type: "select-task", taskId: task.id, section: "tasks" })
-        }
+        aria-label={`Перетащить задачу ${task.title}`}
+        className="task-list-drag-handle"
+        draggable
+        onClick={(event) => event.stopPropagation()}
+        onDragStart={(event) => {
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData(taskDragMimeType, task.id);
+          event.dataTransfer.setData("text/plain", task.id);
+        }}
+        title="Перетащить задачу"
         type="button"
       >
-        <strong>{task.title}</strong>
-        <span>
-          {task.area ?? "Общее"} · {directionTitle} · {doneSubtasks}/
-          {task.subtasks.length || 0}
-          {task.completedAt ? " · завершена" : ""}
-        </span>
+        ⠿
       </button>
       <button
+        aria-checked={task.completedAt !== null}
+        aria-label={
+          task.completedAt
+            ? `Отметить задачу незавершённой: ${task.title}`
+            : `Завершить задачу: ${task.title}`
+        }
+        className={
+          task.completedAt
+            ? "task-completion-checkbox is-completed"
+            : "task-completion-checkbox"
+        }
+        onClick={(event) => {
+          event.stopPropagation();
+          dispatch({ type: "toggle-task-completed", taskId: task.id });
+        }}
+        role="checkbox"
+        type="button"
+      >
+        <span aria-hidden="true">{task.completedAt ? "✓" : ""}</span>
+      </button>
+      <strong
+        className={
+          task.completedAt ? "task-row-title is-completed" : "task-row-title"
+        }
+      >
+        {task.title}
+      </strong>
+      <button
         className={task.starred ? "star-button active" : "star-button"}
-        onClick={() => dispatch({ type: "toggle-task-star", taskId: task.id })}
+        onClick={(event) => {
+          event.stopPropagation();
+          dispatch({ type: "toggle-task-star", taskId: task.id });
+        }}
         type="button"
       >
         ★
@@ -1604,17 +2846,6 @@ function CanvasesWorkspace({
   }
   return (
     <div className="canvas-workspace">
-      <header className="canvas-toolbar">
-        <div>
-          <span>Холст</span>
-          <h1>{canvas.title}</h1>
-        </div>
-        <div>
-          <button type="button">−</button>
-          <button type="button">100%</button>
-          <button type="button">+</button>
-        </div>
-      </header>
       <div className="canvas-surface">
         <div className="canvas-line line-one" />
         <div className="canvas-line line-two" />
@@ -1687,11 +2918,6 @@ function InboxWorkspace({
   const items = getVisibleInboxItems(state);
   return (
     <div className="inbox-workspace">
-      <WorkspaceHeader
-        description="Структурный макет места, куда попадают быстрые материалы."
-        eyebrow="Захваты"
-        title="Входящие"
-      />
       <div className="inbox-grid">
         {items.map((item) => (
           <InboxItemCard dispatch={dispatch} item={item} key={item.id} />
@@ -1732,35 +2958,139 @@ function ContextPanelSlot({
   dispatch: Dispatch;
   contextPanel: ContextPanelState;
 }): React.JSX.Element | null {
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   if (!contextPanel) return null;
+  const usesIconClose =
+    contextPanel.kind === "task" || contextPanel.kind === "knowledge-tasks";
   return (
-    <aside className="context-panel" aria-label="Контекстная панель">
-      <header>
-        <div>
-          <span>Контекст</span>
-          <h2>{contextTitle(contextPanel)}</h2>
-        </div>
-        <PrototypeButton
-          onClick={() =>
-            dispatch({
-              type:
-                contextPanel.kind === "ai"
-                  ? "close-ai-panel"
-                  : "close-context-panel",
-            })
-          }
-          variant="quiet"
+    <>
+      <aside
+        className={[
+          "context-panel",
+          state.activeSection === "knowledge" && contextPanel.kind === "ai"
+            ? "knowledge-ai-panel"
+            : "",
+          contextPanel.kind === "task"
+            ? "task-context-panel"
+            : contextPanel.kind === "knowledge-tasks"
+              ? "knowledge-task-link-drawer"
+              : contextPanel.kind === "knowledge-task-reference"
+                ? "knowledge-task-reference-drawer"
+                : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        aria-label="Контекстная панель"
+      >
+        <header className={usesIconClose ? "task-context-header" : undefined}>
+          {usesIconClose ? null : (
+            <div>
+              <span>Контекст</span>
+              <h2>{contextTitle(contextPanel)}</h2>
+            </div>
+          )}
+          {usesIconClose ? (
+            <IconButton
+              className="task-context-close"
+              icon={<span aria-hidden="true">×</span>}
+              label={
+                contextPanel.kind === "task"
+                  ? "Закрыть панель задачи"
+                  : "Закрыть панель задач"
+              }
+              onClick={() => dispatch({ type: "close-context-panel" })}
+              title={
+                contextPanel.kind === "task"
+                  ? "Закрыть панель задачи"
+                  : "Закрыть панель задач"
+              }
+            />
+          ) : (
+            <PrototypeButton
+              onClick={() =>
+                dispatch({
+                  type:
+                    contextPanel.kind === "ai"
+                      ? "close-ai-panel"
+                      : "close-context-panel",
+                })
+              }
+              variant="quiet"
+            >
+              Закрыть
+            </PrototypeButton>
+          )}
+        </header>
+        {renderContextPanelContent(state, dispatch, contextPanel)}
+        {contextPanel.kind === "task" ? (
+          <footer className="task-context-footer">
+            <IconButton
+              className="task-context-delete"
+              icon={<UiIcon name="trash" />}
+              label="Удалить задачу"
+              onClick={() => setDeleteConfirmOpen(true)}
+              title="Удалить задачу"
+              variant="ghost"
+            />
+          </footer>
+        ) : null}
+      </aside>
+      {contextPanel.kind === "task" && deleteConfirmOpen ? (
+        <div
+          className="task-delete-confirm-backdrop"
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            setDeleteConfirmOpen(false);
+          }}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setDeleteConfirmOpen(false);
+            }
+          }}
         >
-          Закрыть
-        </PrototypeButton>
-      </header>
-      {renderContextPanelContent(state, dispatch, contextPanel)}
-    </aside>
+          <section
+            aria-describedby="task-delete-confirm-description"
+            aria-labelledby="task-delete-confirm-title"
+            aria-modal="true"
+            className="task-delete-confirm-dialog"
+            role="alertdialog"
+          >
+            <h2 id="task-delete-confirm-title">Удалить задачу?</h2>
+            <p id="task-delete-confirm-description">
+              Это действие нельзя отменить.
+            </p>
+            <div className="task-delete-confirm-actions">
+              <PrototypeButton
+                autoFocus
+                onClick={() => setDeleteConfirmOpen(false)}
+                variant="quiet"
+              >
+                Отмена
+              </PrototypeButton>
+              <PrototypeButton
+                className="task-delete-confirm-submit"
+                onClick={() =>
+                  dispatch({ type: "delete-task", taskId: contextPanel.taskId })
+                }
+                variant="quiet"
+              >
+                Удалить
+              </PrototypeButton>
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </>
   );
 }
 
-function contextTitle(contextPanel: Exclude<ContextPanelState, null>): string {
-  if (contextPanel.kind === "task") return "Детали задачи";
+function contextTitle(
+  contextPanel: Exclude<
+    NonNullable<ContextPanelState>,
+    { kind: "task" } | { kind: "knowledge-tasks" }
+  >,
+): string {
   if (contextPanel.kind === "document-context") return "Документ";
   if (contextPanel.kind === "canvas-inspector") return "Инспектор";
   if (contextPanel.kind === "inbox-item") return "Захват";
@@ -1775,7 +3105,36 @@ function renderContextPanelContent(
   if (contextPanel.kind === "task") {
     const task = getTaskById(state, contextPanel.taskId);
     return task ? (
-      <TaskDetailsPanel dispatch={dispatch} state={state} task={task} />
+      <TaskDetailsPanel
+        dispatch={dispatch}
+        key={task.id}
+        state={state}
+        task={task}
+      />
+    ) : (
+      <p>Задача не найдена.</p>
+    );
+  }
+  if (contextPanel.kind === "knowledge-tasks") {
+    const document = getDocumentById(state, state.selectedDocumentId);
+    return document ? (
+      <KnowledgeTaskLinkPanel
+        dispatch={dispatch}
+        document={document}
+        state={state}
+      />
+    ) : (
+      <p>Документ не найден.</p>
+    );
+  }
+  if (contextPanel.kind === "knowledge-task-reference") {
+    const task = getTaskById(state, contextPanel.taskId);
+    return task ? (
+      <KnowledgeTaskReferencePanel
+        dispatch={dispatch}
+        state={state}
+        task={task}
+      />
     ) : (
       <p>Задача не найдена.</p>
     );
@@ -1814,21 +3173,358 @@ function renderContextPanelContent(
   return <AiPanel dispatch={dispatch} state={state} />;
 }
 
-function TaskDetailsPanel({
-  task,
-  dispatch,
+function KnowledgeTaskLinkPanel({
+  document,
   state,
+  dispatch,
+}: {
+  document: PrototypeDocument;
+  state: DesktopPrototypeState;
+  dispatch: Dispatch;
+}): React.JSX.Element {
+  const [requestedTaskId, setRequestedTaskId] = useState<string | null>(null);
+  const tasks = [...getProjectTasks(state, document.projectId)].sort(
+    (first, second) =>
+      first.taskListOrder - second.taskListOrder ||
+      first.id.localeCompare(second.id),
+  );
+  const selectedTaskId = tasks.some((task) => task.id === requestedTaskId)
+    ? requestedTaskId
+    : null;
+
+  return (
+    <div className="knowledge-task-link-panel">
+      <h2>Задачи</h2>
+      <div className="knowledge-task-link-list">
+        {tasks.map((task) => {
+          const attached = task.linkedDocumentIds.includes(document.id);
+          const selected = task.id === selectedTaskId;
+          const signalLabel =
+            taskSignalOptions.find((option) => option.id === task.signal)
+              ?.label ?? "Без сигнала";
+          return (
+            <div className="knowledge-task-link-item" key={task.id}>
+              <button
+                aria-pressed={selected}
+                className={[
+                  "knowledge-task-link-card",
+                  selected ? "is-selected" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                onClick={() => setRequestedTaskId(task.id)}
+                type="button"
+              >
+                <span
+                  aria-label={`Сигнал: ${signalLabel}`}
+                  className={`knowledge-task-signal task-signal-${task.signal}`}
+                  role="img"
+                  title={signalLabel}
+                />
+                <strong>{task.title}</strong>
+                <svg
+                  aria-label={task.starred ? "Важная задача" : "Обычная задача"}
+                  className="knowledge-task-star"
+                  fill={task.starred ? "#facc15" : "transparent"}
+                  role="img"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d="m12 2.75 2.78 5.63 6.22.9-4.5 4.39 1.06 6.2L12 16.94l-5.56 2.93 1.06-6.2L3 9.28l6.22-.9L12 2.75Z"
+                    stroke="currentColor"
+                    strokeLinejoin="round"
+                    strokeWidth="1"
+                  />
+                </svg>
+                <small>
+                  {attached ? "Статья привязана" : "Статья не привязана"}
+                </small>
+              </button>
+              {selected ? (
+                <PrototypeButton
+                  className="knowledge-task-link-action"
+                  onClick={() =>
+                    dispatch({
+                      type: attached
+                        ? "detach-task-document"
+                        : "attach-task-document",
+                      taskId: task.id,
+                      documentId: document.id,
+                    })
+                  }
+                  variant={attached ? "quiet" : "primary"}
+                >
+                  {attached ? "Отвязать эту статью" : "+ Привязать эту статью"}
+                </PrototypeButton>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function KnowledgeTaskReferencePanel({
+  task,
+  state,
+  dispatch,
 }: {
   task: PrototypeTask;
-  dispatch: Dispatch;
   state: DesktopPrototypeState;
+  dispatch: Dispatch;
 }): React.JSX.Element {
-  const directions = getProjectOverviewDirections(state, task.projectId);
+  const attachedDocuments = task.linkedDocumentIds
+    .map((documentId) => getDocumentById(state, documentId))
+    .filter(
+      (document): document is PrototypeDocument => document !== undefined,
+    );
+  const currentDocument = getDocumentById(state, state.selectedDocumentId);
+  const currentDocumentAttached = currentDocument
+    ? task.linkedDocumentIds.includes(currentDocument.id)
+    : false;
+
+  return (
+    <div className="knowledge-task-reference-content">
+      <article
+        className={`knowledge-task-reference-card task-signal-${task.signal}`}
+      >
+        <header>
+          <strong>{task.title}</strong>
+          <svg
+            aria-label={task.starred ? "Важная задача" : "Обычная задача"}
+            className="knowledge-task-star"
+            fill={task.starred ? "#facc15" : "transparent"}
+            role="img"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="m12 2.75 2.78 5.63 6.22.9-4.5 4.39 1.06 6.2L12 16.94l-5.56 2.93 1.06-6.2L3 9.28l6.22-.9L12 2.75Z"
+              stroke="currentColor"
+              strokeLinejoin="round"
+              strokeWidth="1"
+            />
+          </svg>
+        </header>
+        {task.subtasks.length > 0 ? (
+          <section>
+            <h3>Подзадачи</h3>
+            <ul className="knowledge-task-reference-subtasks">
+              {task.subtasks.map((subtask) => (
+                <li
+                  className={subtask.done ? "is-complete" : ""}
+                  key={subtask.id}
+                >
+                  <span aria-hidden="true">{subtask.done ? "✓" : "○"}</span>
+                  <span>{subtask.title}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+        {task.links.length > 0 ? (
+          <section>
+            <h3>Ссылки</h3>
+            <ul className="knowledge-task-reference-resources">
+              {task.links.map((link) => (
+                <li key={link.id}>
+                  <a href={link.url} rel="noreferrer" target="_blank">
+                    {link.title}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+        {attachedDocuments.length > 0 ? (
+          <section>
+            <h3>Статьи</h3>
+            <ul className="knowledge-task-reference-resources">
+              {attachedDocuments.map((document) => (
+                <li key={document.id}>
+                  <button
+                    onClick={() =>
+                      dispatch({
+                        type: "select-document",
+                        documentId: document.id,
+                      })
+                    }
+                    type="button"
+                  >
+                    {document.title}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+      </article>
+      {currentDocument ? (
+        <PrototypeButton
+          className="knowledge-task-reference-action"
+          onClick={() =>
+            dispatch({
+              type: currentDocumentAttached
+                ? "detach-task-document"
+                : "attach-task-document",
+              taskId: task.id,
+              documentId: currentDocument.id,
+            })
+          }
+          size="compact"
+          variant={currentDocumentAttached ? "quiet" : "primary"}
+        >
+          {currentDocumentAttached ? "Отвязать статью" : "+ Прикрепить статью"}
+        </PrototypeButton>
+      ) : null}
+      <button
+        className="quiet-text-link knowledge-task-reference-back"
+        onClick={() =>
+          dispatch({ type: "return-to-overview-from-task-article" })
+        }
+        type="button"
+      >
+        ← Назад
+      </button>
+    </div>
+  );
+}
+
+function TaskDetailsPanel({
+  task,
+  state,
+  dispatch,
+}: {
+  task: PrototypeTask;
+  state: DesktopPrototypeState;
+  dispatch: Dispatch;
+}): React.JSX.Element {
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
+  const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
+  const [subtaskTitleDraft, setSubtaskTitleDraft] = useState("");
+  const [openSubtaskMenuId, setOpenSubtaskMenuId] = useState<string | null>(
+    null,
+  );
+  const [newLinkTitle, setNewLinkTitle] = useState("");
+  const [newLinkUrl, setNewLinkUrl] = useState("");
+  const [editingLinkId, setEditingLinkId] = useState<string | null>(null);
+  const [linkTitleDraft, setLinkTitleDraft] = useState("");
+  const [linkUrlDraft, setLinkUrlDraft] = useState("");
+  const [articlePickerOpen, setArticlePickerOpen] = useState(false);
+  const [articleSearchQuery, setArticleSearchQuery] = useState("");
+  const subtaskEditInputRef = useRef<HTMLInputElement>(null);
+  const subtaskRenameCancelledRef = useRef(false);
+  const attachedDocuments = task.linkedDocumentIds
+    .map((documentId) => getDocumentById(state, documentId))
+    .filter(
+      (document): document is PrototypeDocument =>
+        document !== undefined && document.projectId === task.projectId,
+    );
+  const normalizedArticleQuery = articleSearchQuery.trim().toLocaleLowerCase();
+  const availableDocuments = getProjectDocuments(state, task.projectId).filter(
+    (document) =>
+      !task.linkedDocumentIds.includes(document.id) &&
+      (normalizedArticleQuery.length === 0 ||
+        document.title.toLocaleLowerCase().includes(normalizedArticleQuery)),
+  );
+
+  useEffect(() => {
+    if (!editingSubtaskId) return;
+    subtaskEditInputRef.current?.focus();
+    subtaskEditInputRef.current?.select();
+  }, [editingSubtaskId]);
+
+  function addSubtask(): void {
+    if (newSubtaskTitle.trim().length === 0) return;
+    dispatch({
+      type: "add-subtask",
+      taskId: task.id,
+      title: newSubtaskTitle,
+    });
+    setNewSubtaskTitle("");
+  }
+
+  function startSubtaskRename(subtaskId: string, title: string): void {
+    setOpenSubtaskMenuId(null);
+    subtaskRenameCancelledRef.current = false;
+    setEditingSubtaskId(subtaskId);
+    setSubtaskTitleDraft(title);
+  }
+
+  function commitSubtaskRename(): void {
+    if (!editingSubtaskId) return;
+    if (subtaskTitleDraft.trim().length > 0) {
+      dispatch({
+        type: "rename-subtask",
+        taskId: task.id,
+        subtaskId: editingSubtaskId,
+        title: subtaskTitleDraft,
+      });
+    }
+    setEditingSubtaskId(null);
+    setSubtaskTitleDraft("");
+  }
+
+  function cancelSubtaskRename(): void {
+    setEditingSubtaskId(null);
+    setSubtaskTitleDraft("");
+  }
+
+  function addTaskLink(): void {
+    if (newLinkTitle.trim().length === 0 || !isValidTaskLinkUrl(newLinkUrl)) {
+      return;
+    }
+
+    dispatch({
+      type: "add-task-link",
+      taskId: task.id,
+      title: newLinkTitle,
+      url: newLinkUrl,
+    });
+    setNewLinkTitle("");
+    setNewLinkUrl("");
+  }
+
+  function startTaskLinkEdit(linkId: string): void {
+    const link = task.links.find((item) => item.id === linkId);
+    if (!link) return;
+    setEditingLinkId(link.id);
+    setLinkTitleDraft(link.title);
+    setLinkUrlDraft(link.url);
+  }
+
+  function commitTaskLinkEdit(): void {
+    if (
+      !editingLinkId ||
+      linkTitleDraft.trim().length === 0 ||
+      !isValidTaskLinkUrl(linkUrlDraft)
+    ) {
+      return;
+    }
+
+    dispatch({
+      type: "edit-task-link",
+      taskId: task.id,
+      linkId: editingLinkId,
+      title: linkTitleDraft,
+      url: linkUrlDraft,
+    });
+    setEditingLinkId(null);
+    setLinkTitleDraft("");
+    setLinkUrlDraft("");
+  }
+
+  function cancelTaskLinkEdit(): void {
+    setEditingLinkId(null);
+    setLinkTitleDraft("");
+    setLinkUrlDraft("");
+  }
+
   return (
     <div className="panel-stack">
-      <label className="field">
-        Название
+      <div className="field">
         <textarea
+          aria-label="Название"
           onChange={(event) =>
             dispatch({
               type: "edit-task-title",
@@ -1838,24 +3534,17 @@ function TaskDetailsPanel({
           }
           value={task.title}
         />
-      </label>
-      <button
-        className={task.starred ? "wide-toggle active" : "wide-toggle"}
-        onClick={() => dispatch({ type: "toggle-task-star", taskId: task.id })}
-        type="button"
-      >
-        {task.starred ? "★ Важная задача" : "☆ Сделать важной"}
-      </button>
-      <fieldset className="task-signal-selector">
-        <legend>Сигнал задачи</legend>
+      </div>
+      <fieldset aria-label="Сигнал задачи" className="task-signal-selector">
         <div className="task-signal-options">
           {taskSignalOptions.map((option) => (
             <label
               className={`task-signal-option task-signal-${option.id}`}
               key={option.id}
-              title={option.description}
+              title={option.label}
             >
               <input
+                aria-label={option.label}
                 checked={task.signal === option.id}
                 name={`task-signal-${task.id}`}
                 onChange={() =>
@@ -1869,48 +3558,42 @@ function TaskDetailsPanel({
                 value={option.id}
               />
               <span className="task-signal-swatch" aria-hidden="true" />
-              <span>{option.label}</span>
             </label>
           ))}
         </div>
       </fieldset>
-      <label className="field">
-        Срок
-        <input
-          onChange={(event) =>
-            dispatch({
-              type: "set-task-due-date",
-              taskId: task.id,
-              dueDate: event.target.value,
-            })
-          }
-          value={task.dueDate ?? ""}
-        />
-      </label>
-      <label className="field">
-        Направление проекта
-        <select
-          onChange={(event) =>
-            dispatch({
-              type: "move-task",
-              taskId: task.id,
-              overviewDirectionId: event.target.value,
-            })
-          }
-          value={task.overviewDirectionId}
-        >
-          {directions.map((direction) => (
-            <option key={direction.id} value={direction.id}>
-              {direction.title}
-            </option>
-          ))}
-        </select>
-      </label>
       <ContextPanelSection title="Подзадачи">
+        <form
+          className="subtask-add-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            addSubtask();
+          }}
+        >
+          <input
+            aria-label="Новая подзадача"
+            onChange={(event) => setNewSubtaskTitle(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              addSubtask();
+            }}
+            placeholder="Новая подзадача"
+            value={newSubtaskTitle}
+          />
+          <IconButton
+            icon={<span aria-hidden="true">+</span>}
+            label="Добавить подзадачу"
+            title="Добавить подзадачу"
+            type="submit"
+            variant="quiet"
+          />
+        </form>
         {task.subtasks.length > 0 ? (
           task.subtasks.map((subtask) => (
-            <label className="subtask-row" key={subtask.id}>
+            <div className="subtask-row" key={subtask.id}>
               <input
+                aria-label={subtask.title}
                 checked={subtask.done}
                 onChange={() =>
                   dispatch({
@@ -1921,12 +3604,274 @@ function TaskDetailsPanel({
                 }
                 type="checkbox"
               />
-              {subtask.title}
-            </label>
+              {editingSubtaskId === subtask.id ? (
+                <input
+                  aria-label={`Название подзадачи: ${subtask.title}`}
+                  className="subtask-title-input"
+                  onBlur={() => {
+                    if (subtaskRenameCancelledRef.current) {
+                      subtaskRenameCancelledRef.current = false;
+                      return;
+                    }
+                    commitSubtaskRename();
+                  }}
+                  onChange={(event) => setSubtaskTitleDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      commitSubtaskRename();
+                    }
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      subtaskRenameCancelledRef.current = true;
+                      cancelSubtaskRename();
+                    }
+                  }}
+                  ref={subtaskEditInputRef}
+                  value={subtaskTitleDraft}
+                />
+              ) : (
+                <button
+                  className="subtask-title-button"
+                  onClick={() => startSubtaskRename(subtask.id, subtask.title)}
+                  type="button"
+                >
+                  {subtask.title}
+                </button>
+              )}
+              <div
+                className="subtask-actions"
+                onKeyDown={(event) => {
+                  if (event.key !== "Escape") return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setOpenSubtaskMenuId(null);
+                }}
+              >
+                <IconButton
+                  aria-expanded={openSubtaskMenuId === subtask.id}
+                  aria-haspopup="menu"
+                  className="subtask-actions-button"
+                  icon={<span aria-hidden="true">⋮</span>}
+                  label={`Действия подзадачи: ${subtask.title}`}
+                  onClick={() =>
+                    setOpenSubtaskMenuId((currentId) =>
+                      currentId === subtask.id ? null : subtask.id,
+                    )
+                  }
+                  title={`Действия подзадачи: ${subtask.title}`}
+                />
+                {openSubtaskMenuId === subtask.id ? (
+                  <>
+                    <button
+                      aria-label="Закрыть меню подзадачи"
+                      className="subtask-menu-dismiss"
+                      onClick={() => setOpenSubtaskMenuId(null)}
+                      tabIndex={-1}
+                      type="button"
+                    />
+                    <div className="subtask-actions-menu" role="menu">
+                      <button
+                        className="subtask-delete-action"
+                        onClick={() => {
+                          dispatch({
+                            type: "delete-subtask",
+                            taskId: task.id,
+                            subtaskId: subtask.id,
+                          });
+                          if (editingSubtaskId === subtask.id) {
+                            cancelSubtaskRename();
+                          }
+                          setOpenSubtaskMenuId(null);
+                        }}
+                        role="menuitem"
+                        type="button"
+                      >
+                        Удалить подзадачу
+                      </button>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            </div>
           ))
         ) : (
           <p>Подзадач пока нет.</p>
         )}
+      </ContextPanelSection>
+      <ContextPanelSection title="Ссылки">
+        <form
+          className="task-link-add-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            addTaskLink();
+          }}
+        >
+          <input
+            aria-label="Описание ссылки"
+            onChange={(event) => setNewLinkTitle(event.target.value)}
+            placeholder="Описание"
+            value={newLinkTitle}
+          />
+          <input
+            aria-label="URL ссылки"
+            inputMode="url"
+            onChange={(event) => setNewLinkUrl(event.target.value)}
+            placeholder="https://…"
+            type="url"
+            value={newLinkUrl}
+          />
+          <IconButton
+            icon={<span aria-hidden="true">+</span>}
+            label="Добавить ссылку"
+            title="Добавить ссылку"
+            type="submit"
+            variant="quiet"
+          />
+        </form>
+        {task.links.map((link) =>
+          editingLinkId === link.id ? (
+            <form
+              className="task-link-edit-form"
+              key={link.id}
+              onSubmit={(event) => {
+                event.preventDefault();
+                commitTaskLinkEdit();
+              }}
+            >
+              <input
+                aria-label={`Описание ссылки: ${link.title}`}
+                onChange={(event) => setLinkTitleDraft(event.target.value)}
+                value={linkTitleDraft}
+              />
+              <input
+                aria-label={`URL ссылки: ${link.title}`}
+                inputMode="url"
+                onChange={(event) => setLinkUrlDraft(event.target.value)}
+                type="url"
+                value={linkUrlDraft}
+              />
+              <div className="task-link-edit-actions">
+                <PrototypeButton size="compact" type="submit" variant="quiet">
+                  Сохранить
+                </PrototypeButton>
+                <PrototypeButton
+                  onClick={cancelTaskLinkEdit}
+                  size="compact"
+                  type="button"
+                  variant="quiet"
+                >
+                  Отмена
+                </PrototypeButton>
+              </div>
+            </form>
+          ) : (
+            <div className="task-link-row" key={link.id}>
+              <a href={link.url} rel="noreferrer" target="_blank">
+                {link.title}
+              </a>
+              <IconButton
+                icon={<span aria-hidden="true">✎</span>}
+                label={`Изменить ссылку: ${link.title}`}
+                onClick={() => startTaskLinkEdit(link.id)}
+                title={`Изменить ссылку: ${link.title}`}
+                variant="ghost"
+              />
+              <IconButton
+                icon={<span aria-hidden="true">×</span>}
+                label={`Удалить ссылку: ${link.title}`}
+                onClick={() =>
+                  dispatch({
+                    type: "delete-task-link",
+                    taskId: task.id,
+                    linkId: link.id,
+                  })
+                }
+                title={`Удалить ссылку: ${link.title}`}
+                variant="ghost"
+              />
+            </div>
+          ),
+        )}
+      </ContextPanelSection>
+      <ContextPanelSection title="Статьи">
+        {attachedDocuments.map((document) => (
+          <div className="task-article-row" key={document.id}>
+            <button
+              className="task-article-link"
+              onClick={() =>
+                dispatch({ type: "select-document", documentId: document.id })
+              }
+              type="button"
+            >
+              {document.title}
+            </button>
+            <IconButton
+              icon={<span aria-hidden="true">×</span>}
+              label={`Открепить статью: ${document.title}`}
+              onClick={() =>
+                dispatch({
+                  type: "detach-task-document",
+                  taskId: task.id,
+                  documentId: document.id,
+                })
+              }
+              title={`Открепить статью: ${document.title}`}
+              variant="ghost"
+            />
+          </div>
+        ))}
+        <PrototypeButton
+          aria-expanded={
+            state.activeSection === "overview" ? undefined : articlePickerOpen
+          }
+          onClick={() => {
+            if (state.activeSection === "overview") {
+              dispatch({
+                type: "open-overview-task-article-linker",
+                taskId: task.id,
+              });
+              return;
+            }
+            setArticlePickerOpen((open) => !open);
+          }}
+          size="compact"
+          variant="quiet"
+        >
+          + Прикрепить статью
+        </PrototypeButton>
+        {state.activeSection !== "overview" && articlePickerOpen ? (
+          <div className="task-article-picker">
+            <input
+              aria-label="Поиск статьи"
+              onChange={(event) => setArticleSearchQuery(event.target.value)}
+              placeholder="Поиск по статьям"
+              type="search"
+              value={articleSearchQuery}
+            />
+            <div className="task-article-picker-results">
+              {availableDocuments.length > 0 ? (
+                availableDocuments.map((document) => (
+                  <button
+                    key={document.id}
+                    onClick={() =>
+                      dispatch({
+                        type: "attach-task-document",
+                        taskId: task.id,
+                        documentId: document.id,
+                      })
+                    }
+                    type="button"
+                  >
+                    {document.title}
+                  </button>
+                ))
+              ) : (
+                <p>Нет доступных статей.</p>
+              )}
+            </div>
+          </div>
+        ) : null}
       </ContextPanelSection>
       <label className="field">
         Заметки
@@ -2211,22 +4156,33 @@ function CommandPalette({
 type UiIconName =
   | "arrow-left"
   | "arrow-right"
+  | "book"
+  | "check"
+  | "check-circle"
   | "chevron-down"
   | "chevron-right"
   | "close"
   | "collapse"
+  | "expand"
+  | "eye"
   | "file"
   | "file-plus"
   | "folder"
   | "folder-open"
   | "folder-plus"
+  | "inbox"
+  | "layout"
+  | "locate"
   | "more"
+  | "nodes"
   | "panel-left"
   | "panel-right"
+  | "pencil"
   | "pin"
   | "plus"
   | "search"
-  | "sort";
+  | "sort"
+  | "trash";
 
 function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
   const commonProps = {
@@ -2242,6 +4198,20 @@ function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
   const paths: Record<UiIconName, React.ReactNode> = {
     "arrow-left": <path d="M15 18l-6-6 6-6" />,
     "arrow-right": <path d="M9 6l6 6-6 6" />,
+    book: (
+      <>
+        <path d="M5 4h10a4 4 0 0 1 4 4v12H8a3 3 0 0 0-3 3z" />
+        <path d="M5 4v16" />
+        <path d="M8 8h7" />
+      </>
+    ),
+    check: <path d="M5 12.5l4 4L19 6.5" />,
+    "check-circle": (
+      <>
+        <circle cx="12" cy="12" r="8" />
+        <path d="M8.5 12.5l2.5 2.5 4.5-5" />
+      </>
+    ),
     "chevron-down": <path d="M7 10l5 5 5-5" />,
     "chevron-right": <path d="M10 7l5 5-5 5" />,
     close: (
@@ -2255,6 +4225,21 @@ function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
         <path d="M8 7h8" />
         <path d="M8 12h8" />
         <path d="M8 17h8" />
+      </>
+    ),
+    expand: (
+      <>
+        <path d="M8 7h8" />
+        <path d="M8 12h8" />
+        <path d="M8 17h8" />
+        <path d="M5 9V5h4" />
+        <path d="M19 15v4h-4" />
+      </>
+    ),
+    eye: (
+      <>
+        <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z" />
+        <circle cx="12" cy="12" r="2.5" />
       </>
     ),
     file: (
@@ -2290,11 +4275,43 @@ function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
         <path d="M12.5 12.5v5" />
       </>
     ),
+    inbox: (
+      <>
+        <path d="M4 5h16l-2 10H6z" />
+        <path d="M6 15l2 4h8l2-4" />
+        <path d="M9 12h6" />
+      </>
+    ),
+    layout: (
+      <>
+        <rect x="4" y="4" width="16" height="16" rx="2" />
+        <path d="M4 10h16" />
+        <path d="M10 10v10" />
+      </>
+    ),
+    locate: (
+      <>
+        <circle cx="12" cy="12" r="4" />
+        <path d="M12 3v3" />
+        <path d="M12 18v3" />
+        <path d="M3 12h3" />
+        <path d="M18 12h3" />
+      </>
+    ),
     more: (
       <>
         <path d="M6 12h.01" />
         <path d="M12 12h.01" />
         <path d="M18 12h.01" />
+      </>
+    ),
+    nodes: (
+      <>
+        <circle cx="6" cy="7" r="2.5" />
+        <circle cx="18" cy="7" r="2.5" />
+        <circle cx="12" cy="17" r="2.5" />
+        <path d="M8 8.5l2.5 6" />
+        <path d="M16 8.5l-2.5 6" />
       </>
     ),
     "panel-left": (
@@ -2309,6 +4326,12 @@ function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
         <rect x="3" y="4" width="18" height="16" rx="2" />
         <path d="M9 4v16" />
         <path d="M12 9l3 3-3 3" />
+      </>
+    ),
+    pencil: (
+      <>
+        <path d="M4 20l4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10z" />
+        <path d="M14 7l3 3" />
       </>
     ),
     pin: (
@@ -2334,6 +4357,15 @@ function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
         <path d="M7 6h10" />
         <path d="M9 12h6" />
         <path d="M11 18h2" />
+      </>
+    ),
+    trash: (
+      <>
+        <path d="M4 7h16" />
+        <path d="M9 7V4h6v3" />
+        <path d="M7 7l1 13h8l1-13" />
+        <path d="M10 11v5" />
+        <path d="M14 11v5" />
       </>
     ),
   };

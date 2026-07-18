@@ -5,7 +5,7 @@ export type OverviewDirectionId = string;
 
 export type TaskSignal = "none" | "green" | "yellow" | "red";
 
-export type TaskFilter = "all" | "important" | "completed";
+export type TaskFilter = "all" | "overview" | "important" | "completed";
 
 export type InboxFilter = "all" | "text" | "links" | "files" | "audio";
 
@@ -29,17 +29,34 @@ export type PrototypeSubtask = {
   done: boolean;
 };
 
+export type PrototypeTaskFolder = {
+  id: string;
+  projectId: string;
+  title: string;
+  order: number;
+};
+
+export type PrototypeTaskLink = {
+  id: string;
+  title: string;
+  url: string;
+};
+
 export type PrototypeTask = {
   id: string;
   projectId: string;
   title: string;
   overviewDirectionId: OverviewDirectionId;
   overviewOrder: number;
+  taskListOrder: number;
+  taskFolderId: string | null;
+  showOnOverview: boolean;
   completedAt: string | null;
   signal: TaskSignal;
   starred: boolean;
   area?: string;
   dueDate?: string;
+  links: PrototypeTaskLink[];
   linkedDocumentIds: string[];
   subtasks: PrototypeSubtask[];
   notes?: string;
@@ -48,6 +65,7 @@ export type PrototypeTask = {
 export type PrototypeDocument = {
   id: string;
   projectId: string;
+  order?: number;
   folder: string;
   folderPath?: string[];
   isKeyDocument?: boolean;
@@ -132,6 +150,11 @@ export const taskFilters: {
   description: string;
 }[] = [
   { id: "all", label: "Все", description: "Все задачи проекта." },
+  {
+    id: "overview",
+    label: "Задачи для главной",
+    description: "Задачи, показанные на Обзоре.",
+  },
   { id: "important", label: "Важные", description: "Отмеченные звездой." },
   {
     id: "completed",
@@ -229,6 +252,27 @@ export const initialOverviewDirections: PrototypeOverviewDirection[] = [
   },
 ];
 
+export const initialTaskFolders: PrototypeTaskFolder[] = [
+  {
+    id: "lukomorie-writing",
+    projectId: "lukomorie",
+    title: "Сценарная работа",
+    order: 0,
+  },
+  {
+    id: "lukomorie-visual-folder",
+    projectId: "lukomorie",
+    title: "Визуальные материалы",
+    order: 1,
+  },
+  {
+    id: "lukomorie-production-folder",
+    projectId: "lukomorie",
+    title: "Производство",
+    order: 2,
+  },
+];
+
 export const initialTasks: PrototypeTask[] = [
   {
     id: "luko-characters-map",
@@ -236,11 +280,15 @@ export const initialTasks: PrototypeTask[] = [
     title: "Собрать карту мотиваций ключевых персонажей",
     overviewDirectionId: "lukomorie-characters",
     overviewOrder: 0,
+    taskListOrder: 0,
+    taskFolderId: "lukomorie-writing",
+    showOnOverview: true,
     completedAt: null,
     signal: "red",
     starred: true,
     area: "Персонажи",
     dueDate: "18 июл",
+    links: [],
     linkedDocumentIds: ["doc-l-nastenka", "doc-l-baba-yaga"],
     subtasks: [
       {
@@ -268,11 +316,15 @@ export const initialTasks: PrototypeTask[] = [
     title: "Переписать вход в первую сцену через действие",
     overviewDirectionId: "lukomorie-scenario",
     overviewOrder: 1,
+    taskListOrder: 1,
+    taskFolderId: "lukomorie-writing",
+    showOnOverview: true,
     completedAt: null,
     signal: "yellow",
     starred: false,
     area: "Сценарии",
     dueDate: "19 июл",
+    links: [],
     linkedDocumentIds: ["doc-l-first-chapter"],
     subtasks: [
       {
@@ -294,11 +346,15 @@ export const initialTasks: PrototypeTask[] = [
     title: "Согласовать три правила путешествия между островами",
     overviewDirectionId: "lukomorie-scenario",
     overviewOrder: 0,
+    taskListOrder: 2,
+    taskFolderId: "lukomorie-writing",
+    showOnOverview: true,
     completedAt: null,
     signal: "green",
     starred: true,
     area: "Мир",
     dueDate: "22 июл",
+    links: [],
     linkedDocumentIds: ["doc-l-geography", "doc-l-magic"],
     subtasks: [
       {
@@ -319,10 +375,14 @@ export const initialTasks: PrototypeTask[] = [
     title: "Собрать визуальные референсы для первой локации",
     overviewDirectionId: "lukomorie-visual",
     overviewOrder: 1,
+    taskListOrder: 3,
+    taskFolderId: "lukomorie-visual-folder",
+    showOnOverview: true,
     completedAt: null,
     signal: "none",
     starred: false,
     area: "Визуальная разработка",
+    links: [],
     linkedDocumentIds: ["doc-l-scenes"],
     subtasks: [
       {
@@ -343,10 +403,14 @@ export const initialTasks: PrototypeTask[] = [
     title: "Определить минимальный производственный цикл",
     overviewDirectionId: "lukomorie-production",
     overviewOrder: 0,
+    taskListOrder: 4,
+    taskFolderId: "lukomorie-production-folder",
+    showOnOverview: true,
     completedAt: null,
     signal: "yellow",
     starred: false,
     area: "Производство",
+    links: [],
     linkedDocumentIds: ["doc-l-production"],
     subtasks: [
       {
@@ -367,11 +431,15 @@ export const initialTasks: PrototypeTask[] = [
     title: "Свести brief по текущей версии проекта",
     overviewDirectionId: "lukomorie-production",
     overviewOrder: 0,
+    taskListOrder: 5,
+    taskFolderId: "lukomorie-production-folder",
+    showOnOverview: false,
     completedAt: "2026-07-10T12:00:00.000Z",
     signal: "green",
     starred: true,
     area: "Производство",
     dueDate: "15 июл",
+    links: [],
     linkedDocumentIds: ["doc-l-production"],
     subtasks: [
       { id: "luko-brief-done-1", title: "Собрать цели", done: true },
@@ -388,11 +456,15 @@ export const initialTasks: PrototypeTask[] = [
     title: "Разложить находки по темам",
     overviewDirectionId: "ammonit-research-direction",
     overviewOrder: 0,
+    taskListOrder: 0,
+    taskFolderId: null,
+    showOnOverview: true,
     completedAt: null,
     signal: "none",
     starred: true,
     area: "Исследование",
     dueDate: "20 июл",
+    links: [],
     linkedDocumentIds: ["doc-a-index"],
     subtasks: [
       {
@@ -413,10 +485,14 @@ export const initialTasks: PrototypeTask[] = [
     title: "Подготовить вопросы для следующего разговора",
     overviewDirectionId: "ammonit-interviews-direction",
     overviewOrder: 0,
+    taskListOrder: 1,
+    taskFolderId: null,
+    showOnOverview: true,
     completedAt: null,
     signal: "none",
     starred: false,
     area: "Интервью",
+    links: [],
     linkedDocumentIds: ["doc-a-questions"],
     subtasks: [
       {
@@ -432,11 +508,15 @@ export const initialTasks: PrototypeTask[] = [
     title: "Сократить сценарий демо до двух минут",
     overviewDirectionId: "voice-scenario-direction",
     overviewOrder: 0,
+    taskListOrder: 0,
+    taskFolderId: null,
+    showOnOverview: true,
     completedAt: null,
     signal: "none",
     starred: true,
     area: "Сценарий",
     dueDate: "17 июл",
+    links: [],
     linkedDocumentIds: ["doc-v-script"],
     subtasks: [
       {
@@ -457,10 +537,14 @@ export const initialTasks: PrototypeTask[] = [
     title: "Убрать лишние обещания из календаря",
     overviewDirectionId: "personal-planning-direction",
     overviewOrder: 0,
+    taskListOrder: 0,
+    taskFolderId: null,
+    showOnOverview: true,
     completedAt: null,
     signal: "none",
     starred: true,
     area: "Неделя",
+    links: [],
     linkedDocumentIds: ["doc-p-week"],
     subtasks: [
       {
@@ -488,9 +572,22 @@ export const initialDocuments: PrototypeDocument[] = [
     content: [
       "# Настенька",
       "Главная героиня не должна быть просто наблюдателем. В первой главе она принимает решение, которое запускает путешествие.",
+      "## Внутренняя цель",
       "- хочет сохранить связь с домом;",
       "- боится, что мир окажется набором чужих правил;",
       "- действует быстрее, чем успевает всё понять.",
+      "## Движение первой главы",
+      "Настенька первой принимает условие перехода и тем самым превращает знакомство с миром в собственный выбор, а не в случайное путешествие.",
+      "### Решение",
+      "Она соглашается идти дальше до того, как понимает полную цену обещания. Этот шаг должен выглядеть одновременно смелым и поспешным.",
+      "### Последствия",
+      "- маршрут перестаёт быть обратимым;",
+      "- связь с домом становится частью конфликта;",
+      "- новые правила мира проверяются через её действия.",
+      "## Отношения",
+      "Коленька удерживает бытовую сторону решения, а Баба Яга проверяет, способна ли Настенька отвечать за точную формулировку своего обещания.",
+      "### В сценах",
+      "Повторяющиеся встречи должны менять её способ действовать: сначала она торопится, затем учится задавать точные вопросы и замечать цену каждого перехода.",
     ],
     linkedTaskIds: ["luko-characters-map", "luko-first-scene"],
     backlinks: ["Баба Яга", "Первая глава"],

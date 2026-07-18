@@ -11,6 +11,10 @@
     width: 100%;
   }
 
+  .section-workspace:is(.section-tasks, .section-canvases, .section-inbox) {
+    --sidebar-width: clamp(280px, 18vw, 340px);
+  }
+
   .workspace-policy-full-surface,
   .workspace-policy-readable-document {
     width: 100%;
@@ -28,6 +32,332 @@
 
   .workspace-policy-full-surface.section-overview .overview-workspace {
     margin-inline: 0;
+  }
+
+  .overview-mode-stage {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 100%;
+  }
+
+  .overview-board-mode {
+    height: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    transition:
+      opacity 180ms ease,
+      transform 180ms ease;
+  }
+
+  .section-overview .main-workspace {
+    overflow: hidden;
+  }
+
+  .section-overview.has-overview-contextual-reader {
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .section-overview.has-overview-contextual-reader .main-workspace {
+    min-height: 0;
+    overflow: hidden;
+    padding: 0;
+  }
+
+  .section-overview.has-overview-contextual-reader .overview-mode-stage {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .overview-mode-stage.is-contextual-reader-active .overview-board-mode {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-4px);
+  }
+
+  .overview-contextual-reader {
+    --overview-reader-context-width: clamp(360px, 23vw, 420px);
+
+    position: absolute;
+    inset: 0;
+    min-width: 0;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: var(--overview-reader-context-width) minmax(0, 1fr);
+    overflow: hidden;
+    background: var(--surface);
+    animation: overview-reader-enter 180ms ease both;
+    transition: grid-template-columns 180ms ease;
+  }
+
+  .overview-contextual-reader.is-context-collapsed {
+    grid-template-columns: 0 minmax(0, 1fr);
+  }
+
+  .overview-reader-task-context {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    padding: 16px 14px 28px;
+    overscroll-behavior: contain;
+    opacity: 1;
+    transition:
+      opacity 120ms ease,
+      visibility 0s linear;
+  }
+
+  .overview-reader-task-card {
+    min-width: 0;
+    flex: 0 0 auto;
+    margin-block: auto;
+    border: 1px solid color-mix(in srgb, #4f8f68 32%, var(--border));
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, #4f8f68 8%, var(--surface));
+    padding: 12px;
+  }
+
+  .overview-contextual-reader.is-context-collapsed
+    .overview-reader-task-context {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .overview-reader-back {
+    width: fit-content;
+    min-height: 34px;
+    flex: 0 0 auto;
+    align-self: flex-start;
+    justify-content: flex-start;
+    margin-bottom: 12px;
+    padding-inline: 10px;
+    color: var(--text-2);
+    font-weight: 600;
+  }
+
+  .overview-reader-back:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  .overview-reader-task-card > h2 {
+    margin: 0 0 20px;
+    color: var(--text);
+    font-size: 18px;
+    line-height: 25px;
+    font-weight: 600;
+  }
+
+  .overview-reader-context-section {
+    display: grid;
+    gap: 8px;
+    border-top: 1px solid color-mix(in srgb, #4f8f68 18%, var(--border));
+    padding: 14px 0;
+  }
+
+  .overview-reader-context-section:last-child {
+    padding-bottom: 2px;
+  }
+
+  .overview-reader-context-section h3 {
+    margin: 0;
+    color: var(--text-3);
+    font-size: 12px;
+    line-height: 18px;
+    font-weight: 600;
+  }
+
+  .overview-reader-subtasks,
+  .overview-reader-resources,
+  .overview-reader-articles {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .overview-reader-subtasks li {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr);
+    gap: 8px;
+    align-items: start;
+    color: var(--text-2);
+    font-size: 13px;
+    line-height: 19px;
+  }
+
+  .overview-reader-subtasks li.is-complete {
+    color: var(--text-3);
+    text-decoration: line-through;
+  }
+
+  .overview-reader-subtasks input {
+    width: 15px;
+    height: 15px;
+    margin: 2px 0 0;
+    accent-color: var(--accent);
+  }
+
+  .overview-reader-resources a,
+  .overview-reader-articles button {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    display: block;
+    overflow: hidden;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--accent-2);
+    min-height: 36px;
+    padding: 8px 10px;
+    font-size: 13px;
+    line-height: 18px;
+    text-align: left;
+    text-decoration: none;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .overview-reader-resources a:hover,
+  .overview-reader-articles button:hover {
+    background: var(--surface-hover);
+  }
+
+  .overview-reader-articles button.is-active {
+    background: color-mix(in srgb, var(--surface-selected) 72%, var(--surface));
+    color: var(--accent-2);
+    font-weight: 600;
+  }
+
+  .overview-reader-context-toggle {
+    position: absolute;
+    z-index: 4;
+    top: 16px;
+    left: calc(var(--overview-reader-context-width) - 14px);
+    width: 28px;
+    min-height: 28px;
+    padding: 0;
+    transition: left 180ms ease;
+  }
+
+  .overview-contextual-reader.is-context-collapsed
+    .overview-reader-context-toggle {
+    left: 10px;
+  }
+
+  .overview-reader-mobile-close {
+    display: none;
+  }
+
+  .overview-reader-article.document-page {
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+    background: var(--surface);
+    padding: 34px clamp(32px, 4vw, 64px) 48px;
+    overscroll-behavior: contain;
+  }
+
+  .overview-reader-article .document-page-inner {
+    width: min(100%, 760px);
+  }
+
+  .overview-reader-article .overview-reader-breadcrumb {
+    max-width: 100%;
+    margin: 0 0 10px;
+    color: var(--text-3);
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  .overview-reader-breadcrumb ol {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .overview-reader-breadcrumb li {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+
+  .overview-reader-breadcrumb li:not(:last-child)::after {
+    flex: 0 0 auto;
+    color: var(--border-strong);
+    content: "/";
+  }
+
+  .overview-reader-breadcrumb li.is-task {
+    max-width: min(42vw, 420px);
+  }
+
+  .overview-reader-breadcrumb button,
+  .overview-reader-breadcrumb span {
+    min-width: 0;
+    max-width: 100%;
+    display: block;
+    overflow: hidden;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: inherit;
+    padding: 2px 3px;
+    font: inherit;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .overview-reader-breadcrumb button:hover {
+    background: var(--surface-hover);
+    color: var(--text-2);
+  }
+
+  .overview-reader-breadcrumb [aria-current="page"] {
+    flex: 0 1 auto;
+    color: var(--text-2);
+  }
+
+  .overview-reader-mobile-actions,
+  .overview-reader-context-backdrop {
+    display: none;
+  }
+
+  @keyframes overview-reader-enter {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   .overview-board {
@@ -54,8 +384,21 @@
 
   .task-list-workspace {
     width: 100%;
+    height: 100%;
     max-width: none;
+    display: flex;
+    flex-direction: column;
     justify-self: stretch;
+  }
+
+  .section-tasks .main-workspace {
+    overflow: hidden;
+  }
+
+  .task-list-scroll {
+    min-height: 0;
+    flex: 1 1 0;
+    overflow-y: auto;
   }
 
   .task-list {
@@ -98,6 +441,122 @@
     .inbox-workspace {
       width: 100%;
       justify-self: stretch;
+    }
+  }
+
+  @media (max-width: 1439px) {
+    .section-workspace:is(.section-tasks, .section-canvases, .section-inbox) {
+      --sidebar-width: clamp(250px, 22vw, 280px);
+    }
+  }
+
+  @media (max-width: 1199px) {
+    .overview-contextual-reader {
+      --overview-reader-context-width: clamp(300px, 31vw, 360px);
+    }
+  }
+
+  @media (max-width: 899px) {
+    .overview-contextual-reader {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .overview-reader-task-context {
+      position: absolute;
+      inset: 0 auto 0 0;
+      z-index: 3;
+      width: min(360px, calc(100% - 24px));
+      display: block;
+      border-right: 1px solid var(--border);
+      box-shadow: var(--shadow-overlay);
+      transform: translateX(-104%);
+      visibility: hidden;
+      opacity: 1;
+      pointer-events: none;
+      transition:
+        transform 180ms ease,
+        visibility 0s linear 180ms;
+    }
+
+    .overview-reader-task-context.is-mobile-open {
+      visibility: visible;
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(0);
+      transition-delay: 0s;
+    }
+
+    .overview-contextual-reader.is-context-collapsed
+      .overview-reader-task-context.is-mobile-open {
+      visibility: visible;
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .overview-reader-context-toggle {
+      display: none;
+    }
+
+    .overview-reader-mobile-close {
+      position: sticky;
+      z-index: 1;
+      top: 0;
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      margin: -6px 0 6px auto;
+      border: 0;
+      border-radius: var(--radius-md);
+      background: var(--surface-2);
+      color: var(--text-2);
+      padding: 0;
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .overview-reader-mobile-close:hover {
+      background: var(--surface-hover);
+      color: var(--text);
+    }
+
+    .overview-reader-context-backdrop {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: block;
+      border: 0;
+      background: rgb(32 32 29 / 16%);
+      padding: 0;
+    }
+
+    .overview-reader-mobile-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+
+    .overview-reader-article.document-page {
+      padding: 18px clamp(16px, 4vw, 32px) 40px;
+    }
+
+    .overview-reader-breadcrumb li.is-task {
+      max-width: 44vw;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .overview-board-mode,
+    .overview-reader-task-context,
+    .overview-reader-context-toggle,
+    .overview-contextual-reader {
+      transition: none;
+    }
+
+    .overview-contextual-reader {
+      animation: none;
     }
   }
 }
