@@ -1,0 +1,631 @@
+import React, { useLayoutEffect, useRef, useState, useEffect } from "react";
+import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
+import {
+  getKnowledgePaneState,
+  getOpenDocuments,
+  getDocumentBreadcrumb,
+  type DesktopPrototypeAction,
+  type DesktopPrototypeState,
+} from "@/prototype/desktop-state";
+import { IconButton, PrototypeButton } from "@/prototype/desktop-ui";
+import { UiIcon } from "@/prototype/desktop-icons";
+import { EmptySection } from "@/prototype/empty-section";
+import { MarkdownSourceEditor } from "./markdown-source-editor";
+import {
+  getDocumentHeadings,
+  MarkdownDocumentPreview,
+} from "./markdown-document-preview";
+
+type Dispatch = React.Dispatch<DesktopPrototypeAction>;
+
+type DocumentScrollSnapshot = {
+  availableScroll: number;
+  documentId: string;
+  progress: number;
+  scrollTop: number;
+};
+
+function getKnowledgeDocumentPage(documentId: string): HTMLElement | null {
+  return (
+    Array.from(
+      window.document.querySelectorAll<HTMLElement>(".document-page"),
+    ).find((element) => element.dataset.documentId === documentId) ?? null
+  );
+}
+
+function markdownDownloadName(title: string): string {
+  const safeTitle = title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-").trim();
+  return `${safeTitle || "document"}.md`;
+}
+
+export function KnowledgeWorkspace({
+  state,
+  dispatch,
+  onOpenTree,
+}: {
+  state: DesktopPrototypeState;
+  dispatch: Dispatch;
+  onOpenTree?: () => void;
+}): React.JSX.Element {
+  const {
+    primaryDocument: selectedDocument,
+    secondaryDocument: splitDocument,
+    activePane,
+    activeDocument,
+  } = getKnowledgePaneState(state);
+  const activePaneDocumentId = activeDocument?.id ?? "";
+  const openTabs = getOpenDocuments(state);
+  const editingDocumentId = state.editingKnowledgeDocumentId;
+  const currentDocument = activeDocument ?? selectedDocument;
+  const markdownFileInputRef = useRef<HTMLInputElement>(null);
+  const printDocumentRef = useRef<HTMLElement>(null);
+  const shareMenuRef = useRef<HTMLDivElement>(null);
+  const shareMenuPanelRef = useRef<HTMLDivElement>(null);
+  const pendingScrollRestoreRef = useRef<DocumentScrollSnapshot | null>(null);
+  const [shareMenuOpen, setShareMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!shareMenuOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent): void => {
+      if (
+        event.target instanceof Node &&
+        !shareMenuRef.current?.contains(event.target) &&
+        !shareMenuPanelRef.current?.contains(event.target)
+      ) {
+        setShareMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setShareMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePointer);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [shareMenuOpen]);
+
+  useLayoutEffect(() => {
+    const snapshot = pendingScrollRestoreRef.current;
+    if (!snapshot || snapshot.documentId !== activePaneDocumentId) return;
+    const page = getKnowledgeDocumentPage(snapshot.documentId);
+    pendingScrollRestoreRef.current = null;
+    if (!page) return;
+    const editor = page.querySelector<HTMLElement>(".markdown-source-editor");
+    if (editor) {
+      const pagePaddingBottom = Number.parseFloat(
+        window.getComputedStyle(page).paddingBottom,
+      );
+      editor.style.minHeight = `${Math.max(
+        page.clientHeight + snapshot.availableScroll - pagePaddingBottom,
+        0,
+      )}px`;
+    }
+    const availableScroll = Math.max(page.scrollHeight - page.clientHeight, 0);
+    page.scrollTop =
+      availableScroll > 0
+        ? snapshot.progress * availableScroll
+        : snapshot.scrollTop;
+  }, [activePaneDocumentId, editingDocumentId]);
+
+  const activatePane = (pane: "primary" | "secondary"): void => {
+    dispatch({ type: "activate-knowledge-pane", pane });
+  };
+
+  const toggleMarkdownEditing = (): void => {
+    const page = getKnowledgeDocumentPage(activePaneDocumentId);
+    if (page) {
+      const availableScroll = Math.max(
+        page.scrollHeight - page.clientHeight,
+        0,
+      );
+      pendingScrollRestoreRef.current = {
+        availableScroll,
+        documentId: activePaneDocumentId,
+        progress: availableScroll > 0 ? page.scrollTop / availableScroll : 0,
+        scrollTop: page.scrollTop,
+      };
+    }
+    dispatch({
+      type: "toggle-knowledge-document-edit",
+      documentId: activePaneDocumentId,
+    });
+  };
+
+  const loadMarkdown = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ): Promise<void> => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file || !currentDocument) return;
+    try {
+      dispatch({
+        type: "update-knowledge-document-markdown",
+        documentId: currentDocument.id,
+        markdown: await file.text(),
+      });
+    } finally {
+      input.value = "";
+    }
+  };
+
+  const saveMarkdown = (): void => {
+    if (!currentDocument) return;
+    const blob = new Blob([currentDocument.content.join("\n")], {
+      type: "text/markdown;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = window.document.createElement("a");
+    link.download = markdownDownloadName(currentDocument.title);
+    link.href = url;
+    link.click();
+    queueMicrotask(() => URL.revokeObjectURL(url));
+  };
+
+  const printArticleAsPdf = (): void => {
+    if (!currentDocument || !printDocumentRef.current) return;
+    const printWindow = window.open(
+      "",
+      "_blank",
+      "popup,width=900,height=1000",
+    );
+    if (!printWindow) return;
+    printWindow.opener = null;
+    printWindow.document.open();
+    printWindow.document.write(
+      '<!doctype html><html lang="ru"><head><meta charset="utf-8"><style>' +
+        "@page{margin:20mm}body{margin:0;color:#1f2328;font:16px/1.65 Arial,sans-serif}" +
+        "main{max-width:720px;margin:0 auto}small{display:block;margin-bottom:24px;color:#6b7280}" +
+        "h1{font-size:32px;line-height:1.25}h2{margin-top:28px;font-size:22px}h3{margin-top:22px;font-size:18px}" +
+        "p{margin:10px 0}pre{overflow-wrap:anywhere;white-space:pre-wrap;background:#f5f5f5;padding:14px}" +
+        "blockquote{border-left:3px solid #bbb;margin-left:0;padding-left:16px}a{color:#303f9f}" +
+        'hr{border:0;border-top:1px solid #ddd}</style></head><body><main id="article"></main></body></html>',
+    );
+    printWindow.document.close();
+    printWindow.document.title = currentDocument.title;
+    const printTarget = printWindow.document.getElementById("article");
+    if (printTarget) printTarget.innerHTML = printDocumentRef.current.innerHTML;
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+  };
+
+  const shareArticle = (channel: "email" | "telegram" | "whatsapp"): void => {
+    if (!currentDocument) return;
+    const articleUrl = window.location.href;
+    const title = `Статья «${currentDocument.title}»`;
+    const urls = {
+      email: `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(`${title}\n\n${articleUrl}`)}`,
+      telegram: `https://t.me/share/url?url=${encodeURIComponent(articleUrl)}&text=${encodeURIComponent(title)}`,
+      whatsapp: `https://wa.me/?text=${encodeURIComponent(`${title}\n${articleUrl}`)}`,
+    };
+    if (channel === "email") {
+      window.location.href = urls.email;
+    } else {
+      window.open(urls[channel], "_blank", "noopener,noreferrer");
+    }
+    setShareMenuOpen(false);
+  };
+
+  if (!selectedDocument) {
+    return <EmptySection title="Знания" />;
+  }
+
+  return (
+    <div className="document-workspace">
+      <div className="document-tabs-row">
+        <div
+          className="document-tabs"
+          role="tablist"
+          aria-label="Открытые документы"
+        >
+          {openTabs.map((document) => (
+            <div
+              className={[
+                "document-tab-item",
+                document.id === selectedDocument.id ? "active" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              key={document.id}
+            >
+              <button
+                aria-selected={document.id === selectedDocument.id}
+                className="document-tab-activate"
+                onClick={() =>
+                  dispatch({
+                    type: "activate-document-tab",
+                    documentId: document.id,
+                  })
+                }
+                role="tab"
+                type="button"
+              >
+                <span>{document.title}</span>
+                {document.id === "doc-l-magic" ? (
+                  <span
+                    className="tab-unsaved"
+                    aria-label="Есть несохранённые mock-правки"
+                  />
+                ) : null}
+              </button>
+              <IconButton
+                className="tab-close"
+                icon={<UiIcon name="close" />}
+                label={`Закрыть ${document.title}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  dispatch({
+                    type: "close-document-tab",
+                    documentId: document.id,
+                  });
+                }}
+                title={`Закрыть ${document.title}`}
+                variant="ghost"
+              />
+            </div>
+          ))}
+          <button
+            className="document-tab-add"
+            onClick={() => dispatch({ type: "create-knowledge-document" })}
+            type="button"
+            title="Создать документ"
+            aria-label="Создать документ"
+          >
+            <UiIcon name="plus" />
+          </button>
+        </div>
+        <div className="document-actions">
+          <div className="knowledge-responsive-actions">
+            <PrototypeButton
+              onClick={onOpenTree}
+              size="compact"
+              variant="quiet"
+            >
+              Дерево
+            </PrototypeButton>
+          </div>
+          <IconButton
+            active={editingDocumentId === activePaneDocumentId}
+            icon={
+              <UiIcon
+                name={
+                  editingDocumentId === activePaneDocumentId ? "eye" : "pencil"
+                }
+              />
+            }
+            label={
+              editingDocumentId === activePaneDocumentId
+                ? "Перейти в режим чтения"
+                : "Редактировать Markdown"
+            }
+            onClick={toggleMarkdownEditing}
+            title={
+              editingDocumentId === activePaneDocumentId
+                ? "Режим чтения"
+                : "Редактировать Markdown"
+            }
+            variant="quiet"
+          />
+          <input
+            accept=".md,text/markdown,text/plain"
+            className="knowledge-document-file-input"
+            onChange={loadMarkdown}
+            ref={markdownFileInputRef}
+            type="file"
+          />
+          <PrototypeButton
+            aria-label="Загрузить Markdown в текущую статью"
+            onClick={() => markdownFileInputRef.current?.click()}
+            size="compact"
+            variant="quiet"
+          >
+            Load
+          </PrototypeButton>
+          <PrototypeButton
+            aria-label="Скачать текущую статью в Markdown"
+            onClick={saveMarkdown}
+            size="compact"
+            variant="quiet"
+          >
+            Save
+          </PrototypeButton>
+          <div className="document-share-control" ref={shareMenuRef}>
+            <PrototypeButton
+              aria-expanded={shareMenuOpen}
+              aria-haspopup="menu"
+              onClick={() => setShareMenuOpen((open) => !open)}
+              size="compact"
+              variant="quiet"
+            >
+              Поделиться
+            </PrototypeButton>
+          </div>
+          <PrototypeButton
+            active={state.contextPanel?.kind === "knowledge-tasks"}
+            onClick={() => dispatch({ type: "open-knowledge-task-linker" })}
+            size="compact"
+            variant="quiet"
+          >
+            Задачи
+          </PrototypeButton>
+          <PrototypeButton
+            active={selectedDocument.isKeyDocument === true}
+            onClick={() =>
+              dispatch({
+                type: "toggle-key-document",
+                documentId: selectedDocument.id,
+              })
+            }
+            size="compact"
+            title="Добавить или убрать из ключевых документов проекта"
+            variant="quiet"
+          >
+            <UiIcon name="pin" />
+            Ключевой
+          </PrototypeButton>
+          <PrototypeButton
+            active={Boolean(state.splitViewDocumentId)}
+            onClick={() => dispatch({ type: "toggle-knowledge-split-view" })}
+            size="compact"
+            variant="quiet"
+          >
+            Split
+          </PrototypeButton>
+          <PrototypeButton
+            active={state.contextPanel?.kind === "document-context"}
+            onClick={() =>
+              dispatch({
+                type: "open-document-context",
+                documentId: selectedDocument.id,
+              })
+            }
+            size="compact"
+            variant="quiet"
+          >
+            Контекст
+          </PrototypeButton>
+          <PrototypeButton
+            active={state.contextPanel?.kind === "ai"}
+            onClick={() => dispatch({ type: "open-ai-panel" })}
+            size="compact"
+            variant="quiet"
+          >
+            AI
+          </PrototypeButton>
+        </div>
+      </div>
+      {shareMenuOpen ? (
+        <div
+          aria-label="Поделиться статьёй"
+          className="document-share-menu"
+          ref={shareMenuPanelRef}
+          role="menu"
+        >
+          <span>PDF</span>
+          <PrototypeButton
+            onClick={printArticleAsPdf}
+            role="menuitem"
+            size="compact"
+            variant="quiet"
+          >
+            Сохранить PDF
+          </PrototypeButton>
+          <span>Отправить</span>
+          <div className="document-share-channels">
+            <PrototypeButton
+              onClick={() => shareArticle("email")}
+              role="menuitem"
+              size="compact"
+              variant="quiet"
+            >
+              Почта
+            </PrototypeButton>
+            <PrototypeButton
+              onClick={() => shareArticle("telegram")}
+              role="menuitem"
+              size="compact"
+              variant="quiet"
+            >
+              Telegram
+            </PrototypeButton>
+            <PrototypeButton
+              onClick={() => shareArticle("whatsapp")}
+              role="menuitem"
+              size="compact"
+              variant="quiet"
+            >
+              WhatsApp
+            </PrototypeButton>
+          </div>
+          <small>Прикрепите сохранённый PDF в выбранном сервисе.</small>
+        </div>
+      ) : null}
+      <div
+        className={[
+          "document-body",
+          splitDocument ? "is-split-view" : "",
+          editingDocumentId ? "is-markdown-editing" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        {splitDocument ? null : <DocumentOutline document={selectedDocument} />}
+        <div
+          className={`document-breadcrumb-row is-primary ${
+            activePane === "primary" ? "is-active" : ""
+          }`}
+        >
+          {getDocumentBreadcrumb(selectedDocument)}
+        </div>
+        {splitDocument ? (
+          <div
+            className={`document-breadcrumb-row is-secondary ${
+              activePane === "secondary" ? "is-active" : ""
+            }`}
+          >
+            {getDocumentBreadcrumb(splitDocument)}
+          </div>
+        ) : null}
+        {splitDocument ? (
+          <div
+            aria-label="Выбор документа Split"
+            className="knowledge-split-switcher"
+            role="tablist"
+          >
+            <button
+              aria-selected={activePane === "primary"}
+              className={activePane === "primary" ? "active" : ""}
+              onClick={() => activatePane("primary")}
+              role="tab"
+              type="button"
+            >
+              Левый: {selectedDocument.title}
+            </button>
+            <button
+              aria-selected={activePane === "secondary"}
+              className={activePane === "secondary" ? "active" : ""}
+              onClick={() => activatePane("secondary")}
+              role="tab"
+              type="button"
+            >
+              Правый: {splitDocument.title}
+            </button>
+          </div>
+        ) : null}
+        <div
+          className={[
+            "document-editor-surface",
+            splitDocument ? "is-split-view" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          <DocumentArticle
+            active={activePane === "primary"}
+            dispatch={dispatch}
+            document={selectedDocument}
+            editing={editingDocumentId === selectedDocument.id}
+            onActivate={() => activatePane("primary")}
+          />
+          {splitDocument ? (
+            <DocumentArticle
+              active={activePane === "secondary"}
+              dispatch={dispatch}
+              document={splitDocument}
+              editing={editingDocumentId === splitDocument.id}
+              onActivate={() => activatePane("secondary")}
+              secondary
+            />
+          ) : null}
+        </div>
+      </div>
+      {currentDocument ? (
+        <article
+          className="knowledge-print-document"
+          data-print-document-id={currentDocument.id}
+          ref={printDocumentRef}
+        >
+          <small>{getDocumentBreadcrumb(currentDocument)}</small>
+          <MarkdownDocumentPreview
+            document={currentDocument}
+            headingIdPrefix="print-"
+          />
+        </article>
+      ) : null}
+      <footer className="workspace-footer">
+        <PrototypeButton
+          onClick={() =>
+            dispatch({
+              type: "open-document-context",
+              documentId: selectedDocument.id,
+            })
+          }
+          variant="quiet"
+        >
+          Открыть контекст документа
+        </PrototypeButton>
+        <PrototypeButton
+          onClick={() => dispatch({ type: "open-ai-panel" })}
+          variant="quiet"
+        >
+          AI по документу
+        </PrototypeButton>
+      </footer>
+    </div>
+  );
+}
+
+function DocumentOutline({
+  document,
+}: {
+  document: PrototypeDocument;
+}): React.JSX.Element {
+  const headings = getDocumentHeadings(document).filter(
+    (heading) => heading.level <= 2,
+  );
+  return (
+    <aside className="document-outline" aria-label="Навигация по статье">
+      <nav>
+        {headings.map((heading) => (
+          <button
+            className={`level-${heading.level}`}
+            key={heading.id}
+            onClick={() =>
+              window.document
+                .getElementById(heading.id)
+                ?.scrollIntoView({ behavior: "smooth", block: "start" })
+            }
+            type="button"
+          >
+            {heading.label}
+          </button>
+        ))}
+      </nav>
+    </aside>
+  );
+}
+
+function DocumentArticle({
+  document,
+  secondary = false,
+  active,
+  editing,
+  dispatch,
+  onActivate,
+}: {
+  document: PrototypeDocument;
+  secondary?: boolean;
+  active: boolean;
+  editing: boolean;
+  dispatch: Dispatch;
+  onActivate: () => void;
+}): React.JSX.Element {
+  return (
+    <article
+      className={[
+        "document-page",
+        secondary ? "secondary" : "",
+        active ? "is-active-pane" : "",
+        editing ? "is-editing" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      data-document-id={document.id}
+      onPointerDown={onActivate}
+    >
+      {editing ? (
+        <MarkdownSourceEditor
+          dispatch={dispatch}
+          document={document}
+          key={document.id}
+        />
+      ) : (
+        <div className="document-page-inner">
+          <MarkdownDocumentPreview document={document} />
+        </div>
+      )}
+    </article>
+  );
+}
