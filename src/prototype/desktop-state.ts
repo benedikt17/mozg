@@ -45,6 +45,17 @@ import {
   setOverviewScrollLeft,
   toggleOverviewTaskExpanded,
 } from "@/prototype/state/overview-state";
+import {
+  getNextSubtaskId,
+  getNextTaskLinkId,
+  getNextTaskListOrder,
+  getProjectAreas,
+  getProjectTaskFolders,
+  getProjectTasks,
+  getTaskById,
+  isValidTaskLinkUrl,
+  updateTask,
+} from "@/prototype/state/tasks-state";
 
 export {
   getCanvasById,
@@ -70,6 +81,19 @@ export {
   normalizeDirectionOrders,
   sortTasksForBoard,
 } from "@/prototype/state/overview-state";
+
+export {
+  getNextSubtaskId,
+  getNextTaskLinkId,
+  getNextTaskListOrder,
+  getProjectAreas,
+  getProjectTaskFolders,
+  getProjectTasks,
+  getTaskById,
+  getVisibleTaskList,
+  isValidTaskLinkUrl,
+  updateTask,
+} from "@/prototype/state/tasks-state";
 
 export type ContextPanelState =
   | { kind: "task"; taskId: string }
@@ -408,36 +432,12 @@ export function getActiveProject(
   );
 }
 
-export function getTaskById(
-  state: DesktopPrototypeState,
-  taskId: string | null,
-): PrototypeTask | undefined {
-  if (!taskId) return undefined;
-  return state.tasks.find((task) => task.id === taskId);
-}
-
 export function getDocumentById(
   state: DesktopPrototypeState,
   documentId: string | null,
 ): PrototypeDocument | undefined {
   if (!documentId) return undefined;
   return state.documents.find((document) => document.id === documentId);
-}
-
-export function getProjectTasks(
-  state: DesktopPrototypeState,
-  projectId = state.activeProjectId,
-): PrototypeTask[] {
-  return state.tasks.filter((task) => task.projectId === projectId);
-}
-
-export function getProjectTaskFolders(
-  state: DesktopPrototypeState,
-  projectId = state.activeProjectId,
-): PrototypeTaskFolder[] {
-  return state.taskFolders
-    .filter((folder) => folder.projectId === projectId)
-    .sort((first, second) => first.order - second.order);
 }
 
 export function getProjectDocuments(
@@ -657,50 +657,6 @@ export function getProjectDocumentFolders(
   );
 }
 
-export function getProjectAreas(
-  state: DesktopPrototypeState,
-  projectId = state.activeProjectId,
-): string[] {
-  return Array.from(
-    new Set(
-      getProjectTasks(state, projectId)
-        .map((task) => task.area)
-        .filter((area): area is string => Boolean(area)),
-    ),
-  ).sort((first, second) => first.localeCompare(second, "ru"));
-}
-
-export function getVisibleTaskList(
-  state: DesktopPrototypeState,
-): PrototypeTask[] {
-  const normalizedQuery = state.taskSearchQuery.trim().toLocaleLowerCase();
-  return [...getProjectTasks(state)]
-    .filter((task) => {
-      const matchesView = state.selectedTaskFolderId
-        ? task.taskFolderId === state.selectedTaskFolderId
-        : state.selectedTaskDirectionId
-          ? task.overviewDirectionId === state.selectedTaskDirectionId
-          : state.taskFilter === "overview"
-            ? task.showOnOverview
-            : state.taskFilter === "important"
-              ? task.starred
-              : state.taskFilter === "completed"
-                ? task.completedAt !== null
-                : true;
-      return (
-        matchesView &&
-        (normalizedQuery.length === 0 ||
-          task.title.toLocaleLowerCase().includes(normalizedQuery))
-      );
-    })
-    .sort((first, second) => {
-      if (first.taskListOrder !== second.taskListOrder) {
-        return first.taskListOrder - second.taskListOrder;
-      }
-      return first.id.localeCompare(second.id);
-    });
-}
-
 function sortKnowledgeNodes(
   nodes: KnowledgeTreeNode[],
   documentOrder: ReadonlyMap<string, number>,
@@ -855,67 +811,6 @@ function firstDocumentForProject(
   projectId: string,
 ): PrototypeDocument | undefined {
   return state.documents.find((document) => document.projectId === projectId);
-}
-
-function updateTask(
-  state: DesktopPrototypeState,
-  taskId: string,
-  updater: (task: PrototypeTask) => PrototypeTask,
-): DesktopPrototypeState {
-  return {
-    ...state,
-    tasks: state.tasks.map((task) =>
-      task.id === taskId ? updater(task) : task,
-    ),
-  };
-}
-
-function getNextSubtaskId(task: PrototypeTask): string {
-  const prefix = `${task.id}-subtask-`;
-  let nextNumber = task.subtasks.length + 1;
-
-  while (
-    task.subtasks.some((subtask) => subtask.id === `${prefix}${nextNumber}`)
-  ) {
-    nextNumber += 1;
-  }
-
-  return `${prefix}${nextNumber}`;
-}
-
-function getNextTaskLinkId(task: PrototypeTask): string {
-  const prefix = `${task.id}-link-`;
-  let nextNumber = task.links.length + 1;
-
-  while (task.links.some((link) => link.id === `${prefix}${nextNumber}`)) {
-    nextNumber += 1;
-  }
-
-  return `${prefix}${nextNumber}`;
-}
-
-export function isValidTaskLinkUrl(value: string): boolean {
-  try {
-    const url = new URL(value.trim());
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-function getNextTaskListOrder(
-  state: DesktopPrototypeState,
-  projectId = state.activeProjectId,
-): number {
-  return (
-    state.tasks.reduce(
-      (highestOrder, task) =>
-        task.projectId === projectId
-          ? Math.max(highestOrder, task.taskListOrder)
-          : highestOrder,
-      -1,
-    ) + 1
-  );
 }
 
 function createPrototypeTask({
