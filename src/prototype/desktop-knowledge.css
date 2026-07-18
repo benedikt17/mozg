@@ -23,7 +23,7 @@
   }
 
   .section-workspace.section-knowledge.has-wide-context-panel {
-    --context-width: var(--application-wide-overlay-width);
+    --context-width: clamp(380px, 31vw, var(--application-wide-overlay-width));
   }
 
   .section-workspace.section-knowledge.has-context-panel {
@@ -33,7 +33,14 @@
   }
 
   .section-workspace.section-knowledge.has-context-panel.has-wide-context-panel {
-    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+    grid-template-columns:
+      var(--sidebar-width) minmax(0, 1fr)
+      var(--context-width);
+  }
+
+  .section-workspace.section-knowledge.has-wide-context-panel
+    .document-outline {
+    display: none;
   }
 
   .section-workspace.section-knowledge > * {
@@ -232,6 +239,7 @@
   }
 
   .document-workspace {
+    position: relative;
     height: 100%;
     min-width: 0;
     min-height: 0;
@@ -352,12 +360,75 @@
     scrollbar-width: thin;
   }
 
+  .knowledge-document-file-input,
+  .knowledge-print-document {
+    display: none;
+  }
+
+  .document-share-control {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .document-share-menu {
+    position: absolute;
+    z-index: 20;
+    top: 44px;
+    right: 8px;
+    width: 238px;
+    display: grid;
+    gap: 4px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: #fff;
+    box-shadow: var(--shadow-overlay);
+    padding: 8px;
+  }
+
+  .document-share-menu > span {
+    color: var(--text-3);
+    padding: 3px 6px 1px;
+    font-size: 11px;
+    line-height: 16px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .document-share-menu > .ui-button {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .document-share-channels {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .document-share-channels .ui-button {
+    min-width: 0;
+    justify-content: center;
+    padding-inline: 5px;
+    font-size: 11px;
+  }
+
+  .document-share-menu small {
+    color: var(--text-3);
+    padding: 4px 6px 2px;
+    font-size: 11px;
+    line-height: 15px;
+  }
+
   .section-knowledge .main-workspace {
     overflow: hidden;
     padding: 0;
   }
 
   .document-body {
+    --document-breadcrumb-top: 6px;
+    --document-editor-toolbar-top: 30px;
+    --document-editor-toolbar-height: 46px;
+
     position: relative;
     min-width: 0;
     min-height: 0;
@@ -381,36 +452,50 @@
     scrollbar-width: thin;
   }
 
+  .document-body.is-markdown-editing .document-outline {
+    top: calc(
+      var(--document-editor-toolbar-top) +
+        var(--document-editor-toolbar-height) + 4px
+    );
+  }
+
   .document-outline nav {
     display: grid;
     gap: 2px;
   }
 
   .document-outline button {
+    --outline-heading-color: color-mix(in srgb, var(--text) 80%, #fff 20%);
+
     width: 100%;
     min-height: 28px;
     border: 0;
     border-radius: var(--radius-sm);
     background: transparent;
-    color: var(--text-2);
+    color: var(--outline-heading-color);
     padding: 5px 8px;
-    font-size: 12px;
+    font-size: 14px;
     line-height: 18px;
+    font-weight: 600;
     text-align: left;
+    cursor: pointer;
   }
 
   .document-outline button:hover {
-    background: var(--surface-hover);
-    color: var(--text);
+    background: transparent;
+    color: var(--outline-heading-color);
+    text-decoration: underline;
+    text-decoration-color: var(--text-3);
+    text-underline-offset: 3px;
   }
 
   .document-outline button.level-1 {
-    color: var(--text);
+    color: var(--outline-heading-color);
     font-weight: 600;
   }
 
   .document-outline button.level-2 {
-    padding-left: 18px;
+    padding-left: 8px;
   }
 
   .document-outline button.level-3 {
@@ -420,13 +505,16 @@
 
   .document-breadcrumb-row {
     position: absolute;
-    z-index: 3;
-    top: 12px;
+    z-index: 5;
+    top: 0;
     left: 50%;
-    width: min(720px, calc(100% - 64px));
+    width: 100%;
+    height: var(--document-editor-toolbar-top);
     transform: translateX(-50%);
     overflow: hidden;
+    background: #fff;
     color: var(--text-3);
+    padding: var(--document-breadcrumb-top) 32px 0;
     font-size: 12px;
     line-height: 18px;
     text-align: center;
@@ -436,12 +524,12 @@
 
   .document-body.is-split-view .document-breadcrumb-row.is-primary {
     left: 25%;
-    width: min(720px, calc(50% - 64px));
+    width: 50%;
   }
 
   .document-body.is-split-view .document-breadcrumb-row.is-secondary {
     left: 75%;
-    width: min(720px, calc(50% - 64px));
+    width: 50%;
   }
 
   .document-editor-surface {
@@ -461,6 +549,8 @@
   }
 
   .document-page {
+    --document-page-inline-padding: clamp(32px, 3vw, 48px);
+
     width: 100%;
     min-width: 0;
     min-height: 0;
@@ -468,8 +558,13 @@
     overflow-x: hidden;
     overflow-y: auto;
     background: transparent;
-    padding: 68px clamp(32px, 3vw, 48px) 38px;
+    padding: 68px var(--document-page-inline-padding) 38px;
     overscroll-behavior: contain;
+  }
+
+  .document-page.is-editing {
+    padding-top: 0;
+    padding-inline: 0;
   }
 
   .document-page-inner {
@@ -574,32 +669,46 @@
   }
 
   .markdown-source-editor {
+    width: 100%;
     min-width: 0;
     display: grid;
-    gap: 8px;
+    grid-template-rows: max-content max-content;
+    align-content: start;
+    gap: 0;
   }
 
   .markdown-toolbar {
+    position: sticky;
+    z-index: 4;
+    top: var(--document-editor-toolbar-top);
+    width: 100%;
     min-width: 0;
+    min-height: var(--document-editor-toolbar-height);
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
+    justify-content: safe center;
     gap: 3px;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-block: 1px solid var(--border);
+    background: var(--surface-2);
+    padding: 5px 10px;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
   }
 
   .markdown-toolbar-button {
-    min-width: 28px;
-    height: 28px;
+    min-width: 34px;
+    height: 34px;
     display: inline-grid;
     place-items: center;
     border: 0;
     border-radius: var(--radius-sm);
     background: transparent;
     color: var(--text-2);
-    padding: 0 6px;
-    font-size: 12px;
+    padding: 0 7px;
+    font-size: 14.4px;
     line-height: 1;
     font-weight: 600;
   }
@@ -609,25 +718,41 @@
     color: var(--text);
   }
 
-  .markdown-source-textarea {
+  .markdown-source-content {
     width: 100%;
-    min-height: 560px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    outline: 0;
-    background: var(--surface);
+    min-width: 0;
+    padding: 32px var(--document-page-inline-padding) 0;
+  }
+
+  .markdown-source-textarea {
+    width: min(100%, 720px);
+    min-height: 12lh;
+    display: block;
+    overflow: hidden;
+    border: 0;
+    border-radius: 0;
+    outline: none;
+    background: transparent;
     color: var(--text);
-    padding: 16px;
+    margin-inline: auto;
+    padding: 0;
     font-family: "Cascadia Code", Consolas, monospace;
     font-size: 14px;
     line-height: 22px;
-    resize: vertical;
+    resize: none;
+    caret-color: var(--focus);
     tab-size: 2;
   }
 
-  .markdown-source-textarea:focus {
-    border-color: var(--focus);
-    box-shadow: 0 0 0 1px var(--focus);
+  .markdown-source-textarea:focus-visible {
+    outline: none;
+  }
+
+  @media (forced-colors: active) {
+    .markdown-source-textarea:focus-visible {
+      outline: 1px solid CanvasText;
+      outline-offset: 3px;
+    }
   }
 
   .document-page h1,
@@ -675,25 +800,6 @@
     border-radius: 0;
     box-shadow: none;
     overscroll-behavior: contain;
-  }
-
-  .section-workspace.section-knowledge
-    > .context-panel.application-wide-overlay.knowledge-ai-overlay {
-    position: fixed;
-    inset: 0 0 0 auto;
-    z-index: 70;
-    width: min(var(--application-wide-overlay-width), calc(100vw - 24px));
-    max-width: none;
-    height: 100dvh;
-  }
-
-  .section-workspace.section-knowledge
-    > .context-panel.application-wide-overlay.knowledge-ai-overlay {
-    overflow-y: auto;
-    border: 0;
-    border-left: 1px solid var(--border);
-    border-radius: 0;
-    box-shadow: var(--shadow-overlay);
   }
 
   .section-workspace.section-knowledge.has-context-panel.has-split-view {
@@ -762,6 +868,21 @@
     }
   }
 
+  @media (min-width: 1024px) and (max-width: 1679px) {
+    .section-workspace.section-knowledge.has-context-panel.has-wide-context-panel {
+      grid-template-columns:
+        var(--sidebar-width) minmax(0, 1fr)
+        var(--context-width);
+    }
+
+    .section-workspace.section-knowledge.has-context-panel.has-wide-context-panel
+      > .context-panel.knowledge-ai-panel {
+      position: static;
+      width: auto;
+      box-shadow: none;
+    }
+  }
+
   @media (max-width: 1439px) {
     .section-workspace.section-knowledge {
       --sidebar-width: clamp(250px, 22vw, 280px);
@@ -779,7 +900,7 @@
       display: none;
       top: 50px;
       left: 50%;
-      width: min(720px, calc(100% - 64px));
+      width: 100%;
     }
 
     .document-body.is-split-view .document-breadcrumb-row.is-active {
@@ -820,34 +941,6 @@
       grid-template-columns: 1fr;
       justify-items: center;
       padding-inline: 8px;
-    }
-
-    :scope.knowledge-active .project-rail .rail-brand-identity strong,
-    :scope.knowledge-active .project-rail .project-row strong,
-    :scope.knowledge-active .project-rail .create-project-label {
-      display: none;
-    }
-
-    :scope.knowledge-active .project-rail .project-list {
-      padding-inline: 6px;
-    }
-
-    :scope.knowledge-active .project-rail .project-row {
-      justify-content: center;
-      padding: 4px;
-    }
-
-    :scope.knowledge-active .project-rail .project-row-indicator {
-      position: absolute;
-      left: 0;
-    }
-
-    :scope.knowledge-active .project-rail .create-project {
-      width: 40px;
-      min-height: 36px;
-      margin-inline: 8px;
-      padding: 0;
-      font-size: 18px;
     }
 
     .section-workspace.section-knowledge,
@@ -942,7 +1035,9 @@
     }
 
     .document-page {
-      padding: 54px 16px 24px;
+      --document-page-inline-padding: 16px;
+
+      padding: 54px var(--document-page-inline-padding) 24px;
     }
 
     .workspace-footer {

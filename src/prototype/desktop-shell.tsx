@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
@@ -55,10 +56,8 @@ import { OverviewWorkspace } from "@/prototype/overview";
 import {
   ContextPanelSection,
   IconButton,
-  MetadataLine,
   PrototypeButton,
   ToolSidebarItem,
-  WorkspaceHeader,
 } from "@/prototype/desktop-ui";
 import "./desktop-shell.css";
 import "./desktop-workspaces.css";
@@ -83,6 +82,14 @@ const commandKindLabels: Record<CommandResult["kind"], string> = {
   document: "Документ",
   canvas: "Холст",
   inbox: "Входящее",
+};
+
+const sectionRailIcons: Record<ProjectSection, UiIconName> = {
+  overview: "layout",
+  knowledge: "book",
+  tasks: "check-circle",
+  canvases: "nodes",
+  inbox: "inbox",
 };
 
 export function DesktopPrototypeShell(): React.JSX.Element {
@@ -207,7 +214,7 @@ export function DesktopPrototypeShell(): React.JSX.Element {
         .filter(Boolean)
         .join(" ")}
     >
-      <ProjectRail state={state} dispatch={dispatch} />
+      <SectionRail state={state} dispatch={dispatch} />
       <div className="project-workspace">
         <ApplicationHeader state={state} dispatch={dispatch} />
         <SectionWorkspace state={state} dispatch={dispatch} />
@@ -228,7 +235,7 @@ export function DesktopPrototypeShell(): React.JSX.Element {
   );
 }
 
-function ProjectRail({
+function SectionRail({
   state,
   dispatch,
 }: {
@@ -236,69 +243,279 @@ function ProjectRail({
   dispatch: Dispatch;
 }): React.JSX.Element {
   return (
-    <aside
-      className="project-rail"
-      aria-label="Проекты"
-      data-collapsed={state.projectRailCollapsed}
-    >
+    <aside className="project-rail" aria-label="Разделы" data-collapsed="true">
       <div className="rail-brand">
         <div className="rail-brand-identity">
           <span className="rail-brand-mark">M</span>
           <strong>mozg</strong>
         </div>
-        <IconButton
-          className="rail-collapse-control"
-          icon={
-            <UiIcon
-              name={state.projectRailCollapsed ? "panel-right" : "panel-left"}
-            />
-          }
-          label={
-            state.projectRailCollapsed
-              ? "Развернуть панель проектов"
-              : "Свернуть панель проектов"
-          }
-          onClick={() => dispatch({ type: "toggle-project-rail" })}
-          title={
-            state.projectRailCollapsed
-              ? "Развернуть панель проектов"
-              : "Свернуть панель проектов"
-          }
-          variant="ghost"
-        />
       </div>
-      <nav className="project-list" aria-label="Выбор проекта">
-        {state.projects.map((project) => (
-          <PrototypeButton
-            active={project.id === state.activeProjectId}
-            aria-label={project.name}
-            className="project-row"
-            key={project.id}
+      <nav className="rail-section-list" aria-label="Разделы">
+        {projectSections.map((section) => (
+          <IconButton
+            active={state.activeSection === section.id}
+            className="rail-section-item"
+            icon={<UiIcon name={sectionRailIcons[section.id]} />}
+            key={section.id}
+            label={section.label}
             onClick={() =>
-              dispatch({ type: "switch-project", projectId: project.id })
+              dispatch({ type: "switch-section", section: section.id })
             }
-            title={project.description}
+            title={section.label}
             variant="ghost"
-          >
-            <span className="project-row-indicator" />
-            <span className="project-row-mark" aria-hidden="true">
-              {project.shortName.slice(0, 1)}
-            </span>
-            <strong>{project.name}</strong>
-          </PrototypeButton>
+          />
         ))}
       </nav>
+    </aside>
+  );
+}
+
+function ProjectSelector({
+  state,
+  dispatch,
+}: {
+  state: DesktopPrototypeState;
+  dispatch: Dispatch;
+}): React.JSX.Element {
+  const activeProject = getActiveProject(state);
+  const [open, setOpen] = useState(false);
+  const selectorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent): void => {
+      if (
+        event.target instanceof Node &&
+        selectorRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="project-selector" ref={selectorRef}>
       <PrototypeButton
-        aria-label="Создать проект"
-        className="create-project"
-        onClick={() => dispatch({ type: "create-project" })}
-        title="Создать проект"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className="project-selector-trigger"
+        onClick={() => setOpen((value) => !value)}
+        title={activeProject.name}
+        variant="ghost"
+      >
+        <strong>{activeProject.name}</strong>
+        <UiIcon name="chevron-down" />
+      </PrototypeButton>
+      {open ? (
+        <div className="project-selector-menu" role="menu">
+          {state.projects.map((project) => (
+            <PrototypeButton
+              active={project.id === state.activeProjectId}
+              aria-current={
+                project.id === state.activeProjectId ? "true" : undefined
+              }
+              className="project-selector-option"
+              key={project.id}
+              onClick={() => {
+                dispatch({ type: "switch-project", projectId: project.id });
+                setOpen(false);
+              }}
+              role="menuitem"
+              title={project.description}
+              variant="ghost"
+            >
+              <span>{project.name}</span>
+              {project.id === state.activeProjectId ? (
+                <UiIcon name="check" />
+              ) : null}
+            </PrototypeButton>
+          ))}
+          <div className="project-selector-divider" />
+          <PrototypeButton
+            className="project-selector-option"
+            onClick={() => {
+              dispatch({ type: "create-project" });
+              setOpen(false);
+            }}
+            role="menuitem"
+            variant="ghost"
+          >
+            <UiIcon name="plus" />
+            <span>Создать проект</span>
+          </PrototypeButton>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function OverviewHeaderControls({
+  directions,
+  hiddenDirectionIds,
+  dispatch,
+}: {
+  directions: ReturnType<typeof getProjectOverviewDirections>;
+  hiddenDirectionIds: string[];
+  dispatch: Dispatch;
+}): React.JSX.Element {
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  return (
+    <div
+      className="overview-view-control"
+      onKeyDown={(event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        event.stopPropagation();
+        setViewMenuOpen(false);
+      }}
+    >
+      <PrototypeButton
+        aria-expanded={viewMenuOpen}
+        aria-haspopup="menu"
+        onClick={() => setViewMenuOpen((open) => !open)}
+        size="compact"
         variant="quiet"
       >
-        <span aria-hidden="true">+</span>
-        <span className="create-project-label">Создать проект</span>
+        Вид
       </PrototypeButton>
-    </aside>
+      {viewMenuOpen ? (
+        <>
+          <button
+            aria-label="Закрыть меню вида"
+            className="overview-view-dismiss"
+            onClick={() => setViewMenuOpen(false)}
+            tabIndex={-1}
+            type="button"
+          />
+          <div
+            aria-label="Видимые направления проекта"
+            className="overview-view-menu"
+            role="menu"
+          >
+            {directions.map((direction) => (
+              <label className="overview-view-option" key={direction.id}>
+                <input
+                  checked={!hiddenDirectionIds.includes(direction.id)}
+                  onChange={(event) =>
+                    dispatch({
+                      type: "set-overview-direction-visible",
+                      directionId: direction.id,
+                      visible: event.currentTarget.checked,
+                    })
+                  }
+                  type="checkbox"
+                />
+                <span>{direction.title}</span>
+              </label>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function getTaskViewTitle(state: DesktopPrototypeState): string {
+  const selectedFolder = getProjectTaskFolders(state).find(
+    (folder) => folder.id === state.selectedTaskFolderId,
+  );
+  const selectedDirection = getProjectOverviewDirections(state).find(
+    (direction) => direction.id === state.selectedTaskDirectionId,
+  );
+  if (selectedFolder) return selectedFolder.title;
+  if (selectedDirection) return selectedDirection.title;
+  if (state.taskDayViewActive) return "Задачи на день";
+  if (state.taskFilter === "important") return "Важные";
+  if (state.taskFilter === "completed") return "Завершённые";
+  return "Все";
+}
+
+function ApplicationSectionHeader({
+  state,
+  dispatch,
+}: {
+  state: DesktopPrototypeState;
+  dispatch: Dispatch;
+}): React.JSX.Element {
+  if (state.activeSection === "overview") {
+    return (
+      <div className="application-section-header">
+        <div className="application-section-title">
+          <strong>Обзор</strong>
+        </div>
+        <div className="application-section-actions">
+          <OverviewHeaderControls
+            directions={getProjectOverviewDirections(state)}
+            dispatch={dispatch}
+            hiddenDirectionIds={state.overviewHiddenDirectionIds}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (state.activeSection === "knowledge") {
+    const selectedDocument = getDocumentById(state, state.selectedDocumentId);
+    return (
+      <div className="application-section-header">
+        <div className="application-section-title">
+          <span>Знания</span>
+          <strong>{selectedDocument?.title ?? "Документ"}</strong>
+        </div>
+      </div>
+    );
+  }
+
+  if (state.activeSection === "tasks") {
+    return (
+      <div className="application-section-header">
+        <div className="application-section-title">
+          <span>Задачи</span>
+          <strong>{getTaskViewTitle(state)}</strong>
+        </div>
+      </div>
+    );
+  }
+
+  if (state.activeSection === "canvases") {
+    const canvas = getCanvasById(state, state.selectedCanvasId);
+    return (
+      <div className="application-section-header">
+        <div className="application-section-title">
+          <span>Холсты</span>
+          <strong>{canvas?.title ?? "Карты"}</strong>
+        </div>
+        {canvas ? (
+          <div className="application-section-actions canvas-header-actions">
+            <button type="button">−</button>
+            <button type="button">100%</button>
+            <button type="button">+</button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  const inboxFilter = inboxFilters.find(
+    (filter) => filter.id === state.inboxFilter,
+  );
+  return (
+    <div className="application-section-header">
+      <div className="application-section-title">
+        <span>Входящие</span>
+        <strong>{inboxFilter?.label ?? "Входящие"}</strong>
+      </div>
+    </div>
   );
 }
 
@@ -309,41 +526,10 @@ function ApplicationHeader({
   state: DesktopPrototypeState;
   dispatch: Dispatch;
 }): React.JSX.Element {
-  const activeProject = getActiveProject(state);
-  const usesLargeProjectTitle =
-    state.activeSection === "overview" ||
-    state.activeSection === "knowledge" ||
-    state.activeSection === "tasks";
   return (
-    <header
-      className={
-        usesLargeProjectTitle
-          ? "application-header knowledge-application-header"
-          : "application-header"
-      }
-    >
-      <div className="header-project">
-        <strong>{activeProject.name}</strong>
-        {!usesLargeProjectTitle ? (
-          <MetadataLine>{activeProject.description}</MetadataLine>
-        ) : null}
-      </div>
-      <nav className="section-navigation" aria-label="Разделы проекта">
-        {projectSections.map((section) => (
-          <PrototypeButton
-            active={state.activeSection === section.id}
-            className="section-nav-item"
-            key={section.id}
-            onClick={() =>
-              dispatch({ type: "switch-section", section: section.id })
-            }
-            title={section.description}
-            variant="ghost"
-          >
-            {section.label}
-          </PrototypeButton>
-        ))}
-      </nav>
+    <header className="application-header knowledge-application-header">
+      <ProjectSelector state={state} dispatch={dispatch} />
+      <ApplicationSectionHeader state={state} dispatch={dispatch} />
       <div className="header-tools" aria-label="Глобальные инструменты">
         <PrototypeButton
           onClick={() => dispatch({ type: "open-command-palette" })}
@@ -1162,6 +1348,26 @@ function KnowledgeFolderTitleEditor({
   );
 }
 
+type DocumentScrollSnapshot = {
+  availableScroll: number;
+  documentId: string;
+  progress: number;
+  scrollTop: number;
+};
+
+function getKnowledgeDocumentPage(documentId: string): HTMLElement | null {
+  return (
+    Array.from(
+      window.document.querySelectorAll<HTMLElement>(".document-page"),
+    ).find((element) => element.dataset.documentId === documentId) ?? null
+  );
+}
+
+function markdownDownloadName(title: string): string {
+  const safeTitle = title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-").trim();
+  return `${safeTitle || "document"}.md`;
+}
+
 function KnowledgeWorkspace({
   state,
   dispatch,
@@ -1180,9 +1386,156 @@ function KnowledgeWorkspace({
   const activePaneDocumentId = activeDocument?.id ?? "";
   const openTabs = getOpenDocuments(state);
   const editingDocumentId = state.editingKnowledgeDocumentId;
+  const currentDocument = activeDocument ?? selectedDocument;
+  const markdownFileInputRef = useRef<HTMLInputElement>(null);
+  const printDocumentRef = useRef<HTMLElement>(null);
+  const shareMenuRef = useRef<HTMLDivElement>(null);
+  const shareMenuPanelRef = useRef<HTMLDivElement>(null);
+  const pendingScrollRestoreRef = useRef<DocumentScrollSnapshot | null>(null);
+  const [shareMenuOpen, setShareMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!shareMenuOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent): void => {
+      if (
+        event.target instanceof Node &&
+        !shareMenuRef.current?.contains(event.target) &&
+        !shareMenuPanelRef.current?.contains(event.target)
+      ) {
+        setShareMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setShareMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePointer);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [shareMenuOpen]);
+
+  useLayoutEffect(() => {
+    const snapshot = pendingScrollRestoreRef.current;
+    if (!snapshot || snapshot.documentId !== activePaneDocumentId) return;
+    const page = getKnowledgeDocumentPage(snapshot.documentId);
+    pendingScrollRestoreRef.current = null;
+    if (!page) return;
+    const editor = page.querySelector<HTMLElement>(".markdown-source-editor");
+    if (editor) {
+      const pagePaddingBottom = Number.parseFloat(
+        window.getComputedStyle(page).paddingBottom,
+      );
+      editor.style.minHeight = `${Math.max(
+        page.clientHeight + snapshot.availableScroll - pagePaddingBottom,
+        0,
+      )}px`;
+    }
+    const availableScroll = Math.max(page.scrollHeight - page.clientHeight, 0);
+    page.scrollTop =
+      availableScroll > 0
+        ? snapshot.progress * availableScroll
+        : snapshot.scrollTop;
+  }, [activePaneDocumentId, editingDocumentId]);
 
   const activatePane = (pane: "primary" | "secondary"): void => {
     dispatch({ type: "activate-knowledge-pane", pane });
+  };
+
+  const toggleMarkdownEditing = (): void => {
+    const page = getKnowledgeDocumentPage(activePaneDocumentId);
+    if (page) {
+      const availableScroll = Math.max(
+        page.scrollHeight - page.clientHeight,
+        0,
+      );
+      pendingScrollRestoreRef.current = {
+        availableScroll,
+        documentId: activePaneDocumentId,
+        progress: availableScroll > 0 ? page.scrollTop / availableScroll : 0,
+        scrollTop: page.scrollTop,
+      };
+    }
+    dispatch({
+      type: "toggle-knowledge-document-edit",
+      documentId: activePaneDocumentId,
+    });
+  };
+
+  const loadMarkdown = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ): Promise<void> => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file || !currentDocument) return;
+    try {
+      dispatch({
+        type: "update-knowledge-document-markdown",
+        documentId: currentDocument.id,
+        markdown: await file.text(),
+      });
+    } finally {
+      input.value = "";
+    }
+  };
+
+  const saveMarkdown = (): void => {
+    if (!currentDocument) return;
+    const blob = new Blob([currentDocument.content.join("\n")], {
+      type: "text/markdown;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = window.document.createElement("a");
+    link.download = markdownDownloadName(currentDocument.title);
+    link.href = url;
+    link.click();
+    queueMicrotask(() => URL.revokeObjectURL(url));
+  };
+
+  const printArticleAsPdf = (): void => {
+    if (!currentDocument || !printDocumentRef.current) return;
+    const printWindow = window.open(
+      "",
+      "_blank",
+      "popup,width=900,height=1000",
+    );
+    if (!printWindow) return;
+    printWindow.opener = null;
+    printWindow.document.open();
+    printWindow.document.write(
+      '<!doctype html><html lang="ru"><head><meta charset="utf-8"><style>' +
+        "@page{margin:20mm}body{margin:0;color:#1f2328;font:16px/1.65 Arial,sans-serif}" +
+        "main{max-width:720px;margin:0 auto}small{display:block;margin-bottom:24px;color:#6b7280}" +
+        "h1{font-size:32px;line-height:1.25}h2{margin-top:28px;font-size:22px}h3{margin-top:22px;font-size:18px}" +
+        "p{margin:10px 0}pre{overflow-wrap:anywhere;white-space:pre-wrap;background:#f5f5f5;padding:14px}" +
+        "blockquote{border-left:3px solid #bbb;margin-left:0;padding-left:16px}a{color:#303f9f}" +
+        'hr{border:0;border-top:1px solid #ddd}</style></head><body><main id="article"></main></body></html>',
+    );
+    printWindow.document.close();
+    printWindow.document.title = currentDocument.title;
+    const printTarget = printWindow.document.getElementById("article");
+    if (printTarget) printTarget.innerHTML = printDocumentRef.current.innerHTML;
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+  };
+
+  const shareArticle = (channel: "email" | "telegram" | "whatsapp"): void => {
+    if (!currentDocument) return;
+    const articleUrl = window.location.href;
+    const title = `Статья «${currentDocument.title}»`;
+    const urls = {
+      email: `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(`${title}\n\n${articleUrl}`)}`,
+      telegram: `https://t.me/share/url?url=${encodeURIComponent(articleUrl)}&text=${encodeURIComponent(title)}`,
+      whatsapp: `https://wa.me/?text=${encodeURIComponent(`${title}\n${articleUrl}`)}`,
+    };
+    if (channel === "email") {
+      window.location.href = urls.email;
+    } else {
+      window.open(urls[channel], "_blank", "noopener,noreferrer");
+    }
+    setShareMenuOpen(false);
   };
 
   if (!selectedDocument) {
@@ -1277,12 +1630,7 @@ function KnowledgeWorkspace({
                 ? "Перейти в режим чтения"
                 : "Редактировать Markdown"
             }
-            onClick={() =>
-              dispatch({
-                type: "toggle-knowledge-document-edit",
-                documentId: activePaneDocumentId,
-              })
-            }
+            onClick={toggleMarkdownEditing}
             title={
               editingDocumentId === activePaneDocumentId
                 ? "Режим чтения"
@@ -1290,6 +1638,40 @@ function KnowledgeWorkspace({
             }
             variant="quiet"
           />
+          <input
+            accept=".md,text/markdown,text/plain"
+            className="knowledge-document-file-input"
+            onChange={loadMarkdown}
+            ref={markdownFileInputRef}
+            type="file"
+          />
+          <PrototypeButton
+            aria-label="Загрузить Markdown в текущую статью"
+            onClick={() => markdownFileInputRef.current?.click()}
+            size="compact"
+            variant="quiet"
+          >
+            Load
+          </PrototypeButton>
+          <PrototypeButton
+            aria-label="Скачать текущую статью в Markdown"
+            onClick={saveMarkdown}
+            size="compact"
+            variant="quiet"
+          >
+            Save
+          </PrototypeButton>
+          <div className="document-share-control" ref={shareMenuRef}>
+            <PrototypeButton
+              aria-expanded={shareMenuOpen}
+              aria-haspopup="menu"
+              onClick={() => setShareMenuOpen((open) => !open)}
+              size="compact"
+              variant="quiet"
+            >
+              Поделиться
+            </PrototypeButton>
+          </div>
           <PrototypeButton
             active={state.contextPanel?.kind === "knowledge-tasks"}
             onClick={() => dispatch({ type: "open-knowledge-task-linker" })}
@@ -1344,10 +1726,60 @@ function KnowledgeWorkspace({
           </PrototypeButton>
         </div>
       </div>
+      {shareMenuOpen ? (
+        <div
+          aria-label="Поделиться статьёй"
+          className="document-share-menu"
+          ref={shareMenuPanelRef}
+          role="menu"
+        >
+          <span>PDF</span>
+          <PrototypeButton
+            onClick={printArticleAsPdf}
+            role="menuitem"
+            size="compact"
+            variant="quiet"
+          >
+            Сохранить PDF
+          </PrototypeButton>
+          <span>Отправить</span>
+          <div className="document-share-channels">
+            <PrototypeButton
+              onClick={() => shareArticle("email")}
+              role="menuitem"
+              size="compact"
+              variant="quiet"
+            >
+              Почта
+            </PrototypeButton>
+            <PrototypeButton
+              onClick={() => shareArticle("telegram")}
+              role="menuitem"
+              size="compact"
+              variant="quiet"
+            >
+              Telegram
+            </PrototypeButton>
+            <PrototypeButton
+              onClick={() => shareArticle("whatsapp")}
+              role="menuitem"
+              size="compact"
+              variant="quiet"
+            >
+              WhatsApp
+            </PrototypeButton>
+          </div>
+          <small>Прикрепите сохранённый PDF в выбранном сервисе.</small>
+        </div>
+      ) : null}
       <div
-        className={
-          splitDocument ? "document-body is-split-view" : "document-body"
-        }
+        className={[
+          "document-body",
+          splitDocument ? "is-split-view" : "",
+          editingDocumentId ? "is-markdown-editing" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
       >
         {splitDocument ? null : <DocumentOutline document={selectedDocument} />}
         <div
@@ -1419,6 +1851,19 @@ function KnowledgeWorkspace({
           ) : null}
         </div>
       </div>
+      {currentDocument ? (
+        <article
+          className="knowledge-print-document"
+          data-print-document-id={currentDocument.id}
+          ref={printDocumentRef}
+        >
+          <small>{getDocumentBreadcrumb(currentDocument)}</small>
+          <MarkdownDocumentPreview
+            document={currentDocument}
+            headingIdPrefix="print-"
+          />
+        </article>
+      ) : null}
       <footer className="workspace-footer">
         <PrototypeButton
           onClick={() =>
@@ -1468,7 +1913,9 @@ function DocumentOutline({
 }: {
   document: PrototypeDocument;
 }): React.JSX.Element {
-  const headings = getDocumentHeadings(document);
+  const headings = getDocumentHeadings(document).filter(
+    (heading) => heading.level <= 2,
+  );
   return (
     <aside className="document-outline" aria-label="Навигация по статье">
       <nav>
@@ -1516,19 +1963,20 @@ function DocumentArticle({
       ]
         .filter(Boolean)
         .join(" ")}
+      data-document-id={document.id}
       onPointerDown={onActivate}
     >
-      <div className="document-page-inner">
-        {editing ? (
-          <MarkdownSourceEditor
-            dispatch={dispatch}
-            document={document}
-            key={document.id}
-          />
-        ) : (
+      {editing ? (
+        <MarkdownSourceEditor
+          dispatch={dispatch}
+          document={document}
+          key={document.id}
+        />
+      ) : (
+        <div className="document-page-inner">
           <MarkdownDocumentPreview document={document} />
-        )}
-      </div>
+        </div>
+      )}
     </article>
   );
 }
@@ -1585,10 +2033,24 @@ function MarkdownSourceEditor({
   const markdown = document.content.join("\n");
   const historyRef = useRef<string[]>([markdown]);
   const historyIndexRef = useRef(0);
-  const mountTextarea = useCallback((textarea: HTMLTextAreaElement | null) => {
-    textareaRef.current = textarea;
-    textarea?.focus({ preventScroll: true });
+  const resizeTextarea = useCallback((textarea: HTMLTextAreaElement): void => {
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
   }, []);
+  const mountTextarea = useCallback(
+    (textarea: HTMLTextAreaElement | null) => {
+      textareaRef.current = textarea;
+      if (!textarea) return;
+      resizeTextarea(textarea);
+      textarea.focus({ preventScroll: true });
+    },
+    [resizeTextarea],
+  );
+
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea) resizeTextarea(textarea);
+  }, [markdown, resizeTextarea]);
 
   const updateMarkdown = (nextMarkdown: string, addToHistory = true): void => {
     if (addToHistory) {
@@ -1742,14 +2204,19 @@ function MarkdownSourceEditor({
           </button>
         ))}
       </div>
-      <textarea
-        aria-label={`Markdown: ${document.title}`}
-        className="markdown-source-textarea"
-        onChange={(event) => updateMarkdown(event.target.value)}
-        ref={mountTextarea}
-        spellCheck
-        value={markdown}
-      />
+      <div className="markdown-source-content">
+        <textarea
+          aria-label={`Markdown: ${document.title}`}
+          className="markdown-source-textarea"
+          onChange={(event) => {
+            resizeTextarea(event.currentTarget);
+            updateMarkdown(event.currentTarget.value);
+          }}
+          ref={mountTextarea}
+          spellCheck
+          value={markdown}
+        />
+      </div>
     </div>
   );
 }
@@ -1757,9 +2224,11 @@ function MarkdownSourceEditor({
 function MarkdownDocumentPreview({
   document,
   hideLeadingTitle = false,
+  headingIdPrefix = "",
 }: {
   document: PrototypeDocument;
   hideLeadingTitle?: boolean;
+  headingIdPrefix?: string;
 }): React.JSX.Element {
   const headings = getDocumentHeadings(document);
   const blocks: React.ReactNode[] = [];
@@ -1796,7 +2265,7 @@ function MarkdownDocumentPreview({
     );
     blocks.push(
       <MarkdownPreviewBlock
-        anchorId={heading?.id}
+        anchorId={heading ? `${headingIdPrefix}${heading.id}` : undefined}
         key={`${document.id}-${index}`}
         line={line}
       />,
@@ -2155,23 +2624,6 @@ function TasksWorkspace({
       ? [focusedTask]
       : []
     : getVisibleTaskList(state);
-  const selectedFolder = getProjectTaskFolders(state).find(
-    (folder) => folder.id === state.selectedTaskFolderId,
-  );
-  const selectedDirection = getProjectOverviewDirections(state).find(
-    (direction) => direction.id === state.selectedTaskDirectionId,
-  );
-  const activeListTitle = selectedFolder
-    ? selectedFolder.title
-    : selectedDirection
-      ? selectedDirection.title
-      : state.taskDayViewActive
-        ? "Задачи на день"
-        : state.taskFilter === "important"
-          ? "Важные"
-          : state.taskFilter === "completed"
-            ? "Завершённые"
-            : "Все";
 
   useEffect(() => {
     if (!taskComposerOpen) return;
@@ -2192,7 +2644,6 @@ function TasksWorkspace({
 
   return (
     <div className="task-list-workspace">
-      <WorkspaceHeader title={activeListTitle} />
       {state.taskDetailViewTaskId ? (
         <button
           className="quiet-text-link task-list-back-link"
@@ -2395,17 +2846,6 @@ function CanvasesWorkspace({
   }
   return (
     <div className="canvas-workspace">
-      <header className="canvas-toolbar">
-        <div>
-          <span>Холст</span>
-          <h1>{canvas.title}</h1>
-        </div>
-        <div>
-          <button type="button">−</button>
-          <button type="button">100%</button>
-          <button type="button">+</button>
-        </div>
-      </header>
       <div className="canvas-surface">
         <div className="canvas-line line-one" />
         <div className="canvas-line line-two" />
@@ -2478,11 +2918,6 @@ function InboxWorkspace({
   const items = getVisibleInboxItems(state);
   return (
     <div className="inbox-workspace">
-      <WorkspaceHeader
-        description="Структурный макет места, куда попадают быстрые материалы."
-        eyebrow="Захваты"
-        title="Входящие"
-      />
       <div className="inbox-grid">
         {items.map((item) => (
           <InboxItemCard dispatch={dispatch} item={item} key={item.id} />
@@ -2533,7 +2968,7 @@ function ContextPanelSlot({
         className={[
           "context-panel",
           state.activeSection === "knowledge" && contextPanel.kind === "ai"
-            ? "application-wide-overlay knowledge-ai-overlay"
+            ? "knowledge-ai-panel"
             : "",
           contextPanel.kind === "task"
             ? "task-context-panel"
@@ -3721,6 +4156,9 @@ function CommandPalette({
 type UiIconName =
   | "arrow-left"
   | "arrow-right"
+  | "book"
+  | "check"
+  | "check-circle"
   | "chevron-down"
   | "chevron-right"
   | "close"
@@ -3732,8 +4170,11 @@ type UiIconName =
   | "folder"
   | "folder-open"
   | "folder-plus"
+  | "inbox"
+  | "layout"
   | "locate"
   | "more"
+  | "nodes"
   | "panel-left"
   | "panel-right"
   | "pencil"
@@ -3757,6 +4198,20 @@ function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
   const paths: Record<UiIconName, React.ReactNode> = {
     "arrow-left": <path d="M15 18l-6-6 6-6" />,
     "arrow-right": <path d="M9 6l6 6-6 6" />,
+    book: (
+      <>
+        <path d="M5 4h10a4 4 0 0 1 4 4v12H8a3 3 0 0 0-3 3z" />
+        <path d="M5 4v16" />
+        <path d="M8 8h7" />
+      </>
+    ),
+    check: <path d="M5 12.5l4 4L19 6.5" />,
+    "check-circle": (
+      <>
+        <circle cx="12" cy="12" r="8" />
+        <path d="M8.5 12.5l2.5 2.5 4.5-5" />
+      </>
+    ),
     "chevron-down": <path d="M7 10l5 5 5-5" />,
     "chevron-right": <path d="M10 7l5 5-5 5" />,
     close: (
@@ -3820,6 +4275,20 @@ function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
         <path d="M12.5 12.5v5" />
       </>
     ),
+    inbox: (
+      <>
+        <path d="M4 5h16l-2 10H6z" />
+        <path d="M6 15l2 4h8l2-4" />
+        <path d="M9 12h6" />
+      </>
+    ),
+    layout: (
+      <>
+        <rect x="4" y="4" width="16" height="16" rx="2" />
+        <path d="M4 10h16" />
+        <path d="M10 10v10" />
+      </>
+    ),
     locate: (
       <>
         <circle cx="12" cy="12" r="4" />
@@ -3834,6 +4303,15 @@ function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
         <path d="M6 12h.01" />
         <path d="M12 12h.01" />
         <path d="M18 12h.01" />
+      </>
+    ),
+    nodes: (
+      <>
+        <circle cx="6" cy="7" r="2.5" />
+        <circle cx="18" cy="7" r="2.5" />
+        <circle cx="12" cy="17" r="2.5" />
+        <path d="M8 8.5l2.5 6" />
+        <path d="M16 8.5l-2.5 6" />
       </>
     ),
     "panel-left": (

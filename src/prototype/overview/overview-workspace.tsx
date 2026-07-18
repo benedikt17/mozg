@@ -26,7 +26,6 @@ import type {
   PrototypeTask,
 } from "@/prototype/desktop-mock-data";
 import type { DesktopPrototypeAction } from "@/prototype/desktop-state";
-import { PrototypeButton } from "@/prototype/desktop-ui";
 import {
   getOverviewDropTarget,
   isOverviewTaskDragData,
@@ -57,7 +56,6 @@ export function OverviewWorkspace({
   overviewScrollLeft,
 }: OverviewWorkspaceProps): JSX.Element {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
-  const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [dropTarget, setDropTarget] = useState<OverviewDropTarget | null>(null);
   const boardRef = useRef<HTMLElement>(null);
   const sensors = useSensors(
@@ -77,14 +75,6 @@ export function OverviewWorkspace({
       board.scrollLeft = overviewScrollLeft;
     }
   }, [overviewScrollLeft]);
-
-  const setDirectionVisible = (directionId: string, visible: boolean): void => {
-    dispatch({
-      type: "set-overview-direction-visible",
-      directionId,
-      visible,
-    });
-  };
 
   const clearDragState = (): void => {
     setActiveTaskId(null);
@@ -118,61 +108,6 @@ export function OverviewWorkspace({
 
   return (
     <div className="overview-workspace">
-      <section className="overview-command-bar" aria-label="Действия доски">
-        <div className="overview-controls">
-          <div
-            className="overview-view-control"
-            onKeyDown={(event) => {
-              if (event.key !== "Escape") return;
-              event.preventDefault();
-              event.stopPropagation();
-              setViewMenuOpen(false);
-            }}
-          >
-            <PrototypeButton
-              aria-expanded={viewMenuOpen}
-              aria-haspopup="menu"
-              onClick={() => setViewMenuOpen((open) => !open)}
-              size="compact"
-              variant="quiet"
-            >
-              Вид
-            </PrototypeButton>
-            {viewMenuOpen ? (
-              <>
-                <button
-                  aria-label="Закрыть меню вида"
-                  className="overview-view-dismiss"
-                  onClick={() => setViewMenuOpen(false)}
-                  tabIndex={-1}
-                  type="button"
-                />
-                <div
-                  aria-label="Видимые направления проекта"
-                  className="overview-view-menu"
-                  role="menu"
-                >
-                  {directions.map((direction) => (
-                    <label className="overview-view-option" key={direction.id}>
-                      <input
-                        checked={!hiddenDirectionIds.includes(direction.id)}
-                        onChange={(event) =>
-                          setDirectionVisible(
-                            direction.id,
-                            event.currentTarget.checked,
-                          )
-                        }
-                        type="checkbox"
-                      />
-                      <span>{direction.title}</span>
-                    </label>
-                  ))}
-                </div>
-              </>
-            ) : null}
-          </div>
-        </div>
-      </section>
       <DndContext
         collisionDetection={closestCenter}
         onDragCancel={clearDragState}
