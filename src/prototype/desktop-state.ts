@@ -46,14 +46,36 @@ import {
   toggleOverviewTaskExpanded,
 } from "@/prototype/state/overview-state";
 import {
-  getNextSubtaskId,
-  getNextTaskLinkId,
+  addSubtask,
+  addTaskLink,
+  assignTaskFolder,
+  beginTaskTitleEdit,
+  cancelTaskTitleEdit,
+  commitTaskTitleEdit,
+  createTaskFolder,
+  deleteSubtask,
+  deleteTaskFolder,
+  deleteTaskLink,
+  editTaskLink,
+  editTaskTitle,
   getNextTaskListOrder,
   getProjectAreas,
-  getProjectTaskFolders,
-  getProjectTasks,
   getTaskById,
-  isValidTaskLinkUrl,
+  moveTaskList,
+  renameSubtask,
+  renameTaskFolder,
+  selectTaskDay,
+  selectTaskDirection,
+  selectTaskFolder,
+  setTaskDueDate,
+  setTaskFilter,
+  setTaskNotes,
+  setTaskOverview,
+  setTaskSearchQuery,
+  setTaskSignal,
+  toggleSubtask,
+  toggleTaskCompleted,
+  toggleTaskStar,
   updateTask,
 } from "@/prototype/state/tasks-state";
 
@@ -1157,15 +1179,9 @@ export function desktopPrototypeReducer(
         selectedAiProposalIds: [],
       };
     case "toggle-task-star":
-      return updateTask(state, action.taskId, (task) => ({
-        ...task,
-        starred: !task.starred,
-      }));
+      return toggleTaskStar(state, action.taskId);
     case "toggle-task-completed":
-      return updateTask(state, action.taskId, (task) => ({
-        ...task,
-        completedAt: task.completedAt ? null : new Date().toISOString(),
-      }));
+      return toggleTaskCompleted(state, action.taskId);
     case "delete-task": {
       const task = getTaskById(state, action.taskId);
       if (!task || task.projectId !== state.activeProjectId) return state;
@@ -1209,90 +1225,29 @@ export function desktopPrototypeReducer(
       };
     }
     case "edit-task-title":
-      return updateTask(state, action.taskId, (task) => ({
-        ...task,
-        title: action.title,
-      }));
-    case "begin-task-title-edit": {
-      const task = getTaskById(state, action.taskId);
-      if (!task || task.projectId !== state.activeProjectId) return state;
-      return {
-        ...state,
-        editingTaskTitleId: task.id,
-        contextPanel: null,
-        contextPanelBeforeAi: null,
-      };
-    }
-    case "commit-task-title-edit": {
-      const title = action.title.trim();
-      if (state.editingTaskTitleId !== action.taskId || title.length === 0) {
-        return {
-          ...state,
-          editingTaskTitleId: null,
-        };
-      }
-      return {
-        ...updateTask(state, action.taskId, (task) => ({ ...task, title })),
-        editingTaskTitleId: null,
-      };
-    }
+      return editTaskTitle(state, action.taskId, action.title);
+    case "begin-task-title-edit":
+      return beginTaskTitleEdit(state, action.taskId);
+    case "commit-task-title-edit":
+      return commitTaskTitleEdit(state, action.taskId, action.title);
     case "cancel-task-title-edit":
-      return {
-        ...state,
-        editingTaskTitleId: null,
-      };
+      return cancelTaskTitleEdit(state);
     case "set-task-due-date":
-      return updateTask(state, action.taskId, (task) => ({
-        ...task,
-        dueDate: action.dueDate.trim() || undefined,
-      }));
+      return setTaskDueDate(state, action.taskId, action.dueDate);
     case "set-task-notes":
-      return updateTask(state, action.taskId, (task) => ({
-        ...task,
-        notes: action.notes,
-      }));
-    case "add-task-link": {
-      const task = getTaskById(state, action.taskId);
-      const title = action.title.trim();
-      const url = action.url.trim();
-      if (!task || title.length === 0 || !isValidTaskLinkUrl(url)) return state;
-
-      return updateTask(state, task.id, (currentTask) => ({
-        ...currentTask,
-        links: [
-          ...currentTask.links,
-          { id: getNextTaskLinkId(currentTask), title, url },
-        ],
-      }));
-    }
-    case "edit-task-link": {
-      const task = getTaskById(state, action.taskId);
-      const title = action.title.trim();
-      const url = action.url.trim();
-      if (
-        !task?.links.some((link) => link.id === action.linkId) ||
-        title.length === 0 ||
-        !isValidTaskLinkUrl(url)
-      ) {
-        return state;
-      }
-
-      return updateTask(state, task.id, (currentTask) => ({
-        ...currentTask,
-        links: currentTask.links.map((link) =>
-          link.id === action.linkId ? { ...link, title, url } : link,
-        ),
-      }));
-    }
-    case "delete-task-link": {
-      const task = getTaskById(state, action.taskId);
-      if (!task?.links.some((link) => link.id === action.linkId)) return state;
-
-      return updateTask(state, task.id, (currentTask) => ({
-        ...currentTask,
-        links: currentTask.links.filter((link) => link.id !== action.linkId),
-      }));
-    }
+      return setTaskNotes(state, action.taskId, action.notes);
+    case "add-task-link":
+      return addTaskLink(state, action.taskId, action.title, action.url);
+    case "edit-task-link":
+      return editTaskLink(
+        state,
+        action.taskId,
+        action.linkId,
+        action.title,
+        action.url,
+      );
+    case "delete-task-link":
+      return deleteTaskLink(state, action.taskId, action.linkId);
     case "attach-task-document": {
       const task = getTaskById(state, action.taskId);
       const document = getDocumentById(state, action.documentId);
@@ -1322,59 +1277,18 @@ export function desktopPrototypeReducer(
       }));
     }
     case "toggle-subtask":
-      return updateTask(state, action.taskId, (task) => ({
-        ...task,
-        subtasks: task.subtasks.map((subtask) =>
-          subtask.id === action.subtaskId
-            ? { ...subtask, done: !subtask.done }
-            : subtask,
-        ),
-      }));
-    case "add-subtask": {
-      const title = action.title.trim();
-      const task = getTaskById(state, action.taskId);
-      if (!task || title.length === 0) return state;
-
-      return updateTask(state, task.id, (currentTask) => ({
-        ...currentTask,
-        subtasks: [
-          ...currentTask.subtasks,
-          {
-            id: getNextSubtaskId(currentTask),
-            title,
-            done: false,
-          },
-        ],
-      }));
-    }
-    case "rename-subtask": {
-      const title = action.title.trim();
-      const task = getTaskById(state, action.taskId);
-      const subtask = task?.subtasks.find(
-        (item) => item.id === action.subtaskId,
+      return toggleSubtask(state, action.taskId, action.subtaskId);
+    case "add-subtask":
+      return addSubtask(state, action.taskId, action.title);
+    case "rename-subtask":
+      return renameSubtask(
+        state,
+        action.taskId,
+        action.subtaskId,
+        action.title,
       );
-      if (!task || !subtask || title.length === 0) return state;
-
-      return updateTask(state, task.id, (currentTask) => ({
-        ...currentTask,
-        subtasks: currentTask.subtasks.map((item) =>
-          item.id === subtask.id ? { ...item, title } : item,
-        ),
-      }));
-    }
-    case "delete-subtask": {
-      const task = getTaskById(state, action.taskId);
-      if (!task?.subtasks.some((item) => item.id === action.subtaskId)) {
-        return state;
-      }
-
-      return updateTask(state, task.id, (currentTask) => ({
-        ...currentTask,
-        subtasks: currentTask.subtasks.filter(
-          (item) => item.id !== action.subtaskId,
-        ),
-      }));
-    }
+    case "delete-subtask":
+      return deleteSubtask(state, action.taskId, action.subtaskId);
     case "move-task":
       return moveTaskToDirection(
         state,
@@ -1401,179 +1315,29 @@ export function desktopPrototypeReducer(
     case "rename-overview-direction":
       return renameOverviewDirection(state, action.directionId, action.title);
     case "set-task-signal":
-      return updateTask(state, action.taskId, (task) => ({
-        ...task,
-        signal: action.signal,
-      }));
+      return setTaskSignal(state, action.taskId, action.signal);
     case "set-task-filter":
-      return {
-        ...state,
-        taskFilter: action.filter,
-        selectedTaskFolderId: null,
-        selectedTaskDirectionId: null,
-        taskDayViewActive: false,
-        taskDetailViewTaskId: null,
-      };
+      return setTaskFilter(state, action.filter);
     case "select-task-day":
-      return {
-        ...state,
-        taskFilter: "all",
-        selectedTaskFolderId: null,
-        selectedTaskDirectionId: null,
-        taskDayViewActive: true,
-        taskDetailViewTaskId: null,
-      };
-    case "select-task-direction": {
-      const direction = getOverviewDirectionById(state, action.directionId);
-      if (!direction || direction.projectId !== state.activeProjectId) {
-        return state;
-      }
-      return {
-        ...state,
-        taskFilter: "all",
-        selectedTaskFolderId: null,
-        selectedTaskDirectionId: direction.id,
-        taskDayViewActive: false,
-        taskDetailViewTaskId: null,
-      };
-    }
+      return selectTaskDay(state);
+    case "select-task-direction":
+      return selectTaskDirection(state, action.directionId);
     case "set-task-search-query":
-      return { ...state, taskSearchQuery: action.query };
-    case "select-task-folder": {
-      const folder = state.taskFolders.find(
-        (item) =>
-          item.id === action.folderId &&
-          item.projectId === state.activeProjectId,
-      );
-      if (!folder) return state;
-      return {
-        ...state,
-        taskFilter: "all",
-        selectedTaskFolderId: folder.id,
-        selectedTaskDirectionId: null,
-        taskDayViewActive: false,
-        taskDetailViewTaskId: null,
-      };
-    }
-    case "create-task-folder": {
-      const title = action.title.trim();
-      if (title.length === 0) return state;
-      const folder: PrototypeTaskFolder = {
-        id: `mock-task-folder-${state.nextTaskFolderNumber}`,
-        projectId: state.activeProjectId,
-        title,
-        order: getProjectTaskFolders(state).length,
-      };
-      return {
-        ...state,
-        taskFolders: [...state.taskFolders, folder],
-        nextTaskFolderNumber: state.nextTaskFolderNumber + 1,
-      };
-    }
-    case "rename-task-folder": {
-      const title = action.title.trim();
-      const folder = state.taskFolders.find(
-        (item) =>
-          item.id === action.folderId &&
-          item.projectId === state.activeProjectId,
-      );
-      if (!folder || title.length === 0) return state;
-      return {
-        ...state,
-        taskFolders: state.taskFolders.map((item) =>
-          item.id === folder.id ? { ...item, title } : item,
-        ),
-      };
-    }
-    case "delete-task-folder": {
-      const folder = state.taskFolders.find(
-        (item) =>
-          item.id === action.folderId &&
-          item.projectId === state.activeProjectId,
-      );
-      if (
-        !folder ||
-        state.tasks.some((task) => task.taskFolderId === folder.id)
-      ) {
-        return state;
-      }
-      return {
-        ...state,
-        taskFolders: state.taskFolders.filter((item) => item.id !== folder.id),
-        selectedTaskFolderId:
-          state.selectedTaskFolderId === folder.id
-            ? null
-            : state.selectedTaskFolderId,
-      };
-    }
-    case "assign-task-folder": {
-      const task = getTaskById(state, action.taskId);
-      const folder = action.folderId
-        ? state.taskFolders.find((item) => item.id === action.folderId)
-        : null;
-      if (
-        !task ||
-        task.projectId !== state.activeProjectId ||
-        (action.folderId && (!folder || folder.projectId !== task.projectId))
-      ) {
-        return state;
-      }
-      return updateTask(state, task.id, (currentTask) => ({
-        ...currentTask,
-        taskFolderId: folder?.id ?? null,
-      }));
-    }
-    case "set-task-overview": {
-      const task = getTaskById(state, action.taskId);
-      if (!task || task.projectId !== state.activeProjectId) return state;
-      if (task.showOnOverview === action.visible) return state;
-      return updateTask(state, task.id, (currentTask) => ({
-        ...currentTask,
-        showOnOverview: action.visible,
-      }));
-    }
-    case "move-task-list": {
-      const movingTask = getTaskById(state, action.taskId);
-      const targetTask = action.targetTaskId
-        ? getTaskById(state, action.targetTaskId)
-        : null;
-      if (
-        !movingTask ||
-        movingTask.projectId !== state.activeProjectId ||
-        (action.targetTaskId &&
-          (!targetTask || targetTask.projectId !== movingTask.projectId)) ||
-        movingTask.id === targetTask?.id
-      ) {
-        return state;
-      }
-
-      const orderedTasks = [...getProjectTasks(state)].sort(
-        (first, second) => first.taskListOrder - second.taskListOrder,
-      );
-      const remainingTasks = orderedTasks.filter(
-        (task) => task.id !== movingTask.id,
-      );
-      const targetIndex = targetTask
-        ? remainingTasks.findIndex((task) => task.id === targetTask.id)
-        : remainingTasks.length;
-      remainingTasks.splice(
-        targetIndex < 0 ? remainingTasks.length : targetIndex,
-        0,
-        movingTask,
-      );
-      const orderByTaskId = new Map(
-        remainingTasks.map((task, taskListOrder) => [task.id, taskListOrder]),
-      );
-      return {
-        ...state,
-        tasks: state.tasks.map((task) => {
-          const taskListOrder = orderByTaskId.get(task.id);
-          return taskListOrder === undefined
-            ? task
-            : { ...task, taskListOrder };
-        }),
-      };
-    }
+      return setTaskSearchQuery(state, action.query);
+    case "select-task-folder":
+      return selectTaskFolder(state, action.folderId);
+    case "create-task-folder":
+      return createTaskFolder(state, action.title);
+    case "rename-task-folder":
+      return renameTaskFolder(state, action.folderId, action.title);
+    case "delete-task-folder":
+      return deleteTaskFolder(state, action.folderId);
+    case "assign-task-folder":
+      return assignTaskFolder(state, action.taskId, action.folderId);
+    case "set-task-overview":
+      return setTaskOverview(state, action.taskId, action.visible);
+    case "move-task-list":
+      return moveTaskList(state, action.taskId, action.targetTaskId);
     case "set-inbox-filter":
       return setInboxFilter(state, action.filter);
     case "create-task": {
