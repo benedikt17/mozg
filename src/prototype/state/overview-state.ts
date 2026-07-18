@@ -3,7 +3,7 @@ import type {
   PrototypeOverviewDirection,
   PrototypeTask,
 } from "@/prototype/desktop-mock-data";
-import type { DesktopPrototypeState } from "@/prototype/desktop-state";
+import type { DesktopPrototypeState } from "@/prototype/state/types";
 
 export function getProjectOverviewDirections(
   state: DesktopPrototypeState,

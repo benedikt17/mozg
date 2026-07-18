@@ -5,7 +5,7 @@ import type {
 import type {
   CommandResult,
   DesktopPrototypeState,
-} from "@/prototype/desktop-state";
+} from "@/prototype/state/types";
 import {
   getCanvasById,
   getCanvasObjectById,

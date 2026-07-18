@@ -5,7 +5,7 @@ import type {
   KnowledgePaneState,
   KnowledgePane,
   KnowledgeTreeNode,
-} from "@/prototype/desktop-state";
+} from "@/prototype/state/types";
 
 const documentFolderPathOverrides: Record<string, string[]> = {
   "doc-l-nastenka": [
