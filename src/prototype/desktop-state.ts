@@ -27,6 +27,12 @@ import {
   selectCanvas,
   selectCanvasObject,
 } from "@/prototype/state/canvases-state";
+import {
+  firstInboxItemForProject,
+  getInboxItemById,
+  selectInboxItem,
+  setInboxFilter,
+} from "@/prototype/state/inbox-state";
 
 export {
   getCanvasById,
@@ -34,6 +40,13 @@ export {
   getProjectCanvases,
   firstCanvasForProject,
 } from "@/prototype/state/canvases-state";
+
+export {
+  firstInboxItemForProject,
+  getInboxItemById,
+  getProjectInboxItems,
+  getVisibleInboxItems,
+} from "@/prototype/state/inbox-state";
 
 export type ContextPanelState =
   | { kind: "task"; taskId: string }
@@ -407,14 +420,6 @@ export function getDocumentById(
   return state.documents.find((document) => document.id === documentId);
 }
 
-export function getInboxItemById(
-  state: DesktopPrototypeState,
-  itemId: string | null,
-): PrototypeInboxItem | undefined {
-  if (!itemId) return undefined;
-  return state.inboxItems.find((item) => item.id === itemId);
-}
-
 export function getProjectTasks(
   state: DesktopPrototypeState,
   projectId = state.activeProjectId,
@@ -648,21 +653,6 @@ export function getProjectDocumentFolders(
   );
 }
 
-export function getProjectInboxItems(
-  state: DesktopPrototypeState,
-  projectId = state.activeProjectId,
-): PrototypeInboxItem[] {
-  return state.inboxItems.filter((item) => item.projectId === projectId);
-}
-
-export function getVisibleInboxItems(
-  state: DesktopPrototypeState,
-): PrototypeInboxItem[] {
-  return getProjectInboxItems(state).filter(
-    (item) => state.inboxFilter === "all" || item.kind === state.inboxFilter,
-  );
-}
-
 export function getProjectAreas(
   state: DesktopPrototypeState,
   projectId = state.activeProjectId,
@@ -889,13 +879,6 @@ function firstDocumentForProject(
   projectId: string,
 ): PrototypeDocument | undefined {
   return state.documents.find((document) => document.projectId === projectId);
-}
-
-function firstInboxItemForProject(
-  state: DesktopPrototypeState,
-  projectId: string,
-): PrototypeInboxItem | undefined {
-  return state.inboxItems.find((item) => item.projectId === projectId);
 }
 
 function updateTask(
@@ -1871,7 +1854,7 @@ export function desktopPrototypeReducer(
       };
     }
     case "set-inbox-filter":
-      return { ...state, inboxFilter: action.filter };
+      return setInboxFilter(state, action.filter);
     case "create-task": {
       const requestedDirectionId =
         action.overviewDirectionId ??
@@ -2400,19 +2383,8 @@ export function desktopPrototypeReducer(
       return selectCanvas(state, action.canvasId);
     case "select-canvas-object":
       return selectCanvasObject(state, action.canvasId, action.objectId);
-    case "select-inbox-item": {
-      const item = getInboxItemById(state, action.itemId);
-      if (!item) return state;
-      return {
-        ...state,
-        activeProjectId: item.projectId,
-        activeSection: "inbox",
-        selectedInboxItemId: item.id,
-        contextPanel: { kind: "inbox-item", itemId: item.id },
-        contextPanelBeforeAi: null,
-        commandPaletteOpen: false,
-      };
-    }
+    case "select-inbox-item":
+      return selectInboxItem(state, action.itemId);
     case "open-ai-panel":
       return {
         ...state,
