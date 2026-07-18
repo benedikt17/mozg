@@ -33,6 +33,18 @@ import {
   selectInboxItem,
   setInboxFilter,
 } from "@/prototype/state/inbox-state";
+import {
+  getNextOverviewOrder,
+  getOverviewDirectionById,
+  getProjectOverviewDirections,
+  getVisibleOverviewTasks,
+  moveOverviewTaskAtIndex,
+  moveTaskToDirection,
+  renameOverviewDirection,
+  setOverviewDirectionVisible,
+  setOverviewScrollLeft,
+  toggleOverviewTaskExpanded,
+} from "@/prototype/state/overview-state";
 
 export {
   getCanvasById,
@@ -47,6 +59,17 @@ export {
   getProjectInboxItems,
   getVisibleInboxItems,
 } from "@/prototype/state/inbox-state";
+
+export {
+  getNextOverviewOrder,
+  getOverviewDirectionById,
+  getProjectOverviewDirections,
+  getTasksForDirection,
+  getVisibleOverviewTasks,
+  moveOverviewTask,
+  normalizeDirectionOrders,
+  sortTasksForBoard,
+} from "@/prototype/state/overview-state";
 
 export type ContextPanelState =
   | { kind: "task"; taskId: string }
@@ -385,25 +408,6 @@ export function getActiveProject(
   );
 }
 
-export function getProjectOverviewDirections(
-  state: DesktopPrototypeState,
-  projectId = state.activeProjectId,
-): PrototypeOverviewDirection[] {
-  return state.overviewDirections
-    .filter((direction) => direction.projectId === projectId)
-    .sort((first, second) => first.order - second.order)
-    .slice(0, 4);
-}
-
-export function getOverviewDirectionById(
-  state: DesktopPrototypeState,
-  directionId: OverviewDirectionId,
-): PrototypeOverviewDirection | undefined {
-  return state.overviewDirections.find(
-    (direction) => direction.id === directionId,
-  );
-}
-
 export function getTaskById(
   state: DesktopPrototypeState,
   taskId: string | null,
@@ -666,16 +670,6 @@ export function getProjectAreas(
   ).sort((first, second) => first.localeCompare(second, "ru"));
 }
 
-export function getVisibleOverviewTasks(
-  state: DesktopPrototypeState,
-): PrototypeTask[] {
-  return sortTasksForBoard(
-    getProjectTasks(state).filter(
-      (task) => task.showOnOverview && task.completedAt === null,
-    ),
-  );
-}
-
 export function getVisibleTaskList(
   state: DesktopPrototypeState,
 ): PrototypeTask[] {
@@ -707,15 +701,6 @@ export function getVisibleTaskList(
     });
 }
 
-export function sortTasksForBoard(tasks: PrototypeTask[]): PrototypeTask[] {
-  return [...tasks].sort((first, second) => {
-    if (first.overviewOrder !== second.overviewOrder) {
-      return first.overviewOrder - second.overviewOrder;
-    }
-    return first.id.localeCompare(second.id);
-  });
-}
-
 function sortKnowledgeNodes(
   nodes: KnowledgeTreeNode[],
   documentOrder: ReadonlyMap<string, number>,
@@ -739,15 +724,6 @@ function sortKnowledgeNodes(
       }
       return first.title.localeCompare(second.title, "ru");
     });
-}
-
-export function getTasksForDirection(
-  state: DesktopPrototypeState,
-  directionId: OverviewDirectionId,
-): PrototypeTask[] {
-  return getVisibleOverviewTasks(state).filter(
-    (task) => task.overviewDirectionId === directionId,
-  );
 }
 
 export function getAiContextLabel(state: DesktopPrototypeState): string {
@@ -927,22 +903,6 @@ export function isValidTaskLinkUrl(value: string): boolean {
   }
 }
 
-function getNextOverviewOrder(
-  state: DesktopPrototypeState,
-  directionId: OverviewDirectionId,
-): number {
-  return (
-    state.tasks.reduce(
-      (highestOrder, task) =>
-        task.projectId === state.activeProjectId &&
-        task.overviewDirectionId === directionId
-          ? Math.max(highestOrder, task.overviewOrder)
-          : highestOrder,
-      -1,
-    ) + 1
-  );
-}
-
 function getNextTaskListOrder(
   state: DesktopPrototypeState,
   projectId = state.activeProjectId,
@@ -997,106 +957,6 @@ function createPrototypeTask({
     subtasks,
     notes,
   };
-}
-
-function normalizeDirectionOrders(
-  tasks: PrototypeTask[],
-  projectId: string,
-  directionId: OverviewDirectionId,
-): PrototypeTask[] {
-  const orderedIds = sortTasksForBoard(
-    tasks.filter(
-      (task) =>
-        task.projectId === projectId &&
-        task.overviewDirectionId === directionId,
-    ),
-  ).map((task) => task.id);
-  const orderById = new Map(
-    orderedIds.map((taskId, overviewOrder) => [taskId, overviewOrder]),
-  );
-  return tasks.map((task) => {
-    const overviewOrder = orderById.get(task.id);
-    return overviewOrder === undefined ? task : { ...task, overviewOrder };
-  });
-}
-
-export function moveOverviewTask(
-  state: DesktopPrototypeState,
-  taskId: string,
-  targetDirectionId: OverviewDirectionId,
-  targetIndex: number,
-  appendToDirectionEnd = false,
-): DesktopPrototypeState {
-  const movingTask = getTaskById(state, taskId);
-  if (!movingTask) return state;
-  const targetDirection = getOverviewDirectionById(state, targetDirectionId);
-  if (!targetDirection || targetDirection.projectId !== movingTask.projectId) {
-    return state;
-  }
-
-  const sourceDirectionId = movingTask.overviewDirectionId;
-  const targetTasks = sortTasksForBoard(
-    state.tasks.filter(
-      (task) =>
-        task.projectId === movingTask.projectId &&
-        task.overviewDirectionId === targetDirectionId &&
-        task.id !== taskId,
-    ),
-  );
-  const visibleTargetIds = targetTasks
-    .filter((task) => task.completedAt === null)
-    .map((task) => task.id);
-  const safeTargetIndex = Math.max(
-    0,
-    Math.min(Math.trunc(targetIndex), visibleTargetIds.length),
-  );
-
-  let fullInsertionIndex = targetTasks.length;
-  if (!appendToDirectionEnd && visibleTargetIds.length > 0) {
-    if (safeTargetIndex < visibleTargetIds.length) {
-      fullInsertionIndex = targetTasks.findIndex(
-        (task) => task.id === visibleTargetIds[safeTargetIndex],
-      );
-    } else {
-      fullInsertionIndex =
-        targetTasks.findIndex(
-          (task) => task.id === visibleTargetIds[visibleTargetIds.length - 1],
-        ) + 1;
-    }
-  }
-
-  const movedTask: PrototypeTask = {
-    ...movingTask,
-    overviewDirectionId: targetDirectionId,
-  };
-  const orderedTargetTasks = [...targetTasks];
-  orderedTargetTasks.splice(fullInsertionIndex, 0, movedTask);
-  const targetOrderById = new Map(
-    orderedTargetTasks.map((task, overviewOrder) => [task.id, overviewOrder]),
-  );
-
-  let tasks = state.tasks.map((task) => {
-    const targetOrder = targetOrderById.get(task.id);
-    if (task.id === taskId) {
-      return {
-        ...movedTask,
-        overviewOrder: targetOrder ?? 0,
-      };
-    }
-    return targetOrder === undefined
-      ? task
-      : { ...task, overviewOrder: targetOrder };
-  });
-
-  if (sourceDirectionId !== targetDirectionId) {
-    tasks = normalizeDirectionOrders(
-      tasks,
-      movingTask.projectId,
-      sourceDirectionId,
-    );
-  }
-
-  return { ...state, tasks };
 }
 
 function addAiLog(
@@ -1621,64 +1481,30 @@ export function desktopPrototypeReducer(
       }));
     }
     case "move-task":
-      return moveOverviewTask(
+      return moveTaskToDirection(
         state,
         action.taskId,
         action.overviewDirectionId,
-        0,
-        true,
       );
     case "move-overview-task":
-      return moveOverviewTask(
+      return moveOverviewTaskAtIndex(
         state,
         action.taskId,
         action.targetDirectionId,
         action.targetIndex,
       );
-    case "toggle-overview-task-expanded": {
-      const task = getTaskById(state, action.taskId);
-      if (!task || task.projectId !== state.activeProjectId) return state;
-      return {
-        ...state,
-        overviewExpandedTaskId:
-          state.overviewExpandedTaskId === task.id ? null : task.id,
-      };
-    }
-    case "set-overview-direction-visible": {
-      const direction = getOverviewDirectionById(state, action.directionId);
-      if (!direction || direction.projectId !== state.activeProjectId) {
-        return state;
-      }
-      return {
-        ...state,
-        overviewHiddenDirectionIds: action.visible
-          ? state.overviewHiddenDirectionIds.filter(
-              (directionId) => directionId !== direction.id,
-            )
-          : Array.from(
-              new Set([...state.overviewHiddenDirectionIds, direction.id]),
-            ),
-      };
-    }
+    case "toggle-overview-task-expanded":
+      return toggleOverviewTaskExpanded(state, action.taskId);
+    case "set-overview-direction-visible":
+      return setOverviewDirectionVisible(
+        state,
+        action.directionId,
+        action.visible,
+      );
     case "set-overview-scroll-left":
-      return {
-        ...state,
-        overviewScrollLeft: Math.max(0, action.scrollLeft),
-      };
-    case "rename-overview-direction": {
-      const title = action.title.trim();
-      if (title.length === 0) return state;
-      const direction = getOverviewDirectionById(state, action.directionId);
-      if (!direction || direction.projectId !== state.activeProjectId) {
-        return state;
-      }
-      return {
-        ...state,
-        overviewDirections: state.overviewDirections.map((item) =>
-          item.id === direction.id ? { ...item, title } : item,
-        ),
-      };
-    }
+      return setOverviewScrollLeft(state, action.scrollLeft);
+    case "rename-overview-direction":
+      return renameOverviewDirection(state, action.directionId, action.title);
     case "set-task-signal":
       return updateTask(state, action.taskId, (task) => ({
         ...task,
