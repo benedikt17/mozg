@@ -11,7 +11,6 @@ import {
   type OverviewDirectionId,
   type ProjectSection,
   type PrototypeCanvas,
-  type PrototypeCanvasObject,
   type PrototypeDocument,
   type PrototypeInboxItem,
   type PrototypeOverviewDirection,
@@ -21,6 +20,20 @@ import {
   type TaskSignal,
   type TaskFilter,
 } from "@/prototype/desktop-mock-data";
+import {
+  firstCanvasForProject,
+  getCanvasById,
+  getCanvasObjectById,
+  selectCanvas,
+  selectCanvasObject,
+} from "@/prototype/state/canvases-state";
+
+export {
+  getCanvasById,
+  getCanvasObjectById,
+  getProjectCanvases,
+  firstCanvasForProject,
+} from "@/prototype/state/canvases-state";
 
 export type ContextPanelState =
   | { kind: "task"; taskId: string }
@@ -394,25 +407,6 @@ export function getDocumentById(
   return state.documents.find((document) => document.id === documentId);
 }
 
-export function getCanvasById(
-  state: DesktopPrototypeState,
-  canvasId: string | null,
-): PrototypeCanvas | undefined {
-  if (!canvasId) return undefined;
-  return state.canvases.find((canvas) => canvas.id === canvasId);
-}
-
-export function getCanvasObjectById(
-  state: DesktopPrototypeState,
-  canvasId: string | null,
-  objectId: string | null,
-): PrototypeCanvasObject | undefined {
-  if (!objectId) return undefined;
-  return getCanvasById(state, canvasId)?.objects.find(
-    (object) => object.id === objectId,
-  );
-}
-
 export function getInboxItemById(
   state: DesktopPrototypeState,
   itemId: string | null,
@@ -652,13 +646,6 @@ export function getProjectDocumentFolders(
       getProjectDocuments(state, projectId).map((document) => document.folder),
     ),
   );
-}
-
-export function getProjectCanvases(
-  state: DesktopPrototypeState,
-  projectId = state.activeProjectId,
-): PrototypeCanvas[] {
-  return state.canvases.filter((canvas) => canvas.projectId === projectId);
 }
 
 export function getProjectInboxItems(
@@ -902,13 +889,6 @@ function firstDocumentForProject(
   projectId: string,
 ): PrototypeDocument | undefined {
   return state.documents.find((document) => document.projectId === projectId);
-}
-
-function firstCanvasForProject(
-  state: DesktopPrototypeState,
-  projectId: string,
-): PrototypeCanvas | undefined {
-  return state.canvases.find((canvas) => canvas.projectId === projectId);
 }
 
 function firstInboxItemForProject(
@@ -2416,34 +2396,10 @@ export function desktopPrototypeReducer(
         contextPanelBeforeAi: null,
       };
     }
-    case "select-canvas": {
-      const canvas = getCanvasById(state, action.canvasId);
-      if (!canvas) return state;
-      return {
-        ...state,
-        activeProjectId: canvas.projectId,
-        activeSection: "canvases",
-        selectedCanvasId: canvas.id,
-        selectedCanvasObjectId: null,
-        contextPanel: null,
-        contextPanelBeforeAi: null,
-        commandPaletteOpen: false,
-      };
-    }
-    case "select-canvas-object": {
-      return {
-        ...state,
-        activeSection: "canvases",
-        selectedCanvasId: action.canvasId,
-        selectedCanvasObjectId: action.objectId,
-        contextPanel: {
-          kind: "canvas-inspector",
-          canvasId: action.canvasId,
-          objectId: action.objectId,
-        },
-        contextPanelBeforeAi: null,
-      };
-    }
+    case "select-canvas":
+      return selectCanvas(state, action.canvasId);
+    case "select-canvas-object":
+      return selectCanvasObject(state, action.canvasId, action.objectId);
     case "select-inbox-item": {
       const item = getInboxItemById(state, action.itemId);
       if (!item) return state;
