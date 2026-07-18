@@ -46,13 +46,27 @@ import {
   toggleOverviewTaskExpanded,
 } from "@/prototype/state/overview-state";
 import {
+  activateKnowledgePane,
+  closeDocumentTab,
+  createKnowledgeDocument,
+  createKnowledgeFolder,
   getDocumentAncestorFolderIds,
   getDocumentBreadcrumb,
   getDocumentById,
   getDocumentFolderPath,
-  getKnowledgePaneState,
-  getProjectDocuments,
   knowledgeFolderId,
+  finishEditingKnowledgeFolder,
+  moveKnowledgeDocument,
+  renameKnowledgeFolder,
+  revealCurrentKnowledgeDocument,
+  setKnowledgeContextMode,
+  setKnowledgeSearch,
+  toggleAllKnowledgeFolders,
+  toggleKeyDocument,
+  toggleKnowledgeDocumentEdit,
+  toggleKnowledgeFolder,
+  toggleKnowledgeSplitView,
+  updateKnowledgeDocumentMarkdown,
 } from "@/prototype/state/knowledge-state";
 import {
   addSubtask,
@@ -464,20 +478,6 @@ export function getActiveProject(
   return (
     state.projects.find((project) => project.id === state.activeProjectId) ??
     state.projects[0]
-  );
-}
-
-function knowledgePathsEqual(first: string[], second: string[]): boolean {
-  return (
-    first.length === second.length &&
-    first.every((segment, index) => segment === second[index])
-  );
-}
-
-function knowledgePathStartsWith(path: string[], prefix: string[]): boolean {
-  return (
-    path.length >= prefix.length &&
-    prefix.every((segment, index) => segment === path[index])
   );
 }
 
@@ -1173,317 +1173,40 @@ export function desktopPrototypeReducer(
       if (!document) return state;
       return selectKnowledgeDocument(state, document);
     }
-    case "toggle-key-document": {
-      const document = getDocumentById(state, action.documentId);
-      if (!document || document.projectId !== state.activeProjectId) {
-        return state;
-      }
-      return {
-        ...state,
-        documents: state.documents.map((item) =>
-          item.id === document.id
-            ? { ...item, isKeyDocument: !item.isKeyDocument }
-            : item,
-        ),
-      };
-    }
-    case "toggle-knowledge-folder": {
-      const expanded = state.expandedFolderIds.includes(action.folderId);
-      return {
-        ...state,
-        selectedKnowledgeFolderPath: action.path,
-        expandedFolderIds: expanded
-          ? state.expandedFolderIds.filter(
-              (folderId) => folderId !== action.folderId,
-            )
-          : [...state.expandedFolderIds, action.folderId],
-        knowledgeExpandedBeforeCollapse: null,
-      };
-    }
-    case "toggle-all-knowledge-folders": {
-      if (state.knowledgeExpandedBeforeCollapse !== null) {
-        return {
-          ...state,
-          expandedFolderIds: state.knowledgeExpandedBeforeCollapse,
-          knowledgeExpandedBeforeCollapse: null,
-        };
-      }
-      return {
-        ...state,
-        expandedFolderIds: [],
-        knowledgeExpandedBeforeCollapse: state.expandedFolderIds,
-      };
-    }
-    case "reveal-current-knowledge-document": {
-      const selectedDocument = getDocumentById(state, state.selectedDocumentId);
-      if (!selectedDocument) return state;
-      return {
-        ...state,
-        selectedKnowledgeFolderPath: getDocumentFolderPath(selectedDocument),
-        expandedFolderIds: Array.from(
-          new Set([
-            ...state.expandedFolderIds,
-            ...getDocumentAncestorFolderIds(selectedDocument),
-          ]),
-        ),
-        knowledgeExpandedBeforeCollapse: null,
-      };
-    }
+    case "toggle-key-document":
+      return toggleKeyDocument(state, action.documentId);
+    case "toggle-knowledge-folder":
+      return toggleKnowledgeFolder(state, action.folderId, action.path);
+    case "toggle-all-knowledge-folders":
+      return toggleAllKnowledgeFolders(state);
+    case "reveal-current-knowledge-document":
+      return revealCurrentKnowledgeDocument(state);
     case "set-knowledge-search":
-      return {
-        ...state,
-        knowledgeSearchQuery: action.query,
-        expandedFolderIds: action.query.trim()
-          ? Array.from(
-              new Set(
-                getProjectDocuments(state).flatMap((document) =>
-                  getDocumentAncestorFolderIds(document),
-                ),
-              ),
-            )
-          : state.expandedFolderIds,
-      };
-    case "create-knowledge-document": {
-      const folderPath = state.selectedKnowledgeFolderPath ?? [];
-      const siblingDocuments = getProjectDocuments(state).filter((document) =>
-        knowledgePathsEqual(getDocumentFolderPath(document), folderPath),
+      return setKnowledgeSearch(state, action.query);
+    case "create-knowledge-document":
+      return createKnowledgeDocument(state);
+    case "update-knowledge-document-markdown":
+      return updateKnowledgeDocumentMarkdown(
+        state,
+        action.documentId,
+        action.markdown,
       );
-      const document: PrototypeDocument = {
-        id: `mock-document-${state.nextDocumentNumber}`,
-        projectId: state.activeProjectId,
-        order: siblingDocuments.length,
-        folder: folderPath.at(-1) ?? "",
-        folderPath,
-        title: "Без названия",
-        excerpt: "",
-        content: [],
-        linkedTaskIds: [],
-        backlinks: [],
-      };
-      return selectKnowledgeDocument(
-        {
-          ...state,
-          documents: [...state.documents, document],
-          nextDocumentNumber: state.nextDocumentNumber + 1,
-        },
-        document,
-      );
-    }
-    case "update-knowledge-document-markdown": {
-      const document = getDocumentById(state, action.documentId);
-      if (!document || document.projectId !== state.activeProjectId)
-        return state;
-      const markdown = action.markdown.replace(/\r\n?/g, "\n");
-      return {
-        ...state,
-        documents: state.documents.map((item) =>
-          item.id === document.id
-            ? {
-                ...item,
-                content: markdown.length > 0 ? markdown.split("\n") : [],
-              }
-            : item,
-        ),
-      };
-    }
-    case "create-knowledge-folder": {
-      const parentPath = state.selectedKnowledgeFolderPath ?? [];
-      const path = [...parentPath, "Новая папка"];
-      const folderId = knowledgeFolderId(state.activeProjectId, path);
-      const folder: PrototypeKnowledgeFolder = {
-        id: `mock-knowledge-folder-${state.nextKnowledgeFolderNumber}`,
-        projectId: state.activeProjectId,
-        path,
-      };
-      return {
-        ...state,
-        knowledgeFolders: [...state.knowledgeFolders, folder],
-        selectedKnowledgeFolderPath: path,
-        expandedFolderIds: Array.from(
-          new Set([
-            ...state.expandedFolderIds,
-            ...path.map((_, index) =>
-              knowledgeFolderId(
-                state.activeProjectId,
-                path.slice(0, index + 1),
-              ),
-            ),
-          ]),
-        ),
-        knowledgeExpandedBeforeCollapse: null,
-        editingKnowledgeFolderId: folderId,
-        nextKnowledgeFolderNumber: state.nextKnowledgeFolderNumber + 1,
-      };
-    }
-    case "rename-knowledge-folder": {
-      const folder = state.knowledgeFolders.find(
-        (item) =>
-          item.projectId === state.activeProjectId &&
-          knowledgeFolderId(item.projectId, item.path) === action.folderId,
-      );
-      const title = action.title.trim();
-      if (!folder || title.length === 0) {
-        return { ...state, editingKnowledgeFolderId: null };
-      }
-      const oldPath = folder.path;
-      const nextPath = [...oldPath.slice(0, -1), title];
-      const replacePrefix = (path: string[]): string[] =>
-        knowledgePathStartsWith(path, oldPath)
-          ? [...nextPath, ...path.slice(oldPath.length)]
-          : path;
-      return {
-        ...state,
-        knowledgeFolders: state.knowledgeFolders.map((item) =>
-          item.projectId === folder.projectId
-            ? { ...item, path: replacePrefix(item.path) }
-            : item,
-        ),
-        documents: state.documents.map((document) => {
-          if (document.projectId !== folder.projectId) return document;
-          const currentPath = getDocumentFolderPath(document);
-          if (!knowledgePathStartsWith(currentPath, oldPath)) return document;
-          const documentPath = replacePrefix(currentPath);
-          return {
-            ...document,
-            folder: documentPath.at(-1) ?? "",
-            folderPath: documentPath,
-          };
-        }),
-        selectedKnowledgeFolderPath: state.selectedKnowledgeFolderPath
-          ? replacePrefix(state.selectedKnowledgeFolderPath)
-          : null,
-        expandedFolderIds: Array.from(
-          new Set([
-            ...state.expandedFolderIds.filter(
-              (id) => id !== knowledgeFolderId(folder.projectId, oldPath),
-            ),
-            knowledgeFolderId(folder.projectId, nextPath),
-          ]),
-        ),
-        editingKnowledgeFolderId: null,
-      };
-    }
+    case "create-knowledge-folder":
+      return createKnowledgeFolder(state);
+    case "rename-knowledge-folder":
+      return renameKnowledgeFolder(state, action.folderId, action.title);
     case "finish-editing-knowledge-folder":
-      return { ...state, editingKnowledgeFolderId: null };
-    case "move-knowledge-document": {
-      const movingDocument = getDocumentById(state, action.documentId);
-      if (
-        !movingDocument ||
-        movingDocument.projectId !== state.activeProjectId ||
-        action.targetDocumentId === movingDocument.id
-      ) {
-        return state;
-      }
-      const sourcePath = getDocumentFolderPath(movingDocument);
-      const documentIndex = new Map(
-        state.documents.map((document, index) => [document.id, index]),
+      return finishEditingKnowledgeFolder(state);
+    case "move-knowledge-document":
+      return moveKnowledgeDocument(
+        state,
+        action.documentId,
+        action.targetFolderPath,
+        action.targetDocumentId,
+        action.position,
       );
-      const byManualOrder = (
-        first: PrototypeDocument,
-        second: PrototypeDocument,
-      ): number =>
-        (first.order ?? documentIndex.get(first.id) ?? 0) -
-        (second.order ?? documentIndex.get(second.id) ?? 0);
-      const targetDocuments = getProjectDocuments(state)
-        .filter(
-          (document) =>
-            document.id !== movingDocument.id &&
-            knowledgePathsEqual(
-              getDocumentFolderPath(document),
-              action.targetFolderPath,
-            ),
-        )
-        .sort(byManualOrder);
-      const targetIndex = action.targetDocumentId
-        ? targetDocuments.findIndex(
-            (document) => document.id === action.targetDocumentId,
-          )
-        : -1;
-      const insertionIndex =
-        action.position === "end" || targetIndex < 0
-          ? targetDocuments.length
-          : targetIndex + (action.position === "after" ? 1 : 0);
-      targetDocuments.splice(insertionIndex, 0, movingDocument);
-      const targetOrders = new Map(
-        targetDocuments.map((document, index) => [document.id, index]),
-      );
-      const sourceOrders = new Map(
-        getProjectDocuments(state)
-          .filter(
-            (document) =>
-              document.id !== movingDocument.id &&
-              knowledgePathsEqual(getDocumentFolderPath(document), sourcePath),
-          )
-          .sort(byManualOrder)
-          .map((document, index) => [document.id, index]),
-      );
-      return {
-        ...state,
-        documents: state.documents.map((document) => {
-          if (document.id === movingDocument.id) {
-            return {
-              ...document,
-              folder: action.targetFolderPath.at(-1) ?? "",
-              folderPath: action.targetFolderPath,
-              order: targetOrders.get(document.id) ?? 0,
-            };
-          }
-          const targetOrder = targetOrders.get(document.id);
-          if (targetOrder !== undefined)
-            return { ...document, order: targetOrder };
-          const sourceOrder = sourceOrders.get(document.id);
-          return sourceOrder === undefined
-            ? document
-            : { ...document, order: sourceOrder };
-        }),
-        selectedDocumentFolder:
-          state.selectedDocumentId === movingDocument.id
-            ? (action.targetFolderPath.at(-1) ?? "")
-            : state.selectedDocumentFolder,
-        selectedKnowledgeFolderPath:
-          state.selectedDocumentId === movingDocument.id
-            ? action.targetFolderPath
-            : state.selectedKnowledgeFolderPath,
-        expandedFolderIds: Array.from(
-          new Set([
-            ...state.expandedFolderIds,
-            ...action.targetFolderPath.map((_, index) =>
-              knowledgeFolderId(
-                state.activeProjectId,
-                action.targetFolderPath.slice(0, index + 1),
-              ),
-            ),
-          ]),
-        ),
-      };
-    }
-    case "close-document-tab": {
-      const nextOpenDocumentIds = state.openDocumentIds.filter(
-        (documentId) => documentId !== action.documentId,
-      );
-      if (state.selectedDocumentId !== action.documentId) {
-        return { ...state, openDocumentIds: nextOpenDocumentIds };
-      }
-      const nextActiveDocumentId =
-        nextOpenDocumentIds[nextOpenDocumentIds.length - 1] ?? null;
-      const nextActiveDocument = getDocumentById(state, nextActiveDocumentId);
-      return {
-        ...state,
-        selectedDocumentId: nextActiveDocument?.id ?? null,
-        selectedDocumentFolder: nextActiveDocument?.folder ?? null,
-        selectedKnowledgeFolderPath: nextActiveDocument
-          ? getDocumentFolderPath(nextActiveDocument)
-          : null,
-        openDocumentIds: nextOpenDocumentIds,
-        contextPanel:
-          state.contextPanel?.kind === "document-context" &&
-          state.contextPanel.documentId === action.documentId
-            ? null
-            : state.contextPanel,
-        activeKnowledgePane: "primary",
-        editingKnowledgeDocumentId: null,
-      };
-    }
+    case "close-document-tab":
+      return closeDocumentTab(state, action.documentId);
     case "activate-document-tab": {
       const document = getDocumentById(state, action.documentId);
       if (!document) return state;
@@ -1523,52 +1246,13 @@ export function desktopPrototypeReducer(
       };
     }
     case "set-knowledge-context-mode":
-      return { ...state, knowledgeContextMode: action.mode };
-    case "toggle-knowledge-split-view": {
-      if (state.splitViewDocumentId) {
-        return {
-          ...state,
-          splitViewDocumentId: null,
-          activeKnowledgePane: "primary",
-          editingKnowledgeDocumentId: null,
-        };
-      }
-      const fallbackDocument = getProjectDocuments(state).find(
-        (document) => document.id !== state.selectedDocumentId,
-      );
-      return {
-        ...state,
-        splitViewDocumentId: fallbackDocument?.id ?? null,
-        activeKnowledgePane: "primary",
-        editingKnowledgeDocumentId: null,
-      };
-    }
-    case "activate-knowledge-pane": {
-      const paneState = getKnowledgePaneState(state);
-      const activeKnowledgePane =
-        action.pane === "secondary" && paneState.secondaryDocument
-          ? "secondary"
-          : "primary";
-      return {
-        ...state,
-        activeKnowledgePane,
-        editingKnowledgeDocumentId:
-          activeKnowledgePane === paneState.activePane
-            ? state.editingKnowledgeDocumentId
-            : null,
-      };
-    }
-    case "toggle-knowledge-document-edit": {
-      const paneState = getKnowledgePaneState(state);
-      if (paneState.activeDocument?.id !== action.documentId) return state;
-      return {
-        ...state,
-        editingKnowledgeDocumentId:
-          state.editingKnowledgeDocumentId === action.documentId
-            ? null
-            : action.documentId,
-      };
-    }
+      return setKnowledgeContextMode(state, action.mode);
+    case "toggle-knowledge-split-view":
+      return toggleKnowledgeSplitView(state);
+    case "activate-knowledge-pane":
+      return activateKnowledgePane(state, action.pane);
+    case "toggle-knowledge-document-edit":
+      return toggleKnowledgeDocumentEdit(state, action.documentId);
     case "open-knowledge-task-linker":
       return {
         ...state,
