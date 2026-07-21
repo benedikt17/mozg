@@ -1,21 +1,30 @@
 import {
   aiProposals,
+  createCanonicalOverviewDirections,
   initialCanvases,
   initialDocuments,
   initialInboxItems,
   initialOverviewDirections,
   initialProjects,
-  initialTaskFolders,
+  initialTaskGroups,
+  initialTaskLists,
   initialTasks,
   type OverviewDirectionId,
   type PrototypeDocument,
-  type PrototypeOverviewDirection,
   type PrototypeProject,
   type PrototypeTask,
 } from "@/prototype/desktop-mock-data";
 import {
+  createCanvas,
+  createCanvasGroup,
+  deleteCanvasGroup,
+  deleteCanvas,
   firstCanvasForProject,
   getCanvasById,
+  moveCanvasToGroup,
+  renameCanvasGroup,
+  renameCanvas,
+  toggleCanvasGroup,
   selectCanvas,
   selectCanvasObject,
 } from "@/prototype/state/canvases-state";
@@ -24,6 +33,8 @@ import {
   getInboxItemById,
   selectInboxItem,
   setInboxFilter,
+  setInboxSearchQuery,
+  moveInboxItem,
 } from "@/prototype/state/inbox-state";
 import {
   getNextOverviewOrder,
@@ -42,9 +53,11 @@ import {
   closeDocumentTab,
   createKnowledgeDocument,
   createKnowledgeFolder,
+  deleteKnowledgeFolder,
   getDocumentAncestorFolderIds,
   getDocumentById,
   getDocumentFolderPath,
+  getKnowledgePaneState,
   knowledgeFolderId,
   finishEditingKnowledgeFolder,
   moveKnowledgeDocument,
@@ -52,6 +65,7 @@ import {
   revealCurrentKnowledgeDocument,
   setKnowledgeContextMode,
   setKnowledgeSearch,
+  startEditingKnowledgeFolder,
   toggleAllKnowledgeFolders,
   toggleKeyDocument,
   toggleKnowledgeDocumentEdit,
@@ -62,33 +76,36 @@ import {
 import {
   addSubtask,
   addTaskLink,
-  assignTaskFolder,
   beginTaskTitleEdit,
   cancelTaskTitleEdit,
   commitTaskTitleEdit,
-  createTaskFolder,
+  createTaskGroup,
+  createBazaTaskStructure,
+  createTaskList,
+  deleteTaskGroup,
   deleteSubtask,
-  deleteTaskFolder,
   deleteTaskLink,
   editTaskLink,
   editTaskTitle,
   getNextTaskListOrder,
   getProjectAreas,
+  getProjectTaskLists,
   getTaskById,
   moveTaskList,
+  moveTaskToList,
   renameSubtask,
-  renameTaskFolder,
-  selectTaskDay,
-  selectTaskDirection,
-  selectTaskFolder,
+  renameTaskGroup,
+  renameTaskList,
+  selectTaskList,
+  selectTaskSystemView,
   setTaskDueDate,
-  setTaskFilter,
   setTaskNotes,
   setTaskOverview,
   setTaskSearchQuery,
   setTaskSignal,
   toggleSubtask,
   toggleTaskCompleted,
+  toggleTaskGroup,
   toggleTaskStar,
   updateTask,
 } from "@/prototype/state/tasks-state";
@@ -144,33 +161,39 @@ export const initialDesktopPrototypeState: DesktopPrototypeState = {
   documentHistoryBack: [],
   documentHistoryForward: [],
   knowledgeContextMode: "outline",
+  knowledgeSplitEnabled: false,
   splitViewDocumentId: null,
   activeKnowledgePane: "primary",
   editingKnowledgeDocumentId: null,
-  taskFilter: "all",
-  selectedTaskFolderId: null,
-  selectedTaskDirectionId: null,
-  taskDayViewActive: false,
+  taskSelection: { kind: "system", view: "all" },
   taskSearchQuery: "",
+  expandedTaskGroupIds: [],
+  expandedCanvasGroupIds: [],
   inboxFilter: "all",
+  inboxSearchQuery: "",
   contextPanel: null,
   contextPanelBeforeAi: null,
   commandPaletteOpen: false,
   projects: initialProjects,
   overviewDirections: initialOverviewDirections,
   tasks: initialTasks,
-  taskFolders: initialTaskFolders,
+  taskGroups: initialTaskGroups,
+  taskLists: initialTaskLists,
   knowledgeFolders: [],
   documents: initialDocuments,
   canvases: initialCanvases,
+  canvasGroups: [],
   inboxItems: initialInboxItems,
   selectedAiProposalIds: [],
   aiActivityLog: [],
   nextProjectNumber: 1,
   nextTaskNumber: 1,
-  nextTaskFolderNumber: 1,
+  nextTaskGroupNumber: 1,
+  nextTaskListNumber: 1,
   nextDocumentNumber: 1,
   nextKnowledgeFolderNumber: 1,
+  nextCanvasGroupNumber: 1,
+  nextCanvasNumber: 1,
 };
 
 function firstDocumentForProject(
@@ -190,6 +213,7 @@ function createPrototypeTask({
   area,
   subtasks,
   notes,
+  listId,
 }: {
   id: string;
   projectId: string;
@@ -200,6 +224,7 @@ function createPrototypeTask({
   area: string;
   subtasks: PrototypeTask["subtasks"];
   notes: string;
+  listId: string;
 }): PrototypeTask {
   return {
     id,
@@ -208,7 +233,7 @@ function createPrototypeTask({
     overviewDirectionId,
     overviewOrder,
     taskListOrder,
-    taskFolderId: null,
+    listId,
     showOnOverview: true,
     completedAt: null,
     signal: "none",
@@ -262,6 +287,7 @@ function switchToProject(
     documentHistoryBack: [],
     documentHistoryForward: [],
     knowledgeContextMode: "outline",
+    knowledgeSplitEnabled: false,
     splitViewDocumentId: null,
     activeKnowledgePane: "primary",
     editingKnowledgeDocumentId: null,
@@ -270,12 +296,11 @@ function switchToProject(
     selectedInboxItemId: inboxItem?.id ?? null,
     contextPanel: null,
     contextPanelBeforeAi: null,
-    taskFilter: "all",
-    selectedTaskFolderId: null,
-    selectedTaskDirectionId: null,
-    taskDayViewActive: false,
+    taskSelection: { kind: "system", view: "all" },
     taskSearchQuery: "",
+    expandedTaskGroupIds: [],
     inboxFilter: "all",
+    inboxSearchQuery: "",
     commandPaletteOpen: false,
     selectedAiProposalIds: [],
   };
@@ -324,6 +349,42 @@ function selectKnowledgeDocument(
     contextPanel: options.contextPanel ?? sameProjectState.contextPanel,
     contextPanelBeforeAi: null,
     commandPaletteOpen: false,
+  };
+}
+
+function selectKnowledgeDocumentInActivePane(
+  state: DesktopPrototypeState,
+  document: PrototypeDocument,
+): DesktopPrototypeState {
+  const paneState = getKnowledgePaneState(state);
+  if (!paneState.splitEnabled) {
+    return selectKnowledgeDocument(state, document);
+  }
+
+  if (document.projectId !== state.activeProjectId) return state;
+  if (document.id === paneState.primaryDocument?.id) {
+    return {
+      ...state,
+      activeKnowledgePane: "primary",
+      editingKnowledgeDocumentId: null,
+    };
+  }
+  if (document.id === paneState.secondaryDocument?.id) {
+    return {
+      ...state,
+      activeKnowledgePane: "secondary",
+      editingKnowledgeDocumentId: null,
+    };
+  }
+  if (paneState.activePane === "primary") {
+    return selectKnowledgeDocument(state, document);
+  }
+
+  return {
+    ...state,
+    splitViewDocumentId: document.id,
+    activeKnowledgePane: "secondary",
+    editingKnowledgeDocumentId: null,
   };
 }
 
@@ -415,16 +476,17 @@ export function desktopPrototypeReducer(
         shortName: `Проект ${state.nextProjectNumber}`,
         description: "Черновой проект для проверки поведения shell.",
       };
-      const overviewDirection: PrototypeOverviewDirection = {
-        id: `${id}-primary-direction`,
-        projectId: id,
-        title: "Основное направление",
-        order: 0,
-      };
+      const overviewDirections = createCanonicalOverviewDirections(id);
+      const baza = createBazaTaskStructure(id, overviewDirections);
       return {
         ...state,
         projects: [...state.projects, project],
-        overviewDirections: [...state.overviewDirections, overviewDirection],
+        overviewDirections: [
+          ...state.overviewDirections,
+          ...overviewDirections,
+        ],
+        taskGroups: [...state.taskGroups, baza.group],
+        taskLists: [...state.taskLists, ...baza.lists],
         activeProjectId: id,
         activeSection: "overview",
         overviewExpandedTaskId: null,
@@ -446,6 +508,7 @@ export function desktopPrototypeReducer(
         documentHistoryBack: [],
         documentHistoryForward: [],
         knowledgeContextMode: "outline",
+        knowledgeSplitEnabled: false,
         splitViewDocumentId: null,
         activeKnowledgePane: "primary",
         editingKnowledgeDocumentId: null,
@@ -454,6 +517,9 @@ export function desktopPrototypeReducer(
         selectedInboxItemId: null,
         contextPanel: null,
         contextPanelBeforeAi: null,
+        taskSelection: { kind: "system", view: "all" },
+        taskSearchQuery: "",
+        expandedTaskGroupIds: [],
         nextProjectNumber: state.nextProjectNumber + 1,
       };
     }
@@ -463,6 +529,10 @@ export function desktopPrototypeReducer(
         activeSection: action.section,
         editingTaskTitleId: null,
         editingKnowledgeFolderId: null,
+        knowledgeSplitEnabled:
+          action.section === "knowledge" ? state.knowledgeSplitEnabled : false,
+        splitViewDocumentId:
+          action.section === "knowledge" ? state.splitViewDocumentId : null,
         activeKnowledgePane: "primary",
         editingKnowledgeDocumentId: null,
         taskDetailViewTaskId: null,
@@ -661,72 +731,127 @@ export function desktopPrototypeReducer(
       return renameOverviewDirection(state, action.directionId, action.title);
     case "set-task-signal":
       return setTaskSignal(state, action.taskId, action.signal);
-    case "set-task-filter":
-      return setTaskFilter(state, action.filter);
-    case "select-task-day":
-      return selectTaskDay(state);
-    case "select-task-direction":
-      return selectTaskDirection(state, action.directionId);
+    case "select-task-system-view":
+      return selectTaskSystemView(state, action.view);
+    case "select-task-list":
+      return selectTaskList(state, action.listId);
     case "set-task-search-query":
       return setTaskSearchQuery(state, action.query);
-    case "select-task-folder":
-      return selectTaskFolder(state, action.folderId);
-    case "create-task-folder":
-      return createTaskFolder(state, action.title);
-    case "rename-task-folder":
-      return renameTaskFolder(state, action.folderId, action.title);
-    case "delete-task-folder":
-      return deleteTaskFolder(state, action.folderId);
-    case "assign-task-folder":
-      return assignTaskFolder(state, action.taskId, action.folderId);
+    case "create-task-group":
+      return createTaskGroup(state, action.title);
+    case "rename-task-group":
+      return renameTaskGroup(state, action.groupId, action.title);
+    case "delete-task-group":
+      return deleteTaskGroup(state, action.groupId);
+    case "toggle-task-group":
+      return toggleTaskGroup(state, action.groupId);
+    case "create-task-list":
+      return createTaskList(state, action.title, action.groupId);
+    case "rename-task-list":
+      return renameTaskList(state, action.listId, action.title);
     case "set-task-overview":
       return setTaskOverview(state, action.taskId, action.visible);
     case "move-task-list":
       return moveTaskList(state, action.taskId, action.targetTaskId);
+    case "move-task-to-list":
+      return moveTaskToList(
+        state,
+        action.taskId,
+        action.targetListId,
+        action.targetTaskId,
+        action.sourceSystemView,
+      );
     case "set-inbox-filter":
       return setInboxFilter(state, action.filter);
+    case "set-inbox-search-query":
+      return setInboxSearchQuery(state, action.query);
+    case "move-inbox-item":
+      return moveInboxItem(
+        state,
+        action.itemId,
+        action.targetItemId,
+        action.targetFilter,
+      );
     case "create-task": {
-      const requestedDirectionId =
-        action.overviewDirectionId ??
-        (state.activeSection === "tasks"
-          ? (state.selectedTaskDirectionId ?? undefined)
-          : undefined);
-      const activeDirection = requestedDirectionId
-        ? getOverviewDirectionById(state, requestedDirectionId)
-        : getProjectOverviewDirections(state)[0];
+      const selectedListId =
+        state.activeSection === "tasks" && state.taskSelection.kind === "list"
+          ? state.taskSelection.listId
+          : null;
+      const destinationListId = action.destinationListId ?? selectedListId;
+      const selectedList = destinationListId
+        ? state.taskLists.find(
+            (list) =>
+              list.id === destinationListId &&
+              list.projectId === state.activeProjectId,
+          )
+        : undefined;
+      const selectedListGroup = selectedList
+        ? state.taskGroups.find(
+            (group) =>
+              group.id === selectedList.groupId &&
+              group.projectId === state.activeProjectId,
+          )
+        : undefined;
       if (
-        !activeDirection ||
+        state.activeSection === "tasks" &&
+        (!selectedList ||
+          !selectedListGroup ||
+          selectedList.kind !== selectedListGroup.kind)
+      ) {
+        return state;
+      }
+      if (action.sourceSystemView && !selectedList) return state;
+      const selectedListDirection = selectedList?.overviewDirectionId
+        ? getOverviewDirectionById(state, selectedList.overviewDirectionId)
+        : undefined;
+      const requestedDirectionId = action.overviewDirectionId;
+      const activeDirection = selectedList
+        ? selectedListDirection
+        : requestedDirectionId
+          ? getOverviewDirectionById(state, requestedDirectionId)
+          : getProjectOverviewDirections(state)[0];
+      if (
+        activeDirection &&
         activeDirection.projectId !== state.activeProjectId
       ) {
         return state;
       }
+      const overviewList = activeDirection
+        ? getProjectTaskLists(state).find(
+            (list) => list.overviewDirectionId === activeDirection.id,
+          )
+        : undefined;
+      const isMappedBazaList =
+        selectedList?.kind === "system" &&
+        selectedListDirection !== undefined &&
+        overviewList?.id === selectedList.id;
+      if (!selectedList && !overviewList) return state;
+      if (selectedList?.kind === "system" && !isMappedBazaList) return state;
       let task = createPrototypeTask({
         id: `mock-task-${state.nextTaskNumber}`,
         projectId: state.activeProjectId,
         title: action.title?.trim() || "Новая задача",
-        overviewDirectionId: activeDirection.id,
-        overviewOrder: getNextOverviewOrder(state, activeDirection.id),
+        overviewDirectionId: activeDirection?.id ?? "",
+        overviewOrder: activeDirection
+          ? getNextOverviewOrder(state, activeDirection.id)
+          : 0,
         taskListOrder: getNextTaskListOrder(state),
         area: getProjectAreas(state)[0] ?? "Общее",
         subtasks: [],
         notes: "Черновая задача создана только в mock-состоянии прототипа.",
+        listId: selectedList?.id ?? overviewList?.id ?? "",
       });
-      if (state.activeSection === "tasks") {
+      if (selectedList && !isMappedBazaList) {
         task = {
           ...task,
-          taskFolderId: state.selectedTaskFolderId,
-          showOnOverview:
-            state.selectedTaskFolderId === null &&
-            state.taskFilter === "overview",
-          starred:
-            state.selectedTaskFolderId === null &&
-            state.taskFilter === "important",
-          completedAt:
-            state.selectedTaskFolderId === null &&
-            state.taskFilter === "completed"
-              ? new Date().toISOString()
-              : null,
+          showOnOverview: false,
         };
+      }
+      if (action.sourceSystemView === "important") {
+        task = { ...task, starred: true };
+      }
+      if (action.sourceSystemView === "day") {
+        task = { ...task, dueDate: "Сегодня" };
       }
       return {
         ...state,
@@ -740,6 +865,11 @@ export function desktopPrototypeReducer(
       const document = getDocumentById(state, action.documentId);
       if (!document) return state;
       return selectKnowledgeDocument(state, document);
+    }
+    case "open-knowledge-document-in-active-pane": {
+      const document = getDocumentById(state, action.documentId);
+      if (!document) return state;
+      return selectKnowledgeDocumentInActivePane(state, document);
     }
     case "toggle-key-document":
       return toggleKeyDocument(state, action.documentId);
@@ -761,8 +891,12 @@ export function desktopPrototypeReducer(
       );
     case "create-knowledge-folder":
       return createKnowledgeFolder(state);
+    case "start-editing-knowledge-folder":
+      return startEditingKnowledgeFolder(state, action.folderId);
     case "rename-knowledge-folder":
       return renameKnowledgeFolder(state, action.folderId, action.title);
+    case "delete-knowledge-folder":
+      return deleteKnowledgeFolder(state, action.folderId);
     case "finish-editing-knowledge-folder":
       return finishEditingKnowledgeFolder(state);
     case "move-knowledge-document":
@@ -897,6 +1031,22 @@ export function desktopPrototypeReducer(
       return selectCanvas(state, action.canvasId);
     case "select-canvas-object":
       return selectCanvasObject(state, action.canvasId, action.objectId);
+    case "create-canvas-group":
+      return createCanvasGroup(state, action.title);
+    case "toggle-canvas-group":
+      return toggleCanvasGroup(state, action.groupId);
+    case "rename-canvas-group":
+      return renameCanvasGroup(state, action.groupId, action.title);
+    case "delete-canvas-group":
+      return deleteCanvasGroup(state, action.groupId);
+    case "rename-canvas":
+      return renameCanvas(state, action.canvasId, action.title);
+    case "delete-canvas":
+      return deleteCanvas(state, action.canvasId);
+    case "create-canvas":
+      return createCanvas(state, action.title, action.groupId);
+    case "move-canvas-to-group":
+      return moveCanvasToGroup(state, action.canvasId, action.groupId);
     case "select-inbox-item":
       return selectInboxItem(state, action.itemId);
     case "open-ai-panel":
@@ -956,7 +1106,12 @@ export function desktopPrototypeReducer(
             ],
             notes:
               "Создано mock-предложением AI после явного подтверждения пользователя.",
+            listId:
+              getProjectTaskLists(nextState).find(
+                (list) => list.overviewDirectionId === activeDirection.id,
+              )?.id ?? "",
           });
+          if (!task.listId) continue;
           nextState = {
             ...nextState,
             tasks: [task, ...nextState.tasks],

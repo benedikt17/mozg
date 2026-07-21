@@ -14,6 +14,7 @@ import { getInboxItemById } from "@/prototype/state/inbox-state";
 import {
   getDocumentBreadcrumb,
   getDocumentById,
+  getDocumentTitle,
 } from "@/prototype/state/knowledge-state";
 import { getTaskById } from "@/prototype/state/tasks-state";
 
@@ -100,14 +101,14 @@ export function getCommandResults(
   const documentResults: CommandResult[] = state.documents
     .filter(
       (document) =>
-        matches(document.title) ||
+        matches(getDocumentTitle(document)) ||
         matches(document.excerpt) ||
         matches(getDocumentBreadcrumb(document)),
     )
     .map((document) => ({
       kind: "document",
       id: document.id,
-      title: document.title,
+      title: getDocumentTitle(document),
       subtitle: `Документ · ${getProjectName(state, document.projectId)} · ${getDocumentBreadcrumb(document)}`,
     }));
 

@@ -18,12 +18,14 @@ export function OverviewContextualReader({
   direction,
   dispatch,
   documents,
+  onOpenTaskDetails,
   task,
 }: {
   activeDocument: PrototypeDocument;
   direction: ReturnType<typeof getProjectOverviewDirections>[number];
   dispatch: Dispatch;
   documents: PrototypeDocument[];
+  onOpenTaskDetails: (taskId: string) => void;
   task: PrototypeTask;
 }): React.JSX.Element {
   const [contextCollapsed, setContextCollapsed] = useState(false);
@@ -200,6 +202,19 @@ export function OverviewContextualReader({
               ))}
             </ul>
           </section>
+          <div className="overview-reader-task-card-footer">
+            <button
+              className="quiet-text-link task-card-details-link"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenTaskDetails(task.id);
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+              type="button"
+            >
+              Подробнее →
+            </button>
+          </div>
         </div>
       </aside>
       <IconButton

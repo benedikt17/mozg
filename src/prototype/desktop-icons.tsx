@@ -28,7 +28,9 @@ export type UiIconName =
   | "pin"
   | "plus"
   | "search"
+  | "share"
   | "sort"
+  | "split"
   | "trash";
 
 export function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
@@ -199,11 +201,26 @@ export function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
         <path d="M16 16l4 4" />
       </>
     ),
+    share: (
+      <>
+        <circle cx="6" cy="12" r="2.5" />
+        <circle cx="17" cy="6" r="2.5" />
+        <circle cx="17" cy="18" r="2.5" />
+        <path d="M8.2 10.8l6.6-3.6" />
+        <path d="M8.2 13.2l6.6 3.6" />
+      </>
+    ),
     sort: (
       <>
         <path d="M7 6h10" />
         <path d="M9 12h6" />
         <path d="M11 18h2" />
+      </>
+    ),
+    split: (
+      <>
+        <rect x="4" y="5" width="16" height="14" rx="1.5" />
+        <path d="M12 5v14" />
       </>
     ),
     trash: (

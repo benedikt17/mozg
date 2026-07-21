@@ -57,14 +57,31 @@ export function ContextPanelSlot({
           .join(" ")}
         aria-label="Контекстная панель"
       >
-        <header className={usesIconClose ? "task-context-header" : undefined}>
-          {usesIconClose ? null : (
+        <header
+          className={
+            usesIconClose
+              ? "task-context-header"
+              : contextPanel.kind === "ai"
+                ? "context-panel-header-ai"
+                : undefined
+          }
+        >
+          {usesIconClose || contextPanel.kind === "ai" ? null : (
             <div>
               <span>Контекст</span>
               <h2>{contextTitle(contextPanel)}</h2>
             </div>
           )}
-          {usesIconClose ? (
+          {contextPanel.kind === "ai" ? (
+            <IconButton
+              className="context-panel-ai-close"
+              icon={<UiIcon name="close" />}
+              label="Закрыть AI-панель"
+              onClick={() => dispatch({ type: "close-ai-panel" })}
+              title="Закрыть AI-панель"
+              variant="ghost"
+            />
+          ) : usesIconClose ? (
             <IconButton
               className="task-context-close"
               icon={<span aria-hidden="true">×</span>}
@@ -82,14 +99,7 @@ export function ContextPanelSlot({
             />
           ) : (
             <PrototypeButton
-              onClick={() =>
-                dispatch({
-                  type:
-                    contextPanel.kind === "ai"
-                      ? "close-ai-panel"
-                      : "close-context-panel",
-                })
-              }
+              onClick={() => dispatch({ type: "close-context-panel" })}
               variant="quiet"
             >
               Закрыть
@@ -245,5 +255,5 @@ function renderContextPanelContent(
     const item = getInboxItemById(state, contextPanel.itemId);
     return item ? <InboxContextPanel item={item} /> : <p>Захват не найден.</p>;
   }
-  return <AiPanel dispatch={dispatch} state={state} />;
+  return <AiPanel />;
 }

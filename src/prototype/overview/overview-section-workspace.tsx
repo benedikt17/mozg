@@ -39,6 +39,9 @@ export function OverviewSectionWorkspace({
     sourceTask.projectId === state.activeProjectId &&
     activeDocument.projectId === sourceTask.projectId &&
     sourceTask.linkedDocumentIds.includes(activeDocument.id);
+  const openTaskDetails = (taskId: string): void => {
+    dispatch({ type: "select-task", taskId, section: "overview" });
+  };
 
   return (
     <div
@@ -71,6 +74,7 @@ export function OverviewSectionWorkspace({
           direction={sourceDirection}
           dispatch={dispatch}
           documents={documents}
+          onOpenTaskDetails={openTaskDetails}
           task={sourceTask}
         />
       ) : null}

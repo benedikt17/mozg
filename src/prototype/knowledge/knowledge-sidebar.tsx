@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   getDocumentBreadcrumb,
   getDocumentFolderPath,
+  getKnowledgePaneState,
   getKnowledgeTree,
   type DesktopPrototypeAction,
   type DesktopPrototypeState,
@@ -22,10 +23,12 @@ export function KnowledgeSidebar({
   onClose?: () => void;
 }): React.JSX.Element {
   const tree = getKnowledgeTree(state);
+  const { activeDocument } = getKnowledgePaneState(state);
   const treeRef = useRef<HTMLElement>(null);
   const [knowledgeDropTarget, setKnowledgeDropTarget] =
     useState<KnowledgeDropTarget>(null);
   const [revealDocumentId, setRevealDocumentId] = useState<string | null>(null);
+  const [openFolderMenuId, setOpenFolderMenuId] = useState<string | null>(null);
   const treeCollapsed = state.knowledgeExpandedBeforeCollapse !== null;
 
   useEffect(() => {
@@ -40,6 +43,22 @@ export function KnowledgeSidebar({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [revealDocumentId, state.expandedFolderIds]);
+
+  useEffect(() => {
+    const closeFolderMenu = (event: PointerEvent): void => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (
+        target.closest(".knowledge-folder-menu") ||
+        target.closest(".knowledge-folder-menu-trigger")
+      ) {
+        return;
+      }
+      setOpenFolderMenuId(null);
+    };
+    document.addEventListener("pointerdown", closeFolderMenu);
+    return () => document.removeEventListener("pointerdown", closeFolderMenu);
+  }, []);
 
   return (
     <aside
@@ -117,9 +136,12 @@ export function KnowledgeSidebar({
             <KnowledgeTreeNodeView
               dispatch={dispatch}
               dropTarget={knowledgeDropTarget}
+              activeDocumentId={activeDocument?.id}
               key={node.id}
               node={node}
+              onFolderMenuChange={setOpenFolderMenuId}
               onDropTargetChange={setKnowledgeDropTarget}
+              openFolderMenuId={openFolderMenuId}
               state={state}
             />
           ))
@@ -141,15 +163,21 @@ const knowledgeDocumentDragType = "application/x-mozg-knowledge-document";
 function KnowledgeTreeNodeView({
   node,
   state,
+  activeDocumentId,
   dispatch,
   dropTarget,
+  onFolderMenuChange,
   onDropTargetChange,
+  openFolderMenuId,
 }: {
   node: KnowledgeTreeNode;
   state: DesktopPrototypeState;
+  activeDocumentId: string | undefined;
   dispatch: Dispatch;
   dropTarget: KnowledgeDropTarget;
+  onFolderMenuChange: (folderId: string | null) => void;
   onDropTargetChange: (target: KnowledgeDropTarget) => void;
+  openFolderMenuId: string | null;
 }): React.JSX.Element {
   const depth = Math.max(node.path.length - 1, 0);
 
@@ -158,75 +186,143 @@ function KnowledgeTreeNodeView({
       state.knowledgeSearchQuery.trim().length > 0 ||
       state.expandedFolderIds.includes(node.id);
     const editing = state.editingKnowledgeFolderId === node.id;
+    const folderClassName = [
+      "sidebar-tree-row",
+      "sidebar-tree-container",
+      "knowledge-tree-row",
+      "folder",
+      dropTarget?.kind === "folder" && dropTarget.id === node.id
+        ? "is-drop-target"
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const handleFolderDragOver = (
+      event: React.DragEvent<HTMLElement>,
+    ): void => {
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = "move";
+      onDropTargetChange({ kind: "folder", id: node.id });
+    };
+    const handleFolderDrop = (event: React.DragEvent<HTMLElement>): void => {
+      event.preventDefault();
+      event.stopPropagation();
+      const documentId = event.dataTransfer.getData(knowledgeDocumentDragType);
+      onDropTargetChange(null);
+      if (!documentId) return;
+      dispatch({
+        type: "move-knowledge-document",
+        documentId,
+        targetFolderPath: node.path,
+        position: "end",
+      });
+    };
+    const toggleFolder = (): void => {
+      dispatch({
+        type: "toggle-knowledge-folder",
+        folderId: node.id,
+        path: node.path,
+      });
+    };
     return (
       <div className="knowledge-tree-branch">
-        <button
-          aria-expanded={expanded}
-          className={[
-            "knowledge-tree-row",
-            "folder",
-            state.selectedKnowledgeFolderPath?.join("/") === node.path.join("/")
-              ? "is-selected-folder"
-              : "",
-            dropTarget?.kind === "folder" && dropTarget.id === node.id
-              ? "is-drop-target"
-              : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
-          onDragOver={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            event.dataTransfer.dropEffect = "move";
-            onDropTargetChange({ kind: "folder", id: node.id });
-          }}
-          onDrop={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            const documentId = event.dataTransfer.getData(
-              knowledgeDocumentDragType,
-            );
-            onDropTargetChange(null);
-            if (!documentId) return;
-            dispatch({
-              type: "move-knowledge-document",
-              documentId,
-              targetFolderPath: node.path,
-              position: "end",
-            });
-          }}
-          onClick={() =>
-            dispatch({
-              type: "toggle-knowledge-folder",
-              folderId: node.id,
-              path: node.path,
-            })
-          }
-          style={treeDepthStyle(depth)}
-          title={node.path.join(" / ")}
-          type="button"
-        >
-          <UiIcon name={expanded ? "chevron-down" : "chevron-right"} />
-          <UiIcon name={expanded ? "folder-open" : "folder"} />
-          {editing ? (
-            <KnowledgeFolderTitleEditor
-              dispatch={dispatch}
-              folderId={node.id}
-              title={node.title}
+        {editing ? (
+          <div
+            className="knowledge-folder-row"
+            onDragOver={handleFolderDragOver}
+            onDrop={handleFolderDrop}
+            style={treeDepthStyle(depth)}
+            title={node.path.join(" / ")}
+          >
+            <div className={folderClassName}>
+              <UiIcon name={expanded ? "chevron-down" : "chevron-right"} />
+              <KnowledgeFolderTitleEditor
+                dispatch={dispatch}
+                folderId={node.id}
+                title={node.title}
+              />
+            </div>
+          </div>
+        ) : (
+          <div
+            className="knowledge-folder-row"
+            onDragOver={handleFolderDragOver}
+            onDrop={handleFolderDrop}
+            style={treeDepthStyle(depth)}
+            title={node.path.join(" / ")}
+          >
+            <button
+              aria-expanded={expanded}
+              className={folderClassName}
+              onClick={toggleFolder}
+              type="button"
+            >
+              <UiIcon name={expanded ? "chevron-down" : "chevron-right"} />
+              <span>{node.title}</span>
+            </button>
+            <IconButton
+              aria-expanded={openFolderMenuId === node.id}
+              aria-haspopup="menu"
+              className="knowledge-folder-menu-trigger"
+              icon={<UiIcon name="more" />}
+              label={`Действия папки ${node.title}`}
+              onClick={() =>
+                onFolderMenuChange(
+                  openFolderMenuId === node.id ? null : node.id,
+                )
+              }
+              title={`Действия папки ${node.title}`}
+              variant="ghost"
             />
-          ) : (
-            <span>{node.title}</span>
-          )}
-        </button>
+            {openFolderMenuId === node.id ? (
+              <div className="knowledge-folder-menu" role="menu">
+                <button
+                  onClick={() => {
+                    dispatch({
+                      type: "start-editing-knowledge-folder",
+                      folderId: node.id,
+                    });
+                    onFolderMenuChange(null);
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  <UiIcon name="pencil" />
+                  <span>Переименовать</span>
+                </button>
+                <button
+                  onClick={() => {
+                    if (window.confirm(`Удалить папку «${node.title}»?`)) {
+                      dispatch({
+                        type: "delete-knowledge-folder",
+                        folderId: node.id,
+                      });
+                    }
+                    onFolderMenuChange(null);
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  <UiIcon name="trash" />
+                  <span>Удалить</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
+        )}
         {expanded ? (
           <div className="knowledge-tree-children">
             {node.children.map((child) => (
               <KnowledgeTreeNodeView
                 dispatch={dispatch}
                 dropTarget={dropTarget}
+                activeDocumentId={activeDocumentId}
                 key={child.id}
                 node={child}
+                onFolderMenuChange={onFolderMenuChange}
                 onDropTargetChange={onDropTargetChange}
+                openFolderMenuId={openFolderMenuId}
                 state={state}
               />
             ))}
@@ -238,9 +334,11 @@ function KnowledgeTreeNodeView({
   return (
     <button
       className={[
+        "sidebar-tree-row",
+        "sidebar-tree-leaf",
         "knowledge-tree-row",
         "document",
-        state.selectedDocumentId === node.document.id ? "is-active" : "",
+        activeDocumentId === node.document.id ? "is-active" : "",
         dropTarget?.kind === "document" && dropTarget.id === node.document.id
           ? `drop-${dropTarget.position}`
           : "",
@@ -288,14 +386,16 @@ function KnowledgeTreeNodeView({
         });
       }}
       onClick={() =>
-        dispatch({ type: "select-document", documentId: node.document.id })
+        dispatch({
+          type: "open-knowledge-document-in-active-pane",
+          documentId: node.document.id,
+        })
       }
       style={treeDepthStyle(depth)}
       title={getDocumentBreadcrumb(node.document)}
       type="button"
     >
       <span className="tree-disclosure-spacer" />
-      <UiIcon name="file" />
       <span>{node.title}</span>
     </button>
   );

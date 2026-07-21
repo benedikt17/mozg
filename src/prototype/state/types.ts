@@ -3,15 +3,21 @@ import type {
   OverviewDirectionId,
   ProjectSection,
   PrototypeCanvas,
+  PrototypeCanvasGroup,
   PrototypeDocument,
   PrototypeInboxItem,
   PrototypeOverviewDirection,
   PrototypeProject,
   PrototypeTask,
-  PrototypeTaskFolder,
-  TaskFilter,
+  PrototypeTaskGroup,
+  PrototypeTaskList,
   TaskSignal,
 } from "@/prototype/desktop-mock-data";
+
+export type TaskSystemView = "day" | "important" | "all";
+
+export type TaskSelection =
+  { kind: "system"; view: TaskSystemView } | { kind: "list"; listId: string };
 
 export type ContextPanelState =
   | { kind: "task"; taskId: string }
@@ -36,6 +42,7 @@ export type KnowledgePane = "primary" | "secondary";
 export type KnowledgePaneState = {
   primaryDocument: PrototypeDocument | undefined;
   secondaryDocument: PrototypeDocument | undefined;
+  splitEnabled: boolean;
   activePane: KnowledgePane;
   activeDocument: PrototypeDocument | undefined;
 };
@@ -96,33 +103,39 @@ export type DesktopPrototypeState = {
   documentHistoryBack: string[];
   documentHistoryForward: string[];
   knowledgeContextMode: KnowledgeContextMode;
+  knowledgeSplitEnabled: boolean;
   splitViewDocumentId: string | null;
   activeKnowledgePane: KnowledgePane;
   editingKnowledgeDocumentId: string | null;
-  taskFilter: TaskFilter;
-  selectedTaskFolderId: string | null;
-  selectedTaskDirectionId: OverviewDirectionId | null;
-  taskDayViewActive: boolean;
+  taskSelection: TaskSelection;
   taskSearchQuery: string;
+  expandedTaskGroupIds: string[];
+  expandedCanvasGroupIds: string[];
   inboxFilter: InboxFilter;
+  inboxSearchQuery: string;
   contextPanel: ContextPanelState;
   contextPanelBeforeAi: RestorableContextPanelState | null;
   commandPaletteOpen: boolean;
   projects: PrototypeProject[];
   overviewDirections: PrototypeOverviewDirection[];
   tasks: PrototypeTask[];
-  taskFolders: PrototypeTaskFolder[];
+  taskGroups: PrototypeTaskGroup[];
+  taskLists: PrototypeTaskList[];
   knowledgeFolders: PrototypeKnowledgeFolder[];
   documents: PrototypeDocument[];
   canvases: PrototypeCanvas[];
+  canvasGroups: PrototypeCanvasGroup[];
   inboxItems: PrototypeInboxItem[];
   selectedAiProposalIds: string[];
   aiActivityLog: string[];
   nextProjectNumber: number;
   nextTaskNumber: number;
-  nextTaskFolderNumber: number;
+  nextTaskGroupNumber: number;
+  nextTaskListNumber: number;
   nextDocumentNumber: number;
   nextKnowledgeFolderNumber: number;
+  nextCanvasGroupNumber: number;
+  nextCanvasNumber: number;
 };
 
 export type DesktopPrototypeAction =
@@ -187,24 +200,49 @@ export type DesktopPrototypeAction =
       title: string;
     }
   | { type: "set-task-signal"; taskId: string; signal: TaskSignal }
-  | { type: "set-task-filter"; filter: TaskFilter }
-  | { type: "select-task-day" }
-  | { type: "select-task-direction"; directionId: OverviewDirectionId }
+  | { type: "select-task-system-view"; view: TaskSystemView }
+  | { type: "select-task-list"; listId: string }
   | { type: "set-task-search-query"; query: string }
-  | { type: "select-task-folder"; folderId: string }
-  | { type: "create-task-folder"; title: string }
-  | { type: "rename-task-folder"; folderId: string; title: string }
-  | { type: "delete-task-folder"; folderId: string }
-  | { type: "assign-task-folder"; taskId: string; folderId: string | null }
+  | { type: "create-task-group"; title: string }
+  | { type: "rename-task-group"; groupId: string; title: string }
+  | { type: "delete-task-group"; groupId: string }
+  | { type: "toggle-task-group"; groupId: string }
+  | {
+      type: "create-task-list";
+      title: string;
+      groupId: string;
+    }
+  | {
+      type: "rename-task-list";
+      listId: string;
+      title: string;
+    }
   | { type: "set-task-overview"; taskId: string; visible: boolean }
   | { type: "move-task-list"; taskId: string; targetTaskId: string | null }
+  | {
+      type: "move-task-to-list";
+      taskId: string;
+      targetListId: string;
+      targetTaskId: string | null;
+      sourceSystemView?: TaskSystemView;
+    }
   | { type: "set-inbox-filter"; filter: InboxFilter }
+  | { type: "set-inbox-search-query"; query: string }
+  | {
+      type: "move-inbox-item";
+      itemId: string;
+      targetItemId: string | null;
+      targetFilter: InboxFilter;
+    }
   | {
       type: "create-task";
       overviewDirectionId?: OverviewDirectionId;
       title?: string;
+      destinationListId?: string;
+      sourceSystemView?: TaskSystemView;
     }
   | { type: "select-document"; documentId: string }
+  | { type: "open-knowledge-document-in-active-pane"; documentId: string }
   | { type: "toggle-key-document"; documentId: string }
   | { type: "toggle-knowledge-folder"; folderId: string; path: string[] }
   | { type: "toggle-all-knowledge-folders" }
@@ -217,7 +255,9 @@ export type DesktopPrototypeAction =
       markdown: string;
     }
   | { type: "create-knowledge-folder" }
+  | { type: "start-editing-knowledge-folder"; folderId: string }
   | { type: "rename-knowledge-folder"; folderId: string; title: string }
+  | { type: "delete-knowledge-folder"; folderId: string }
   | { type: "finish-editing-knowledge-folder" }
   | {
       type: "move-knowledge-document";
@@ -246,6 +286,14 @@ export type DesktopPrototypeAction =
   | { type: "open-document-context"; documentId?: string }
   | { type: "select-canvas"; canvasId: string }
   | { type: "select-canvas-object"; canvasId: string; objectId: string }
+  | { type: "create-canvas-group"; title: string }
+  | { type: "rename-canvas-group"; groupId: string; title: string }
+  | { type: "delete-canvas-group"; groupId: string }
+  | { type: "toggle-canvas-group"; groupId: string }
+  | { type: "create-canvas"; title: string; groupId: string | null }
+  | { type: "rename-canvas"; canvasId: string; title: string }
+  | { type: "delete-canvas"; canvasId: string }
+  | { type: "move-canvas-to-group"; canvasId: string; groupId: string }
   | { type: "select-inbox-item"; itemId: string }
   | { type: "open-ai-panel" }
   | { type: "close-ai-panel" }

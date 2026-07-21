@@ -100,11 +100,28 @@ export function moveOverviewTask(
   appendToDirectionEnd = false,
 ): DesktopPrototypeState {
   const movingTask = state.tasks.find((task) => task.id === taskId);
-  if (!movingTask) return state;
+  if (!movingTask || movingTask.projectId !== state.activeProjectId) {
+    return state;
+  }
+  const sourceList = state.taskLists.find(
+    (list) =>
+      list.id === movingTask.listId &&
+      list.projectId === movingTask.projectId &&
+      list.kind === "system" &&
+      list.overviewDirectionId === movingTask.overviewDirectionId,
+  );
+  if (!sourceList) return state;
   const targetDirection = getOverviewDirectionById(state, targetDirectionId);
   if (!targetDirection || targetDirection.projectId !== movingTask.projectId) {
     return state;
   }
+  const targetList = state.taskLists.find(
+    (list) =>
+      list.projectId === movingTask.projectId &&
+      list.kind === "system" &&
+      list.overviewDirectionId === targetDirectionId,
+  );
+  if (!targetList) return state;
 
   const sourceDirectionId = movingTask.overviewDirectionId;
   const targetTasks = sortTasksForBoard(
@@ -140,6 +157,8 @@ export function moveOverviewTask(
   const movedTask: PrototypeTask = {
     ...movingTask,
     overviewDirectionId: targetDirectionId,
+    listId: targetList.id,
+    showOnOverview: movingTask.showOnOverview,
   };
   const orderedTargetTasks = [...targetTasks];
   orderedTargetTasks.splice(fullInsertionIndex, 0, movedTask);
@@ -247,6 +266,11 @@ export function renameOverviewDirection(
     ...state,
     overviewDirections: state.overviewDirections.map((item) =>
       item.id === direction.id ? { ...item, title: normalizedTitle } : item,
+    ),
+    taskLists: state.taskLists.map((list) =>
+      list.overviewDirectionId === direction.id
+        ? { ...list, title: normalizedTitle }
+        : list,
     ),
   };
 }

@@ -5,8 +5,6 @@ export type OverviewDirectionId = string;
 
 export type TaskSignal = "none" | "green" | "yellow" | "red";
 
-export type TaskFilter = "all" | "overview" | "important" | "completed";
-
 export type InboxFilter = "all" | "text" | "links" | "files" | "audio";
 
 export type PrototypeProject = {
@@ -29,11 +27,26 @@ export type PrototypeSubtask = {
   done: boolean;
 };
 
-export type PrototypeTaskFolder = {
+export type PrototypeTaskGroupKind = "system" | "user";
+
+export type PrototypeTaskListKind = "system" | "user";
+
+export type PrototypeTaskGroup = {
   id: string;
   projectId: string;
   title: string;
   order: number;
+  kind: PrototypeTaskGroupKind;
+};
+
+export type PrototypeTaskList = {
+  id: string;
+  projectId: string;
+  groupId: string;
+  title: string;
+  order: number;
+  kind: PrototypeTaskListKind;
+  overviewDirectionId?: OverviewDirectionId;
 };
 
 export type PrototypeTaskLink = {
@@ -49,7 +62,7 @@ export type PrototypeTask = {
   overviewDirectionId: OverviewDirectionId;
   overviewOrder: number;
   taskListOrder: number;
-  taskFolderId: string | null;
+  listId: string;
   showOnOverview: boolean;
   completedAt: string | null;
   signal: TaskSignal;
@@ -90,9 +103,17 @@ export type PrototypeCanvasObject = {
 export type PrototypeCanvas = {
   id: string;
   projectId: string;
+  groupId?: string | null;
   title: string;
   description: string;
   objects: PrototypeCanvasObject[];
+};
+
+export type PrototypeCanvasGroup = {
+  id: string;
+  projectId: string;
+  title: string;
+  order: number;
 };
 
 export type PrototypeInboxItem = {
@@ -144,25 +165,6 @@ export const projectSections: {
   },
 ];
 
-export const taskFilters: {
-  id: TaskFilter;
-  label: string;
-  description: string;
-}[] = [
-  { id: "all", label: "Все", description: "Все задачи проекта." },
-  {
-    id: "overview",
-    label: "Задачи для главной",
-    description: "Задачи, показанные на Обзоре.",
-  },
-  { id: "important", label: "Важные", description: "Отмеченные звездой." },
-  {
-    id: "completed",
-    label: "Завершённые",
-    description: "Недавно закрытые задачи.",
-  },
-];
-
 export const inboxFilters: {
   id: InboxFilter;
   label: string;
@@ -201,77 +203,74 @@ export const initialProjects: PrototypeProject[] = [
   },
 ];
 
-export const initialOverviewDirections: PrototypeOverviewDirection[] = [
+export const canonicalOverviewDirectionDefinitions = [
+  ["scenario", "Сценарий"],
+  ["characters", "Персонажи"],
+  ["visual", "Визуальная разработка"],
+  ["production", "Производство"],
+] as const;
+
+export function createCanonicalOverviewDirections(
+  projectId: string,
+): PrototypeOverviewDirection[] {
+  return canonicalOverviewDirectionDefinitions.map(([key, title], order) => ({
+    id: `${projectId}-${key}`,
+    projectId,
+    title,
+    order,
+  }));
+}
+
+export const initialOverviewDirections: PrototypeOverviewDirection[] =
+  initialProjects.flatMap((project) =>
+    createCanonicalOverviewDirections(project.id),
+  );
+
+export const initialTaskGroups: PrototypeTaskGroup[] = [
   {
-    id: "lukomorie-scenario",
+    id: "lukomorie-baza",
     projectId: "lukomorie",
-    title: "Сценарий",
+    title: "BAZA",
     order: 0,
+    kind: "system",
   },
   {
-    id: "lukomorie-characters",
-    projectId: "lukomorie",
-    title: "Персонажи",
-    order: 1,
-  },
-  {
-    id: "lukomorie-visual",
-    projectId: "lukomorie",
-    title: "Визуальная разработка",
-    order: 2,
-  },
-  {
-    id: "lukomorie-production",
-    projectId: "lukomorie",
-    title: "Производство",
-    order: 3,
-  },
-  {
-    id: "ammonit-research-direction",
+    id: "ammonit-baza",
     projectId: "ammonit",
-    title: "Исследование",
+    title: "BAZA",
     order: 0,
+    kind: "system",
   },
   {
-    id: "ammonit-interviews-direction",
-    projectId: "ammonit",
-    title: "Интервью",
-    order: 1,
-  },
-  {
-    id: "voice-scenario-direction",
+    id: "voice-studio-baza",
     projectId: "voice-studio",
-    title: "Сценарий",
+    title: "BAZA",
     order: 0,
+    kind: "system",
   },
   {
-    id: "personal-planning-direction",
+    id: "personal-baza",
     projectId: "personal",
-    title: "Планирование",
+    title: "BAZA",
     order: 0,
+    kind: "system",
   },
 ];
 
-export const initialTaskFolders: PrototypeTaskFolder[] = [
-  {
-    id: "lukomorie-writing",
-    projectId: "lukomorie",
-    title: "Сценарная работа",
-    order: 0,
-  },
-  {
-    id: "lukomorie-visual-folder",
-    projectId: "lukomorie",
-    title: "Визуальные материалы",
-    order: 1,
-  },
-  {
-    id: "lukomorie-production-folder",
-    projectId: "lukomorie",
-    title: "Производство",
-    order: 2,
-  },
-];
+const bazaListDefinitions = canonicalOverviewDirectionDefinitions;
+
+export const initialTaskLists: PrototypeTaskList[] = initialProjects.flatMap(
+  (project) =>
+    bazaListDefinitions.map(([key, title], order) => ({
+      id: `${project.id}-list-${key}`,
+      projectId: project.id,
+      groupId: `${project.id}-baza`,
+      title,
+      order,
+      kind: "system" as const,
+      overviewDirectionId: `${project.id}-${key}`,
+    })),
+);
 
 export const initialTasks: PrototypeTask[] = [
   {
@@ -281,7 +280,7 @@ export const initialTasks: PrototypeTask[] = [
     overviewDirectionId: "lukomorie-characters",
     overviewOrder: 0,
     taskListOrder: 0,
-    taskFolderId: "lukomorie-writing",
+    listId: "lukomorie-list-characters",
     showOnOverview: true,
     completedAt: null,
     signal: "red",
@@ -317,7 +316,7 @@ export const initialTasks: PrototypeTask[] = [
     overviewDirectionId: "lukomorie-scenario",
     overviewOrder: 1,
     taskListOrder: 1,
-    taskFolderId: "lukomorie-writing",
+    listId: "lukomorie-list-scenario",
     showOnOverview: true,
     completedAt: null,
     signal: "yellow",
@@ -347,7 +346,7 @@ export const initialTasks: PrototypeTask[] = [
     overviewDirectionId: "lukomorie-scenario",
     overviewOrder: 0,
     taskListOrder: 2,
-    taskFolderId: "lukomorie-writing",
+    listId: "lukomorie-list-scenario",
     showOnOverview: true,
     completedAt: null,
     signal: "green",
@@ -376,7 +375,7 @@ export const initialTasks: PrototypeTask[] = [
     overviewDirectionId: "lukomorie-visual",
     overviewOrder: 1,
     taskListOrder: 3,
-    taskFolderId: "lukomorie-visual-folder",
+    listId: "lukomorie-list-visual",
     showOnOverview: true,
     completedAt: null,
     signal: "none",
@@ -404,7 +403,7 @@ export const initialTasks: PrototypeTask[] = [
     overviewDirectionId: "lukomorie-production",
     overviewOrder: 0,
     taskListOrder: 4,
-    taskFolderId: "lukomorie-production-folder",
+    listId: "lukomorie-list-production",
     showOnOverview: true,
     completedAt: null,
     signal: "yellow",
@@ -432,7 +431,7 @@ export const initialTasks: PrototypeTask[] = [
     overviewDirectionId: "lukomorie-production",
     overviewOrder: 0,
     taskListOrder: 5,
-    taskFolderId: "lukomorie-production-folder",
+    listId: "lukomorie-list-production",
     showOnOverview: false,
     completedAt: "2026-07-10T12:00:00.000Z",
     signal: "green",
@@ -454,10 +453,10 @@ export const initialTasks: PrototypeTask[] = [
     id: "ammonit-index",
     projectId: "ammonit",
     title: "Разложить находки по темам",
-    overviewDirectionId: "ammonit-research-direction",
+    overviewDirectionId: "ammonit-scenario",
     overviewOrder: 0,
     taskListOrder: 0,
-    taskFolderId: null,
+    listId: "ammonit-list-scenario",
     showOnOverview: true,
     completedAt: null,
     signal: "none",
@@ -483,10 +482,10 @@ export const initialTasks: PrototypeTask[] = [
     id: "ammonit-interview",
     projectId: "ammonit",
     title: "Подготовить вопросы для следующего разговора",
-    overviewDirectionId: "ammonit-interviews-direction",
+    overviewDirectionId: "ammonit-characters",
     overviewOrder: 0,
     taskListOrder: 1,
-    taskFolderId: null,
+    listId: "ammonit-list-characters",
     showOnOverview: true,
     completedAt: null,
     signal: "none",
@@ -506,10 +505,10 @@ export const initialTasks: PrototypeTask[] = [
     id: "voice-script",
     projectId: "voice-studio",
     title: "Сократить сценарий демо до двух минут",
-    overviewDirectionId: "voice-scenario-direction",
+    overviewDirectionId: "voice-studio-scenario",
     overviewOrder: 0,
     taskListOrder: 0,
-    taskFolderId: null,
+    listId: "voice-studio-list-scenario",
     showOnOverview: true,
     completedAt: null,
     signal: "none",
@@ -535,10 +534,10 @@ export const initialTasks: PrototypeTask[] = [
     id: "personal-calendar",
     projectId: "personal",
     title: "Убрать лишние обещания из календаря",
-    overviewDirectionId: "personal-planning-direction",
+    overviewDirectionId: "personal-scenario",
     overviewOrder: 0,
     taskListOrder: 0,
-    taskFolderId: null,
+    listId: "personal-list-scenario",
     showOnOverview: true,
     completedAt: null,
     signal: "none",

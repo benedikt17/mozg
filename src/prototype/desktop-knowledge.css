@@ -22,6 +22,15 @@
     overflow: hidden;
   }
 
+  .section-workspace.section-knowledge.is-knowledge-sidebar-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .section-workspace.section-knowledge.is-knowledge-sidebar-collapsed
+    > .knowledge-sidebar {
+    display: none;
+  }
+
   .section-workspace.section-knowledge.has-wide-context-panel {
     --context-width: clamp(380px, 31vw, var(--application-wide-overlay-width));
   }
@@ -33,9 +42,11 @@
   }
 
   .section-workspace.section-knowledge.has-context-panel.has-wide-context-panel {
-    grid-template-columns:
-      var(--sidebar-width) minmax(0, 1fr)
-      var(--context-width);
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  }
+
+  .section-workspace.section-knowledge.is-knowledge-sidebar-collapsed.has-context-panel.has-wide-context-panel {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .section-workspace.section-knowledge.has-wide-context-panel
@@ -43,19 +54,39 @@
     display: none;
   }
 
-  .section-workspace.section-knowledge > * {
+  .knowledge-document-content-wrapper {
+    display: contents;
+  }
+
+  .knowledge-ai-content-region {
+    min-width: 0;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .knowledge-ai-document-pane,
+  .knowledge-ai-content-region > .context-panel.knowledge-ai-panel {
     min-width: 0;
     min-height: 0;
   }
 
-  .knowledge-application-header .header-project {
-    display: flex;
-    align-items: center;
+  .knowledge-ai-document-pane {
+    display: grid;
+    overflow: hidden;
   }
 
-  .knowledge-application-header .header-project strong {
-    font-size: 20px;
-    line-height: 24px;
+  .knowledge-ai-content-region > .context-panel.knowledge-ai-panel {
+    overflow: auto;
+    width: 100%;
+    justify-self: stretch;
+    box-shadow: none;
+  }
+
+  .section-workspace.section-knowledge > * {
+    min-width: 0;
+    min-height: 0;
   }
 
   .knowledge-sidebar {
@@ -71,10 +102,15 @@
   }
 
   .knowledge-responsive-close,
-  .knowledge-responsive-actions,
   .knowledge-split-switcher,
   .knowledge-overlay-backdrop {
     display: none;
+  }
+
+  .knowledge-responsive-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
 
   .knowledge-toolbar {
@@ -134,7 +170,7 @@
   .knowledge-tree {
     min-height: 0;
     overflow: auto;
-    padding: 6px 6px 12px;
+    padding: 6px 8px 12px;
   }
 
   .knowledge-tree-branch,
@@ -143,35 +179,122 @@
     min-width: 0;
   }
 
+  .knowledge-tree-children {
+    gap: 2px;
+  }
+
   .knowledge-tree-row {
-    --tree-indent: calc(var(--tree-depth) * 14px);
+    --tree-indent: calc(var(--tree-depth) * var(--sidebar-tree-indent));
 
     width: 100%;
-    min-height: 28px;
+    min-height: var(--sidebar-row-compact-height);
     display: grid;
-    grid-template-columns: 16px 16px minmax(0, 1fr);
+    grid-template-columns: var(--sidebar-leading-slot) minmax(0, 1fr);
     align-items: center;
-    gap: 5px;
+    gap: var(--sidebar-slot-gap);
     border: 0;
-    border-radius: var(--radius-sm);
+    border-radius: var(--sidebar-row-radius);
     background: transparent;
     color: var(--text-2);
-    padding: 4px 6px 4px calc(6px + var(--tree-indent));
+    font-size: 13px;
+    line-height: 18px;
+    padding: 4px 8px 4px calc(8px + var(--tree-indent));
     text-align: left;
   }
 
   .knowledge-tree-row:hover {
-    background: var(--surface-hover);
+    background: var(--sidebar-hover-surface);
     color: var(--text);
+  }
+
+  .knowledge-tree-row:focus-visible {
+    outline: 2px solid var(--sidebar-focus-ring);
+    outline-offset: -1px;
   }
 
   .knowledge-tree-row.folder {
-    color: var(--text);
-    font-weight: 500;
+    color: var(--text-2);
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 400;
+    min-height: var(--sidebar-row-regular-height);
   }
 
-  .knowledge-tree-row.folder.is-selected-folder {
-    background: var(--surface-hover);
+  .knowledge-folder-row {
+    min-width: 0;
+    min-height: var(--sidebar-row-regular-height);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--sidebar-trailing-slot);
+    align-items: center;
+    position: relative;
+    border-radius: var(--sidebar-row-radius);
+  }
+
+  .knowledge-folder-row > .knowledge-tree-row {
+    width: auto;
+  }
+
+  .knowledge-folder-row:hover,
+  .knowledge-folder-row:focus-within {
+    background: var(--sidebar-selected-surface);
+  }
+
+  .knowledge-folder-row > .knowledge-tree-row:hover,
+  .knowledge-folder-row > .knowledge-tree-row:focus-visible {
+    background: transparent;
+  }
+
+  .knowledge-folder-menu-trigger {
+    opacity: 0;
+    pointer-events: none;
+    justify-content: center;
+    align-items: center;
+    color: color-mix(in srgb, var(--text-2) 80%, var(--surface) 20%);
+  }
+
+  .knowledge-folder-row:hover .knowledge-folder-menu-trigger,
+  .knowledge-folder-menu-trigger:focus-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .knowledge-folder-menu {
+    position: absolute;
+    top: calc(100% - 2px);
+    right: 0;
+    z-index: 4;
+    display: grid;
+    min-width: 160px;
+    gap: 2px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    box-shadow: var(--shadow-overlay);
+    padding: 4px;
+  }
+
+  .knowledge-folder-menu button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-2);
+    padding: 6px 8px;
+    text-align: left;
+  }
+
+  .knowledge-folder-menu button:hover,
+  .knowledge-folder-menu button:focus-visible {
+    background: var(--sidebar-hover-surface);
+    color: var(--text);
+  }
+
+  .knowledge-folder-menu .ui-icon {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
   }
 
   .knowledge-tree-row.folder.is-drop-target {
@@ -182,8 +305,9 @@
 
   .knowledge-tree-row.document {
     position: relative;
+    grid-template-columns: var(--sidebar-leading-slot) minmax(0, 1fr);
     color: var(--text-2);
-    cursor: grab;
+    cursor: pointer;
   }
 
   .knowledge-tree-row.document:active {
@@ -212,18 +336,23 @@
   .knowledge-folder-title-input {
     min-width: 0;
     width: 100%;
-    height: 22px;
-    border: 1px solid var(--focus);
+    height: 28px;
+    border: 0;
     border-radius: var(--radius-sm);
     background: var(--surface);
     color: var(--text);
-    padding: 0 4px;
+    padding: 0;
     font: inherit;
+    line-height: 20px;
+    outline: 2px solid #8cc3f6;
+    outline-offset: 0;
   }
 
   .knowledge-tree-row.is-active {
-    background: var(--surface-selected);
-    color: var(--accent-2);
+    background: var(--sidebar-selected-surface);
+    box-shadow: none;
+    color: var(--text);
+    font-weight: 400;
   }
 
   .knowledge-tree-row span:last-child {
@@ -234,8 +363,8 @@
   }
 
   .tree-disclosure-spacer {
-    width: 16px;
-    height: 16px;
+    width: var(--sidebar-leading-slot);
+    height: var(--sidebar-leading-slot);
   }
 
   .document-workspace {
@@ -243,7 +372,7 @@
     height: 100%;
     min-width: 0;
     min-height: 0;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
     gap: 0;
     overflow: hidden;
     max-width: none;
@@ -430,6 +559,7 @@
     --document-editor-toolbar-height: 46px;
 
     position: relative;
+    container-type: inline-size;
     min-width: 0;
     min-height: 0;
     display: grid;
@@ -444,8 +574,8 @@
     z-index: 2;
     top: 68px;
     bottom: 38px;
-    left: max(24px, calc(50% - 604px));
-    width: 220px;
+    display: none;
+    width: 240px;
     min-width: 0;
     overflow-x: hidden;
     overflow-y: auto;
@@ -476,7 +606,7 @@
     padding: 5px 8px;
     font-size: 14px;
     line-height: 18px;
-    font-weight: 600;
+    font-weight: 500;
     text-align: left;
     cursor: pointer;
   }
@@ -491,7 +621,7 @@
 
   .document-outline button.level-1 {
     color: var(--outline-heading-color);
-    font-weight: 600;
+    font-weight: 500;
   }
 
   .document-outline button.level-2 {
@@ -501,6 +631,13 @@
   .document-outline button.level-3 {
     padding-left: 30px;
     color: var(--text-3);
+  }
+
+  @container (min-width: 1560px) {
+    .document-outline {
+      display: block;
+      left: calc((100% - 880px - 480px) / 4);
+    }
   }
 
   .document-breadcrumb-row {
@@ -568,7 +705,8 @@
   }
 
   .document-page-inner {
-    width: min(100%, 720px);
+    width: 880px;
+    max-width: 100%;
     min-width: 0;
     margin-inline: auto;
   }
@@ -579,6 +717,19 @@
 
   .document-page.secondary {
     border-left: 1px solid var(--border);
+  }
+
+  .document-page.is-active-pane {
+    box-shadow: inset 0 2px 0 var(--accent-2);
+  }
+
+  .knowledge-empty-pane {
+    display: grid;
+    min-height: 100%;
+    place-items: center;
+    padding: 48px;
+    color: var(--text-3);
+    text-align: center;
   }
 
   .document-page h1 {
@@ -610,6 +761,56 @@
     color: var(--text);
     font-size: 16px;
     line-height: 28px;
+  }
+
+  .document-table-scroll {
+    width: 100%;
+    max-width: 100%;
+    margin: 22px 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  .document-table-scroll table {
+    width: 100%;
+    max-width: 100%;
+    border-collapse: collapse;
+    color: var(--text);
+    font-size: 15px;
+    line-height: 24px;
+    table-layout: auto;
+  }
+
+  .document-table-scroll th,
+  .document-table-scroll td {
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+    overflow-wrap: normal;
+    word-break: normal;
+    white-space: normal;
+    hyphens: none;
+    vertical-align: top;
+  }
+
+  .document-table-scroll th a,
+  .document-table-scroll td a,
+  .document-table-scroll th code,
+  .document-table-scroll td code {
+    overflow-wrap: anywhere;
+  }
+
+  .document-table-scroll th {
+    background: color-mix(in srgb, var(--surface) 95%, var(--text) 5%);
+    border-bottom-color: var(--border-strong);
+    font-weight: 600;
+  }
+
+  .document-table-scroll tbody tr:nth-child(even) {
+    background: color-mix(in srgb, var(--surface) 97%, var(--text) 3%);
+  }
+
+  .document-table-scroll tbody td:first-child {
+    font-weight: 500;
   }
 
   .document-page blockquote {
@@ -721,11 +922,11 @@
   .markdown-source-content {
     width: 100%;
     min-width: 0;
-    padding: 32px var(--document-page-inline-padding) 0;
+    padding: 22px var(--document-page-inline-padding) 0;
   }
 
   .markdown-source-textarea {
-    width: min(100%, 720px);
+    width: min(100%, 880px);
     min-height: 12lh;
     display: block;
     overflow: hidden;
@@ -870,16 +1071,7 @@
 
   @media (min-width: 1024px) and (max-width: 1679px) {
     .section-workspace.section-knowledge.has-context-panel.has-wide-context-panel {
-      grid-template-columns:
-        var(--sidebar-width) minmax(0, 1fr)
-        var(--context-width);
-    }
-
-    .section-workspace.section-knowledge.has-context-panel.has-wide-context-panel
-      > .context-panel.knowledge-ai-panel {
-      position: static;
-      width: auto;
-      box-shadow: none;
+      grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
     }
   }
 
@@ -945,7 +1137,12 @@
 
     .section-workspace.section-knowledge,
     .section-workspace.section-knowledge.has-context-panel,
-    .section-workspace.section-knowledge.has-context-panel.has-split-view {
+    .section-workspace.section-knowledge.has-context-panel.has-split-view,
+    .section-workspace.section-knowledge.has-context-panel.has-wide-context-panel {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .knowledge-ai-content-region {
       grid-template-columns: minmax(0, 1fr);
     }
 
@@ -958,6 +1155,11 @@
       border-right: 1px solid var(--border);
       box-shadow: var(--shadow-overlay);
       transition: transform 180ms ease;
+    }
+
+    .section-workspace.section-knowledge.is-knowledge-sidebar-collapsed
+      > .knowledge-sidebar {
+      display: grid;
     }
 
     .section-workspace.section-knowledge.is-knowledge-tree-open
@@ -997,6 +1199,13 @@
       width: min(var(--context-width), 100%);
       max-width: 420px;
     }
+
+    .knowledge-ai-content-region > .context-panel.knowledge-ai-panel {
+      position: absolute;
+      inset: 0 0 0 auto;
+      width: min(var(--context-width), 100%);
+      max-width: 420px;
+    }
   }
 
   @media (max-width: 767px) {
@@ -1020,6 +1229,17 @@
 
     .knowledge-sidebar,
     .section-workspace.section-knowledge.has-context-panel > .context-panel {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      max-width: none;
+      height: 100dvh;
+      max-height: none;
+      border: 0;
+      border-radius: 0;
+    }
+
+    .knowledge-ai-content-region > .context-panel.knowledge-ai-panel {
       position: fixed;
       inset: 0;
       width: 100vw;

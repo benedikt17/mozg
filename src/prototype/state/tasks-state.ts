@@ -1,11 +1,15 @@
+import { canonicalOverviewDirectionDefinitions } from "@/prototype/desktop-mock-data";
 import type {
-  OverviewDirectionId,
+  PrototypeOverviewDirection,
   PrototypeTask,
-  PrototypeTaskFolder,
-  TaskFilter,
+  PrototypeTaskGroup,
+  PrototypeTaskList,
   TaskSignal,
 } from "@/prototype/desktop-mock-data";
-import type { DesktopPrototypeState } from "@/prototype/state/types";
+import type {
+  DesktopPrototypeState,
+  TaskSystemView,
+} from "@/prototype/state/types";
 
 export function getTaskById(
   state: DesktopPrototypeState,
@@ -22,13 +26,90 @@ export function getProjectTasks(
   return state.tasks.filter((task) => task.projectId === projectId);
 }
 
-export function getProjectTaskFolders(
+export function getProjectTaskLists(
   state: DesktopPrototypeState,
   projectId = state.activeProjectId,
-): PrototypeTaskFolder[] {
-  return state.taskFolders
-    .filter((folder) => folder.projectId === projectId)
+): PrototypeTaskList[] {
+  return state.taskLists
+    .filter((list) => list.projectId === projectId)
     .sort((first, second) => first.order - second.order);
+}
+
+export function getProjectTaskGroups(
+  state: DesktopPrototypeState,
+  projectId = state.activeProjectId,
+): PrototypeTaskGroup[] {
+  return state.taskGroups
+    .filter((group) => group.projectId === projectId)
+    .sort((first, second) => first.order - second.order);
+}
+
+export function createBazaTaskStructure(
+  projectId: string,
+  directions: PrototypeOverviewDirection[],
+): { group: PrototypeTaskGroup; lists: PrototypeTaskList[] } {
+  const group: PrototypeTaskGroup = {
+    id: `${projectId}-baza`,
+    projectId,
+    title: "BAZA",
+    order: 0,
+    kind: "system",
+  };
+  const definitions = canonicalOverviewDirectionDefinitions;
+  return {
+    group,
+    lists: definitions.map(([key, title], order) => ({
+      id: `${projectId}-list-${key}`,
+      projectId,
+      groupId: group.id,
+      title,
+      order,
+      kind: "system",
+      overviewDirectionId: directions.find(
+        (item) => item.id === `${projectId}-${key}`,
+      )?.id,
+    })),
+  };
+}
+
+export function getTaskListById(
+  state: DesktopPrototypeState,
+  listId: string | null,
+): PrototypeTaskList | undefined {
+  if (!listId) return undefined;
+  return state.taskLists.find(
+    (list) => list.id === listId && list.projectId === state.activeProjectId,
+  );
+}
+
+export function getTaskListActiveCount(
+  state: DesktopPrototypeState,
+  listId: string,
+): number {
+  return getProjectTasks(state).filter(
+    (task) => task.listId === listId && task.completedAt === null,
+  ).length;
+}
+
+export function getTaskSystemViewCount(
+  state: DesktopPrototypeState,
+  view: TaskSystemView,
+): number {
+  return getProjectTasks(state).filter((task) => {
+    if (task.completedAt !== null) return false;
+    if (view === "day") return task.dueDate !== undefined;
+    if (view === "important") return task.starred;
+    return true;
+  }).length;
+}
+
+export function getCompletedTasksForList(
+  state: DesktopPrototypeState,
+  listId: string,
+): PrototypeTask[] {
+  return getProjectTasks(state)
+    .filter((task) => task.listId === listId && task.completedAt !== null)
+    .sort((first, second) => first.taskListOrder - second.taskListOrder);
 }
 
 export function getVisibleTaskList(
@@ -37,17 +118,15 @@ export function getVisibleTaskList(
   const normalizedQuery = state.taskSearchQuery.trim().toLocaleLowerCase();
   return [...getProjectTasks(state)]
     .filter((task) => {
-      const matchesView = state.selectedTaskFolderId
-        ? task.taskFolderId === state.selectedTaskFolderId
-        : state.selectedTaskDirectionId
-          ? task.overviewDirectionId === state.selectedTaskDirectionId
-          : state.taskFilter === "overview"
-            ? task.showOnOverview
-            : state.taskFilter === "important"
+      const matchesView =
+        state.taskSelection.kind === "list"
+          ? task.listId === state.taskSelection.listId &&
+            task.completedAt === null
+          : state.taskSelection.view === "day"
+            ? task.dueDate !== undefined && task.completedAt === null
+            : state.taskSelection.view === "important"
               ? task.starred
-              : state.taskFilter === "completed"
-                ? task.completedAt !== null
-                : true;
+              : true;
       return (
         matchesView &&
         (normalizedQuery.length === 0 ||
@@ -150,10 +229,47 @@ export function toggleTaskCompleted(
   state: DesktopPrototypeState,
   taskId: string,
 ): DesktopPrototypeState {
-  return updateTask(state, taskId, (task) => ({
-    ...task,
-    completedAt: task.completedAt ? null : new Date().toISOString(),
-  }));
+  const task = getTaskById(state, taskId);
+  if (!task || task.projectId !== state.activeProjectId) return state;
+  const taskList = state.taskLists.find(
+    (list) => list.id === task.listId && list.projectId === task.projectId,
+  );
+  const restoring = task.completedAt !== null;
+
+  return updateTask(state, taskId, (currentTask) => {
+    if (!restoring) {
+      return {
+        ...currentTask,
+        completedAt: new Date().toISOString(),
+      };
+    }
+
+    if (
+      taskList?.kind === "system" &&
+      taskList.overviewDirectionId !== undefined
+    ) {
+      return {
+        ...currentTask,
+        completedAt: null,
+        overviewDirectionId: taskList.overviewDirectionId,
+        showOnOverview: true,
+      };
+    }
+
+    if (taskList?.kind === "user") {
+      return {
+        ...currentTask,
+        completedAt: null,
+        overviewDirectionId: "",
+        showOnOverview: false,
+      };
+    }
+
+    return {
+      ...currentTask,
+      completedAt: null,
+    };
+  });
 }
 
 export function editTaskTitle(
@@ -365,47 +481,26 @@ export function setTaskSignal(
   return updateTask(state, taskId, (task) => ({ ...task, signal }));
 }
 
-export function setTaskFilter(
+export function selectTaskSystemView(
   state: DesktopPrototypeState,
-  filter: TaskFilter,
+  view: TaskSystemView,
 ): DesktopPrototypeState {
   return {
     ...state,
-    taskFilter: filter,
-    selectedTaskFolderId: null,
-    selectedTaskDirectionId: null,
-    taskDayViewActive: false,
+    taskSelection: { kind: "system", view },
     taskDetailViewTaskId: null,
   };
 }
 
-export function selectTaskDay(
+export function selectTaskList(
   state: DesktopPrototypeState,
+  listId: string,
 ): DesktopPrototypeState {
+  const list = getTaskListById(state, listId);
+  if (!list) return state;
   return {
     ...state,
-    taskFilter: "all",
-    selectedTaskFolderId: null,
-    selectedTaskDirectionId: null,
-    taskDayViewActive: true,
-    taskDetailViewTaskId: null,
-  };
-}
-
-export function selectTaskDirection(
-  state: DesktopPrototypeState,
-  directionId: OverviewDirectionId,
-): DesktopPrototypeState {
-  const direction = state.overviewDirections.find(
-    (item) => item.id === directionId,
-  );
-  if (!direction || direction.projectId !== state.activeProjectId) return state;
-  return {
-    ...state,
-    taskFilter: "all",
-    selectedTaskFolderId: null,
-    selectedTaskDirectionId: direction.id,
-    taskDayViewActive: false,
+    taskSelection: { kind: "list", listId: list.id },
     taskDetailViewTaskId: null,
   };
 }
@@ -417,101 +512,149 @@ export function setTaskSearchQuery(
   return { ...state, taskSearchQuery: query };
 }
 
-export function selectTaskFolder(
-  state: DesktopPrototypeState,
-  folderId: string,
-): DesktopPrototypeState {
-  const folder = state.taskFolders.find(
-    (item) => item.id === folderId && item.projectId === state.activeProjectId,
-  );
-  if (!folder) return state;
-  return {
-    ...state,
-    taskFilter: "all",
-    selectedTaskFolderId: folder.id,
-    selectedTaskDirectionId: null,
-    taskDayViewActive: false,
-    taskDetailViewTaskId: null,
-  };
-}
-
-export function createTaskFolder(
+export function createTaskGroup(
   state: DesktopPrototypeState,
   title: string,
 ): DesktopPrototypeState {
   const trimmedTitle = title.trim();
   if (trimmedTitle.length === 0) return state;
-  const folder: PrototypeTaskFolder = {
-    id: `mock-task-folder-${state.nextTaskFolderNumber}`,
+  const group: PrototypeTaskGroup = {
+    id: `mock-task-group-${state.nextTaskGroupNumber}`,
     projectId: state.activeProjectId,
     title: trimmedTitle,
-    order: getProjectTaskFolders(state).length,
+    order:
+      Math.max(
+        -1,
+        ...getProjectTaskGroups(state)
+          .filter((item) => item.kind === "user")
+          .map((item) => item.order),
+      ) + 1,
+    kind: "user",
   };
   return {
     ...state,
-    taskFolders: [...state.taskFolders, folder],
-    nextTaskFolderNumber: state.nextTaskFolderNumber + 1,
+    taskGroups: [...state.taskGroups, group],
+    expandedTaskGroupIds: [...state.expandedTaskGroupIds, group.id],
+    nextTaskGroupNumber: state.nextTaskGroupNumber + 1,
   };
 }
 
-export function renameTaskFolder(
+export function toggleTaskGroup(
   state: DesktopPrototypeState,
-  folderId: string,
+  groupId: string,
+): DesktopPrototypeState {
+  const group = state.taskGroups.find(
+    (item) => item.id === groupId && item.projectId === state.activeProjectId,
+  );
+  if (!group || group.kind !== "user") return state;
+  const isExpanded = state.expandedTaskGroupIds.includes(group.id);
+  return {
+    ...state,
+    expandedTaskGroupIds: isExpanded
+      ? state.expandedTaskGroupIds.filter((id) => id !== group.id)
+      : [...state.expandedTaskGroupIds, group.id],
+  };
+}
+
+export function renameTaskGroup(
+  state: DesktopPrototypeState,
+  groupId: string,
   title: string,
 ): DesktopPrototypeState {
   const trimmedTitle = title.trim();
-  const folder = state.taskFolders.find(
-    (item) => item.id === folderId && item.projectId === state.activeProjectId,
+  if (trimmedTitle.length === 0) return state;
+  const group = state.taskGroups.find(
+    (item) =>
+      item.id === groupId &&
+      item.projectId === state.activeProjectId &&
+      item.kind === "user",
   );
-  if (!folder || trimmedTitle.length === 0) return state;
+  if (!group) return state;
   return {
     ...state,
-    taskFolders: state.taskFolders.map((item) =>
-      item.id === folder.id ? { ...item, title: trimmedTitle } : item,
+    taskGroups: state.taskGroups.map((item) =>
+      item.id === group.id ? { ...item, title: trimmedTitle } : item,
     ),
   };
 }
 
-export function deleteTaskFolder(
+export function deleteTaskGroup(
   state: DesktopPrototypeState,
-  folderId: string,
+  groupId: string,
 ): DesktopPrototypeState {
-  const folder = state.taskFolders.find(
-    (item) => item.id === folderId && item.projectId === state.activeProjectId,
+  const group = state.taskGroups.find(
+    (item) =>
+      item.id === groupId &&
+      item.projectId === state.activeProjectId &&
+      item.kind === "user",
   );
-  if (!folder || state.tasks.some((task) => task.taskFolderId === folder.id)) {
-    return state;
-  }
+  if (!group) return state;
+  const fallbackGroup = state.taskGroups.find(
+    (item) =>
+      item.projectId === state.activeProjectId && item.kind === "system",
+  );
+  if (!fallbackGroup) return state;
+  const nextLists = state.taskLists.map((list) =>
+    list.groupId === group.id ? { ...list, groupId: fallbackGroup.id } : list,
+  );
   return {
     ...state,
-    taskFolders: state.taskFolders.filter((item) => item.id !== folder.id),
-    selectedTaskFolderId:
-      state.selectedTaskFolderId === folder.id
-        ? null
-        : state.selectedTaskFolderId,
+    taskGroups: state.taskGroups.filter((item) => item.id !== group.id),
+    taskLists: nextLists,
+    expandedTaskGroupIds: state.expandedTaskGroupIds.filter(
+      (id) => id !== group.id,
+    ),
   };
 }
 
-export function assignTaskFolder(
+export function createTaskList(
   state: DesktopPrototypeState,
-  taskId: string,
-  folderId: string | null,
+  title: string,
+  groupId: string,
 ): DesktopPrototypeState {
-  const task = getTaskById(state, taskId);
-  const folder = folderId
-    ? state.taskFolders.find((item) => item.id === folderId)
-    : null;
-  if (
-    !task ||
-    task.projectId !== state.activeProjectId ||
-    (folderId && (!folder || folder.projectId !== task.projectId))
-  ) {
-    return state;
-  }
-  return updateTask(state, task.id, (currentTask) => ({
-    ...currentTask,
-    taskFolderId: folder?.id ?? null,
-  }));
+  const trimmedTitle = title.trim();
+  if (trimmedTitle.length === 0) return state;
+  const group = state.taskGroups.find(
+    (item) =>
+      item.id === groupId &&
+      item.projectId === state.activeProjectId &&
+      item.kind === "user",
+  );
+  if (!group) return state;
+  const list: PrototypeTaskList = {
+    id: `mock-task-list-${state.nextTaskListNumber}`,
+    projectId: state.activeProjectId,
+    groupId: group.id,
+    title: trimmedTitle,
+    order: getProjectTaskLists(state).filter(
+      (item) => item.groupId === group.id,
+    ).length,
+    kind: "user",
+  };
+  return {
+    ...state,
+    taskLists: [...state.taskLists, list],
+    nextTaskListNumber: state.nextTaskListNumber + 1,
+  };
+}
+
+export function renameTaskList(
+  state: DesktopPrototypeState,
+  listId: string,
+  title: string,
+): DesktopPrototypeState {
+  const trimmedTitle = title.trim();
+  if (trimmedTitle.length === 0) return state;
+  const list = state.taskLists.find(
+    (item) => item.id === listId && item.projectId === state.activeProjectId,
+  );
+  if (!list || list.kind !== "user") return state;
+  return {
+    ...state,
+    taskLists: state.taskLists.map((item) =>
+      item.id === list.id ? { ...item, title: trimmedTitle } : item,
+    ),
+  };
 }
 
 export function setTaskOverview(
@@ -567,6 +710,104 @@ export function moveTaskList(
     tasks: state.tasks.map((task) => {
       const taskListOrder = orderByTaskId.get(task.id);
       return taskListOrder === undefined ? task : { ...task, taskListOrder };
+    }),
+  };
+}
+
+export function moveTaskToList(
+  state: DesktopPrototypeState,
+  taskId: string,
+  targetListId: string,
+  targetTaskId: string | null,
+  sourceSystemView?: TaskSystemView,
+): DesktopPrototypeState {
+  const movingTask = getTaskById(state, taskId);
+  const targetTask = targetTaskId ? getTaskById(state, targetTaskId) : null;
+  const targetList = state.taskLists.find(
+    (list) =>
+      list.id === targetListId && list.projectId === state.activeProjectId,
+  );
+  const targetGroup = targetList
+    ? state.taskGroups.find(
+        (group) =>
+          group.id === targetList.groupId &&
+          group.projectId === state.activeProjectId,
+      )
+    : undefined;
+  if (
+    !movingTask ||
+    movingTask.projectId !== state.activeProjectId ||
+    movingTask.completedAt !== null ||
+    !targetList ||
+    !targetGroup ||
+    targetList.kind !== targetGroup.kind ||
+    (targetList.kind === "system" && !targetList.overviewDirectionId) ||
+    (targetTaskId &&
+      (!targetTask ||
+        targetTask.projectId !== movingTask.projectId ||
+        targetTask.completedAt !== null ||
+        targetTask.listId !== targetList.id)) ||
+    movingTask.id === targetTask?.id
+  ) {
+    return state;
+  }
+
+  const orderedTasks = [...getProjectTasks(state)].sort(
+    (first, second) => first.taskListOrder - second.taskListOrder,
+  );
+  const remainingTasks = orderedTasks.filter(
+    (task) => task.id !== movingTask.id,
+  );
+  const targetIndex = targetTask
+    ? remainingTasks.findIndex((task) => task.id === targetTask.id)
+    : (() => {
+        const targetListIndexes = remainingTasks.reduce<number[]>(
+          (indexes, task, index) => {
+            if (task.listId === targetList.id && task.completedAt === null) {
+              indexes.push(index);
+            }
+            return indexes;
+          },
+          [],
+        );
+        return targetListIndexes.length > 0
+          ? targetListIndexes[targetListIndexes.length - 1] + 1
+          : remainingTasks.length;
+      })();
+  const taskAfterLeavingSystemView =
+    sourceSystemView === "day"
+      ? (() => {
+          const taskWithoutDueDate = { ...movingTask };
+          delete taskWithoutDueDate.dueDate;
+          return taskWithoutDueDate;
+        })()
+      : sourceSystemView === "important"
+        ? { ...movingTask, starred: false }
+        : movingTask;
+  const destinationTask = {
+    ...taskAfterLeavingSystemView,
+    listId: targetList.id,
+    overviewDirectionId:
+      targetList.kind === "system"
+        ? (targetList.overviewDirectionId ?? "")
+        : "",
+    showOnOverview: targetList.kind === "system",
+  };
+  remainingTasks.splice(
+    targetIndex < 0 ? remainingTasks.length : targetIndex,
+    0,
+    destinationTask,
+  );
+  const orderByTaskId = new Map(
+    remainingTasks.map((task, taskListOrder) => [task.id, taskListOrder]),
+  );
+  return {
+    ...state,
+    tasks: state.tasks.map((task) => {
+      const taskListOrder = orderByTaskId.get(task.id);
+      if (taskListOrder === undefined) return task;
+      const nextTask = task.id === destinationTask.id ? destinationTask : task;
+      return { ...nextTask, taskListOrder };
     }),
   };
 }

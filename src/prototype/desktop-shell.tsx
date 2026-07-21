@@ -106,9 +106,6 @@ export function DesktopPrototypeShell(): React.JSX.Element {
     if (params.get("command") === "1") {
       dispatch({ type: "open-command-palette" });
     }
-    if (params.get("rail") === "collapsed") {
-      dispatch({ type: "toggle-project-rail" });
-    }
     const editingTaskId = params.get("editTask");
     if (editingTaskId) {
       dispatch({ type: "begin-task-title-edit", taskId: editingTaskId });
@@ -131,10 +128,9 @@ export function DesktopPrototypeShell(): React.JSX.Element {
       className={[
         "desktop-prototype",
         state.activeSection === "knowledge" ? "knowledge-active" : "",
-        state.activeSection === "knowledge" && state.splitViewDocumentId
+        state.activeSection === "knowledge" && state.knowledgeSplitEnabled
           ? "knowledge-split-active"
           : "",
-        state.projectRailCollapsed ? "project-rail-collapsed" : "",
         state.activeSection === "overview" &&
         state.contextPanel?.kind === "task" &&
         !overviewReaderActive
@@ -185,6 +181,8 @@ function SectionWorkspace({
 }): React.JSX.Element {
   const [knowledgeTreeOverlayOpen, setKnowledgeTreeOverlayOpen] =
     useState(false);
+  const [knowledgeSidebarCollapsed, setKnowledgeSidebarCollapsed] =
+    useState(false);
   const sidebar = renderToolSidebar(state, dispatch, {
     onCloseKnowledgeTree: () => setKnowledgeTreeOverlayOpen(false),
   });
@@ -194,8 +192,9 @@ function SectionWorkspace({
     state.overviewArticlePreviewDocumentId !== null;
   const hasContextPanel =
     state.contextPanel !== null &&
-    (state.activeSection !== "overview" ||
-      (state.contextPanel.kind === "task" && !overviewReaderActive));
+    (state.activeSection !== "overview" || state.contextPanel.kind === "task");
+  const knowledgeAiOpen =
+    state.activeSection === "knowledge" && state.contextPanel?.kind === "ai";
   const hasFullHeightDrawer =
     state.contextPanel?.kind === "knowledge-tasks" ||
     state.contextPanel?.kind === "knowledge-task-reference" ||
@@ -210,11 +209,14 @@ function SectionWorkspace({
         hasContextPanel ? "has-context-panel" : "",
         hasFullHeightDrawer ? "has-full-height-drawer" : "",
         overviewReaderActive ? "has-overview-contextual-reader" : "",
-        state.activeSection === "knowledge" && state.splitViewDocumentId
+        state.activeSection === "knowledge" && state.knowledgeSplitEnabled
           ? "has-split-view"
           : "",
         state.activeSection === "knowledge" && knowledgeTreeOverlayOpen
           ? "is-knowledge-tree-open"
+          : "",
+        state.activeSection === "knowledge" && knowledgeSidebarCollapsed
+          ? "is-knowledge-sidebar-collapsed"
           : "",
         state.activeSection === "knowledge" && state.contextPanel?.kind === "ai"
           ? "has-wide-context-panel"
@@ -226,7 +228,29 @@ function SectionWorkspace({
       {sidebar}
       <section className="main-workspace" aria-label="Рабочая область">
         {renderMainWorkspace(state, dispatch, {
-          onOpenKnowledgeTree: () => setKnowledgeTreeOverlayOpen(true),
+          aiPanel: knowledgeAiOpen ? (
+            <ContextPanelSlot
+              contextPanel={state.contextPanel}
+              dispatch={dispatch}
+              state={state}
+            />
+          ) : undefined,
+          onOpenKnowledgeTree: () => {
+            setKnowledgeSidebarCollapsed(false);
+            setKnowledgeTreeOverlayOpen(true);
+          },
+          onToggleKnowledgeTree: () => {
+            const isResponsive =
+              typeof window !== "undefined" &&
+              window.matchMedia("(max-width: 1023px)").matches;
+            if (isResponsive) {
+              setKnowledgeSidebarCollapsed(false);
+              setKnowledgeTreeOverlayOpen((open) => !open);
+              return;
+            }
+            setKnowledgeSidebarCollapsed((collapsed) => !collapsed);
+          },
+          treeOpen: knowledgeTreeOverlayOpen || !knowledgeSidebarCollapsed,
         })}
       </section>
       {state.activeSection === "knowledge" && knowledgeTreeOverlayOpen ? (
@@ -237,7 +261,7 @@ function SectionWorkspace({
           type="button"
         />
       ) : null}
-      {hasContextPanel ? (
+      {hasContextPanel && !knowledgeAiOpen ? (
         <ContextPanelSlot
           contextPanel={state.contextPanel}
           dispatch={dispatch}
@@ -290,7 +314,10 @@ function renderMainWorkspace(
   state: DesktopPrototypeState,
   dispatch: Dispatch,
   options?: {
+    aiPanel?: React.ReactNode;
     onOpenKnowledgeTree?: () => void;
+    onToggleKnowledgeTree?: () => void;
+    treeOpen?: boolean;
   },
 ): React.JSX.Element {
   if (state.activeSection === "knowledge") {
@@ -298,7 +325,10 @@ function renderMainWorkspace(
       <KnowledgeWorkspace
         state={state}
         dispatch={dispatch}
+        aiPanel={options?.aiPanel}
         onOpenTree={options?.onOpenKnowledgeTree}
+        onToggleTree={options?.onToggleKnowledgeTree}
+        treeOpen={options?.treeOpen}
       />
     );
   }

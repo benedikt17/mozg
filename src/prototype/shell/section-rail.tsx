@@ -1,10 +1,5 @@
-import React from "react";
-import {
-  projectSections,
-  type ProjectSection,
-} from "@/prototype/desktop-mock-data";
-import { IconButton } from "@/prototype/desktop-ui";
-import { type UiIconName, UiIcon } from "@/prototype/desktop-icons";
+import React, { useState } from "react";
+import { PrototypeButton } from "@/prototype/desktop-ui";
 import type {
   DesktopPrototypeAction,
   DesktopPrototypeState,
@@ -12,13 +7,14 @@ import type {
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 
-const sectionRailIcons: Record<ProjectSection, UiIconName> = {
-  overview: "layout",
-  knowledge: "book",
-  tasks: "check-circle",
-  canvases: "nodes",
-  inbox: "inbox",
-};
+export function getProjectInitials(name: string): string {
+  const words = name.trim().split(/\s+/u).filter(Boolean);
+  return words
+    .slice(0, 2)
+    .map((word) => word.match(/\p{L}/u)?.[0] ?? "")
+    .join("")
+    .toLocaleUpperCase();
+}
 
 export function SectionRail({
   state,
@@ -27,30 +23,86 @@ export function SectionRail({
   state: DesktopPrototypeState;
   dispatch: Dispatch;
 }): React.JSX.Element {
+  const [isPointerInside, setIsPointerInside] = useState(false);
+  const [hasKeyboardFocus, setHasKeyboardFocus] = useState(false);
+  const [inputModality, setInputModality] = useState<"pointer" | "keyboard">(
+    "pointer",
+  );
+  const isExpanded =
+    isPointerInside || (hasKeyboardFocus && inputModality === "keyboard");
+
   return (
-    <aside className="project-rail" aria-label="Разделы" data-collapsed="true">
+    <aside
+      aria-label="mozg"
+      className="project-rail"
+      data-expanded={isExpanded ? "true" : "false"}
+      onBlurCapture={(event) => {
+        const nextTarget = event.relatedTarget;
+        if (
+          !(nextTarget instanceof Node) ||
+          !event.currentTarget.contains(nextTarget)
+        ) {
+          setHasKeyboardFocus(false);
+        }
+      }}
+      onFocusCapture={(event) => {
+        if (
+          event.target instanceof HTMLElement &&
+          event.target.matches(":focus-visible")
+        ) {
+          setInputModality("keyboard");
+          setHasKeyboardFocus(true);
+        }
+      }}
+      onPointerDownCapture={() => setInputModality("pointer")}
+      onPointerEnter={() => {
+        setInputModality("pointer");
+        setIsPointerInside(true);
+      }}
+      onPointerLeave={() => setIsPointerInside(false)}
+    >
       <div className="rail-brand">
         <div className="rail-brand-identity">
           <span className="rail-brand-mark">M</span>
-          <strong>mozg</strong>
         </div>
       </div>
-      <nav className="rail-section-list" aria-label="Разделы">
-        {projectSections.map((section) => (
-          <IconButton
-            active={state.activeSection === section.id}
-            className="rail-section-item"
-            icon={<UiIcon name={sectionRailIcons[section.id]} />}
-            key={section.id}
-            label={section.label}
-            onClick={() =>
-              dispatch({ type: "switch-section", section: section.id })
+      <nav className="rail-project-list" aria-label="Проекты">
+        {state.projects.map((project) => (
+          <PrototypeButton
+            active={project.id === state.activeProjectId}
+            aria-current={
+              project.id === state.activeProjectId ? "true" : undefined
             }
-            title={section.label}
+            aria-label={project.name}
+            className="rail-project-item"
+            key={project.id}
+            onClick={() =>
+              dispatch({ type: "switch-project", projectId: project.id })
+            }
+            title={project.name}
             variant="ghost"
-          />
+          >
+            <span className="rail-project-initials" aria-hidden="true">
+              {getProjectInitials(project.name)}
+            </span>
+            <span className="rail-project-name">{project.name}</span>
+          </PrototypeButton>
         ))}
       </nav>
+      <div className="rail-create-project-region">
+        <PrototypeButton
+          aria-label="Создать проект"
+          className="rail-create-project"
+          onClick={() => dispatch({ type: "create-project" })}
+          title="Создать проект"
+          variant="ghost"
+        >
+          <span className="rail-create-project-icon" aria-hidden="true">
+            +
+          </span>
+          <span className="rail-project-name">Создать проект</span>
+        </PrototypeButton>
+      </div>
     </aside>
   );
 }

@@ -1,16 +1,6 @@
 import React from "react";
-import {
-  aiProposals,
-  type PrototypeInboxItem,
-} from "@/prototype/desktop-mock-data";
-import {
-  getAiContextLabel,
-  type DesktopPrototypeAction,
-  type DesktopPrototypeState,
-} from "@/prototype/desktop-state";
-import { ContextPanelSection, PrototypeButton } from "@/prototype/desktop-ui";
-
-type Dispatch = React.Dispatch<DesktopPrototypeAction>;
+import type { PrototypeInboxItem } from "@/prototype/desktop-mock-data";
+import { ContextPanelSection } from "@/prototype/desktop-ui";
 
 export function CanvasInspectorPanel({
   objectTitle,
@@ -50,52 +40,6 @@ export function InboxContextPanel({
   );
 }
 
-export function AiPanel({
-  state,
-  dispatch,
-}: {
-  state: DesktopPrototypeState;
-  dispatch: Dispatch;
-}): React.JSX.Element {
-  return (
-    <div className="panel-stack">
-      <ContextPanelSection title="Текущий контекст">
-        <p>{getAiContextLabel(state)}</p>
-      </ContextPanelSection>
-      <ContextPanelSection title="Предложения">
-        {aiProposals.map((proposal) => (
-          <label className="proposal-row" key={proposal.id}>
-            <input
-              checked={state.selectedAiProposalIds.includes(proposal.id)}
-              onChange={() =>
-                dispatch({
-                  type: "toggle-ai-proposal",
-                  proposalId: proposal.id,
-                })
-              }
-              type="checkbox"
-            />
-            <span>
-              <strong>{proposal.title}</strong>
-              <small>{proposal.description}</small>
-            </span>
-          </label>
-        ))}
-      </ContextPanelSection>
-      <PrototypeButton
-        disabled={state.selectedAiProposalIds.length === 0}
-        onClick={() => dispatch({ type: "confirm-ai-proposals" })}
-        variant="primary"
-      >
-        Применить выбранное
-      </PrototypeButton>
-      {state.aiActivityLog.length > 0 ? (
-        <ContextPanelSection title="Журнал">
-          {state.aiActivityLog.map((entry) => (
-            <p key={entry}>{entry}</p>
-          ))}
-        </ContextPanelSection>
-      ) : null}
-    </div>
-  );
+export function AiPanel(): React.JSX.Element {
+  return <div className="panel-stack" aria-hidden="true" />;
 }

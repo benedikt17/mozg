@@ -74,7 +74,21 @@ export function getDocumentFolderPath(document: PrototypeDocument): string[] {
 }
 
 export function getDocumentBreadcrumb(document: PrototypeDocument): string {
-  return [...getDocumentFolderPath(document), document.title].join(" / ");
+  return [...getDocumentFolderPath(document), getDocumentTitle(document)].join(
+    " / ",
+  );
+}
+
+function getFirstMarkdownHeading(markdown: string): string | undefined {
+  for (const line of markdown.split("\n")) {
+    const match = line.match(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/);
+    if (match?.[1]) return match[1].trim();
+  }
+  return undefined;
+}
+
+export function getDocumentTitle(document: PrototypeDocument): string {
+  return getFirstMarkdownHeading(document.content.join("\n")) ?? document.title;
 }
 
 export function getDocumentAncestorFolderIds(
@@ -111,23 +125,23 @@ export function getKnowledgePaneState(
     selectedDocument?.projectId === state.activeProjectId
       ? selectedDocument
       : projectDocuments[0];
-  const requestedSecondaryDocument = getDocumentById(
-    state,
-    state.splitViewDocumentId,
-  );
+  const requestedSecondaryDocument = state.knowledgeSplitEnabled
+    ? getDocumentById(state, state.splitViewDocumentId)
+    : undefined;
   const secondaryDocument =
     requestedSecondaryDocument?.projectId === state.activeProjectId &&
     requestedSecondaryDocument.id !== primaryDocument?.id
       ? requestedSecondaryDocument
       : undefined;
   const activePane =
-    state.activeKnowledgePane === "secondary" && secondaryDocument
+    state.knowledgeSplitEnabled && state.activeKnowledgePane === "secondary"
       ? "secondary"
       : "primary";
 
   return {
     primaryDocument,
     secondaryDocument,
+    splitEnabled: state.knowledgeSplitEnabled,
     activePane,
     activeDocument:
       activePane === "secondary" ? secondaryDocument : primaryDocument,
@@ -149,7 +163,7 @@ export function getKnowledgeTree(
   const matches = (document: PrototypeDocument): boolean => {
     if (!query) return true;
     const searchable = [
-      document.title,
+      getDocumentTitle(document),
       document.excerpt,
       getDocumentBreadcrumb(document),
     ]
@@ -214,8 +228,8 @@ export function getKnowledgeTree(
       rootDocuments.push({
         kind: "document",
         id: document.id,
-        title: document.title,
-        path: [document.title],
+        title: getDocumentTitle(document),
+        path: [getDocumentTitle(document)],
         document,
       });
       continue;
@@ -225,8 +239,8 @@ export function getKnowledgeTree(
     folder.children.push({
       kind: "document",
       id: document.id,
-      title: document.title,
-      path: [...folderPath, document.title],
+      title: getDocumentTitle(document),
+      path: [...folderPath, getDocumentTitle(document)],
       document,
     });
   }
@@ -439,12 +453,15 @@ export function updateKnowledgeDocumentMarkdown(
   const document = getDocumentById(state, documentId);
   if (!document || document.projectId !== state.activeProjectId) return state;
   const normalizedMarkdown = markdown.replace(/\r\n?/g, "\n");
+  const nextTitle =
+    getFirstMarkdownHeading(normalizedMarkdown) ?? "Без названия";
   return {
     ...state,
     documents: state.documents.map((item) =>
       item.id === document.id
         ? {
             ...item,
+            title: nextTitle,
             content:
               normalizedMarkdown.length > 0
                 ? normalizedMarkdown.split("\n")
@@ -453,6 +470,21 @@ export function updateKnowledgeDocumentMarkdown(
         : item,
     ),
   };
+}
+
+export function startEditingKnowledgeFolder(
+  state: DesktopPrototypeState,
+  folderId: string,
+): DesktopPrototypeState {
+  const containsFolder = (nodes: KnowledgeTreeNode[]): boolean =>
+    nodes.some(
+      (node) =>
+        node.kind === "folder" &&
+        (node.id === folderId || containsFolder(node.children)),
+    );
+  return containsFolder(getKnowledgeTree(state))
+    ? { ...state, editingKnowledgeFolderId: folderId }
+    : state;
 }
 
 export function createKnowledgeFolder(
@@ -533,6 +565,67 @@ export function renameKnowledgeFolder(
         knowledgeFolderId(folder.projectId, nextPath),
       ]),
     ),
+    editingKnowledgeFolderId: null,
+  };
+}
+
+export function deleteKnowledgeFolder(
+  state: DesktopPrototypeState,
+  folderId: string,
+): DesktopPrototypeState {
+  const folder = state.knowledgeFolders.find(
+    (item) =>
+      item.projectId === state.activeProjectId &&
+      knowledgeFolderId(item.projectId, item.path) === folderId,
+  );
+  const folderPath =
+    folder?.path ??
+    getProjectDocuments(state)
+      .map((document) => getDocumentFolderPath(document))
+      .find(
+        (path) => knowledgeFolderId(state.activeProjectId, path) === folderId,
+      );
+  if (!folderPath || folderPath.length === 0) return state;
+  const parentPath = folderPath.slice(0, -1);
+  const isInFolder = (path: string[]): boolean =>
+    knowledgePathStartsWith(path, folderPath);
+  const documents = state.documents.map((document) => {
+    if (document.projectId !== state.activeProjectId) return document;
+    const documentPath = getDocumentFolderPath(document);
+    if (!isInFolder(documentPath)) return document;
+    return {
+      ...document,
+      folder: parentPath.at(-1) ?? "",
+      folderPath: parentPath,
+    };
+  });
+  const selectedDocument = getDocumentById(state, state.selectedDocumentId);
+  const selectedDocumentWasMoved = selectedDocument
+    ? isInFolder(getDocumentFolderPath(selectedDocument))
+    : false;
+  return {
+    ...state,
+    knowledgeFolders: state.knowledgeFolders.filter(
+      (item) =>
+        item.projectId !== state.activeProjectId ||
+        !knowledgePathStartsWith(item.path, folderPath),
+    ),
+    documents,
+    selectedKnowledgeFolderPath:
+      state.selectedKnowledgeFolderPath &&
+      isInFolder(state.selectedKnowledgeFolderPath)
+        ? parentPath
+        : state.selectedKnowledgeFolderPath,
+    selectedDocumentFolder: selectedDocumentWasMoved
+      ? (parentPath.at(-1) ?? "")
+      : state.selectedDocumentFolder,
+    expandedFolderIds: state.expandedFolderIds.filter(
+      (id) => id !== folderId && !id.startsWith(`${folderId}/`),
+    ),
+    knowledgeExpandedBeforeCollapse:
+      state.knowledgeExpandedBeforeCollapse?.filter(
+        (id) => id !== folderId && !id.startsWith(`${folderId}/`),
+      ) ?? null,
     editingKnowledgeFolderId: null,
   };
 }
@@ -677,21 +770,20 @@ export function setKnowledgeContextMode(
 export function toggleKnowledgeSplitView(
   state: DesktopPrototypeState,
 ): DesktopPrototypeState {
-  if (state.splitViewDocumentId) {
+  if (state.knowledgeSplitEnabled) {
     return {
       ...state,
+      knowledgeSplitEnabled: false,
       splitViewDocumentId: null,
       activeKnowledgePane: "primary",
       editingKnowledgeDocumentId: null,
     };
   }
-  const fallbackDocument = getProjectDocuments(state).find(
-    (document) => document.id !== state.selectedDocumentId,
-  );
   return {
     ...state,
-    splitViewDocumentId: fallbackDocument?.id ?? null,
-    activeKnowledgePane: "primary",
+    knowledgeSplitEnabled: true,
+    splitViewDocumentId: null,
+    activeKnowledgePane: "secondary",
     editingKnowledgeDocumentId: null,
   };
 }
@@ -702,9 +794,7 @@ export function activateKnowledgePane(
 ): DesktopPrototypeState {
   const paneState = getKnowledgePaneState(state);
   const activeKnowledgePane =
-    pane === "secondary" && paneState.secondaryDocument
-      ? "secondary"
-      : "primary";
+    pane === "secondary" && paneState.splitEnabled ? "secondary" : "primary";
   return {
     ...state,
     activeKnowledgePane,

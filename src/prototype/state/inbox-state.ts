@@ -22,9 +22,16 @@ export function getProjectInboxItems(
 export function getVisibleInboxItems(
   state: DesktopPrototypeState,
 ): PrototypeInboxItem[] {
-  return getProjectInboxItems(state).filter(
-    (item) => state.inboxFilter === "all" || item.kind === state.inboxFilter,
-  );
+  const normalizedQuery = state.inboxSearchQuery.trim().toLocaleLowerCase();
+  return getProjectInboxItems(state).filter((item) => {
+    const matchesFilter =
+      state.inboxFilter === "all" || item.kind === state.inboxFilter;
+    if (!matchesFilter || normalizedQuery.length === 0) return matchesFilter;
+    return [item.title, item.preview, item.source]
+      .join(" ")
+      .toLocaleLowerCase()
+      .includes(normalizedQuery);
+  });
 }
 
 export function firstInboxItemForProject(
@@ -39,6 +46,30 @@ export function setInboxFilter(
   filter: InboxFilter,
 ): DesktopPrototypeState {
   return { ...state, inboxFilter: filter };
+}
+
+export function setInboxSearchQuery(
+  state: DesktopPrototypeState,
+  query: string,
+): DesktopPrototypeState {
+  return { ...state, inboxSearchQuery: query };
+}
+
+export function moveInboxItem(
+  state: DesktopPrototypeState,
+  itemId: string,
+  targetItemId: string | null,
+  targetFilter: InboxFilter,
+): DesktopPrototypeState {
+  const source = state.inboxItems.find((item) => item.id === itemId);
+  if (!source || targetFilter === "all") return state;
+  const moved = { ...source, kind: targetFilter };
+  const remaining = state.inboxItems.filter((item) => item.id !== itemId);
+  const targetIndex = targetItemId
+    ? remaining.findIndex((item) => item.id === targetItemId)
+    : -1;
+  remaining.splice(targetIndex < 0 ? remaining.length : targetIndex, 0, moved);
+  return { ...state, inboxItems: remaining };
 }
 
 export function selectInboxItem(

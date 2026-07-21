@@ -1,5 +1,7 @@
 import React from "react";
 import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
+import type { PhrasingContent, Table, TableCell } from "mdast";
+import { parseMarkdown } from "@/lib/markdown/pipeline";
 
 export type DocumentHeading = {
   id: string;
@@ -63,6 +65,17 @@ export function MarkdownDocumentPreview({
       index = codeIndex;
       continue;
     }
+    const table = getMarkdownTable(document.content, index);
+    if (table) {
+      blocks.push(
+        <MarkdownTable
+          key={`${document.id}-table-${index}`}
+          table={table.table}
+        />,
+      );
+      index = table.endIndex;
+      continue;
+    }
     const heading = headings.find(
       (item) => item.id === `document-${document.id}-heading-${index}`,
     );
@@ -75,6 +88,150 @@ export function MarkdownDocumentPreview({
     );
   }
   return <>{blocks}</>;
+}
+
+function splitTableRow(line: string): string[] {
+  const trimmed = line.trim();
+  const withoutOuterPipes = trimmed.startsWith("|")
+    ? trimmed.slice(1)
+    : trimmed;
+  const normalized = withoutOuterPipes.endsWith("|")
+    ? withoutOuterPipes.slice(0, -1)
+    : withoutOuterPipes;
+  return normalized.split("|").map((cell) => cell.trim());
+}
+
+function isTableDelimiter(line: string): boolean {
+  const cells = splitTableRow(line);
+  return (
+    cells.length > 1 && cells.every((cell) => /^:?-{3,}:?$/.test(cell.trim()))
+  );
+}
+
+function getMarkdownTable(
+  lines: string[],
+  startIndex: number,
+): { endIndex: number; table: Table } | null {
+  const header = lines[startIndex];
+  const delimiter = lines[startIndex + 1];
+  if (
+    !header ||
+    !delimiter ||
+    !header.includes("|") ||
+    !isTableDelimiter(delimiter)
+  ) {
+    return null;
+  }
+
+  const tableLines = [header, delimiter];
+  let endIndex = startIndex + 1;
+  while (endIndex + 1 < lines.length) {
+    const row = lines[endIndex + 1];
+    if (!row?.trim() || !row.includes("|")) break;
+    tableLines.push(row);
+    endIndex += 1;
+  }
+
+  const parsed = parseMarkdown(tableLines.join("\n"));
+  const table = parsed.children.find(
+    (node): node is Table => node.type === "table",
+  );
+  return table ? { endIndex, table } : null;
+}
+
+function MarkdownTable({ table }: { table: Table }): React.JSX.Element {
+  const [header, ...body] = table.children;
+  return (
+    <div className="document-table-scroll">
+      <table>
+        <thead>
+          <tr>
+            {header?.children.map((cell, index) => (
+              <MarkdownTableCell
+                cell={cell}
+                header
+                key={`header-${index}`}
+                style={{ textAlign: table.align?.[index] ?? "left" }}
+              />
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {body.map((row, rowIndex) => (
+            <tr key={`row-${rowIndex}`}>
+              {row.children.map((cell, cellIndex) => (
+                <MarkdownTableCell
+                  cell={cell}
+                  key={`${rowIndex}-${cellIndex}`}
+                  style={{ textAlign: table.align?.[cellIndex] ?? "left" }}
+                />
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function MarkdownTableCell({
+  cell,
+  header = false,
+  style,
+}: {
+  cell: TableCell;
+  header?: boolean;
+  style: React.CSSProperties;
+}): React.JSX.Element {
+  const content = renderTableInlineMarkdown(cell.children);
+  return header ? (
+    <th style={style}>{content}</th>
+  ) : (
+    <td style={style}>{content}</td>
+  );
+}
+
+function renderTableInlineMarkdown(
+  nodes: PhrasingContent[],
+  keyPrefix = "cell",
+): React.ReactNode[] {
+  return nodes.map((node, index) => {
+    const key = `${keyPrefix}-${index}`;
+    switch (node.type) {
+      case "text":
+        return node.value;
+      case "emphasis":
+        return (
+          <em key={key}>{renderTableInlineMarkdown(node.children, key)}</em>
+        );
+      case "strong":
+        return (
+          <strong key={key}>
+            {renderTableInlineMarkdown(node.children, key)}
+          </strong>
+        );
+      case "delete":
+        return (
+          <del key={key}>{renderTableInlineMarkdown(node.children, key)}</del>
+        );
+      case "inlineCode":
+        return <code key={key}>{node.value}</code>;
+      case "link":
+        return /^https?:\/\//.test(node.url) ? (
+          <a href={node.url} key={key} rel="noreferrer" target="_blank">
+            {renderTableInlineMarkdown(node.children, key)}
+          </a>
+        ) : (
+          renderTableInlineMarkdown(node.children, key)
+        );
+      default:
+        return "value" in node
+          ? node.value
+          : "children" in node
+            ? renderTableInlineMarkdown(node.children, key)
+            : null;
+    }
+  });
 }
 
 function MarkdownPreviewBlock({

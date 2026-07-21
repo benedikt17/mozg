@@ -1,15 +1,13 @@
 import React, { useState } from "react";
-import { inboxFilters } from "@/prototype/desktop-mock-data";
+import { projectSections } from "@/prototype/desktop-mock-data";
 import {
   getCanvasById,
-  getDocumentById,
+  getActiveProject,
   getProjectOverviewDirections,
-  getProjectTaskFolders,
   type DesktopPrototypeAction,
   type DesktopPrototypeState,
 } from "@/prototype/desktop-state";
 import { PrototypeButton } from "@/prototype/desktop-ui";
-import { ProjectSelector } from "./project-selector";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 
@@ -79,97 +77,62 @@ function OverviewHeaderControls({
   );
 }
 
-function getTaskViewTitle(state: DesktopPrototypeState): string {
-  const selectedFolder = getProjectTaskFolders(state).find(
-    (folder) => folder.id === state.selectedTaskFolderId,
+function ApplicationSectionActions({
+  state,
+  dispatch,
+}: {
+  state: DesktopPrototypeState;
+  dispatch: Dispatch;
+}): React.JSX.Element | null {
+  if (state.activeSection === "overview") {
+    return (
+      <OverviewHeaderControls
+        directions={getProjectOverviewDirections(state)}
+        dispatch={dispatch}
+        hiddenDirectionIds={state.overviewHiddenDirectionIds}
+      />
+    );
+  }
+
+  if (state.activeSection !== "canvases") return null;
+  const canvas = getCanvasById(state, state.selectedCanvasId);
+  if (!canvas) return null;
+  return (
+    <div className="application-section-actions canvas-header-actions">
+      <button type="button">−</button>
+      <button type="button">100%</button>
+      <button type="button">+</button>
+    </div>
   );
-  const selectedDirection = getProjectOverviewDirections(state).find(
-    (direction) => direction.id === state.selectedTaskDirectionId,
-  );
-  if (selectedFolder) return selectedFolder.title;
-  if (selectedDirection) return selectedDirection.title;
-  if (state.taskDayViewActive) return "Задачи на день";
-  if (state.taskFilter === "important") return "Важные";
-  if (state.taskFilter === "completed") return "Завершённые";
-  return "Все";
 }
 
-function ApplicationSectionHeader({
+function ApplicationSectionNavigation({
   state,
   dispatch,
 }: {
   state: DesktopPrototypeState;
   dispatch: Dispatch;
 }): React.JSX.Element {
-  if (state.activeSection === "overview") {
-    return (
-      <div className="application-section-header">
-        <div className="application-section-title">
-          <strong>Обзор</strong>
-        </div>
-        <div className="application-section-actions">
-          <OverviewHeaderControls
-            directions={getProjectOverviewDirections(state)}
-            dispatch={dispatch}
-            hiddenDirectionIds={state.overviewHiddenDirectionIds}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  if (state.activeSection === "knowledge") {
-    const selectedDocument = getDocumentById(state, state.selectedDocumentId);
-    return (
-      <div className="application-section-header">
-        <div className="application-section-title">
-          <span>Знания</span>
-          <strong>{selectedDocument?.title ?? "Документ"}</strong>
-        </div>
-      </div>
-    );
-  }
-
-  if (state.activeSection === "tasks") {
-    return (
-      <div className="application-section-header">
-        <div className="application-section-title">
-          <span>Задачи</span>
-          <strong>{getTaskViewTitle(state)}</strong>
-        </div>
-      </div>
-    );
-  }
-
-  if (state.activeSection === "canvases") {
-    const canvas = getCanvasById(state, state.selectedCanvasId);
-    return (
-      <div className="application-section-header">
-        <div className="application-section-title">
-          <span>Холсты</span>
-          <strong>{canvas?.title ?? "Карты"}</strong>
-        </div>
-        {canvas ? (
-          <div className="application-section-actions canvas-header-actions">
-            <button type="button">−</button>
-            <button type="button">100%</button>
-            <button type="button">+</button>
-          </div>
-        ) : null}
-      </div>
-    );
-  }
-
-  const inboxFilter = inboxFilters.find(
-    (filter) => filter.id === state.inboxFilter,
-  );
   return (
-    <div className="application-section-header">
-      <div className="application-section-title">
-        <span>Входящие</span>
-        <strong>{inboxFilter?.label ?? "Входящие"}</strong>
-      </div>
-    </div>
+    <nav
+      aria-label="Разделы приложения"
+      className="application-section-navigation"
+    >
+      {projectSections.map((section) => (
+        <PrototypeButton
+          active={state.activeSection === section.id}
+          aria-current={state.activeSection === section.id ? "page" : undefined}
+          className="application-section-navigation-item"
+          key={section.id}
+          onClick={() =>
+            dispatch({ type: "switch-section", section: section.id })
+          }
+          variant="quiet"
+        >
+          {section.label}
+        </PrototypeButton>
+      ))}
+    </nav>
   );
 }
 
@@ -181,24 +144,31 @@ export function ApplicationHeader({
   dispatch: Dispatch;
 }): React.JSX.Element {
   return (
-    <header className="application-header knowledge-application-header">
-      <ProjectSelector state={state} dispatch={dispatch} />
-      <ApplicationSectionHeader state={state} dispatch={dispatch} />
-      <div className="header-tools" aria-label="Глобальные инструменты">
-        <PrototypeButton
-          onClick={() => dispatch({ type: "open-command-palette" })}
-          variant="quiet"
-        >
-          Поиск
-        </PrototypeButton>
-        <PrototypeButton
-          active={state.contextPanel?.kind === "ai"}
-          onClick={() => dispatch({ type: "open-ai-panel" })}
-          variant="quiet"
-        >
-          AI
-        </PrototypeButton>
-        <PrototypeButton variant="quiet">Профиль</PrototypeButton>
+    <header className="application-header">
+      <div className="application-project-title">
+        <strong>{getActiveProject(state).name}</strong>
+      </div>
+      <ApplicationSectionNavigation state={state} dispatch={dispatch} />
+      <div className="application-header-right">
+        <ApplicationSectionActions state={state} dispatch={dispatch} />
+        <div className="header-tools" aria-label="Глобальные инструменты">
+          <PrototypeButton
+            onClick={() => dispatch({ type: "open-command-palette" })}
+            variant="quiet"
+          >
+            Поиск
+          </PrototypeButton>
+          {state.activeSection === "knowledge" ? null : (
+            <PrototypeButton
+              active={state.contextPanel?.kind === "ai"}
+              onClick={() => dispatch({ type: "open-ai-panel" })}
+              variant="quiet"
+            >
+              AI
+            </PrototypeButton>
+          )}
+          <PrototypeButton variant="quiet">Профиль</PrototypeButton>
+        </div>
       </div>
     </header>
   );

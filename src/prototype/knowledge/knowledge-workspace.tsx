@@ -41,15 +41,22 @@ function markdownDownloadName(title: string): string {
 export function KnowledgeWorkspace({
   state,
   dispatch,
+  aiPanel,
   onOpenTree,
+  onToggleTree,
+  treeOpen = true,
 }: {
   state: DesktopPrototypeState;
   dispatch: Dispatch;
+  aiPanel?: React.ReactNode;
   onOpenTree?: () => void;
+  onToggleTree?: () => void;
+  treeOpen?: boolean;
 }): React.JSX.Element {
   const {
     primaryDocument: selectedDocument,
     secondaryDocument: splitDocument,
+    splitEnabled,
     activePane,
     activeDocument,
   } = getKnowledgePaneState(state);
@@ -161,6 +168,34 @@ export function KnowledgeWorkspace({
     link.href = url;
     link.click();
     queueMicrotask(() => URL.revokeObjectURL(url));
+  };
+
+  const openMarkdownFilePicker = (): void => {
+    markdownFileInputRef.current?.click();
+  };
+
+  const handleLoadPointerDown = (
+    event: React.PointerEvent<HTMLButtonElement>,
+  ): void => {
+    if (event.button === 0 && event.detail <= 1) openMarkdownFilePicker();
+  };
+
+  const handleLoadClick = (
+    event: React.MouseEvent<HTMLButtonElement>,
+  ): void => {
+    if (event.detail === 0) openMarkdownFilePicker();
+  };
+
+  const handleSavePointerDown = (
+    event: React.PointerEvent<HTMLButtonElement>,
+  ): void => {
+    if (event.button === 0 && event.detail <= 1) saveMarkdown();
+  };
+
+  const handleSaveClick = (
+    event: React.MouseEvent<HTMLButtonElement>,
+  ): void => {
+    if (event.detail === 0) saveMarkdown();
   };
 
   const printArticleAsPdf = (): void => {
@@ -278,13 +313,21 @@ export function KnowledgeWorkspace({
         </div>
         <div className="document-actions">
           <div className="knowledge-responsive-actions">
-            <PrototypeButton
-              onClick={onOpenTree}
-              size="compact"
+            <IconButton
+              icon={<UiIcon name={treeOpen ? "panel-left" : "panel-right"} />}
+              label={
+                treeOpen
+                  ? "Скрыть дерево документов"
+                  : "Показать дерево документов"
+              }
+              onClick={onToggleTree ?? onOpenTree}
+              title={
+                treeOpen
+                  ? "Скрыть дерево документов"
+                  : "Показать дерево документов"
+              }
               variant="quiet"
-            >
-              Дерево
-            </PrototypeButton>
+            />
           </div>
           <IconButton
             active={editingDocumentId === activePaneDocumentId}
@@ -317,7 +360,8 @@ export function KnowledgeWorkspace({
           />
           <PrototypeButton
             aria-label="Загрузить Markdown в текущую статью"
-            onClick={() => markdownFileInputRef.current?.click()}
+            onClick={handleLoadClick}
+            onPointerDown={handleLoadPointerDown}
             size="compact"
             variant="quiet"
           >
@@ -325,7 +369,8 @@ export function KnowledgeWorkspace({
           </PrototypeButton>
           <PrototypeButton
             aria-label="Скачать текущую статью в Markdown"
-            onClick={saveMarkdown}
+            onClick={handleSaveClick}
+            onPointerDown={handleSavePointerDown}
             size="compact"
             variant="quiet"
           >
@@ -334,12 +379,14 @@ export function KnowledgeWorkspace({
           <div className="document-share-control" ref={shareMenuRef}>
             <PrototypeButton
               aria-expanded={shareMenuOpen}
+              aria-label="Поделиться статьёй"
               aria-haspopup="menu"
               onClick={() => setShareMenuOpen((open) => !open)}
-              size="compact"
+              size="icon"
+              title="Поделиться статьёй"
               variant="quiet"
             >
-              Поделиться
+              <UiIcon name="share" />
             </PrototypeButton>
           </div>
           <PrototypeButton
@@ -351,40 +398,14 @@ export function KnowledgeWorkspace({
             Задачи
           </PrototypeButton>
           <PrototypeButton
-            active={selectedDocument.isKeyDocument === true}
-            onClick={() =>
-              dispatch({
-                type: "toggle-key-document",
-                documentId: selectedDocument.id,
-              })
-            }
-            size="compact"
-            title="Добавить или убрать из ключевых документов проекта"
-            variant="quiet"
-          >
-            <UiIcon name="pin" />
-            Ключевой
-          </PrototypeButton>
-          <PrototypeButton
-            active={Boolean(state.splitViewDocumentId)}
+            active={splitEnabled}
             onClick={() => dispatch({ type: "toggle-knowledge-split-view" })}
-            size="compact"
+            aria-label="Включить или выключить Split"
+            size="icon"
+            title="Включить или выключить Split"
             variant="quiet"
           >
-            Split
-          </PrototypeButton>
-          <PrototypeButton
-            active={state.contextPanel?.kind === "document-context"}
-            onClick={() =>
-              dispatch({
-                type: "open-document-context",
-                documentId: selectedDocument.id,
-              })
-            }
-            size="compact"
-            variant="quiet"
-          >
-            Контекст
+            <UiIcon name="split" />
           </PrototypeButton>
           <PrototypeButton
             active={state.contextPanel?.kind === "ai"}
@@ -443,83 +464,105 @@ export function KnowledgeWorkspace({
         </div>
       ) : null}
       <div
-        className={[
-          "document-body",
-          splitDocument ? "is-split-view" : "",
-          editingDocumentId ? "is-markdown-editing" : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
+        className={
+          aiPanel
+            ? "knowledge-ai-content-region"
+            : "knowledge-document-content-wrapper"
+        }
       >
-        {splitDocument ? null : <DocumentOutline document={selectedDocument} />}
         <div
-          className={`document-breadcrumb-row is-primary ${
-            activePane === "primary" ? "is-active" : ""
-          }`}
+          className={
+            aiPanel
+              ? "knowledge-ai-document-pane"
+              : "knowledge-document-content-wrapper"
+          }
         >
-          {getDocumentBreadcrumb(selectedDocument)}
-        </div>
-        {splitDocument ? (
           <div
-            className={`document-breadcrumb-row is-secondary ${
-              activePane === "secondary" ? "is-active" : ""
-            }`}
+            className={[
+              "document-body",
+              splitEnabled ? "is-split-view" : "",
+              editingDocumentId ? "is-markdown-editing" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
           >
-            {getDocumentBreadcrumb(splitDocument)}
-          </div>
-        ) : null}
-        {splitDocument ? (
-          <div
-            aria-label="Выбор документа Split"
-            className="knowledge-split-switcher"
-            role="tablist"
-          >
-            <button
-              aria-selected={activePane === "primary"}
-              className={activePane === "primary" ? "active" : ""}
-              onClick={() => activatePane("primary")}
-              role="tab"
-              type="button"
+            {!splitEnabled ? (
+              <DocumentOutline document={selectedDocument} />
+            ) : null}
+            <div
+              className={`document-breadcrumb-row is-primary ${
+                activePane === "primary" ? "is-active" : ""
+              }`}
             >
-              Левый: {selectedDocument.title}
-            </button>
-            <button
-              aria-selected={activePane === "secondary"}
-              className={activePane === "secondary" ? "active" : ""}
-              onClick={() => activatePane("secondary")}
-              role="tab"
-              type="button"
+              {getDocumentBreadcrumb(selectedDocument)}
+            </div>
+            {splitEnabled && splitDocument ? (
+              <div
+                className={`document-breadcrumb-row is-secondary ${
+                  activePane === "secondary" ? "is-active" : ""
+                }`}
+              >
+                {getDocumentBreadcrumb(splitDocument)}
+              </div>
+            ) : null}
+            {splitEnabled ? (
+              <div
+                aria-label="Выбор документа Split"
+                className="knowledge-split-switcher"
+                role="tablist"
+              >
+                <button
+                  aria-selected={activePane === "primary"}
+                  className={activePane === "primary" ? "active" : ""}
+                  onClick={() => activatePane("primary")}
+                  role="tab"
+                  type="button"
+                >
+                  Левый: {selectedDocument.title}
+                </button>
+                <button
+                  aria-selected={activePane === "secondary"}
+                  className={activePane === "secondary" ? "active" : ""}
+                  onClick={() => activatePane("secondary")}
+                  role="tab"
+                  type="button"
+                >
+                  Правый: {splitDocument?.title ?? "Выберите документ"}
+                </button>
+              </div>
+            ) : null}
+            <div
+              className={[
+                "document-editor-surface",
+                splitEnabled ? "is-split-view" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
             >
-              Правый: {splitDocument.title}
-            </button>
+              <DocumentArticle
+                active={activePane === "primary"}
+                dispatch={dispatch}
+                document={selectedDocument}
+                editing={editingDocumentId === selectedDocument.id}
+                onActivate={() => activatePane("primary")}
+              />
+              {splitEnabled ? (
+                <DocumentArticle
+                  active={activePane === "secondary"}
+                  dispatch={dispatch}
+                  document={splitDocument}
+                  editing={
+                    Boolean(splitDocument) &&
+                    editingDocumentId === splitDocument?.id
+                  }
+                  onActivate={() => activatePane("secondary")}
+                  secondary
+                />
+              ) : null}
+            </div>
           </div>
-        ) : null}
-        <div
-          className={[
-            "document-editor-surface",
-            splitDocument ? "is-split-view" : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
-        >
-          <DocumentArticle
-            active={activePane === "primary"}
-            dispatch={dispatch}
-            document={selectedDocument}
-            editing={editingDocumentId === selectedDocument.id}
-            onActivate={() => activatePane("primary")}
-          />
-          {splitDocument ? (
-            <DocumentArticle
-              active={activePane === "secondary"}
-              dispatch={dispatch}
-              document={splitDocument}
-              editing={editingDocumentId === splitDocument.id}
-              onActivate={() => activatePane("secondary")}
-              secondary
-            />
-          ) : null}
         </div>
+        {aiPanel}
       </div>
       {currentDocument ? (
         <article
@@ -534,25 +577,6 @@ export function KnowledgeWorkspace({
           />
         </article>
       ) : null}
-      <footer className="workspace-footer">
-        <PrototypeButton
-          onClick={() =>
-            dispatch({
-              type: "open-document-context",
-              documentId: selectedDocument.id,
-            })
-          }
-          variant="quiet"
-        >
-          Открыть контекст документа
-        </PrototypeButton>
-        <PrototypeButton
-          onClick={() => dispatch({ type: "open-ai-panel" })}
-          variant="quiet"
-        >
-          AI по документу
-        </PrototypeButton>
-      </footer>
     </div>
   );
 }
@@ -560,9 +584,9 @@ export function KnowledgeWorkspace({
 function DocumentOutline({
   document,
 }: {
-  document: PrototypeDocument;
+  document: PrototypeDocument | undefined;
 }): React.JSX.Element {
-  const headings = getDocumentHeadings(document).filter(
+  const headings = (document ? getDocumentHeadings(document) : []).filter(
     (heading) => heading.level <= 2,
   );
   return (
@@ -595,7 +619,7 @@ function DocumentArticle({
   dispatch,
   onActivate,
 }: {
-  document: PrototypeDocument;
+  document: PrototypeDocument | undefined;
   secondary?: boolean;
   active: boolean;
   editing: boolean;
@@ -612,10 +636,19 @@ function DocumentArticle({
       ]
         .filter(Boolean)
         .join(" ")}
-      data-document-id={document.id}
+      aria-label={
+        document?.title ?? "Выберите документ в дереве, чтобы открыть его здесь"
+      }
+      data-document-id={document?.id}
+      onFocusCapture={onActivate}
       onPointerDown={onActivate}
+      tabIndex={0}
     >
-      {editing ? (
+      {!document ? (
+        <div className="knowledge-empty-pane">
+          Выберите документ в дереве, чтобы открыть его здесь.
+        </div>
+      ) : editing ? (
         <MarkdownSourceEditor
           dispatch={dispatch}
           document={document}

@@ -110,6 +110,7 @@ export function OverviewWorkspace({
     <div className="overview-workspace">
       <DndContext
         collisionDetection={closestCenter}
+        id="overview-dnd"
         onDragCancel={clearDragState}
         onDragEnd={handleDragEnd}
         onDragOver={handleDragOver}
