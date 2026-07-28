@@ -119,6 +119,8 @@ export function TaskCard({
   dispatch,
   drawerOpen,
   expanded,
+  isSelected = false,
+  onSelectTask,
   onToggleExpanded,
   taskCount,
   taskIndex,
@@ -128,6 +130,8 @@ export function TaskCard({
   dispatch: Dispatch<DesktopPrototypeAction>;
   drawerOpen: boolean;
   expanded: boolean;
+  isSelected?: boolean;
+  onSelectTask?: (taskId: string) => void;
   onToggleExpanded: (taskId: string) => void;
   taskCount: number;
   taskIndex: number;
@@ -180,6 +184,10 @@ export function TaskCard({
       "button, input, textarea, select, a, [role='button']",
     );
     if (interactiveControl) return;
+    if (expanded) return;
+    if (onSelectTask && !drawerOpen) {
+      onSelectTask(task.id);
+    }
     onToggleExpanded(task.id);
   };
 
@@ -188,6 +196,7 @@ export function TaskCard({
       className={[
         "task-card",
         `task-signal-${task.signal}`,
+        isSelected ? "is-selected" : "",
         isDragging ? "is-dragging" : "",
       ]
         .filter(Boolean)
@@ -339,26 +348,6 @@ export function TaskCard({
                 </ul>
               </section>
             ) : null}
-            {task.links.length > 0 ? (
-              <section className="task-card-expanded-section">
-                <h4>Ссылки</h4>
-                <ul className="task-card-resource-list">
-                  {task.links.map((link) => (
-                    <li key={link.id}>
-                      <a
-                        href={link.url}
-                        onClick={(event) => event.stopPropagation()}
-                        onPointerDown={(event) => event.stopPropagation()}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        {link.title}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
             {attachedDocuments.length > 0 ? (
               <section className="task-card-expanded-section">
                 <h4>Статьи</h4>
@@ -384,6 +373,26 @@ export function TaskCard({
                 </ul>
               </section>
             ) : null}
+            {task.links.length > 0 ? (
+              <section className="task-card-expanded-section">
+                <h4>Ссылки</h4>
+                <ul className="task-card-resource-list">
+                  {task.links.map((link) => (
+                    <li key={link.id}>
+                      <a
+                        href={link.url}
+                        onClick={(event) => event.stopPropagation()}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        {link.title}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -392,20 +401,15 @@ export function TaskCard({
           className="quiet-text-link task-card-details-link"
           onClick={(event) => {
             event.stopPropagation();
-            if (drawerOpen) {
-              dispatch({ type: "close-context-panel" });
-              return;
-            }
             dispatch({
-              type: "select-task",
+              type: "open-overview-task-focus",
               taskId: task.id,
-              section: "overview",
             });
           }}
           onPointerDown={(event) => event.stopPropagation()}
           type="button"
         >
-          {drawerOpen ? "← Проще" : "Подробнее →"}
+          Подробнее →
         </button>
       ) : null}
     </article>

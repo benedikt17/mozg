@@ -1,4 +1,5 @@
 import {
+  isPublicProjectSection,
   aiProposals,
   createCanonicalOverviewDirections,
   initialCanvases,
@@ -14,6 +15,11 @@ import {
   type PrototypeProject,
   type PrototypeTask,
 } from "@/prototype/desktop-mock-data";
+import {
+  deriveNextPrototypeCounters,
+  snapshotToDomainCollections,
+} from "@/prototype/persistence/domain-snapshot";
+import type { DesktopDomainSnapshot } from "@/prototype/persistence/domain-snapshot";
 import {
   createCanvas,
   createCanvasGroup,
@@ -49,6 +55,7 @@ import {
   toggleOverviewTaskExpanded,
 } from "@/prototype/state/overview-state";
 import {
+  closeKnowledgeSplitView,
   activateKnowledgePane,
   closeDocumentTab,
   createKnowledgeDocument,
@@ -63,6 +70,7 @@ import {
   moveKnowledgeDocument,
   renameKnowledgeFolder,
   revealCurrentKnowledgeDocument,
+  selectKnowledgeFolder,
   setKnowledgeContextMode,
   setKnowledgeSearch,
   startEditingKnowledgeFolder,
@@ -153,6 +161,13 @@ export const initialDesktopPrototypeState: DesktopPrototypeState = {
   selectedInboxItemId: "inbox-l-text",
   selectedDocumentFolder: "Персонажи",
   selectedKnowledgeFolderPath: ["Персонажи"],
+  selectedKnowledgePath: {
+    kind: "document",
+    path: ["Персонажи", "Главные герои"],
+    documentId: initialDocumentId,
+  },
+  knowledgeBreadcrumbHighlightVisible: false,
+  taskAttachOrigin: null,
   expandedFolderIds: initialExpandedFolderIds,
   knowledgeExpandedBeforeCollapse: null,
   editingKnowledgeFolderId: null,
@@ -238,6 +253,7 @@ function createPrototypeTask({
     completedAt: null,
     signal: "none",
     starred: false,
+    myDay: false,
     area,
     links: [],
     linkedDocumentIds: [],
@@ -253,6 +269,77 @@ function addAiLog(
   return {
     ...state,
     aiActivityLog: [message, ...state.aiActivityLog].slice(0, 5),
+  };
+}
+
+function hydrateDesktopDomain(
+  state: DesktopPrototypeState,
+  snapshot: DesktopDomainSnapshot,
+): DesktopPrototypeState {
+  if (snapshot.projects.length === 0) return state;
+
+  const domain = snapshotToDomainCollections(snapshot);
+  const counters = deriveNextPrototypeCounters(snapshot);
+  const activeProjectId = domain.projects.some(
+    (project) => project.id === state.activeProjectId,
+  )
+    ? state.activeProjectId
+    : domain.projects[0]!.id;
+  const activeDirectionIds = new Set(
+    domain.overviewDirections
+      .filter((direction) => direction.projectId === activeProjectId)
+      .map((direction) => direction.id),
+  );
+  const currentTaskSelection = state.taskSelection;
+  const taskSelection =
+    currentTaskSelection.kind === "system" ||
+    domain.taskLists.some(
+      (list) =>
+        list.id === currentTaskSelection.listId &&
+        list.projectId === activeProjectId,
+    )
+      ? currentTaskSelection
+      : { kind: "system" as const, view: "all" as const };
+
+  return {
+    ...state,
+    ...domain,
+    ...counters,
+    activeProjectId,
+    activeSection: isPublicProjectSection(state.activeSection)
+      ? state.activeSection
+      : "overview",
+    overviewExpandedTaskId: null,
+    overviewHiddenDirectionIds: state.overviewHiddenDirectionIds.filter(
+      (directionId) => activeDirectionIds.has(directionId),
+    ),
+    overviewScrollLeft: 0,
+    overviewArticleSourceTaskId: null,
+    overviewArticlePreviewDocumentId: null,
+    editingTaskTitleId: null,
+    selectedTaskId: null,
+    taskDetailViewTaskId: null,
+    selectedDocumentId: null,
+    selectedDocumentFolder: null,
+    selectedKnowledgeFolderPath: null,
+    selectedKnowledgePath: null,
+    expandedFolderIds: [],
+    knowledgeExpandedBeforeCollapse: null,
+    editingKnowledgeFolderId: null,
+    knowledgeSearchQuery: "",
+    openDocumentIds: [],
+    documentHistoryBack: [],
+    documentHistoryForward: [],
+    knowledgeSplitEnabled: false,
+    splitViewDocumentId: null,
+    activeKnowledgePane: "primary",
+    editingKnowledgeDocumentId: null,
+    taskSelection,
+    taskSearchQuery: "",
+    expandedTaskGroupIds: [],
+    contextPanel: null,
+    contextPanelBeforeAi: null,
+    commandPaletteOpen: false,
   };
 }
 
@@ -278,6 +365,13 @@ function switchToProject(
     selectedDocumentFolder: document?.folder ?? null,
     selectedKnowledgeFolderPath: document
       ? getDocumentFolderPath(document)
+      : null,
+    selectedKnowledgePath: document
+      ? {
+          kind: "document",
+          path: getDocumentFolderPath(document),
+          documentId: document.id,
+        }
       : null,
     expandedFolderIds: document ? getDocumentAncestorFolderIds(document) : [],
     knowledgeExpandedBeforeCollapse: null,
@@ -306,6 +400,52 @@ function switchToProject(
   };
 }
 
+function openOverviewTaskFocus(
+  state: DesktopPrototypeState,
+  taskId: string,
+  requestedDocumentId?: string,
+): DesktopPrototypeState {
+  const task = getTaskById(state, taskId);
+  if (!task) return state;
+
+  const nextState =
+    task.projectId === state.activeProjectId
+      ? state
+      : switchToProject(state, task.projectId);
+  const attachedDocuments = task.linkedDocumentIds
+    .map((documentId) => getDocumentById(nextState, documentId))
+    .filter(
+      (document): document is PrototypeDocument =>
+        document !== undefined && document.projectId === task.projectId,
+    );
+  const previewDocumentId =
+    requestedDocumentId === undefined
+      ? (attachedDocuments[0]?.id ?? null)
+      : attachedDocuments.some(
+            (document) => document.id === requestedDocumentId,
+          )
+        ? requestedDocumentId
+        : null;
+
+  if (requestedDocumentId !== undefined && previewDocumentId === null) {
+    return state;
+  }
+
+  return {
+    ...nextState,
+    activeSection: "overview",
+    editingTaskTitleId: null,
+    overviewExpandedTaskId: null,
+    overviewArticleSourceTaskId: task.id,
+    overviewArticlePreviewDocumentId: previewDocumentId,
+    selectedTaskId: task.id,
+    taskDetailViewTaskId: null,
+    contextPanel: { kind: "task", taskId: task.id },
+    contextPanelBeforeAi: null,
+    commandPaletteOpen: false,
+  };
+}
+
 function selectKnowledgeDocument(
   state: DesktopPrototypeState,
   document: PrototypeDocument,
@@ -329,6 +469,11 @@ function selectKnowledgeDocument(
     selectedDocumentId: document.id,
     selectedDocumentFolder: document.folder,
     selectedKnowledgeFolderPath: getDocumentFolderPath(document),
+    selectedKnowledgePath: {
+      kind: "document",
+      path: getDocumentFolderPath(document),
+      documentId: document.id,
+    },
     expandedFolderIds: Array.from(
       new Set([
         ...sameProjectState.expandedFolderIds,
@@ -366,6 +511,11 @@ function selectKnowledgeDocumentInActivePane(
     return {
       ...state,
       activeKnowledgePane: "primary",
+      selectedKnowledgePath: {
+        kind: "document",
+        path: getDocumentFolderPath(document),
+        documentId: document.id,
+      },
       editingKnowledgeDocumentId: null,
     };
   }
@@ -383,6 +533,11 @@ function selectKnowledgeDocumentInActivePane(
   return {
     ...state,
     splitViewDocumentId: document.id,
+    selectedKnowledgePath: {
+      kind: "document",
+      path: getDocumentFolderPath(document),
+      documentId: document.id,
+    },
     activeKnowledgePane: "secondary",
     editingKnowledgeDocumentId: null,
   };
@@ -461,6 +616,8 @@ export function desktopPrototypeReducer(
   action: DesktopPrototypeAction,
 ): DesktopPrototypeState {
   switch (action.type) {
+    case "hydrate-domain":
+      return hydrateDesktopDomain(state, action.snapshot);
     case "switch-project":
       return switchToProject(state, action.projectId);
     case "toggle-project-rail":
@@ -529,11 +686,6 @@ export function desktopPrototypeReducer(
         activeSection: action.section,
         editingTaskTitleId: null,
         editingKnowledgeFolderId: null,
-        knowledgeSplitEnabled:
-          action.section === "knowledge" ? state.knowledgeSplitEnabled : false,
-        splitViewDocumentId:
-          action.section === "knowledge" ? state.splitViewDocumentId : null,
-        activeKnowledgePane: "primary",
         editingKnowledgeDocumentId: null,
         taskDetailViewTaskId: null,
         contextPanel: null,
@@ -543,6 +695,9 @@ export function desktopPrototypeReducer(
     case "select-task": {
       const task = getTaskById(state, action.taskId);
       if (!task) return state;
+      if ((action.section ?? state.activeSection) === "overview") {
+        return openOverviewTaskFocus(state, action.taskId);
+      }
       const nextState =
         task.projectId === state.activeProjectId
           ? state
@@ -600,6 +755,9 @@ export function desktopPrototypeReducer(
     case "delete-task": {
       const task = getTaskById(state, action.taskId);
       if (!task || task.projectId !== state.activeProjectId) return state;
+      const deletingOverviewFocus =
+        state.activeSection === "overview" &&
+        state.overviewArticleSourceTaskId === task.id;
       const contextPanelReferencesTask =
         (state.contextPanel?.kind === "task" ||
           state.contextPanel?.kind === "knowledge-task-reference") &&
@@ -611,6 +769,7 @@ export function desktopPrototypeReducer(
       return {
         ...state,
         tasks: state.tasks.filter((item) => item.id !== task.id),
+        activeSection: deletingOverviewFocus ? "overview" : state.activeSection,
         selectedTaskId:
           state.selectedTaskId === task.id ? null : state.selectedTaskId,
         taskDetailViewTaskId:
@@ -637,6 +796,10 @@ export function desktopPrototypeReducer(
         contextPanelBeforeAi: restorablePanelReferencesTask
           ? null
           : state.contextPanelBeforeAi,
+        taskAttachOrigin:
+          state.taskAttachOrigin?.taskId === task.id
+            ? null
+            : state.taskAttachOrigin,
       };
     }
     case "edit-task-title":
@@ -773,6 +936,9 @@ export function desktopPrototypeReducer(
         action.targetFilter,
       );
     case "create-task": {
+      if (action.title !== undefined && action.title.trim().length === 0) {
+        return state;
+      }
       const selectedListId =
         state.activeSection === "tasks" && state.taskSelection.kind === "list"
           ? state.taskSelection.listId
@@ -851,7 +1017,7 @@ export function desktopPrototypeReducer(
         task = { ...task, starred: true };
       }
       if (action.sourceSystemView === "day") {
-        task = { ...task, dueDate: "Сегодня" };
+        task = { ...task, myDay: true };
       }
       return {
         ...state,
@@ -875,6 +1041,23 @@ export function desktopPrototypeReducer(
       return toggleKeyDocument(state, action.documentId);
     case "toggle-knowledge-folder":
       return toggleKnowledgeFolder(state, action.folderId, action.path);
+    case "select-knowledge-folder":
+      return selectKnowledgeFolder(state, action.path);
+    case "select-knowledge-folder-from-breadcrumb":
+      return {
+        ...selectKnowledgeFolder(state, action.path),
+        knowledgeBreadcrumbHighlightVisible: true,
+      };
+    case "open-knowledge-document-from-breadcrumb": {
+      const document = getDocumentById(state, action.documentId);
+      if (!document) return state;
+      return {
+        ...selectKnowledgeDocumentInActivePane(state, document),
+        knowledgeBreadcrumbHighlightVisible: true,
+      };
+    }
+    case "clear-knowledge-breadcrumb-highlight":
+      return { ...state, knowledgeBreadcrumbHighlightVisible: false };
     case "toggle-all-knowledge-folders":
       return toggleAllKnowledgeFolders(state);
     case "reveal-current-knowledge-document":
@@ -951,6 +1134,8 @@ export function desktopPrototypeReducer(
       return setKnowledgeContextMode(state, action.mode);
     case "toggle-knowledge-split-view":
       return toggleKnowledgeSplitView(state);
+    case "close-knowledge-split-view":
+      return closeKnowledgeSplitView(state);
     case "activate-knowledge-pane":
       return activateKnowledgePane(state, action.pane);
     case "toggle-knowledge-document-edit":
@@ -962,30 +1147,58 @@ export function desktopPrototypeReducer(
         contextPanel: { kind: "knowledge-tasks" },
         contextPanelBeforeAi: null,
       };
-    case "open-overview-task-article": {
+    case "open-knowledge-article-attach": {
       const task = getTaskById(state, action.taskId);
-      const document = getDocumentById(state, action.documentId);
-      if (
-        !task ||
-        !document ||
-        task.projectId !== state.activeProjectId ||
-        document.projectId !== task.projectId ||
-        !task.linkedDocumentIds.includes(document.id)
-      ) {
-        return state;
-      }
+      if (!task || task.projectId !== state.activeProjectId) return state;
+      const paneState = getKnowledgePaneState(state);
+      const requestedDocumentId = action.origin.documentId ?? null;
+      const requestedDocument = getDocumentById(state, requestedDocumentId);
+      const sourceDocument =
+        requestedDocument?.projectId === task.projectId
+          ? requestedDocument
+          : paneState.activeDocument?.projectId === task.projectId
+            ? paneState.activeDocument
+            : undefined;
+      const nextKnowledgeState = sourceDocument
+        ? selectKnowledgeDocument(state, sourceDocument, { pushHistory: false })
+        : state;
+      const closedSplitState = closeKnowledgeSplitView(nextKnowledgeState);
       return {
-        ...state,
-        overviewArticleSourceTaskId: task.id,
-        overviewArticlePreviewDocumentId: document.id,
+        ...closedSplitState,
+        activeSection: "knowledge",
+        taskAttachOrigin: {
+          ...action.origin,
+          documentId: sourceDocument?.id ?? null,
+        },
+        contextPanel: { kind: "knowledge-task-attach", taskId: task.id },
+        contextPanelBeforeAi: null,
+        commandPaletteOpen: false,
       };
     }
-    case "close-overview-article-preview":
+    case "open-overview-task-focus":
+      return openOverviewTaskFocus(state, action.taskId, action.documentId);
+    case "open-overview-task-article":
+      return openOverviewTaskFocus(state, action.taskId, action.documentId);
+    case "close-overview-article-preview": {
+      const sourceTask = state.overviewArticleSourceTaskId
+        ? getTaskById(state, state.overviewArticleSourceTaskId)
+        : undefined;
+      const taskToRestore =
+        sourceTask?.projectId === state.activeProjectId ? sourceTask.id : null;
       return {
         ...state,
+        overviewExpandedTaskId: taskToRestore,
         overviewArticleSourceTaskId: null,
         overviewArticlePreviewDocumentId: null,
+        taskDetailViewTaskId: null,
+        contextPanel:
+          state.contextPanel?.kind === "task" ? null : state.contextPanel,
+        contextPanelBeforeAi:
+          state.contextPanelBeforeAi?.kind === "task"
+            ? null
+            : state.contextPanelBeforeAi,
       };
+    }
     case "open-overview-task-article-linker": {
       const task = getTaskById(state, action.taskId);
       const document = getDocumentById(state, state.selectedDocumentId);
@@ -1014,16 +1227,58 @@ export function desktopPrototypeReducer(
         contextPanel: null,
         contextPanelBeforeAi: null,
       };
+    case "return-to-task-from-knowledge-attach": {
+      const origin = state.taskAttachOrigin;
+      const task = origin ? getTaskById(state, origin.taskId) : undefined;
+      if (!task || task.projectId !== state.activeProjectId) {
+        return {
+          ...state,
+          activeSection: "tasks",
+          taskAttachOrigin: null,
+          contextPanel: null,
+        };
+      }
+      if (origin?.section === "overview") {
+        const overviewDocumentId =
+          origin.documentId &&
+          task.linkedDocumentIds.includes(origin.documentId)
+            ? origin.documentId
+            : undefined;
+        return {
+          ...openOverviewTaskFocus(state, task.id, overviewDocumentId),
+          taskAttachOrigin: null,
+          contextPanel: {
+            kind: "task",
+            taskId: task.id,
+            initialTab: "articles",
+          },
+          contextPanelBeforeAi: null,
+        };
+      }
+      return {
+        ...state,
+        activeSection: "tasks",
+        taskAttachOrigin: null,
+        selectedTaskId: task.id,
+        taskDetailViewTaskId: null,
+        contextPanel: { kind: "task", taskId: task.id, initialTab: "articles" },
+        contextPanelBeforeAi: null,
+      };
+    }
     case "open-document-context": {
       const documentId = action.documentId ?? state.selectedDocumentId;
       if (!documentId) return state;
+      const document = getDocumentById(state, documentId);
+      if (!document || document.projectId !== state.activeProjectId) {
+        return state;
+      }
       return {
         ...state,
         activeSection: "knowledge",
-        selectedDocumentId: documentId,
+        selectedDocumentId: document.id,
         activeKnowledgePane: "primary",
         editingKnowledgeDocumentId: null,
-        contextPanel: { kind: "document-context", documentId },
+        contextPanel: { kind: "document-context", documentId: document.id },
         contextPanelBeforeAi: null,
       };
     }

@@ -332,9 +332,29 @@ export function toggleKnowledgeFolder(
   return {
     ...state,
     selectedKnowledgeFolderPath: path,
+    selectedKnowledgePath: { kind: "folder", path },
     expandedFolderIds: expanded
       ? state.expandedFolderIds.filter((id) => id !== folderId)
       : [...state.expandedFolderIds, folderId],
+    knowledgeExpandedBeforeCollapse: null,
+  };
+}
+
+export function selectKnowledgeFolder(
+  state: DesktopPrototypeState,
+  path: string[],
+): DesktopPrototypeState {
+  if (path.length === 0) return state;
+  const expandedFolderIds = path.map((_, index) =>
+    knowledgeFolderId(state.activeProjectId, path.slice(0, index + 1)),
+  );
+  return {
+    ...state,
+    selectedKnowledgeFolderPath: path,
+    selectedKnowledgePath: { kind: "folder", path },
+    expandedFolderIds: Array.from(
+      new Set([...state.expandedFolderIds, ...expandedFolderIds]),
+    ),
     knowledgeExpandedBeforeCollapse: null,
   };
 }
@@ -364,6 +384,11 @@ export function revealCurrentKnowledgeDocument(
   return {
     ...state,
     selectedKnowledgeFolderPath: getDocumentFolderPath(selectedDocument),
+    selectedKnowledgePath: {
+      kind: "document",
+      path: getDocumentFolderPath(selectedDocument),
+      documentId: selectedDocument.id,
+    },
     expandedFolderIds: Array.from(
       new Set([
         ...state.expandedFolderIds,
@@ -424,6 +449,11 @@ export function createKnowledgeDocument(
     selectedDocumentId: document.id,
     selectedDocumentFolder: document.folder,
     selectedKnowledgeFolderPath: getDocumentFolderPath(document),
+    selectedKnowledgePath: {
+      kind: "document",
+      path: getDocumentFolderPath(document),
+      documentId: document.id,
+    },
     expandedFolderIds: Array.from(
       new Set([
         ...nextState.expandedFolderIds,
@@ -487,6 +517,47 @@ export function startEditingKnowledgeFolder(
     : state;
 }
 
+function getKnowledgeFolderPathById(
+  state: DesktopPrototypeState,
+  folderId: string,
+): string[] | undefined {
+  const materializedFolder = state.knowledgeFolders.find(
+    (folder) =>
+      folder.projectId === state.activeProjectId &&
+      knowledgeFolderId(folder.projectId, folder.path) === folderId,
+  );
+  if (materializedFolder) return materializedFolder.path;
+
+  for (const document of getProjectDocuments(state)) {
+    const documentPath = getDocumentFolderPath(document);
+    for (let length = 1; length <= documentPath.length; length += 1) {
+      const path = documentPath.slice(0, length);
+      if (knowledgeFolderId(state.activeProjectId, path) === folderId) {
+        return path;
+      }
+    }
+  }
+  return undefined;
+}
+
+function getKnowledgeFolderPaths(state: DesktopPrototypeState): string[][] {
+  const paths = new Map<string, string[]>();
+  const addPath = (path: string[]): void => {
+    paths.set(knowledgeFolderId(state.activeProjectId, path), path);
+  };
+
+  for (const folder of state.knowledgeFolders) {
+    if (folder.projectId === state.activeProjectId) addPath(folder.path);
+  }
+  for (const document of getProjectDocuments(state)) {
+    const documentPath = getDocumentFolderPath(document);
+    for (let length = 1; length <= documentPath.length; length += 1) {
+      addPath(documentPath.slice(0, length));
+    }
+  }
+  return [...paths.values()];
+}
+
 export function createKnowledgeFolder(
   state: DesktopPrototypeState,
 ): DesktopPrototypeState {
@@ -502,6 +573,7 @@ export function createKnowledgeFolder(
     ...state,
     knowledgeFolders: [...state.knowledgeFolders, folder],
     selectedKnowledgeFolderPath: path,
+    selectedKnowledgePath: { kind: "folder", path },
     expandedFolderIds: Array.from(
       new Set([
         ...state.expandedFolderIds,
@@ -521,30 +593,49 @@ export function renameKnowledgeFolder(
   folderId: string,
   title: string,
 ): DesktopPrototypeState {
-  const folder = state.knowledgeFolders.find(
-    (item) =>
-      item.projectId === state.activeProjectId &&
-      knowledgeFolderId(item.projectId, item.path) === folderId,
-  );
+  const oldPath = getKnowledgeFolderPathById(state, folderId);
   const trimmedTitle = title.trim();
-  if (!folder || trimmedTitle.length === 0) {
+  if (!oldPath || trimmedTitle.length === 0) {
     return { ...state, editingKnowledgeFolderId: null };
   }
-  const oldPath = folder.path;
   const nextPath = [...oldPath.slice(0, -1), trimmedTitle];
+  if (knowledgePathsEqual(oldPath, nextPath)) {
+    return { ...state, editingKnowledgeFolderId: null };
+  }
+  const hasSiblingCollision = getKnowledgeFolderPaths(state).some(
+    (path) =>
+      knowledgePathsEqual(path, nextPath) &&
+      !knowledgePathsEqual(path, oldPath),
+  );
+  if (hasSiblingCollision) {
+    return { ...state, editingKnowledgeFolderId: null };
+  }
   const replacePrefix = (path: string[]): string[] =>
     knowledgePathStartsWith(path, oldPath)
       ? [...nextPath, ...path.slice(oldPath.length)]
       : path;
+  const oldFolderId = knowledgeFolderId(state.activeProjectId, oldPath);
+  const nextFolderId = knowledgeFolderId(state.activeProjectId, nextPath);
+  const replaceFolderIdPrefix = (id: string): string => {
+    if (id === oldFolderId) return nextFolderId;
+    const nestedPrefix = `${oldFolderId}/`;
+    return id.startsWith(nestedPrefix)
+      ? `${nextFolderId}${id.slice(oldFolderId.length)}`
+      : id;
+  };
+  const selectedDocument = getDocumentById(state, state.selectedDocumentId);
+  const selectedDocumentPath = selectedDocument
+    ? getDocumentFolderPath(selectedDocument)
+    : undefined;
   return {
     ...state,
     knowledgeFolders: state.knowledgeFolders.map((item) =>
-      item.projectId === folder.projectId
+      item.projectId === state.activeProjectId
         ? { ...item, path: replacePrefix(item.path) }
         : item,
     ),
     documents: state.documents.map((document) => {
-      if (document.projectId !== folder.projectId) return document;
+      if (document.projectId !== state.activeProjectId) return document;
       const currentPath = getDocumentFolderPath(document);
       if (!knowledgePathStartsWith(currentPath, oldPath)) return document;
       const documentPath = replacePrefix(currentPath);
@@ -557,14 +648,22 @@ export function renameKnowledgeFolder(
     selectedKnowledgeFolderPath: state.selectedKnowledgeFolderPath
       ? replacePrefix(state.selectedKnowledgeFolderPath)
       : null,
+    selectedDocumentFolder:
+      selectedDocument?.projectId === state.activeProjectId &&
+      selectedDocumentPath &&
+      knowledgePathStartsWith(selectedDocumentPath, oldPath)
+        ? (replacePrefix(selectedDocumentPath).at(-1) ?? "")
+        : state.selectedDocumentFolder,
     expandedFolderIds: Array.from(
-      new Set([
-        ...state.expandedFolderIds.filter(
-          (id) => id !== knowledgeFolderId(folder.projectId, oldPath),
-        ),
-        knowledgeFolderId(folder.projectId, nextPath),
-      ]),
+      new Set(state.expandedFolderIds.map(replaceFolderIdPrefix)),
     ),
+    knowledgeExpandedBeforeCollapse: state.knowledgeExpandedBeforeCollapse
+      ? Array.from(
+          new Set(
+            state.knowledgeExpandedBeforeCollapse.map(replaceFolderIdPrefix),
+          ),
+        )
+      : null,
     editingKnowledgeFolderId: null,
   };
 }
@@ -715,6 +814,14 @@ export function moveKnowledgeDocument(
       state.selectedDocumentId === movingDocument.id
         ? targetFolderPath
         : state.selectedKnowledgeFolderPath,
+    selectedKnowledgePath:
+      state.selectedDocumentId === movingDocument.id
+        ? {
+            kind: "document",
+            path: targetFolderPath,
+            documentId: movingDocument.id,
+          }
+        : state.selectedKnowledgePath,
     expandedFolderIds: Array.from(
       new Set([
         ...state.expandedFolderIds,
@@ -749,6 +856,13 @@ export function closeDocumentTab(
     selectedKnowledgeFolderPath: nextActiveDocument
       ? getDocumentFolderPath(nextActiveDocument)
       : null,
+    selectedKnowledgePath: nextActiveDocument
+      ? {
+          kind: "document",
+          path: getDocumentFolderPath(nextActiveDocument),
+          documentId: nextActiveDocument.id,
+        }
+      : null,
     openDocumentIds: nextOpenDocumentIds,
     contextPanel:
       state.contextPanel?.kind === "document-context" &&
@@ -774,16 +888,33 @@ export function toggleKnowledgeSplitView(
     return {
       ...state,
       knowledgeSplitEnabled: false,
-      splitViewDocumentId: null,
       activeKnowledgePane: "primary",
       editingKnowledgeDocumentId: null,
     };
   }
+  const remembered = getDocumentById(state, state.splitViewDocumentId);
+  const rememberedIsUsable =
+    remembered?.projectId === state.activeProjectId &&
+    remembered.id !== state.selectedDocumentId;
   return {
     ...state,
     knowledgeSplitEnabled: true,
-    splitViewDocumentId: null,
-    activeKnowledgePane: "secondary",
+    splitViewDocumentId: rememberedIsUsable ? remembered.id : null,
+    activeKnowledgePane:
+      rememberedIsUsable || state.splitViewDocumentId === null
+        ? "secondary"
+        : "primary",
+    editingKnowledgeDocumentId: null,
+  };
+}
+
+export function closeKnowledgeSplitView(
+  state: DesktopPrototypeState,
+): DesktopPrototypeState {
+  return {
+    ...state,
+    knowledgeSplitEnabled: false,
+    activeKnowledgePane: "primary",
     editingKnowledgeDocumentId: null,
   };
 }

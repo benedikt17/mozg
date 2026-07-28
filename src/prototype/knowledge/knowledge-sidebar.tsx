@@ -4,6 +4,7 @@ import {
   getDocumentFolderPath,
   getKnowledgePaneState,
   getKnowledgeTree,
+  knowledgePathsEqual,
   type DesktopPrototypeAction,
   type DesktopPrototypeState,
   type KnowledgeTreeNode,
@@ -186,11 +187,16 @@ function KnowledgeTreeNodeView({
       state.knowledgeSearchQuery.trim().length > 0 ||
       state.expandedFolderIds.includes(node.id);
     const editing = state.editingKnowledgeFolderId === node.id;
+    const isPathSelected =
+      state.knowledgeBreadcrumbHighlightVisible &&
+      state.selectedKnowledgePath?.kind === "folder" &&
+      knowledgePathsEqual(state.selectedKnowledgePath.path, node.path);
     const folderClassName = [
       "sidebar-tree-row",
       "sidebar-tree-container",
       "knowledge-tree-row",
       "folder",
+      isPathSelected ? "is-path-selected" : "",
       dropTarget?.kind === "folder" && dropTarget.id === node.id
         ? "is-drop-target"
         : "",
@@ -229,7 +235,9 @@ function KnowledgeTreeNodeView({
       <div className="knowledge-tree-branch">
         {editing ? (
           <div
-            className="knowledge-folder-row"
+            className={`knowledge-folder-row ${
+              isPathSelected ? "is-path-selected" : ""
+            }`}
             onDragOver={handleFolderDragOver}
             onDrop={handleFolderDrop}
             style={treeDepthStyle(depth)}
@@ -246,7 +254,9 @@ function KnowledgeTreeNodeView({
           </div>
         ) : (
           <div
-            className="knowledge-folder-row"
+            className={`knowledge-folder-row ${
+              isPathSelected ? "is-path-selected" : ""
+            }`}
             onDragOver={handleFolderDragOver}
             onDrop={handleFolderDrop}
             style={treeDepthStyle(depth)}
@@ -339,6 +349,11 @@ function KnowledgeTreeNodeView({
         "knowledge-tree-row",
         "document",
         activeDocumentId === node.document.id ? "is-active" : "",
+        state.knowledgeBreadcrumbHighlightVisible &&
+        state.selectedKnowledgePath?.kind === "document" &&
+        state.selectedKnowledgePath.documentId === node.document.id
+          ? "is-path-selected"
+          : "",
         dropTarget?.kind === "document" && dropTarget.id === node.document.id
           ? `drop-${dropTarget.position}`
           : "",

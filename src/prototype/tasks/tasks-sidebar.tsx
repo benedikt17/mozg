@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { getDraggedTaskId } from "./task-drag";
+import { useDroppable } from "@dnd-kit/core";
 import {
   getProjectTaskGroups,
   getProjectTaskLists,
@@ -10,55 +10,50 @@ import {
 } from "@/prototype/desktop-state";
 import { UiIcon } from "@/prototype/desktop-icons";
 import { IconButton, ToolSidebarItem } from "@/prototype/desktop-ui";
+import {
+  taskListDropId,
+  type TasksListDropData,
+} from "@/prototype/tasks/tasks-dnd-context";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
+
+const taskSystemViews = [
+  { view: "day", label: "Задачи на день", icon: "check-circle" },
+  { view: "important", label: "Важные", icon: "pin" },
+  { view: "all", label: "Все", icon: "layout" },
+] as const;
 
 function TaskListRow({
   list,
   state,
   dispatch,
-  isDropTarget,
-  onDragOver,
-  onDragLeave,
-  onDrop,
 }: {
   list: ReturnType<typeof getProjectTaskLists>[number];
   state: DesktopPrototypeState;
   dispatch: Dispatch;
-  isDropTarget: boolean;
-  onDragOver: (listId: string) => void;
-  onDragLeave: (listId: string) => void;
-  onDrop: (event: React.DragEvent<HTMLButtonElement>, listId: string) => void;
 }): React.JSX.Element {
   const active =
     state.taskSelection.kind === "list" &&
     state.taskSelection.listId === list.id;
+  const { isOver, setNodeRef } = useDroppable({
+    id: taskListDropId(list.id),
+    data: {
+      type: "tasks-list",
+      listId: list.id,
+    } satisfies TasksListDropData,
+  });
   return (
     <button
       aria-current={active ? "page" : undefined}
       className={[
         "task-custom-list-select",
         active && "is-active",
-        isDropTarget && "is-drop-target",
+        isOver && "is-drop-target",
       ]
         .filter(Boolean)
         .join(" ")}
       onClick={() => dispatch({ type: "select-task-list", listId: list.id })}
-      onDragLeave={(event) => {
-        if (
-          event.relatedTarget instanceof Node &&
-          event.currentTarget.contains(event.relatedTarget)
-        ) {
-          return;
-        }
-        onDragLeave(list.id);
-      }}
-      onDragOver={(event) => {
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "move";
-        onDragOver(list.id);
-      }}
-      onDrop={(event) => onDrop(event, list.id)}
+      ref={setNodeRef}
       type="button"
     >
       <span>{list.title}</span>
@@ -73,18 +68,10 @@ function TaskListRows({
   lists,
   state,
   dispatch,
-  dragOverListId,
-  onDragOver,
-  onDragLeave,
-  onDrop,
 }: {
   lists: ReturnType<typeof getProjectTaskLists>;
   state: DesktopPrototypeState;
   dispatch: Dispatch;
-  dragOverListId: string | null;
-  onDragOver: (listId: string) => void;
-  onDragLeave: (listId: string) => void;
-  onDrop: (event: React.DragEvent<HTMLButtonElement>, listId: string) => void;
 }): React.JSX.Element {
   return (
     <div className="task-custom-list-items">
@@ -94,10 +81,6 @@ function TaskListRows({
           key={list.id}
           list={list}
           state={state}
-          isDropTarget={dragOverListId === list.id}
-          onDragLeave={onDragLeave}
-          onDragOver={onDragOver}
-          onDrop={onDrop}
         />
       ))}
     </div>
@@ -125,7 +108,6 @@ export function TasksSidebar({
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [groupDraft, setGroupDraft] = useState("");
   const [openGroupMenuId, setOpenGroupMenuId] = useState<string | null>(null);
-  const [dragOverListId, setDragOverListId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!openGroupMenuId) return;
@@ -146,36 +128,6 @@ export function TasksSidebar({
       document.removeEventListener("pointerdown", closeMenuOnOutsidePointer);
     };
   }, [openGroupMenuId]);
-
-  useEffect(() => {
-    const clearDropTarget = (): void => setDragOverListId(null);
-    window.addEventListener("dragend", clearDropTarget);
-    window.addEventListener("drop", clearDropTarget);
-    return () => {
-      window.removeEventListener("dragend", clearDropTarget);
-      window.removeEventListener("drop", clearDropTarget);
-    };
-  }, []);
-
-  const handleListDrop = (
-    event: React.DragEvent<HTMLButtonElement>,
-    targetListId: string,
-  ): void => {
-    event.preventDefault();
-    event.stopPropagation();
-    const taskId = getDraggedTaskId(event);
-    setDragOverListId(null);
-    if (!taskId) return;
-    dispatch({
-      type: "move-task-to-list",
-      taskId,
-      targetListId,
-      targetTaskId: null,
-      ...(state.taskSelection.kind === "system"
-        ? { sourceSystemView: state.taskSelection.view }
-        : {}),
-    });
-  };
 
   const cancelGroupCreation = (): void => {
     setGroupCreationOpen(false);
@@ -247,20 +199,26 @@ export function TasksSidebar({
           className="vertical-menu task-sidebar-group"
           aria-label="Системные представления"
         >
-          <ToolSidebarItem
-            active={
-              state.taskSelection.kind === "system" &&
-              state.taskSelection.view === "all"
-            }
-            onClick={() =>
-              dispatch({ type: "select-task-system-view", view: "all" })
-            }
-          >
-            <span className="task-system-view-row">
-              <span>Все</span>
-              <span>{getTaskSystemViewCount(state, "all")}</span>
-            </span>
-          </ToolSidebarItem>
+          {taskSystemViews.map(({ view, label, icon }) => (
+            <ToolSidebarItem
+              active={
+                state.taskSelection.kind === "system" &&
+                state.taskSelection.view === view
+              }
+              key={view}
+              onClick={() =>
+                dispatch({ type: "select-task-system-view", view })
+              }
+            >
+              <span className="task-system-view-row">
+                <span className="task-system-view-label">
+                  <UiIcon name={icon} />
+                  {label}
+                </span>
+                <span>{getTaskSystemViewCount(state, view)}</span>
+              </span>
+            </ToolSidebarItem>
+          ))}
         </nav>
         <div className="task-sidebar-separator" />
         {baza ? (
@@ -277,14 +235,6 @@ export function TasksSidebar({
                 dispatch={dispatch}
                 lists={bazaLists}
                 state={state}
-                dragOverListId={dragOverListId}
-                onDragLeave={(listId) => {
-                  setDragOverListId((current) =>
-                    current === listId ? null : current,
-                  );
-                }}
-                onDragOver={setDragOverListId}
-                onDrop={handleListDrop}
               />
             </div>
           </section>
@@ -398,14 +348,6 @@ export function TasksSidebar({
                       dispatch={dispatch}
                       lists={groupLists}
                       state={state}
-                      dragOverListId={dragOverListId}
-                      onDragLeave={(listId) => {
-                        setDragOverListId((current) =>
-                          current === listId ? null : current,
-                        );
-                      }}
-                      onDragOver={setDragOverListId}
-                      onDrop={handleListDrop}
                     />
                     {listCreationGroupId === group.id ? (
                       <form

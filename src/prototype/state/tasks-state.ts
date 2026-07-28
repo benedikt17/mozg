@@ -91,16 +91,22 @@ export function getTaskListActiveCount(
   ).length;
 }
 
+export function isTaskInSystemView(
+  task: PrototypeTask,
+  view: TaskSystemView,
+): boolean {
+  if (task.completedAt !== null) return false;
+  if (view === "day") return task.myDay;
+  if (view === "important") return task.starred;
+  return true;
+}
+
 export function getTaskSystemViewCount(
   state: DesktopPrototypeState,
   view: TaskSystemView,
 ): number {
-  return getProjectTasks(state).filter((task) => {
-    if (task.completedAt !== null) return false;
-    if (view === "day") return task.dueDate !== undefined;
-    if (view === "important") return task.starred;
-    return true;
-  }).length;
+  return getProjectTasks(state).filter((task) => isTaskInSystemView(task, view))
+    .length;
 }
 
 export function getCompletedTasksForList(
@@ -122,11 +128,7 @@ export function getVisibleTaskList(
         state.taskSelection.kind === "list"
           ? task.listId === state.taskSelection.listId &&
             task.completedAt === null
-          : state.taskSelection.view === "day"
-            ? task.dueDate !== undefined && task.completedAt === null
-            : state.taskSelection.view === "important"
-              ? task.starred
-              : true;
+          : isTaskInSystemView(task, state.taskSelection.view);
       return (
         matchesView &&
         (normalizedQuery.length === 0 ||
@@ -159,11 +161,21 @@ export function updateTask(
   taskId: string,
   updater: (task: PrototypeTask) => PrototypeTask,
 ): DesktopPrototypeState {
+  const taskIndex = state.tasks.findIndex(
+    (task) => task.id === taskId && task.projectId === state.activeProjectId,
+  );
+  if (taskIndex < 0) return state;
+
+  const task = state.tasks[taskIndex];
+  if (!task) return state;
+  const updatedTask = updater(task);
+  if (updatedTask === task) return state;
+
+  const tasks = [...state.tasks];
+  tasks[taskIndex] = updatedTask;
   return {
     ...state,
-    tasks: state.tasks.map((task) =>
-      task.id === taskId ? updater(task) : task,
-    ),
+    tasks,
   };
 }
 
@@ -289,8 +301,6 @@ export function beginTaskTitleEdit(
   return {
     ...state,
     editingTaskTitleId: task.id,
-    contextPanel: null,
-    contextPanelBeforeAi: null,
   };
 }
 
@@ -299,6 +309,8 @@ export function commitTaskTitleEdit(
   taskId: string,
   title: string,
 ): DesktopPrototypeState {
+  const task = getTaskById(state, taskId);
+  if (!task || task.projectId !== state.activeProjectId) return state;
   const trimmedTitle = title.trim();
   if (state.editingTaskTitleId !== taskId || trimmedTitle.length === 0) {
     return {
@@ -413,6 +425,8 @@ export function toggleSubtask(
   taskId: string,
   subtaskId: string,
 ): DesktopPrototypeState {
+  const task = getTaskById(state, taskId);
+  if (!task?.subtasks.some((subtask) => subtask.id === subtaskId)) return state;
   return updateTask(state, taskId, (task) => ({
     ...task,
     subtasks: task.subtasks.map((subtask) =>
@@ -648,7 +662,7 @@ export function renameTaskList(
   const list = state.taskLists.find(
     (item) => item.id === listId && item.projectId === state.activeProjectId,
   );
-  if (!list || list.kind !== "user") return state;
+  if (!list) return state;
   return {
     ...state,
     taskLists: state.taskLists.map((item) =>
@@ -776,11 +790,7 @@ export function moveTaskToList(
       })();
   const taskAfterLeavingSystemView =
     sourceSystemView === "day"
-      ? (() => {
-          const taskWithoutDueDate = { ...movingTask };
-          delete taskWithoutDueDate.dueDate;
-          return taskWithoutDueDate;
-        })()
+      ? { ...movingTask, myDay: false }
       : sourceSystemView === "important"
         ? { ...movingTask, starred: false }
         : movingTask;

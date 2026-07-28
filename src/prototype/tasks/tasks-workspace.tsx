@@ -1,16 +1,29 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useDroppable } from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type { PrototypeTask } from "@/prototype/desktop-mock-data";
 import {
   getCompletedTasksForList,
-  getProjectTaskGroups,
-  getProjectTaskLists,
   getTaskById,
   getTaskListById,
   getVisibleTaskList,
   type DesktopPrototypeAction,
   type DesktopPrototypeState,
 } from "@/prototype/desktop-state";
-import { getDraggedTaskId, taskDragMimeType } from "./task-drag";
+import { TaskDropGap } from "@/prototype/dnd/task-dnd-primitives";
+import {
+  getTasksListActiveTasks,
+  taskDragId,
+  taskInsertionId,
+  type TasksInsertionDropData,
+  type TasksTaskDragData,
+  useTasksDnd,
+} from "@/prototype/tasks/tasks-dnd-context";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 
@@ -23,13 +36,12 @@ export function TasksWorkspace({
 }): React.JSX.Element {
   const [taskComposerOpen, setTaskComposerOpen] = useState(false);
   const [taskComposerDraft, setTaskComposerDraft] = useState("");
-  const [taskComposerDestinationListId, setTaskComposerDestinationListId] =
-    useState("");
   const [completedOpen, setCompletedOpen] = useState(false);
   const [editingTaskListId, setEditingTaskListId] = useState<string | null>(
     null,
   );
   const [taskListTitleDraft, setTaskListTitleDraft] = useState("");
+  const { activeTaskId, dropTarget } = useTasksDnd();
   const taskComposerInputRef = useRef<HTMLInputElement>(null);
   const taskListTitleInputRef = useRef<HTMLInputElement>(null);
   const focusedTask = getTaskById(state, state.taskDetailViewTaskId);
@@ -37,14 +49,6 @@ export function TasksWorkspace({
     state.taskSelection.kind === "list"
       ? getTaskListById(state, state.taskSelection.listId)
       : undefined;
-  const destinationGroups = getProjectTaskGroups(state)
-    .map((group) => ({
-      group,
-      lists: getProjectTaskLists(state).filter(
-        (list) => list.groupId === group.id,
-      ),
-    }))
-    .filter(({ lists }) => lists.length > 0);
   const completedTasks = selectedList
     ? getCompletedTasksForList(state, selectedList.id)
     : [];
@@ -53,6 +57,7 @@ export function TasksWorkspace({
       ? [focusedTask]
       : []
     : getVisibleTaskList(state);
+  const positionedTasks = tasks.filter((task) => task.id !== activeTaskId);
 
   useEffect(() => {
     if (!taskComposerOpen) return;
@@ -61,33 +66,23 @@ export function TasksWorkspace({
 
   useEffect(() => {
     if (editingTaskListId !== selectedList?.id) return;
-    taskListTitleInputRef.current?.focus();
-    taskListTitleInputRef.current?.select();
+    const input = taskListTitleInputRef.current;
+    input?.focus();
+    input?.setSelectionRange(input.value.length, input.value.length);
   }, [editingTaskListId, selectedList?.id]);
 
   const closeTaskComposer = (): void => {
     setTaskComposerOpen(false);
     setTaskComposerDraft("");
-    setTaskComposerDestinationListId("");
   };
 
   const createTaskFromComposer = (): void => {
     const title = taskComposerDraft.trim();
-    if (title.length === 0) return;
-    const sourceSystemView =
-      state.taskSelection.kind === "system"
-        ? state.taskSelection.view
-        : undefined;
-    if (sourceSystemView && taskComposerDestinationListId.length === 0) return;
+    if (title.length === 0 || !selectedList) return;
     dispatch({
       type: "create-task",
       title,
-      ...(sourceSystemView
-        ? {
-            destinationListId: taskComposerDestinationListId,
-            sourceSystemView,
-          }
-        : {}),
+      destinationListId: selectedList.id,
     });
     closeTaskComposer();
   };
@@ -113,7 +108,7 @@ export function TasksWorkspace({
   };
 
   const startTaskListTitleEdit = (): void => {
-    if (!selectedList || selectedList.kind !== "user") return;
+    if (!selectedList) return;
     setTaskListTitleDraft(selectedList.title);
     setEditingTaskListId(selectedList.id);
   };
@@ -140,8 +135,7 @@ export function TasksWorkspace({
       ) : null}
       <div className="task-list-scroll">
         {!state.taskDetailViewTaskId ? (
-          selectedList?.kind === "user" &&
-          editingTaskListId === selectedList.id ? (
+          selectedList && editingTaskListId === selectedList.id ? (
             <form
               className="task-list-heading-edit-form"
               onSubmit={(event) => {
@@ -163,79 +157,103 @@ export function TasksWorkspace({
                 value={taskListTitleDraft}
               />
             </form>
-          ) : selectedList?.kind === "user" ? (
+          ) : selectedList ? (
             <button
               aria-label={`Переименовать список ${selectedList.title}`}
               className="task-list-heading task-list-heading-editable"
-              onClick={startTaskListTitleEdit}
+              onDoubleClick={startTaskListTitleEdit}
               type="button"
             >
               {selectedList.title}
             </button>
           ) : (
-            <h2 className="task-list-heading">
-              {selectedList?.title ?? systemHeading}
-            </h2>
+            <h2 className="task-list-heading">{systemHeading}</h2>
           )
         ) : null}
-        <div className="task-list">
-          {tasks.map((task) => (
-            <TaskListRow
-              dispatch={dispatch}
-              key={task.id}
-              sourceSystemView={
-                state.taskSelection.kind === "system"
-                  ? state.taskSelection.view
-                  : undefined
-              }
-              task={task}
-            />
-          ))}
-          <div
-            className="task-list-drop-end"
-            onDragOver={(event) => {
-              event.preventDefault();
-              event.dataTransfer.dropEffect = "move";
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              const taskId = getDraggedTaskId(event);
-              if (!taskId || !selectedList) return;
-              dispatch({
-                type: "move-task-to-list",
-                taskId,
-                targetListId: selectedList.id,
-                targetTaskId: null,
-                ...(state.taskSelection.kind === "system"
-                  ? { sourceSystemView: state.taskSelection.view }
-                  : {}),
-              });
-            }}
-          />
-        </div>
-        {selectedList && completedTasks.length > 0 ? (
-          <section className="task-completed-section">
-            <button
-              aria-expanded={completedOpen}
-              className="task-completed-toggle"
-              onClick={() => setCompletedOpen((open) => !open)}
-              type="button"
-            >
-              <span>{`Завершённые — ${completedTasks.length}`}</span>
-              <span aria-hidden="true">{completedOpen ? "⌄" : "›"}</span>
-            </button>
-            {completedOpen ? (
-              <div className="task-list">
-                {completedTasks.map((task) => (
-                  <TaskListRow dispatch={dispatch} key={task.id} task={task} />
-                ))}
-              </div>
+        <SortableContext
+          items={[...tasks, ...completedTasks].map((task) =>
+            taskDragId(task.id),
+          )}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="task-list">
+            {tasks.map((task) => {
+              const visibleIndex = positionedTasks.findIndex(
+                (item) => item.id === task.id,
+              );
+              return (
+                <React.Fragment key={task.id}>
+                  {task.id !== activeTaskId ? (
+                    <TaskInsertionSlot
+                      index={visibleIndex}
+                      isActive={
+                        dropTarget?.listId === task.listId &&
+                        dropTarget.index === visibleIndex
+                      }
+                      listId={task.listId}
+                    />
+                  ) : null}
+                  <TaskListRow
+                    dispatch={dispatch}
+                    isSelected={state.selectedTaskId === task.id}
+                    sortable={task.completedAt === null}
+                    task={task}
+                  />
+                </React.Fragment>
+              );
+            })}
+            {selectedList ? (
+              <TaskInsertionSlot
+                index={
+                  getTasksListActiveTasks(
+                    state,
+                    selectedList.id,
+                    activeTaskId ?? "",
+                  ).length
+                }
+                isActive={
+                  activeTaskId !== null &&
+                  dropTarget?.listId === selectedList.id &&
+                  dropTarget.index ===
+                    getTasksListActiveTasks(
+                      state,
+                      selectedList.id,
+                      activeTaskId,
+                    ).length
+                }
+                listId={selectedList.id}
+              />
             ) : null}
-          </section>
-        ) : null}
+          </div>
+          {selectedList && completedTasks.length > 0 ? (
+            <section className="task-completed-section">
+              <button
+                aria-expanded={completedOpen}
+                className="task-completed-toggle"
+                onClick={() => setCompletedOpen((open) => !open)}
+                type="button"
+              >
+                <span>{`Завершённые — ${completedTasks.length}`}</span>
+                <span aria-hidden="true">{completedOpen ? "⌄" : "›"}</span>
+              </button>
+              {completedOpen ? (
+                <div className="task-list">
+                  {completedTasks.map((task) => (
+                    <TaskListRow
+                      dispatch={dispatch}
+                      isSelected={state.selectedTaskId === task.id}
+                      key={task.id}
+                      sortable={false}
+                      task={task}
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+        </SortableContext>
       </div>
-      {state.taskDetailViewTaskId ||
-      (state.taskSelection.kind !== "system" && !selectedList) ? null : (
+      {state.taskDetailViewTaskId || !selectedList ? null : (
         <div className="task-list-composer">
           {taskComposerOpen ? (
             <form
@@ -267,35 +285,7 @@ export function TasksWorkspace({
                 ref={taskComposerInputRef}
                 value={taskComposerDraft}
               />
-              {state.taskSelection.kind === "system" ? (
-                <select
-                  aria-label="Выберите список для новой задачи"
-                  className="task-composer-destination"
-                  onChange={(event) =>
-                    setTaskComposerDestinationListId(event.target.value)
-                  }
-                  value={taskComposerDestinationListId}
-                >
-                  <option value="">Выберите список</option>
-                  {destinationGroups.map(({ group, lists }) => (
-                    <optgroup key={group.id} label={group.title}>
-                      {lists.map((list) => (
-                        <option key={list.id} value={list.id}>
-                          {list.title}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              ) : null}
-              {state.taskSelection.kind === "system" ? (
-                <button
-                  disabled={taskComposerDestinationListId.length === 0}
-                  type="submit"
-                >
-                  Добавить
-                </button>
-              ) : null}
+              <button type="submit">Добавить</button>
             </form>
           ) : (
             <button
@@ -315,67 +305,64 @@ export function TasksWorkspace({
 export function TaskListRow({
   task,
   dispatch,
-  sourceSystemView,
+  isSelected = false,
+  sortable = true,
 }: {
   task: PrototypeTask;
   dispatch: Dispatch;
-  sourceSystemView?: "day" | "important" | "all";
+  isSelected?: boolean;
+  sortable?: boolean;
 }): React.JSX.Element {
-  const [isDragging, setIsDragging] = useState(false);
-  const didDragRef = useRef(false);
+  const suppressCardClickUntilRef = useRef(0);
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({
+    disabled: !sortable,
+    id: taskDragId(task.id),
+    data: {
+      type: "tasks-task",
+      taskId: task.id,
+      listId: task.listId,
+    } satisfies TasksTaskDragData,
+  });
+
+  useEffect(() => {
+    if (isDragging) suppressCardClickUntilRef.current = Date.now() + 500;
+  }, [isDragging]);
+
   return (
     <article
       className={[
         "task-row",
         `task-signal-${task.signal}`,
+        isSelected && "is-selected",
         isDragging && "is-dragging",
       ]
         .filter(Boolean)
         .join(" ")}
-      draggable={task.completedAt === null}
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
       onClick={() => {
-        if (didDragRef.current) {
-          didDragRef.current = false;
-          return;
-        }
+        if (Date.now() < suppressCardClickUntilRef.current) return;
         dispatch({ type: "select-task", taskId: task.id, section: "tasks" });
-      }}
-      onDragEnd={() => {
-        setIsDragging(false);
-      }}
-      onDragStart={(event) => {
-        if (task.completedAt !== null) {
-          event.preventDefault();
-          return;
-        }
-        didDragRef.current = true;
-        setIsDragging(true);
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData(taskDragMimeType, task.id);
-        event.dataTransfer.setData("text/plain", task.id);
-      }}
-      onDragOver={(event) => {
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "move";
-      }}
-      onDrop={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        const taskId = getDraggedTaskId(event);
-        if (!taskId || taskId === task.id) return;
-        dispatch({
-          type: "move-task-to-list",
-          taskId,
-          targetListId: task.listId,
-          targetTaskId: task.id,
-          ...(sourceSystemView ? { sourceSystemView } : {}),
-        });
       }}
     >
       <button
         aria-label={`Перетащить задачу ${task.title}`}
+        {...attributes}
+        {...listeners}
         className="task-list-drag-handle"
         onClick={(event) => event.stopPropagation()}
+        ref={setActivatorNodeRef}
         title="Перетащить задачу"
         type="button"
       >
@@ -397,8 +384,6 @@ export function TaskListRow({
           event.stopPropagation();
           dispatch({ type: "toggle-task-completed", taskId: task.id });
         }}
-        draggable={false}
-        onDragStart={(event) => event.stopPropagation()}
         role="checkbox"
         type="button"
       >
@@ -417,12 +402,40 @@ export function TaskListRow({
           event.stopPropagation();
           dispatch({ type: "toggle-task-star", taskId: task.id });
         }}
-        draggable={false}
-        onDragStart={(event) => event.stopPropagation()}
         type="button"
       >
         ★
       </button>
     </article>
+  );
+}
+
+function TaskInsertionSlot({
+  listId,
+  index,
+  isActive,
+}: {
+  listId: string;
+  index: number;
+  isActive: boolean;
+}): React.JSX.Element {
+  const { setNodeRef } = useDroppable({
+    id: taskInsertionId(listId, index),
+    data: {
+      type: "tasks-insertion",
+      listId,
+      index,
+    } satisfies TasksInsertionDropData,
+  });
+
+  return (
+    <div
+      className={["task-insertion-slot", isActive && "is-active"]
+        .filter(Boolean)
+        .join(" ")}
+      ref={setNodeRef}
+    >
+      {isActive ? <TaskDropGap /> : null}
+    </div>
   );
 }

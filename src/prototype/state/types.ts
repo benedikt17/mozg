@@ -13,16 +13,22 @@ import type {
   PrototypeTaskList,
   TaskSignal,
 } from "@/prototype/desktop-mock-data";
+import type { DesktopDomainSnapshot } from "@/prototype/persistence/domain-snapshot";
 
 export type TaskSystemView = "day" | "important" | "all";
 
 export type TaskSelection =
   { kind: "system"; view: TaskSystemView } | { kind: "list"; listId: string };
 
+export type TaskAttachOrigin =
+  | { section: "overview"; taskId: string; documentId?: string | null }
+  | { section: "tasks"; taskId: string; documentId?: string | null };
+
 export type ContextPanelState =
-  | { kind: "task"; taskId: string }
+  | { kind: "task"; taskId: string; initialTab?: "articles" }
   | { kind: "knowledge-tasks" }
   | { kind: "knowledge-task-reference"; taskId: string }
+  | { kind: "knowledge-task-attach"; taskId: string }
   | { kind: "document-context"; documentId: string }
   | { kind: "canvas-inspector"; canvasId: string; objectId: string }
   | { kind: "inbox-item"; itemId: string }
@@ -52,6 +58,11 @@ export type PrototypeKnowledgeFolder = {
   projectId: string;
   path: string[];
 };
+
+export type KnowledgePathSelection =
+  | { kind: "folder"; path: string[] }
+  | { kind: "document"; path: string[]; documentId: string }
+  | null;
 
 export type KnowledgeTreeNode =
   | {
@@ -95,6 +106,8 @@ export type DesktopPrototypeState = {
   selectedInboxItemId: string | null;
   selectedDocumentFolder: string | null;
   selectedKnowledgeFolderPath: string[] | null;
+  selectedKnowledgePath: KnowledgePathSelection;
+  knowledgeBreadcrumbHighlightVisible: boolean;
   expandedFolderIds: string[];
   knowledgeExpandedBeforeCollapse: string[] | null;
   editingKnowledgeFolderId: string | null;
@@ -114,6 +127,7 @@ export type DesktopPrototypeState = {
   inboxFilter: InboxFilter;
   inboxSearchQuery: string;
   contextPanel: ContextPanelState;
+  taskAttachOrigin: TaskAttachOrigin | null;
   contextPanelBeforeAi: RestorableContextPanelState | null;
   commandPaletteOpen: boolean;
   projects: PrototypeProject[];
@@ -139,6 +153,7 @@ export type DesktopPrototypeState = {
 };
 
 export type DesktopPrototypeAction =
+  | { type: "hydrate-domain"; snapshot: DesktopDomainSnapshot }
   | { type: "switch-project"; projectId: string }
   | { type: "toggle-project-rail" }
   | { type: "create-project" }
@@ -245,6 +260,10 @@ export type DesktopPrototypeAction =
   | { type: "open-knowledge-document-in-active-pane"; documentId: string }
   | { type: "toggle-key-document"; documentId: string }
   | { type: "toggle-knowledge-folder"; folderId: string; path: string[] }
+  | { type: "select-knowledge-folder"; path: string[] }
+  | { type: "select-knowledge-folder-from-breadcrumb"; path: string[] }
+  | { type: "open-knowledge-document-from-breadcrumb"; documentId: string }
+  | { type: "clear-knowledge-breadcrumb-highlight" }
   | { type: "toggle-all-knowledge-folders" }
   | { type: "reveal-current-knowledge-document" }
   | { type: "set-knowledge-search"; query: string }
@@ -272,14 +291,22 @@ export type DesktopPrototypeAction =
   | { type: "go-document-forward" }
   | { type: "set-knowledge-context-mode"; mode: KnowledgeContextMode }
   | { type: "toggle-knowledge-split-view" }
+  | { type: "close-knowledge-split-view" }
   | { type: "activate-knowledge-pane"; pane: KnowledgePane }
   | { type: "toggle-knowledge-document-edit"; documentId: string }
   | { type: "open-knowledge-task-linker" }
+  | {
+      type: "open-knowledge-article-attach";
+      taskId: string;
+      origin: TaskAttachOrigin;
+    }
+  | { type: "return-to-task-from-knowledge-attach" }
   | {
       type: "open-overview-task-article";
       taskId: string;
       documentId: string;
     }
+  | { type: "open-overview-task-focus"; taskId: string; documentId?: string }
   | { type: "close-overview-article-preview" }
   | { type: "open-overview-task-article-linker"; taskId: string }
   | { type: "return-to-overview-from-task-article" }

@@ -7,15 +7,167 @@ import {
   getDocumentBreadcrumb,
   getDocumentById,
   getProjectTasks,
+  getKnowledgePaneState,
   getTaskById,
   type DesktopPrototypeAction,
   type DesktopPrototypeState,
   type KnowledgeContextMode,
 } from "@/prototype/desktop-state";
-import { ContextPanelSection, PrototypeButton } from "@/prototype/desktop-ui";
+import {
+  ContextPanelSection,
+  IconButton,
+  PrototypeButton,
+} from "@/prototype/desktop-ui";
 import { taskSignalOptions } from "./task-signal-options";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
+
+export function KnowledgeTaskAttachmentPanel({
+  task,
+  state,
+  dispatch,
+}: {
+  task: PrototypeTask;
+  state: DesktopPrototypeState;
+  dispatch: Dispatch;
+}): React.JSX.Element {
+  const [documentPendingDetach, setDocumentPendingDetach] =
+    useState<PrototypeDocument | null>(null);
+  const activeDocument = getKnowledgePaneState(state).activeDocument;
+  const attachedDocuments = task.linkedDocumentIds
+    .map((id) => getDocumentById(state, id))
+    .filter((document): document is PrototypeDocument => Boolean(document));
+  const canAttach = Boolean(
+    activeDocument &&
+    activeDocument.projectId === task.projectId &&
+    !task.linkedDocumentIds.includes(activeDocument.id),
+  );
+  return (
+    <div
+      className={`knowledge-task-attachment-panel task-signal-${task.signal}`}
+    >
+      <div className="knowledge-task-attachment-heading">
+        <h2>{task.title}</h2>
+      </div>
+      <ContextPanelSection title="Статьи">
+        {attachedDocuments.map((document) => (
+          <div
+            className={`knowledge-task-attached-article-row ${
+              activeDocument?.id === document.id ? "is-active" : ""
+            }`}
+            key={document.id}
+          >
+            <button
+              className="knowledge-task-attached-article"
+              onClick={() =>
+                dispatch({
+                  type: "open-knowledge-document-in-active-pane",
+                  documentId: document.id,
+                })
+              }
+              title={document.title}
+              type="button"
+            >
+              {document.title}
+            </button>
+            <IconButton
+              aria-label={`Открепить статью «${document.title}»`}
+              className="knowledge-task-attached-article-detach"
+              icon={<span aria-hidden="true">×</span>}
+              label={`Открепить статью «${document.title}»`}
+              onClick={(event) => {
+                event.stopPropagation();
+                setDocumentPendingDetach(document);
+              }}
+              title={`Открепить статью «${document.title}»`}
+              variant="ghost"
+            />
+          </div>
+        ))}
+      </ContextPanelSection>
+      <div className="knowledge-task-attachment-actions">
+        <PrototypeButton
+          className="knowledge-task-attach-action"
+          disabled={!canAttach}
+          onClick={() => {
+            if (activeDocument && canAttach) {
+              dispatch({
+                type: "attach-task-document",
+                taskId: task.id,
+                documentId: activeDocument.id,
+              });
+            }
+          }}
+          size="compact"
+          variant="quiet"
+        >
+          {activeDocument && task.linkedDocumentIds.includes(activeDocument.id)
+            ? "Уже прикреплена"
+            : "+ Прикрепить активную статью"}
+        </PrototypeButton>
+        <PrototypeButton
+          className="knowledge-task-return-action"
+          onClick={() =>
+            dispatch({ type: "return-to-task-from-knowledge-attach" })
+          }
+          size="compact"
+          variant="quiet"
+        >
+          Вернуться к задаче
+        </PrototypeButton>
+      </div>
+      {documentPendingDetach ? (
+        <div
+          className="task-delete-confirm-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget)
+              setDocumentPendingDetach(null);
+          }}
+        >
+          <section
+            aria-describedby="knowledge-detach-confirm-description"
+            aria-labelledby="knowledge-detach-confirm-title"
+            aria-modal="true"
+            className="task-delete-confirm-dialog"
+            role="alertdialog"
+          >
+            <h2 id="knowledge-detach-confirm-title">Открепить статью?</h2>
+            <p id="knowledge-detach-confirm-description">
+              Статья «{documentPendingDetach.title}» будет удалена из этой
+              задачи. Сама статья останется в разделе «Знания».
+            </p>
+            <div className="task-delete-confirm-actions">
+              <PrototypeButton
+                onClick={() => setDocumentPendingDetach(null)}
+                variant="quiet"
+              >
+                Отмена
+              </PrototypeButton>
+              <PrototypeButton
+                className="task-delete-confirm-submit"
+                onClick={() => {
+                  if (
+                    task.linkedDocumentIds.includes(documentPendingDetach.id)
+                  ) {
+                    dispatch({
+                      type: "detach-task-document",
+                      taskId: task.id,
+                      documentId: documentPendingDetach.id,
+                    });
+                  }
+                  setDocumentPendingDetach(null);
+                }}
+                variant="quiet"
+              >
+                Открепить
+              </PrototypeButton>
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export function KnowledgeTaskLinkPanel({
   document,

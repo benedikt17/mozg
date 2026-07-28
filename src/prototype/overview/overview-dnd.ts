@@ -3,6 +3,10 @@ import type {
   OverviewDirectionId,
   PrototypeTask,
 } from "@/prototype/desktop-mock-data";
+import {
+  getVerticalInsertionIndex,
+  type VerticalDragGeometry,
+} from "@/prototype/dnd/vertical-dnd";
 
 export type OverviewDropTarget = {
   directionId: OverviewDirectionId;
@@ -20,12 +24,8 @@ export type OverviewDirectionDropData = {
   directionId: OverviewDirectionId;
 };
 
-export type VerticalDragGeometry = {
-  activeTop: number;
-  activeHeight: number;
-  overTop: number;
-  overHeight: number;
-};
+export { getVerticalInsertionIndex } from "@/prototype/dnd/vertical-dnd";
+export type { VerticalDragGeometry } from "@/prototype/dnd/vertical-dnd";
 
 export const taskDragId = (taskId: string): string => `overview-task:${taskId}`;
 
@@ -71,19 +71,7 @@ export function getOverviewInsertionIndex({
   overIndex: number | null;
   geometry: VerticalDragGeometry | null;
 }): number {
-  const safeTargetCount = Math.max(0, Math.trunc(targetCount));
-  if (overIndex === null) return safeTargetCount;
-
-  const safeOverIndex = Math.max(
-    0,
-    Math.min(Math.trunc(overIndex), Math.max(safeTargetCount - 1, 0)),
-  );
-  const insertAfter = geometry
-    ? geometry.activeTop + geometry.activeHeight / 2 >
-      geometry.overTop + geometry.overHeight / 2
-    : false;
-
-  return Math.min(safeOverIndex + (insertAfter ? 1 : 0), safeTargetCount);
+  return getVerticalInsertionIndex({ targetCount, overIndex, geometry });
 }
 
 export function getOverviewDropTarget(

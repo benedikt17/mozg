@@ -12,6 +12,7 @@ import { UiIcon } from "@/prototype/desktop-icons";
 import { IconButton, PrototypeButton } from "@/prototype/desktop-ui";
 import {
   DocumentContextPanel,
+  KnowledgeTaskAttachmentPanel,
   KnowledgeTaskLinkPanel,
   KnowledgeTaskReferencePanel,
 } from "./knowledge-context-panels";
@@ -49,9 +50,11 @@ export function ContextPanelSlot({
             ? "task-context-panel"
             : contextPanel.kind === "knowledge-tasks"
               ? "knowledge-task-link-drawer"
-              : contextPanel.kind === "knowledge-task-reference"
-                ? "knowledge-task-reference-drawer"
-                : "",
+              : contextPanel.kind === "knowledge-task-attach"
+                ? "knowledge-task-attach-drawer"
+                : contextPanel.kind === "knowledge-task-reference"
+                  ? "knowledge-task-reference-drawer"
+                  : "",
         ]
           .filter(Boolean)
           .join(" ")}
@@ -66,7 +69,9 @@ export function ContextPanelSlot({
                 : undefined
           }
         >
-          {usesIconClose || contextPanel.kind === "ai" ? null : (
+          {usesIconClose ||
+          contextPanel.kind === "ai" ||
+          contextPanel.kind === "knowledge-task-attach" ? null : (
             <div>
               <span>Контекст</span>
               <h2>{contextTitle(contextPanel)}</h2>
@@ -81,7 +86,8 @@ export function ContextPanelSlot({
               title="Закрыть AI-панель"
               variant="ghost"
             />
-          ) : usesIconClose ? (
+          ) : contextPanel.kind ===
+            "knowledge-task-attach" ? null : usesIconClose ? (
             <IconButton
               className="task-context-close"
               icon={<span aria-hidden="true">×</span>}
@@ -173,7 +179,9 @@ export function ContextPanelSlot({
 function contextTitle(
   contextPanel: Exclude<
     NonNullable<ContextPanelState>,
-    { kind: "task" } | { kind: "knowledge-tasks" }
+    | { kind: "task" }
+    | { kind: "knowledge-tasks" }
+    | { kind: "knowledge-task-attach" }
   >,
 ): string {
   if (contextPanel.kind === "document-context") return "Документ";
@@ -210,6 +218,18 @@ function renderContextPanelContent(
       />
     ) : (
       <p>Документ не найден.</p>
+    );
+  }
+  if (contextPanel.kind === "knowledge-task-attach") {
+    const task = getTaskById(state, contextPanel.taskId);
+    return task ? (
+      <KnowledgeTaskAttachmentPanel
+        dispatch={dispatch}
+        state={state}
+        task={task}
+      />
+    ) : (
+      <p>Задача не найдена.</p>
     );
   }
   if (contextPanel.kind === "knowledge-task-reference") {

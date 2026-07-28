@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { getDocumentFolderPath } from "@/prototype/state/knowledge-state";
 import type { DesktopPrototypeState } from "@/prototype/desktop-state";
 import {
   desktopPrototypeReducer,
@@ -80,6 +83,12 @@ function directionTaskIds(
 }
 
 describe("desktop structural prototype state", () => {
+  it("defines explicit My Day membership for every initial task", () => {
+    expect(
+      freshState().tasks.every((task) => typeof task.myDay === "boolean"),
+    ).toBe(true);
+  });
+
   it("keeps every project task structure rooted in one BAZA group", () => {
     const state = freshState();
     const expectedTitles = [
@@ -301,7 +310,7 @@ describe("desktop structural prototype state", () => {
     );
   });
 
-  it("renames only user lists with trimmed non-empty titles", () => {
+  it("renames task lists with trimmed non-empty titles", () => {
     let state = desktopPrototypeReducer(freshState(), {
       type: "create-task-group",
       title: "Рабочая группа",
@@ -349,7 +358,10 @@ describe("desktop structural prototype state", () => {
       listId: "lukomorie-list-scenario",
       title: "Нельзя переименовать",
     });
-    expect(baza).toBe(renamed);
+    expect(
+      baza.taskLists.find((list) => list.id === "lukomorie-list-scenario")
+        ?.title,
+    ).toBe("Нельзя переименовать");
 
     const missing = desktopPrototypeReducer(renamed, {
       type: "rename-task-list",
@@ -595,6 +607,22 @@ describe("desktop structural prototype state", () => {
     });
   });
 
+  it("routes Overview task selection directly into the focus mode", () => {
+    const next = desktopPrototypeReducer(freshState(), {
+      type: "select-task",
+      taskId: "luko-world-rules",
+      section: "overview",
+    });
+
+    expect(next.contextPanel).toEqual({
+      kind: "task",
+      taskId: "luko-world-rules",
+    });
+    expect(next.overviewArticleSourceTaskId).toBe("luko-world-rules");
+    expect(next.overviewArticlePreviewDocumentId).toBe("doc-l-geography");
+    expect(next.overviewExpandedTaskId).toBeNull();
+  });
+
   it("restores the previous contextual panel after AI is closed", () => {
     let state = freshState();
     state = desktopPrototypeReducer(state, {
@@ -634,6 +662,8 @@ describe("desktop structural prototype state", () => {
       type: "select-document",
       documentId: "doc-l-magic",
     });
+    const documentBefore = getDocumentById(state, "doc-l-magic");
+    const documentsBefore = state.documents;
     state = desktopPrototypeReducer(state, {
       type: "open-document-context",
     });
@@ -644,6 +674,75 @@ describe("desktop structural prototype state", () => {
     expect(state.contextPanel).toEqual({
       kind: "document-context",
       documentId: "doc-l-magic",
+    });
+    expect(state.documents).toBe(documentsBefore);
+    expect(getDocumentById(state, "doc-l-magic")).toBe(documentBefore);
+  });
+
+  it("ignores stale and foreign document context IDs without replacing valid context", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "open-document-context",
+      documentId: "doc-l-magic",
+    });
+    const validContext = state;
+    const validDocument = state.documents.find(
+      (document) => document.id === "doc-l-magic",
+    );
+    if (!validDocument) throw new Error("Expected a valid Knowledge document");
+    const stateWithSimilarPath = {
+      ...state,
+      documents: [
+        ...state.documents,
+        { ...validDocument, id: "doc-l-magic-other" },
+      ],
+    };
+
+    const stale = desktopPrototypeReducer(validContext, {
+      type: "open-document-context",
+      documentId: "missing-document",
+    });
+    const similarPath = desktopPrototypeReducer(stateWithSimilarPath, {
+      type: "open-document-context",
+      documentId: "doc-l-magic-missing",
+    });
+    const foreign = desktopPrototypeReducer(validContext, {
+      type: "open-document-context",
+      documentId: "doc-a-index",
+    });
+
+    expect(stale).toBe(validContext);
+    expect(similarPath).toBe(stateWithSimilarPath);
+    expect(foreign).toBe(validContext);
+    expect(validContext.contextPanel).toEqual({
+      kind: "document-context",
+      documentId: "doc-l-magic",
+    });
+    expect(
+      validContext.documents.find((document) => document.id === "doc-l-magic"),
+    ).toBe(validDocument);
+  });
+
+  it("clears old document context on project switch and opens valid new context", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "open-document-context",
+      documentId: "doc-l-magic",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "switch-project",
+      projectId: "ammonit",
+    });
+
+    expect(state.contextPanel).toBeNull();
+    expect(state.selectedDocumentId).not.toBe("doc-l-magic");
+    const newProjectDocumentId = state.selectedDocumentId;
+    state = desktopPrototypeReducer(state, {
+      type: "open-document-context",
+    });
+    expect(state.contextPanel).toEqual({
+      kind: "document-context",
+      documentId: newProjectDocumentId,
     });
   });
 
@@ -854,13 +953,18 @@ describe("desktop structural prototype state", () => {
     });
   });
 
-  it("opens an Inbox item from command palette search", () => {
+  it("does not expose Inbox items through command palette search", () => {
     let state = freshState();
     const result = getCommandResults(state, "Голосовая мысль").find(
       (item) => item.kind === "inbox",
     );
 
-    expect(result).toBeDefined();
+    expect(result).toBeUndefined();
+    expect(
+      getCommandResults(state, "РҐРѕР»СЃС‚С‹").some(
+        (item) => item.kind === "section",
+      ),
+    ).toBe(false);
     if (!result) return;
 
     state = desktopPrototypeReducer(state, {
@@ -1040,6 +1144,137 @@ describe("desktop structural prototype state", () => {
     ).toEqual(["luko-first-scene", "luko-world-rules"]);
   });
 
+  it("supports Tasks reorder at the beginning, middle and end", () => {
+    const baseState = freshState();
+    const scenarioTask = baseState.tasks.find(
+      (task) => task.id === "luko-world-rules",
+    );
+    expect(scenarioTask).toBeDefined();
+    if (!scenarioTask) return;
+    let state = desktopPrototypeReducer(
+      {
+        ...baseState,
+        tasks: [
+          ...baseState.tasks,
+          {
+            ...scenarioTask,
+            id: "luko-scenario-extra",
+            title: "Дополнительная задача сценария",
+            taskListOrder: 3,
+            overviewOrder: 2,
+            subtasks: [],
+          },
+        ],
+      },
+      {
+        type: "select-task-list",
+        listId: "lukomorie-list-scenario",
+      },
+    );
+    const listTaskIds = (): string[] =>
+      getVisibleTaskList(state)
+        .filter((task) => task.listId === "lukomorie-list-scenario")
+        .map((task) => task.id);
+    const initialIds = listTaskIds();
+    const movingTaskId = initialIds.at(-1)!;
+    const firstTaskId = initialIds[0]!;
+    const middleTaskId = initialIds[1]!;
+
+    state = desktopPrototypeReducer(state, {
+      type: "select-task",
+      taskId: movingTaskId,
+      section: "tasks",
+    });
+    const selectedTaskId = state.selectedTaskId;
+    const contextPanel = state.contextPanel;
+
+    state = desktopPrototypeReducer(state, {
+      type: "move-task-to-list",
+      taskId: movingTaskId,
+      targetListId: "lukomorie-list-scenario",
+      targetTaskId: firstTaskId,
+    });
+    expect(listTaskIds()[0]).toBe(movingTaskId);
+
+    state = desktopPrototypeReducer(state, {
+      type: "move-task-to-list",
+      taskId: movingTaskId,
+      targetListId: "lukomorie-list-scenario",
+      targetTaskId: middleTaskId,
+    });
+    const middleIndex = listTaskIds().indexOf(middleTaskId);
+    expect(listTaskIds()[middleIndex - 1]).toBe(movingTaskId);
+
+    state = desktopPrototypeReducer(state, {
+      type: "move-task-to-list",
+      taskId: movingTaskId,
+      targetListId: "lukomorie-list-scenario",
+      targetTaskId: null,
+    });
+    expect(listTaskIds().at(-1)).toBe(movingTaskId);
+    expect(state.tasks.filter((task) => task.id === movingTaskId)).toHaveLength(
+      1,
+    );
+    expect(state.selectedTaskId).toBe(selectedTaskId);
+    expect(state.contextPanel).toEqual(contextPanel);
+  });
+
+  it("keeps the Tasks drag overlay and indicator contract separate from Overview", () => {
+    const tasksSource = readFileSync(
+      resolve(process.cwd(), "src/prototype/tasks/tasks-workspace.tsx"),
+      "utf8",
+    );
+    const overviewSource = readFileSync(
+      resolve(process.cwd(), "src/prototype/overview/overview-workspace.tsx"),
+      "utf8",
+    );
+    const overviewColumnSource = readFileSync(
+      resolve(
+        process.cwd(),
+        "src/prototype/overview/overview-direction-column.tsx",
+      ),
+      "utf8",
+    );
+    const tasksDndSource = readFileSync(
+      resolve(process.cwd(), "src/prototype/tasks/tasks-dnd-context.tsx"),
+      "utf8",
+    );
+    const shellStyles = readFileSync(
+      resolve(process.cwd(), "src/prototype/desktop-shell.css"),
+      "utf8",
+    );
+
+    expect(tasksSource).toContain("useSortable");
+    expect(tasksSource).toContain("SortableContext");
+    expect(tasksSource).toContain("TaskDropGap");
+    expect(tasksSource).toContain("TaskInsertionSlot");
+    expect(tasksSource).toContain('"task-insertion-slot"');
+    expect(tasksSource).toContain("const positionedTasks = tasks.filter");
+    expect(tasksDndSource).toContain("DndContext");
+    expect(tasksDndSource).toContain("DragOverlay");
+    expect(tasksDndSource).toContain("TaskInsertionTarget");
+    expect(tasksDndSource).toContain('candidate.type === "tasks-insertion"');
+    expect(tasksDndSource).toContain("taskInsertionId");
+    expect(tasksDndSource).toContain("getVerticalInsertionIndex");
+    expect(tasksDndSource).toContain("onDragCancel={clearDragState}");
+    expect(tasksDndSource).toContain("setDropTarget(null)");
+    expect(tasksDndSource).not.toContain("onDragEnter");
+    expect(tasksDndSource).not.toContain("onDragLeave");
+    expect(tasksDndSource).not.toContain("before");
+    expect(tasksDndSource).not.toContain("after");
+    expect(tasksDndSource).not.toContain("setDragImage");
+    expect(tasksDndSource).not.toContain("task-row-native-drag-preview");
+    expect(tasksDndSource).not.toContain("nativeDragPreviewRef");
+    expect(overviewSource).toContain("<DragOverlay");
+    expect(overviewColumnSource).toContain("TaskDropGap");
+    expect(shellStyles).toContain(".task-row.drag-overlay");
+    expect(shellStyles).toContain(".task-sort-slot");
+    expect(shellStyles).toContain(".task-insertion-slot");
+    expect(shellStyles).toContain(".task-drop-indicator");
+    expect(shellStyles).not.toContain(".task-row-native-drag-preview");
+    expect(shellStyles).not.toContain(".task-row.is-drag-source");
+  });
+
   it("moves an active task between BAZA lists and updates Overview mapping", () => {
     const initial = freshState();
     const movingBefore = initial.tasks.find(
@@ -1175,10 +1410,9 @@ describe("desktop structural prototype state", () => {
       state.tasks.find((task) => task.id === "luko-first-scene"),
     ).toMatchObject({
       listId: "lukomorie-list-visual",
+      myDay: false,
+      dueDate: "19 июл",
     });
-    expect(
-      state.tasks.find((task) => task.id === "luko-first-scene"),
-    ).not.toHaveProperty("dueDate");
     expect(getVisibleTaskList(state)).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "luko-first-scene" }),
@@ -1199,6 +1433,14 @@ describe("desktop structural prototype state", () => {
       taskId: "ammonit-index",
       targetListId: "lukomorie-list-scenario",
       targetTaskId: null,
+      sourceSystemView: "day",
+    });
+    const staleTask = desktopPrototypeReducer(initial, {
+      type: "move-task-to-list",
+      taskId: "missing-task",
+      targetListId: "lukomorie-list-scenario",
+      targetTaskId: null,
+      sourceSystemView: "day",
     });
     const mismatchedTarget = desktopPrototypeReducer(initial, {
       type: "move-task-to-list",
@@ -1209,6 +1451,7 @@ describe("desktop structural prototype state", () => {
 
     expect(crossProject).toBe(initial);
     expect(inactiveTask).toBe(initial);
+    expect(staleTask).toBe(initial);
     expect(mismatchedTarget).toBe(initial);
   });
 
@@ -1272,6 +1515,168 @@ describe("desktop structural prototype state", () => {
     ).toEqual([]);
   });
 
+  it("applies shared task updates only to tasks in the active project", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "edit-task-title",
+      taskId: "luko-first-scene",
+      title: "Новый заголовок",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "toggle-task-star",
+      taskId: "luko-first-scene",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "set-task-due-date",
+      taskId: "luko-first-scene",
+      dueDate: "25 июл",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "set-task-notes",
+      taskId: "luko-first-scene",
+      notes: "Обновлённые детали",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "set-task-signal",
+      taskId: "luko-first-scene",
+      signal: "red",
+    });
+    const task = state.tasks.find((item) => item.id === "luko-first-scene");
+
+    expect(task).toMatchObject({
+      title: "Новый заголовок",
+      starred: true,
+      dueDate: "25 июл",
+      notes: "Обновлённые детали",
+      signal: "red",
+    });
+  });
+
+  it("ignores shared task mutations for stale and foreign task IDs", () => {
+    const initial = freshState();
+    const foreignTask = initial.tasks.find(
+      (task) => task.id === "ammonit-index",
+    );
+    if (!foreignTask) throw new Error("Expected a foreign task");
+    const state = {
+      ...initial,
+      tasks: initial.tasks.map((task) =>
+        task.id === foreignTask.id
+          ? {
+              ...task,
+              links: [
+                {
+                  id: "ammonit-index-link-1",
+                  title: "Existing",
+                  url: "https://example.com/existing",
+                },
+              ],
+            }
+          : task,
+      ),
+    };
+
+    const results = [
+      desktopPrototypeReducer(state, {
+        type: "edit-task-title",
+        taskId: foreignTask.id,
+        title: "Foreign title",
+      }),
+      desktopPrototypeReducer(state, {
+        type: "toggle-task-star",
+        taskId: foreignTask.id,
+      }),
+      desktopPrototypeReducer(state, {
+        type: "set-task-due-date",
+        taskId: foreignTask.id,
+        dueDate: "30 июл",
+      }),
+      desktopPrototypeReducer(state, {
+        type: "set-task-notes",
+        taskId: foreignTask.id,
+        notes: "Foreign notes",
+      }),
+      desktopPrototypeReducer(state, {
+        type: "set-task-signal",
+        taskId: foreignTask.id,
+        signal: "red",
+      }),
+      desktopPrototypeReducer(state, {
+        type: "add-task-link",
+        taskId: foreignTask.id,
+        title: "Foreign link",
+        url: "https://example.com/foreign",
+      }),
+      desktopPrototypeReducer(state, {
+        type: "edit-task-link",
+        taskId: foreignTask.id,
+        linkId: "ammonit-index-link-1",
+        title: "Changed",
+        url: "https://example.com/changed",
+      }),
+      desktopPrototypeReducer(state, {
+        type: "delete-task-link",
+        taskId: foreignTask.id,
+        linkId: "ammonit-index-link-1",
+      }),
+      desktopPrototypeReducer(state, {
+        type: "toggle-subtask",
+        taskId: foreignTask.id,
+        subtaskId: "ammonit-index-1",
+      }),
+      desktopPrototypeReducer(state, {
+        type: "add-subtask",
+        taskId: foreignTask.id,
+        title: "Foreign subtask",
+      }),
+      desktopPrototypeReducer(state, {
+        type: "rename-subtask",
+        taskId: foreignTask.id,
+        subtaskId: "ammonit-index-1",
+        title: "Changed subtask",
+      }),
+      desktopPrototypeReducer(state, {
+        type: "delete-subtask",
+        taskId: foreignTask.id,
+        subtaskId: "ammonit-index-1",
+      }),
+      desktopPrototypeReducer(state, {
+        type: "attach-task-document",
+        taskId: foreignTask.id,
+        documentId: "doc-a-questions",
+      }),
+      desktopPrototypeReducer(state, {
+        type: "detach-task-document",
+        taskId: foreignTask.id,
+        documentId: "doc-a-index",
+      }),
+      desktopPrototypeReducer(state, {
+        type: "edit-task-title",
+        taskId: "missing-task",
+        title: "Missing",
+      }),
+    ];
+
+    for (const result of results) expect(result).toBe(state);
+  });
+
+  it("ignores stale or mismatched nested task IDs unchanged", () => {
+    const state = freshState();
+    const missing = desktopPrototypeReducer(state, {
+      type: "toggle-subtask",
+      taskId: "luko-first-scene",
+      subtaskId: "missing-subtask",
+    });
+    const mismatched = desktopPrototypeReducer(state, {
+      type: "toggle-subtask",
+      taskId: "luko-first-scene",
+      subtaskId: "luko-world-rules-1",
+    });
+
+    expect(missing).toBe(state);
+    expect(mismatched).toBe(state);
+  });
+
   it("attaches only same-project articles without duplicates and detaches only the relation", () => {
     const state = freshState();
     const attached = desktopPrototypeReducer(state, {
@@ -1330,7 +1735,7 @@ describe("desktop structural prototype state", () => {
     expect(next.contextPanel).toEqual({ kind: "knowledge-tasks" });
   });
 
-  it("opens an attached article in an overlay without changing Overview UI state", () => {
+  it("opens an attached article in the Overview focus mode", () => {
     const state = desktopPrototypeReducer(freshState(), {
       type: "select-task",
       taskId: "luko-production-plan",
@@ -1357,7 +1762,10 @@ describe("desktop structural prototype state", () => {
 
     expect(opened.activeSection).toBe("overview");
     expect(opened.selectedDocumentId).toBe(state.selectedDocumentId);
-    expect(opened.contextPanel).toEqual(state.contextPanel);
+    expect(opened.contextPanel).toEqual({
+      kind: "task",
+      taskId: "luko-production-plan",
+    });
     expect(opened.overviewArticleSourceTaskId).toBe("luko-production-plan");
     expect(opened.overviewArticlePreviewDocumentId).toBe("doc-l-production");
 
@@ -1365,7 +1773,7 @@ describe("desktop structural prototype state", () => {
       type: "close-overview-article-preview",
     });
     expect(closed.activeSection).toBe("overview");
-    expect(closed.contextPanel).toEqual(state.contextPanel);
+    expect(closed.contextPanel).toBeNull();
     expect(closed.overviewArticleSourceTaskId).toBeNull();
     expect(closed.overviewArticlePreviewDocumentId).toBeNull();
     expect(closed.overviewExpandedTaskId).toBe("luko-production-plan");
@@ -1436,6 +1844,60 @@ describe("desktop structural prototype state", () => {
     expect(second.activeSection).toBe("overview");
     expect(second.overviewArticleSourceTaskId).toBe("luko-world-rules");
     expect(second.overviewArticlePreviewDocumentId).toBe("doc-l-magic");
+  });
+
+  it("opens the first attached article from Overview Подробнее", () => {
+    const next = desktopPrototypeReducer(freshState(), {
+      type: "open-overview-task-focus",
+      taskId: "luko-world-rules",
+    });
+
+    expect(next.activeSection).toBe("overview");
+    expect(next.overviewArticleSourceTaskId).toBe("luko-world-rules");
+    expect(next.overviewArticlePreviewDocumentId).toBe("doc-l-geography");
+    expect(next.overviewExpandedTaskId).toBeNull();
+    expect(next.contextPanel).toEqual({
+      kind: "task",
+      taskId: "luko-world-rules",
+    });
+  });
+
+  it("keeps the Overview focus mode usable when a task has no articles", () => {
+    const state = {
+      ...freshState(),
+      tasks: freshState().tasks.map((task) =>
+        task.id === "luko-production-plan"
+          ? { ...task, linkedDocumentIds: [] }
+          : task,
+      ),
+    };
+    const next = desktopPrototypeReducer(state, {
+      type: "open-overview-task-focus",
+      taskId: "luko-production-plan",
+    });
+
+    expect(next.overviewArticleSourceTaskId).toBe("luko-production-plan");
+    expect(next.overviewArticlePreviewDocumentId).toBeNull();
+    expect(next.contextPanel).toEqual({
+      kind: "task",
+      taskId: "luko-production-plan",
+    });
+  });
+
+  it("ignores stale or foreign Overview focus identifiers", () => {
+    const state = freshState();
+    const stale = desktopPrototypeReducer(state, {
+      type: "open-overview-task-focus",
+      taskId: "missing-task",
+    });
+    const foreignDocument = desktopPrototypeReducer(state, {
+      type: "open-overview-task-focus",
+      taskId: "luko-world-rules",
+      documentId: "doc-a-index",
+    });
+
+    expect(stale).toBe(state);
+    expect(foreignDocument).toBe(state);
   });
 
   it("renames and trims only the selected subtask", () => {
@@ -1765,12 +2227,18 @@ describe("desktop structural prototype state", () => {
     });
     expect(state.contextPanel).toEqual({ kind: "task", taskId });
 
+    expect(
+      getVisibleOverviewTasks(state).find((task) => task.id === taskId)?.title,
+    ).toBe(state.tasks.find((task) => task.id === taskId)?.title);
+    expect(state.selectedTaskId).toBe(taskId);
+    expect(state.contextPanel).toEqual({ kind: "task", taskId });
+
     state = desktopPrototypeReducer(state, {
       type: "begin-task-title-edit",
       taskId,
     });
     expect(state.editingTaskTitleId).toBe(taskId);
-    expect(state.contextPanel).toBeNull();
+    expect(state.contextPanel).toEqual({ kind: "task", taskId });
 
     state = desktopPrototypeReducer(state, {
       type: "commit-task-title-edit",
@@ -1905,12 +2373,41 @@ describe("desktop structural prototype state", () => {
     state = desktopPrototypeReducer(state, {
       type: "create-task",
       title: "Новая задача в списке",
+      destinationListId: "lukomorie-list-characters",
     });
     expect(state.tasks[0]).toMatchObject({
       listId: "lukomorie-list-characters",
       overviewDirectionId: "lukomorie-characters",
       showOnOverview: true,
+      myDay: false,
+      starred: false,
     });
+
+    const whitespace = desktopPrototypeReducer(state, {
+      type: "create-task",
+      title: "   ",
+      destinationListId: "lukomorie-list-characters",
+    });
+    expect(whitespace).toBe(state);
+
+    const staleSelection = {
+      ...state,
+      taskSelection: { kind: "list", listId: "missing-list" } as const,
+    };
+    expect(
+      desktopPrototypeReducer(staleSelection, {
+        type: "create-task",
+        title: "Stale destination",
+        destinationListId: "missing-list",
+      }),
+    ).toBe(staleSelection);
+    expect(
+      desktopPrototypeReducer(state, {
+        type: "create-task",
+        title: "Foreign destination",
+        destinationListId: "ammonit-list-scenario",
+      }),
+    ).toBe(state);
   });
 
   it("derives system-view counts from unfinished tasks in the active project", () => {
@@ -1942,8 +2439,115 @@ describe("desktop structural prototype state", () => {
       dueDate: "Сегодня",
     });
     expect(getTaskSystemViewCount(due, "important")).toBe(3);
-    expect(getTaskSystemViewCount(due, "day")).toBe(4);
+    expect(getTaskSystemViewCount(due, "day")).toBe(3);
     expect(getTaskSystemViewCount(due, "all")).toBe(5);
+  });
+
+  it("filters My Day independently from due dates, completion and projects", () => {
+    const initial = freshState();
+    const state = {
+      ...initial,
+      tasks: initial.tasks.map((task) => {
+        if (task.id === "luko-shot-list") {
+          return { ...task, myDay: false, dueDate: "30 июл" };
+        }
+        if (task.id === "luko-production-plan") {
+          const withoutDueDate = { ...task, myDay: true };
+          delete withoutDueDate.dueDate;
+          return withoutDueDate;
+        }
+        return task;
+      }),
+    };
+    const selected = desktopPrototypeReducer(state, {
+      type: "select-task-system-view",
+      view: "day",
+    });
+    const visible = getVisibleTaskList(selected);
+
+    expect(visible.map((task) => task.id)).toContain("luko-production-plan");
+    expect(visible.map((task) => task.id)).not.toContain("luko-shot-list");
+    expect(visible.map((task) => task.id)).not.toContain("luko-brief-done");
+    expect(visible.map((task) => task.id)).not.toContain("ammonit-index");
+    expect(visible).toHaveLength(getTaskSystemViewCount(selected, "day"));
+
+    const completed = desktopPrototypeReducer(selected, {
+      type: "toggle-task-completed",
+      taskId: "luko-production-plan",
+    });
+    expect(getVisibleTaskList(completed).map((task) => task.id)).not.toContain(
+      "luko-production-plan",
+    );
+    const restored = desktopPrototypeReducer(completed, {
+      type: "toggle-task-completed",
+      taskId: "luko-production-plan",
+    });
+    expect(getVisibleTaskList(restored).map((task) => task.id)).toContain(
+      "luko-production-plan",
+    );
+
+    const switched = desktopPrototypeReducer(
+      desktopPrototypeReducer(selected, {
+        type: "switch-project",
+        projectId: "ammonit",
+      }),
+      { type: "select-task-system-view", view: "day" },
+    );
+    expect(getVisibleTaskList(switched).map((task) => task.id)).toEqual([
+      "ammonit-index",
+    ]);
+  });
+
+  it("updates due dates without changing My Day membership", () => {
+    const initial = freshState();
+    const withDueDate = desktopPrototypeReducer(initial, {
+      type: "set-task-due-date",
+      taskId: "luko-shot-list",
+      dueDate: "30 июл",
+    });
+    expect(
+      withDueDate.tasks.find((task) => task.id === "luko-shot-list"),
+    ).toMatchObject({ dueDate: "30 июл", myDay: false });
+
+    const cleared = desktopPrototypeReducer(withDueDate, {
+      type: "set-task-due-date",
+      taskId: "luko-shot-list",
+      dueDate: "",
+    });
+    expect(
+      cleared.tasks.find((task) => task.id === "luko-shot-list"),
+    ).toMatchObject({ myDay: false });
+    expect(
+      cleared.tasks.find((task) => task.id === "luko-shot-list"),
+    ).toMatchObject({ dueDate: undefined, myDay: false });
+  });
+
+  it("keeps each system-view list aligned with its unfinished-task count", () => {
+    const state = freshState();
+    const views = ["day", "important", "all"] as const;
+
+    for (const view of views) {
+      const selected = desktopPrototypeReducer(state, {
+        type: "select-task-system-view",
+        view,
+      });
+      const visible = getVisibleTaskList(selected);
+
+      expect(visible).toHaveLength(getTaskSystemViewCount(selected, view));
+      expect(
+        visible.every(
+          (task) =>
+            task.projectId === selected.activeProjectId &&
+            task.completedAt === null,
+        ),
+      ).toBe(true);
+      if (view === "day") {
+        expect(visible.every((task) => task.myDay)).toBe(true);
+      }
+      if (view === "important") {
+        expect(visible.every((task) => task.starred)).toBe(true);
+      }
+    }
   });
 
   it("creates system-view tasks only with valid concrete destinations", () => {
@@ -1970,8 +2574,9 @@ describe("desktop structural prototype state", () => {
       listId: "lukomorie-list-production",
       overviewDirectionId: "lukomorie-production",
       showOnOverview: true,
-      dueDate: "Сегодня",
+      myDay: true,
     });
+    expect(state.tasks[0]).not.toHaveProperty("dueDate");
     expect(state.taskSelection).toEqual({ kind: "system", view: "all" });
 
     state = desktopPrototypeReducer(state, {
@@ -1995,6 +2600,7 @@ describe("desktop structural prototype state", () => {
       overviewDirectionId: "",
       showOnOverview: false,
       starred: true,
+      myDay: false,
     });
     expect(userCreated.taskSelection).toEqual({ kind: "system", view: "all" });
 
@@ -2005,6 +2611,17 @@ describe("desktop structural prototype state", () => {
       sourceSystemView: "all",
     });
     expect(invalidDestination).toBe(userCreated);
+
+    const allCreated = desktopPrototypeReducer(state, {
+      type: "create-task",
+      title: "Обычная задача",
+      destinationListId: "lukomorie-list-scenario",
+      sourceSystemView: "all",
+    });
+    expect(allCreated.tasks[0]).toMatchObject({
+      starred: false,
+      myDay: false,
+    });
   });
 
   it("preserves an open task panel when creating another task", () => {
@@ -2218,6 +2835,56 @@ describe("desktop structural prototype state", () => {
     expect(state.contextPanel).toBeNull();
   });
 
+  it("returns Overview to a safe state when its focused task is deleted", () => {
+    const task = freshState().tasks.find(
+      (item) => item.id === "luko-first-scene",
+    )!;
+    let state = desktopPrototypeReducer(freshState(), {
+      type: "open-overview-task-focus",
+      taskId: task.id,
+    });
+    state = {
+      ...state,
+      overviewExpandedTaskId: task.id,
+      taskAttachOrigin: { section: "overview", taskId: task.id },
+    };
+    const deleted = desktopPrototypeReducer(state, {
+      type: "delete-task",
+      taskId: task.id,
+    });
+
+    expect(deleted.activeSection).toBe("overview");
+    expect(deleted.tasks.some((item) => item.id === task.id)).toBe(false);
+    expect(deleted.selectedTaskId).toBeNull();
+    expect(deleted.overviewExpandedTaskId).toBeNull();
+    expect(deleted.overviewArticleSourceTaskId).toBeNull();
+    expect(deleted.overviewArticlePreviewDocumentId).toBeNull();
+    expect(deleted.contextPanel).toBeNull();
+    expect(deleted.contextPanelBeforeAi).toBeNull();
+    expect(deleted.taskAttachOrigin).toBeNull();
+  });
+
+  it("keeps Overview card resource sections in Subtasks, Articles, Links order", () => {
+    const taskCardSource = readFileSync(
+      resolve(process.cwd(), "src/prototype/overview/task-card.tsx"),
+      "utf8",
+    );
+    const workspaceStyles = readFileSync(
+      resolve(process.cwd(), "src/prototype/desktop-workspaces.css"),
+      "utf8",
+    );
+
+    expect(taskCardSource.indexOf("task.subtasks.length")).toBeLessThan(
+      taskCardSource.indexOf("attachedDocuments.length"),
+    );
+    expect(taskCardSource.indexOf("attachedDocuments.length")).toBeLessThan(
+      taskCardSource.indexOf("task.links.length"),
+    );
+    expect(workspaceStyles).not.toContain('id$="-subtasks-panel"');
+    expect(workspaceStyles).not.toContain('id$="-articles-panel"');
+    expect(workspaceStyles).not.toContain('id$="-links-panel"');
+  });
+
   it("creates a task at the end of the selected task list", () => {
     let state = freshState();
     state = desktopPrototypeReducer(state, {
@@ -2277,7 +2944,7 @@ describe("desktop structural prototype state", () => {
       state.tasks.filter(
         (task) =>
           task.projectId === state.activeProjectId &&
-          task.dueDate !== undefined &&
+          task.myDay &&
           task.completedAt === null,
       ).length,
     );
@@ -2303,6 +2970,7 @@ describe("desktop structural prototype state", () => {
       title: "Новый образ",
       overviewDirectionId: "lukomorie-visual",
       listId: "lukomorie-list-visual",
+      myDay: false,
     });
     expect(getVisibleTaskList(state).at(-1)?.id).toBe("mock-task-1");
     expect(state.contextPanel).toBeNull();
@@ -2371,6 +3039,8 @@ describe("desktop structural prototype state", () => {
       listId: "mock-task-list-1",
       overviewDirectionId: "",
       showOnOverview: false,
+      myDay: false,
+      starred: false,
     });
     expect(getVisibleTaskList(state).map((item) => item.id)).toContain(
       task?.id,
@@ -2575,6 +3245,34 @@ describe("desktop structural prototype state", () => {
     expect(state.selectedDocumentId).toBe(nextTab);
   });
 
+  it("selects a Knowledge breadcrumb folder without collapsing its branch", () => {
+    const next = desktopPrototypeReducer(freshState(), {
+      type: "select-knowledge-folder",
+      path: ["Персонажи", "Главные герои"],
+    });
+
+    expect(next.selectedKnowledgePath).toEqual({
+      kind: "folder",
+      path: ["Персонажи", "Главные герои"],
+    });
+    expect(next.expandedFolderIds).toContain(
+      "lukomorie:Персонажи/Главные герои",
+    );
+  });
+
+  it("selects a Knowledge breadcrumb document in the active pane", () => {
+    const next = desktopPrototypeReducer(freshState(), {
+      type: "open-knowledge-document-in-active-pane",
+      documentId: "doc-l-baba-yaga",
+    });
+
+    expect(next.selectedKnowledgePath).toEqual({
+      kind: "document",
+      path: ["Персонажи", "Волшебные существа"],
+      documentId: "doc-l-baba-yaga",
+    });
+  });
+
   it("creates an empty Knowledge document in the current folder and opens it", () => {
     const state = {
       ...freshState(),
@@ -2662,6 +3360,206 @@ describe("desktop structural prototype state", () => {
     });
 
     expect(next.editingKnowledgeFolderId).toBe(folderId);
+  });
+
+  it("renames a path-derived folder and keeps its active document and subtree", () => {
+    const initial = freshState();
+    const folder = getKnowledgeTree(initial).find(
+      (node) =>
+        node.kind === "folder" &&
+        node.path.length === 1 &&
+        node.children.some((child) => child.kind === "document"),
+    );
+    expect(folder?.kind).toBe("folder");
+    if (!folder || folder.kind !== "folder") return;
+    const directDocument = folder.children.find(
+      (node) => node.kind === "document",
+    );
+    expect(directDocument?.kind).toBe("document");
+    if (!directDocument || directDocument.kind !== "document") return;
+    const folderId = folder.id;
+    const childFolder = folder.children.find((node) => node.kind === "folder");
+    const state = {
+      ...initial,
+      selectedDocumentId: directDocument.id,
+      selectedKnowledgeFolderPath: folder.path,
+      expandedFolderIds: [folderId, ...(childFolder ? [childFolder.id] : [])],
+    };
+    const renamed = desktopPrototypeReducer(state, {
+      type: "rename-knowledge-folder",
+      folderId,
+      title: "Материалы",
+    });
+    const selectedDocument = renamed.documents.find(
+      (document) => document.id === directDocument.id,
+    );
+
+    expect(selectedDocument?.folderPath?.[0]).toBe("Материалы");
+    expect(selectedDocument?.id).toBe(directDocument.id);
+    expect(selectedDocument?.content).toEqual(directDocument.document.content);
+    expect(renamed.selectedDocumentId).toBe(directDocument.id);
+    expect(renamed.selectedKnowledgeFolderPath).toEqual([
+      "Материалы",
+      ...folder.path.slice(1),
+    ]);
+    expect(renamed.expandedFolderIds).toContain(
+      `lukomorie:Материалы${folder.path.length > 1 ? `/${folder.path.slice(1).join("/")}` : ""}`,
+    );
+    if (childFolder) {
+      expect(renamed.expandedFolderIds).toContain(
+        `lukomorie:Материалы/${childFolder.path.slice(1).join("/")}`,
+      );
+    }
+    expect(
+      getKnowledgeTree(renamed).some(
+        (node) => node.kind === "folder" && node.path[0] === "Материалы",
+      ),
+    ).toBe(true);
+    expect(
+      getKnowledgeTree(renamed).some(
+        (node) => node.kind === "folder" && node.path[0] === folder.path[0],
+      ),
+    ).toBe(false);
+  });
+
+  it("renames a path-derived parent together with materialized descendants", () => {
+    const state = freshState();
+    const folder = getKnowledgeTree(state).find(
+      (node) =>
+        node.kind === "folder" &&
+        node.path.length === 1 &&
+        node.title !== "Персонажи",
+    );
+    expect(folder?.kind).toBe("folder");
+    if (!folder || folder.kind !== "folder") return;
+    const descendant = folder.children.find((node) => node.kind === "folder");
+    expect(descendant?.kind).toBe("folder");
+    if (!descendant || descendant.kind !== "folder") return;
+    const materializedDescendant = {
+      id: "mock-materialized-descendant",
+      projectId: state.activeProjectId,
+      path: [...descendant.path, "Материал"],
+    };
+    const affectedDocumentIds = state.documents
+      .filter((document) => {
+        const path = getDocumentFolderPath(document);
+        return (
+          path.length >= folder.path.length &&
+          folder.path.every((segment, index) => segment === path[index])
+        );
+      })
+      .map((document) => document.id);
+    const next = desktopPrototypeReducer(
+      { ...state, knowledgeFolders: [materializedDescendant] },
+      {
+        type: "rename-knowledge-folder",
+        folderId: folder.id,
+        title: "Материалы",
+      },
+    );
+
+    expect(next.knowledgeFolders[0]?.path).toEqual([
+      "Материалы",
+      ...descendant.path.slice(1),
+      "Материал",
+    ]);
+    expect(affectedDocumentIds.length).toBeGreaterThan(0);
+    for (const documentId of affectedDocumentIds) {
+      const document = next.documents.find((item) => item.id === documentId);
+      expect(document?.folderPath?.[0]).toBe("Материалы");
+    }
+  });
+
+  it("rejects path-derived folder rename collisions and preserves similar paths", () => {
+    const state = freshState();
+    const folder = getKnowledgeTree(state).find(
+      (node) =>
+        node.kind === "folder" &&
+        node.path.length === 1 &&
+        node.title !== "Персонажи",
+    );
+    expect(folder?.kind).toBe("folder");
+    if (!folder || folder.kind !== "folder") return;
+    const similarDocument = {
+      ...state.documents[0],
+      id: "doc-l-similar-folder",
+      folder: `${folder.title}ный`,
+      folderPath: [`${folder.title}ный`],
+      content: ["# Similar"],
+    };
+    const withSimilarPath = {
+      ...state,
+      documents: [...state.documents, similarDocument],
+    };
+    const collision = desktopPrototypeReducer(withSimilarPath, {
+      type: "rename-knowledge-folder",
+      folderId: folder.id,
+      title: "Персонажи",
+    });
+    const unchangedSimilar = collision.documents.find(
+      (document) => document.id === similarDocument.id,
+    );
+
+    expect(collision.editingKnowledgeFolderId).toBeNull();
+    expect(
+      collision.documents.find((document) => document.id === "doc-l-magic")
+        ?.folderPath,
+    ).toEqual(
+      state.documents.find((document) => document.id === "doc-l-magic")
+        ?.folderPath,
+    );
+    expect(unchangedSimilar?.folderPath).toEqual([`${folder.title}ный`]);
+  });
+
+  it("renames only the exact active-project subtree and ignores stale folder IDs", () => {
+    const state = freshState();
+    const folder = getKnowledgeTree(state).find(
+      (node) => node.kind === "folder" && node.title === "Мир",
+    );
+    expect(folder?.kind).toBe("folder");
+    if (!folder || folder.kind !== "folder") return;
+    const similarDocument = {
+      ...state.documents[0],
+      id: "doc-l-similar-prefix",
+      folder: "Мирный",
+      folderPath: ["Мирный"],
+      content: ["# Similar prefix"],
+    };
+    const otherProjectDocument = {
+      ...state.documents[0],
+      id: "doc-a-same-path",
+      projectId: "ammonit",
+      folder: "Мир",
+      folderPath: ["Мир"],
+      content: ["# Other project"],
+    };
+    const next = desktopPrototypeReducer(
+      {
+        ...state,
+        documents: [...state.documents, similarDocument, otherProjectDocument],
+      },
+      {
+        type: "rename-knowledge-folder",
+        folderId: folder.id,
+        title: "Материалы",
+      },
+    );
+
+    expect(
+      next.documents.find((document) => document.id === similarDocument.id)
+        ?.folderPath,
+    ).toEqual(["Мирный"]);
+    expect(
+      next.documents.find((document) => document.id === otherProjectDocument.id)
+        ?.folderPath,
+    ).toEqual(["Мир"]);
+
+    const stale = desktopPrototypeReducer(next, {
+      type: "rename-knowledge-folder",
+      folderId: "lukomorie:missing-folder",
+      title: "Не применяется",
+    });
+    expect(stale).toEqual(next);
   });
 
   it("deletes a Knowledge folder and keeps its documents in the parent folder", () => {
@@ -2901,25 +3799,41 @@ describe("desktop structural prototype state", () => {
     expect(state.splitViewDocumentId).toBe(secondaryDocument.id);
   });
 
-  it("clears Split when leaving Knowledge or switching projects", () => {
+  it("preserves Knowledge state when leaving and returning, but clears it on project switch", () => {
     let state = freshState();
     state = desktopPrototypeReducer(state, {
       type: "toggle-knowledge-split-view",
     });
+    const secondaryDocument = state.documents.find(
+      (document) =>
+        document.projectId === state.activeProjectId &&
+        document.id !== state.selectedDocumentId,
+    );
+    if (!secondaryDocument) throw new Error("Expected a secondary document");
+    state = desktopPrototypeReducer(state, {
+      type: "open-knowledge-document-in-active-pane",
+      documentId: secondaryDocument.id,
+    });
+    const knowledgeState = {
+      selectedDocumentId: state.selectedDocumentId,
+      splitViewDocumentId: state.splitViewDocumentId,
+      activeKnowledgePane: state.activeKnowledgePane,
+      openDocumentIds: state.openDocumentIds,
+      expandedFolderIds: state.expandedFolderIds,
+    };
     state = desktopPrototypeReducer(state, {
       type: "switch-section",
       section: "overview",
     });
-    expect(state.knowledgeSplitEnabled).toBe(false);
-    expect(state.splitViewDocumentId).toBeNull();
-
     state = desktopPrototypeReducer(state, {
       type: "switch-section",
       section: "knowledge",
     });
-    state = desktopPrototypeReducer(state, {
-      type: "toggle-knowledge-split-view",
+    expect(state).toMatchObject({
+      knowledgeSplitEnabled: true,
+      ...knowledgeState,
     });
+
     const otherProject = state.projects.find(
       (project) => project.id !== state.activeProjectId,
     );
@@ -2930,6 +3844,302 @@ describe("desktop structural prototype state", () => {
     });
     expect(state.knowledgeSplitEnabled).toBe(false);
     expect(state.splitViewDocumentId).toBeNull();
+  });
+
+  it("remembers, replaces and closes the single Split document safely", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "toggle-knowledge-split-view",
+    });
+    const documents = state.documents.filter(
+      (document) => document.projectId === state.activeProjectId,
+    );
+    const first = documents.find(
+      (document) => document.id !== state.selectedDocumentId,
+    )!;
+    const second = documents.find(
+      (document) =>
+        document.id !== state.selectedDocumentId && document.id !== first.id,
+    )!;
+    state = desktopPrototypeReducer(state, {
+      type: "open-knowledge-document-in-active-pane",
+      documentId: first.id,
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "toggle-knowledge-split-view",
+    });
+    expect(state.splitViewDocumentId).toBe(first.id);
+    state = desktopPrototypeReducer(state, {
+      type: "toggle-knowledge-split-view",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "open-knowledge-document-in-active-pane",
+      documentId: second.id,
+    });
+    expect(state.splitViewDocumentId).toBe(second.id);
+    const closed = desktopPrototypeReducer(state, {
+      type: "close-knowledge-split-view",
+    });
+    expect(closed).toMatchObject({
+      knowledgeSplitEnabled: false,
+      splitViewDocumentId: second.id,
+      selectedDocumentId: state.selectedDocumentId,
+    });
+    const stale = desktopPrototypeReducer(
+      { ...closed, splitViewDocumentId: "foreign-or-deleted" },
+      { type: "toggle-knowledge-split-view" },
+    );
+    expect(stale.activeKnowledgePane).toBe("primary");
+    expect(stale.splitViewDocumentId).toBeNull();
+  });
+
+  it("clears breadcrumb highlight without changing Knowledge selection", () => {
+    let state = freshState();
+    state = desktopPrototypeReducer(state, {
+      type: "select-knowledge-folder-from-breadcrumb",
+      path: ["Мир"],
+    });
+    const selection = state.selectedKnowledgePath;
+    const cleared = desktopPrototypeReducer(state, {
+      type: "clear-knowledge-breadcrumb-highlight",
+    });
+    expect(cleared.knowledgeBreadcrumbHighlightVisible).toBe(false);
+    expect(cleared.selectedKnowledgePath).toEqual(selection);
+  });
+
+  it("enters task-scoped Knowledge attachment mode and reuses the relation action", () => {
+    const initial = freshState();
+    const task = initial.tasks.find(
+      (item) => item.projectId === initial.activeProjectId,
+    )!;
+    const entered = desktopPrototypeReducer(initial, {
+      type: "open-knowledge-article-attach",
+      taskId: task.id,
+      origin: { section: "tasks", taskId: task.id },
+    });
+    expect(entered).toMatchObject({
+      activeSection: "knowledge",
+      contextPanel: { kind: "knowledge-task-attach", taskId: task.id },
+    });
+    const documentId = entered.selectedDocumentId!;
+    const attached = desktopPrototypeReducer(entered, {
+      type: "attach-task-document",
+      taskId: task.id,
+      documentId,
+    });
+    expect(
+      attached.tasks.find((item) => item.id === task.id)?.linkedDocumentIds,
+    ).toContain(documentId);
+    expect(
+      desktopPrototypeReducer(attached, {
+        type: "attach-task-document",
+        taskId: task.id,
+        documentId,
+      }),
+    ).toBe(attached);
+    const returned = desktopPrototypeReducer(attached, {
+      type: "return-to-task-from-knowledge-attach",
+    });
+    expect(returned).toMatchObject({
+      activeSection: "tasks",
+      selectedTaskId: task.id,
+      contextPanel: { kind: "task", taskId: task.id },
+      taskAttachOrigin: null,
+    });
+  });
+
+  it("closes an open Split and preserves the active Primary document for attach", () => {
+    const initial = freshState();
+    const task = initial.tasks.find(
+      (item) => item.projectId === initial.activeProjectId,
+    )!;
+    const primaryDocumentId = initial.selectedDocumentId!;
+    let state = desktopPrototypeReducer(initial, {
+      type: "toggle-knowledge-split-view",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "activate-knowledge-pane",
+      pane: "primary",
+    });
+    const entered = desktopPrototypeReducer(state, {
+      type: "open-knowledge-article-attach",
+      taskId: task.id,
+      origin: { section: "tasks", taskId: task.id },
+    });
+
+    expect(entered).toMatchObject({
+      activeSection: "knowledge",
+      knowledgeSplitEnabled: false,
+      activeKnowledgePane: "primary",
+      selectedDocumentId: primaryDocumentId,
+      taskAttachOrigin: {
+        section: "tasks",
+        taskId: task.id,
+        documentId: primaryDocumentId,
+      },
+      contextPanel: { kind: "knowledge-task-attach", taskId: task.id },
+    });
+  });
+
+  it("closes Split and preserves the active Split document as the attach target", () => {
+    const initial = freshState();
+    const task = initial.tasks.find(
+      (item) => item.projectId === initial.activeProjectId,
+    )!;
+    const primaryDocumentId = initial.selectedDocumentId!;
+    const splitDocument = initial.documents.find(
+      (document) =>
+        document.projectId === initial.activeProjectId &&
+        document.id !== primaryDocumentId,
+    )!;
+    let state = desktopPrototypeReducer(initial, {
+      type: "toggle-knowledge-split-view",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "open-knowledge-document-in-active-pane",
+      documentId: splitDocument.id,
+    });
+    const entered = desktopPrototypeReducer(state, {
+      type: "open-knowledge-article-attach",
+      taskId: task.id,
+      origin: { section: "tasks", taskId: task.id },
+    });
+
+    expect(entered).toMatchObject({
+      activeSection: "knowledge",
+      knowledgeSplitEnabled: false,
+      activeKnowledgePane: "primary",
+      selectedDocumentId: splitDocument.id,
+      taskAttachOrigin: {
+        section: "tasks",
+        taskId: task.id,
+        documentId: splitDocument.id,
+      },
+      contextPanel: { kind: "knowledge-task-attach", taskId: task.id },
+    });
+  });
+
+  it("returns an Overview-origin attachment to the same task focus", () => {
+    const initial = freshState();
+    const task = initial.tasks.find(
+      (item) => item.projectId === initial.activeProjectId,
+    )!;
+    const focused = desktopPrototypeReducer(initial, {
+      type: "open-overview-task-focus",
+      taskId: task.id,
+    });
+    const entered = desktopPrototypeReducer(focused, {
+      type: "open-knowledge-article-attach",
+      taskId: task.id,
+      origin: {
+        section: "overview",
+        taskId: task.id,
+        documentId: focused.overviewArticlePreviewDocumentId,
+      },
+    });
+    expect(entered.knowledgeSplitEnabled).toBe(false);
+    expect(entered.selectedDocumentId).toBe(
+      focused.overviewArticlePreviewDocumentId,
+    );
+    const returned = desktopPrototypeReducer(entered, {
+      type: "return-to-task-from-knowledge-attach",
+    });
+    expect(returned).toMatchObject({
+      activeSection: "overview",
+      overviewArticleSourceTaskId: task.id,
+      contextPanel: { kind: "task", taskId: task.id, initialTab: "articles" },
+      taskAttachOrigin: null,
+    });
+  });
+
+  it("returns an Overview attachment without a stale preview document", () => {
+    const initial = freshState();
+    const task = initial.tasks.find(
+      (item) => item.projectId === initial.activeProjectId,
+    )!;
+    const noArticles = {
+      ...initial,
+      tasks: initial.tasks.map((item) =>
+        item.id === task.id ? { ...item, linkedDocumentIds: [] } : item,
+      ),
+    };
+    const focused = desktopPrototypeReducer(noArticles, {
+      type: "open-overview-task-focus",
+      taskId: task.id,
+    });
+    const entered = desktopPrototypeReducer(focused, {
+      type: "open-knowledge-article-attach",
+      taskId: task.id,
+      origin: {
+        section: "overview",
+        taskId: task.id,
+        documentId: null,
+      },
+    });
+    const returned = desktopPrototypeReducer(entered, {
+      type: "return-to-task-from-knowledge-attach",
+    });
+
+    expect(returned).toMatchObject({
+      activeSection: "overview",
+      overviewArticleSourceTaskId: task.id,
+      overviewArticlePreviewDocumentId: null,
+      contextPanel: { kind: "task", taskId: task.id, initialTab: "articles" },
+      taskAttachOrigin: null,
+    });
+  });
+
+  it("rejects stale and foreign task attachment contexts", () => {
+    const initial = freshState();
+    expect(
+      desktopPrototypeReducer(initial, {
+        type: "open-knowledge-article-attach",
+        taskId: "missing-task",
+        origin: { section: "tasks", taskId: "missing-task" },
+      }),
+    ).toBe(initial);
+    const foreignTask = initial.tasks.find(
+      (task) => task.projectId !== initial.activeProjectId,
+    )!;
+    expect(
+      desktopPrototypeReducer(initial, {
+        type: "open-knowledge-article-attach",
+        taskId: foreignTask.id,
+        origin: { section: "tasks", taskId: foreignTask.id },
+      }),
+    ).toBe(initial);
+  });
+
+  it("detaches only the task relation and preserves the Knowledge document", () => {
+    const initial = freshState();
+    const task = initial.tasks.find(
+      (item) => item.projectId === initial.activeProjectId,
+    )!;
+    const documentId = task.linkedDocumentIds[0]!;
+    const detached = desktopPrototypeReducer(initial, {
+      type: "detach-task-document",
+      taskId: task.id,
+      documentId,
+    });
+    expect(
+      detached.documents.some((document) => document.id === documentId),
+    ).toBe(true);
+    expect(
+      detached.documents.find((document) => document.id === documentId)
+        ?.content,
+    ).toEqual(
+      initial.documents.find((document) => document.id === documentId)?.content,
+    );
+    expect(
+      detached.tasks.find((item) => item.id === task.id)?.linkedDocumentIds,
+    ).not.toContain(documentId);
+    expect(
+      desktopPrototypeReducer(detached, {
+        type: "detach-task-document",
+        taskId: task.id,
+        documentId,
+      }),
+    ).toBe(detached);
   });
 
   it("falls back within the active project for invalid pane documents", () => {

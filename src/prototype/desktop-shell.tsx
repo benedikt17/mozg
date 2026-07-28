@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
-  projectSections,
+  isPublicProjectSection,
+  publicProjectSections,
   type ProjectSection,
 } from "@/prototype/desktop-mock-data";
 import {
@@ -20,6 +21,7 @@ import { KnowledgeWorkspace } from "@/prototype/knowledge/knowledge-workspace";
 import { ContextPanelSlot } from "@/prototype/context-panels/context-panel-slot";
 import { TasksSidebar } from "@/prototype/tasks/tasks-sidebar";
 import { TasksWorkspace } from "@/prototype/tasks/tasks-workspace";
+import { TasksDndProvider } from "@/prototype/tasks/tasks-dnd-context";
 import { CanvasesSidebar } from "@/prototype/canvases/canvases-sidebar";
 import { CanvasesWorkspace } from "@/prototype/canvases/canvases-workspace";
 import { InboxSidebar } from "@/prototype/inbox/inbox-sidebar";
@@ -27,6 +29,10 @@ import { InboxWorkspace } from "@/prototype/inbox/inbox-workspace";
 import { ApplicationHeader } from "@/prototype/shell/application-header";
 import { CommandPalette } from "@/prototype/shell/command-palette";
 import { SectionRail } from "@/prototype/shell/section-rail";
+import {
+  useDesktopPersistence,
+  type UseDesktopPersistenceResult,
+} from "@/prototype/persistence/use-desktop-persistence";
 import "./desktop-shell.css";
 import "./desktop-workspaces.css";
 import "./desktop-knowledge.css";
@@ -41,12 +47,17 @@ export function DesktopPrototypeShell(): React.JSX.Element {
   const [commandQuery, setCommandQuery] = useState(getInitialCommandQuery);
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
   const seededFromUrl = useRef(false);
+  const persistence = useDesktopPersistence(state, dispatch);
+  const workspaceAvailable =
+    persistence.lifecycle.status !== "loading" &&
+    persistence.lifecycle.status !== "load-error";
   const commandResults = useMemo(
     () => getCommandResults(state, commandQuery),
     [state, commandQuery],
   );
 
   useEffect(() => {
+    if (!workspaceAvailable) return;
     const onKeyDown = (event: KeyboardEvent): void => {
       const isCommandShortcut =
         (event.ctrlKey || event.metaKey) && event.key === "k";
@@ -61,14 +72,23 @@ export function DesktopPrototypeShell(): React.JSX.Element {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [workspaceAvailable]);
 
   useEffect(() => {
+    if (!workspaceAvailable) return;
+    if (isPublicProjectSection(state.activeSection)) return;
+    dispatch({ type: "switch-section", section: "overview" });
+  }, [state.activeSection, workspaceAvailable]);
+
+  useEffect(() => {
+    if (!workspaceAvailable) return;
     if (seededFromUrl.current) return;
     seededFromUrl.current = true;
     const params = new URLSearchParams(window.location.search);
     const sectionParam = params.get("section");
-    const section = projectSections.some((item) => item.id === sectionParam)
+    const section = publicProjectSections.some(
+      (item) => item.id === sectionParam,
+    )
       ? (sectionParam as ProjectSection)
       : null;
     if (section) {
@@ -110,19 +130,18 @@ export function DesktopPrototypeShell(): React.JSX.Element {
     if (editingTaskId) {
       dispatch({ type: "begin-task-title-edit", taskId: editingTaskId });
     }
-  }, []);
+  }, [workspaceAvailable]);
 
   const activateCommandResult = (result: CommandResult): void => {
     dispatch({ type: "activate-command-result", result });
     setCommandQuery("");
   };
 
-  const activeProject = getActiveProject(state);
-  const overviewReaderActive =
-    state.activeSection === "overview" &&
-    state.overviewArticleSourceTaskId !== null &&
-    state.overviewArticlePreviewDocumentId !== null;
+  if (!workspaceAvailable) {
+    return <DesktopPersistenceBoundary persistence={persistence} />;
+  }
 
+  const activeProject = getActiveProject(state);
   return (
     <main
       className={[
@@ -130,11 +149,6 @@ export function DesktopPrototypeShell(): React.JSX.Element {
         state.activeSection === "knowledge" ? "knowledge-active" : "",
         state.activeSection === "knowledge" && state.knowledgeSplitEnabled
           ? "knowledge-split-active"
-          : "",
-        state.activeSection === "overview" &&
-        state.contextPanel?.kind === "task" &&
-        !overviewReaderActive
-          ? "overview-task-drawer-open"
           : "",
         state.activeSection === "tasks" && state.contextPanel?.kind === "task"
           ? "tasks-task-drawer-open"
@@ -147,6 +161,10 @@ export function DesktopPrototypeShell(): React.JSX.Element {
         state.contextPanel?.kind === "knowledge-task-reference"
           ? "knowledge-task-reference-drawer-open"
           : "",
+        state.activeSection === "knowledge" &&
+        state.contextPanel?.kind === "knowledge-task-attach"
+          ? "knowledge-task-attach-drawer-open"
+          : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -156,6 +174,7 @@ export function DesktopPrototypeShell(): React.JSX.Element {
         <ApplicationHeader state={state} dispatch={dispatch} />
         <SectionWorkspace state={state} dispatch={dispatch} />
       </div>
+      <DesktopPersistenceStatus persistence={persistence} />
       {state.commandPaletteOpen ? (
         <CommandPalette
           activeIndex={activeCommandIndex}
@@ -172,6 +191,70 @@ export function DesktopPrototypeShell(): React.JSX.Element {
   );
 }
 
+function DesktopPersistenceBoundary({
+  persistence,
+}: {
+  persistence: UseDesktopPersistenceResult;
+}): React.JSX.Element {
+  if (persistence.lifecycle.status === "load-error") {
+    return (
+      <main className="desktop-prototype desktop-persistence-boundary">
+        <div className="desktop-persistence-message" role="alert">
+          <strong>Не удалось загрузить рабочее пространство</strong>
+          <span>Код ошибки: {persistence.lifecycle.error.code}</span>
+          <button
+            className="ui-button"
+            onClick={persistence.retryLoad}
+            type="button"
+          >
+            Повторить
+          </button>
+        </div>
+      </main>
+    );
+  }
+  return (
+    <main className="desktop-prototype desktop-persistence-boundary">
+      <p role="status">Загрузка рабочего пространства…</p>
+    </main>
+  );
+}
+
+function DesktopPersistenceStatus({
+  persistence,
+}: {
+  persistence: UseDesktopPersistenceResult;
+}): React.JSX.Element | null {
+  if (persistence.lifecycle.status === "saving") {
+    return (
+      <div
+        aria-live="polite"
+        className="desktop-persistence-status"
+        role="status"
+      >
+        Сохранение…
+      </div>
+    );
+  }
+  if (persistence.lifecycle.status === "save-error") {
+    return (
+      <div className="desktop-persistence-status is-error" role="alert">
+        <span>
+          Не удалось сохранить изменения ({persistence.lifecycle.error.code})
+        </span>
+        <button
+          className="ui-button"
+          onClick={persistence.retrySave}
+          type="button"
+        >
+          Повторить
+        </button>
+      </div>
+    );
+  }
+  return null;
+}
+
 function SectionWorkspace({
   state,
   dispatch,
@@ -186,18 +269,29 @@ function SectionWorkspace({
   const sidebar = renderToolSidebar(state, dispatch, {
     onCloseKnowledgeTree: () => setKnowledgeTreeOverlayOpen(false),
   });
+  const overviewSourceTask = state.tasks.find(
+    (task) => task.id === state.overviewArticleSourceTaskId,
+  );
+  const overviewPreviewDocument = state.documents.find(
+    (document) => document.id === state.overviewArticlePreviewDocumentId,
+  );
   const overviewReaderActive =
     state.activeSection === "overview" &&
-    state.overviewArticleSourceTaskId !== null &&
-    state.overviewArticlePreviewDocumentId !== null;
+    overviewSourceTask?.projectId === state.activeProjectId &&
+    (state.overviewArticlePreviewDocumentId === null
+      ? true
+      : overviewPreviewDocument?.projectId === overviewSourceTask.projectId &&
+        overviewSourceTask.linkedDocumentIds.includes(
+          overviewPreviewDocument.id,
+        ));
   const hasContextPanel =
-    state.contextPanel !== null &&
-    (state.activeSection !== "overview" || state.contextPanel.kind === "task");
+    state.contextPanel !== null && state.activeSection !== "overview";
   const knowledgeAiOpen =
     state.activeSection === "knowledge" && state.contextPanel?.kind === "ai";
   const hasFullHeightDrawer =
     state.contextPanel?.kind === "knowledge-tasks" ||
     state.contextPanel?.kind === "knowledge-task-reference" ||
+    state.contextPanel?.kind === "knowledge-task-attach" ||
     (state.activeSection === "tasks" && state.contextPanel?.kind === "task");
   return (
     <div
@@ -225,34 +319,40 @@ function SectionWorkspace({
         .filter(Boolean)
         .join(" ")}
     >
-      {sidebar}
-      <section className="main-workspace" aria-label="Рабочая область">
-        {renderMainWorkspace(state, dispatch, {
-          aiPanel: knowledgeAiOpen ? (
-            <ContextPanelSlot
-              contextPanel={state.contextPanel}
-              dispatch={dispatch}
-              state={state}
-            />
-          ) : undefined,
-          onOpenKnowledgeTree: () => {
-            setKnowledgeSidebarCollapsed(false);
-            setKnowledgeTreeOverlayOpen(true);
-          },
-          onToggleKnowledgeTree: () => {
-            const isResponsive =
-              typeof window !== "undefined" &&
-              window.matchMedia("(max-width: 1023px)").matches;
-            if (isResponsive) {
+      <TasksDndBoundary
+        dispatch={dispatch}
+        enabled={state.activeSection === "tasks"}
+        state={state}
+      >
+        {sidebar}
+        <section className="main-workspace" aria-label="Рабочая область">
+          {renderMainWorkspace(state, dispatch, {
+            aiPanel: knowledgeAiOpen ? (
+              <ContextPanelSlot
+                contextPanel={state.contextPanel}
+                dispatch={dispatch}
+                state={state}
+              />
+            ) : undefined,
+            onOpenKnowledgeTree: () => {
               setKnowledgeSidebarCollapsed(false);
-              setKnowledgeTreeOverlayOpen((open) => !open);
-              return;
-            }
-            setKnowledgeSidebarCollapsed((collapsed) => !collapsed);
-          },
-          treeOpen: knowledgeTreeOverlayOpen || !knowledgeSidebarCollapsed,
-        })}
-      </section>
+              setKnowledgeTreeOverlayOpen(true);
+            },
+            onToggleKnowledgeTree: () => {
+              const isResponsive =
+                typeof window !== "undefined" &&
+                window.matchMedia("(max-width: 1023px)").matches;
+              if (isResponsive) {
+                setKnowledgeSidebarCollapsed(false);
+                setKnowledgeTreeOverlayOpen((open) => !open);
+                return;
+              }
+              setKnowledgeSidebarCollapsed((collapsed) => !collapsed);
+            },
+            treeOpen: knowledgeTreeOverlayOpen || !knowledgeSidebarCollapsed,
+          })}
+        </section>
+      </TasksDndBoundary>
       {state.activeSection === "knowledge" && knowledgeTreeOverlayOpen ? (
         <button
           aria-label="Закрыть дополнительную панель"
@@ -269,6 +369,25 @@ function SectionWorkspace({
         />
       ) : null}
     </div>
+  );
+}
+
+function TasksDndBoundary({
+  enabled,
+  state,
+  dispatch,
+  children,
+}: {
+  enabled: boolean;
+  state: DesktopPrototypeState;
+  dispatch: Dispatch;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  if (!enabled) return <>{children}</>;
+  return (
+    <TasksDndProvider dispatch={dispatch} state={state}>
+      {children}
+    </TasksDndProvider>
   );
 }
 
@@ -333,7 +452,17 @@ function renderMainWorkspace(
     );
   }
   if (state.activeSection === "tasks") {
-    return <TasksWorkspace state={state} dispatch={dispatch} />;
+    const taskSelectionKey =
+      state.taskSelection.kind === "list"
+        ? `list:${state.taskSelection.listId}`
+        : `system:${state.taskSelection.view}`;
+    return (
+      <TasksWorkspace
+        dispatch={dispatch}
+        key={`${state.activeProjectId}:${taskSelectionKey}`}
+        state={state}
+      />
+    );
   }
   if (state.activeSection === "canvases") {
     return <CanvasesWorkspace state={state} dispatch={dispatch} />;

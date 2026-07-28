@@ -5,33 +5,72 @@ import type {
 } from "@/prototype/desktop-mock-data";
 import {
   getProjectOverviewDirections,
+  type DesktopPrototypeState,
   type DesktopPrototypeAction,
 } from "@/prototype/desktop-state";
 import { UiIcon } from "@/prototype/desktop-icons";
-import { MarkdownDocumentPreview } from "@/prototype/knowledge/markdown-document-preview";
+import {
+  getDocumentHeadings,
+  MarkdownDocumentPreview,
+  toggleTaskListMarker,
+} from "@/prototype/knowledge/markdown-document-preview";
 import { IconButton, PrototypeButton } from "@/prototype/desktop-ui";
+import { TaskDetailsPanel } from "@/prototype/context-panels/task-details-panel";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
+
+function OverviewReaderOutline({
+  document,
+  onSelectHeading,
+}: {
+  document: PrototypeDocument | undefined;
+  onSelectHeading: (headingId: string) => void;
+}): React.JSX.Element | null {
+  if (!document) return null;
+  const headings = getDocumentHeadings(document).filter(
+    (heading) => heading.level <= 2,
+  );
+  if (headings.length === 0) return null;
+
+  return (
+    <aside className="overview-reader-outline" aria-label="Содержание статьи">
+      <nav>
+        {headings.map((heading) => (
+          <button
+            className={`level-${heading.level}`}
+            key={heading.id}
+            onClick={() => onSelectHeading(heading.id)}
+            type="button"
+          >
+            {heading.label}
+          </button>
+        ))}
+      </nav>
+    </aside>
+  );
+}
 
 export function OverviewContextualReader({
   activeDocument,
   direction,
   dispatch,
   documents,
-  onOpenTaskDetails,
   task,
+  state,
 }: {
-  activeDocument: PrototypeDocument;
+  activeDocument: PrototypeDocument | undefined;
   direction: ReturnType<typeof getProjectOverviewDirections>[number];
   dispatch: Dispatch;
   documents: PrototypeDocument[];
-  onOpenTaskDetails: (taskId: string) => void;
   task: PrototypeTask;
+  state: DesktopPrototypeState;
 }): React.JSX.Element {
   const [contextCollapsed, setContextCollapsed] = useState(false);
   const [mobileContextOpen, setMobileContextOpen] = useState(false);
   const articleRef = useRef<HTMLElement>(null);
-  const articleScrollDocumentIdRef = useRef(activeDocument.id);
+  const articleScrollDocumentIdRef = useRef<string | null>(
+    activeDocument?.id ?? null,
+  );
   const articleScrollPositionsRef = useRef(new Map<string, number>());
   const mobileContextCloseRef = useRef<HTMLButtonElement>(null);
   const mobileContextTriggerRef = useRef<HTMLButtonElement>(null);
@@ -47,12 +86,17 @@ export function OverviewContextualReader({
     const frame = window.requestAnimationFrame(() => {
       const article = articleRef.current;
       if (!article) return;
+      if (!activeDocument) {
+        article.scrollTop = 0;
+        articleScrollDocumentIdRef.current = null;
+        return;
+      }
       article.scrollTop =
         articleScrollPositionsRef.current.get(activeDocument.id) ?? 0;
       articleScrollDocumentIdRef.current = activeDocument.id;
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [activeDocument.id]);
+  }, [activeDocument]);
 
   useEffect(() => {
     if (!mobileContextOpen) return;
@@ -62,13 +106,28 @@ export function OverviewContextualReader({
     return () => window.cancelAnimationFrame(frame);
   }, [mobileContextOpen]);
 
+  const scrollToHeading = (headingId: string): void => {
+    const article = articleRef.current;
+    const heading = window.document.getElementById(headingId);
+    if (!article || !heading) return;
+
+    const articleRect = article.getBoundingClientRect();
+    const headingRect = heading.getBoundingClientRect();
+    const nextScrollTop =
+      article.scrollTop + headingRect.top - articleRect.top - 16;
+
+    article.scrollTo({
+      behavior: "smooth",
+      top: Math.max(0, nextScrollTop),
+    });
+  };
+
   const returnToBoard = (): void => {
     dispatch({ type: "close-overview-article-preview" });
   };
 
   const openTaskOnBoard = (): void => {
-    dispatch({ type: "close-overview-article-preview" });
-    dispatch({ type: "select-task", taskId: task.id, section: "overview" });
+    returnToBoard();
   };
 
   const closeMobileContext = (): void => {
@@ -132,9 +191,18 @@ export function OverviewContextualReader({
         >
           ← К доске
         </PrototypeButton>
-        <div className="overview-reader-task-card">
-          <h2>{task.title}</h2>
-          {task.subtasks.length > 0 ? (
+        <div className="overview-reader-task-details">
+          <TaskDetailsPanel
+            dispatch={dispatch}
+            overviewMode
+            state={state}
+            task={task}
+          />
+        </div>
+        {/* Legacy inline task sections are intentionally replaced by the shared task details content above. */}
+        {false ? <h2>{task.title}</h2> : null}
+        {false &&
+          (task.subtasks.length > 0 ? (
             <section className="overview-reader-context-section">
               <h3>Подзадачи</h3>
               <ul className="overview-reader-subtasks">
@@ -160,8 +228,9 @@ export function OverviewContextualReader({
                 ))}
               </ul>
             </section>
-          ) : null}
-          {task.links.length > 0 ? (
+          ) : null)}
+        {false &&
+          (task.links.length > 0 ? (
             <section className="overview-reader-context-section">
               <h3>Ссылки</h3>
               <ul className="overview-reader-resources">
@@ -174,7 +243,8 @@ export function OverviewContextualReader({
                 ))}
               </ul>
             </section>
-          ) : null}
+          ) : null)}
+        {false && (
           <section className="overview-reader-context-section">
             <h3>Статьи</h3>
             <ul className="overview-reader-articles">
@@ -182,10 +252,10 @@ export function OverviewContextualReader({
                 <li key={document.id}>
                   <button
                     aria-current={
-                      document.id === activeDocument.id ? "page" : undefined
+                      document.id === activeDocument?.id ? "page" : undefined
                     }
                     className={
-                      document.id === activeDocument.id ? "is-active" : ""
+                      document.id === activeDocument?.id ? "is-active" : ""
                     }
                     onClick={() =>
                       dispatch({
@@ -202,20 +272,7 @@ export function OverviewContextualReader({
               ))}
             </ul>
           </section>
-          <div className="overview-reader-task-card-footer">
-            <button
-              className="quiet-text-link task-card-details-link"
-              onClick={(event) => {
-                event.stopPropagation();
-                onOpenTaskDetails(task.id);
-              }}
-              onPointerDown={(event) => event.stopPropagation()}
-              type="button"
-            >
-              Подробнее →
-            </button>
-          </div>
-        </div>
+        )}
       </aside>
       <IconButton
         className="overview-reader-context-toggle"
@@ -236,13 +293,20 @@ export function OverviewContextualReader({
       <article
         className="document-page overview-reader-article"
         onScroll={(event) => {
-          articleScrollPositionsRef.current.set(
-            articleScrollDocumentIdRef.current,
-            event.currentTarget.scrollTop,
-          );
+          const documentId = articleScrollDocumentIdRef.current;
+          if (documentId) {
+            articleScrollPositionsRef.current.set(
+              documentId,
+              event.currentTarget.scrollTop,
+            );
+          }
         }}
         ref={articleRef}
       >
+        <OverviewReaderOutline
+          document={activeDocument}
+          onSelectHeading={scrollToHeading}
+        />
         <div className="document-page-inner">
           <div className="overview-reader-mobile-actions">
             <button
@@ -284,13 +348,39 @@ export function OverviewContextualReader({
                   {task.title}
                 </button>
               </li>
-              <li aria-current="page" title={activeDocument.title}>
-                <span>{activeDocument.title}</span>
-              </li>
+              {activeDocument ? (
+                <li aria-current="page" title={activeDocument.title}>
+                  <span>{activeDocument.title}</span>
+                </li>
+              ) : null}
             </ol>
           </nav>
-          <h1>{activeDocument.title}</h1>
-          <MarkdownDocumentPreview document={activeDocument} hideLeadingTitle />
+          {activeDocument ? (
+            <>
+              <h1 id={getDocumentHeadings(activeDocument)[0]?.id}>
+                {activeDocument.title}
+              </h1>
+              <MarkdownDocumentPreview
+                document={activeDocument}
+                hideLeadingTitle
+                onTaskToggle={(lineIndex, checked) =>
+                  dispatch({
+                    type: "update-knowledge-document-markdown",
+                    documentId: activeDocument.id,
+                    markdown: toggleTaskListMarker(
+                      activeDocument.content.join("\n"),
+                      lineIndex,
+                      checked,
+                    ),
+                  })
+                }
+              />
+            </>
+          ) : (
+            <p className="overview-reader-empty-state" role="status">
+              К задаче пока не прикреплены статьи
+            </p>
+          )}
         </div>
       </article>
     </section>

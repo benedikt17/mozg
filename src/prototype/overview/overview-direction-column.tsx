@@ -20,6 +20,7 @@ import {
   type OverviewDropTarget,
 } from "@/prototype/overview/overview-dnd";
 import { TaskCard } from "@/prototype/overview/task-card";
+import { TaskDropGap } from "@/prototype/dnd/task-dnd-primitives";
 
 export function OverviewDirectionColumn({
   tasks: overviewTasks,
@@ -93,12 +94,27 @@ export function OverviewDirectionColumn({
                 directionDropTarget?.index === visibleIndex;
               return (
                 <div className="task-sort-slot" key={task.id}>
-                  {showIndicatorBefore ? <TaskDropIndicator /> : null}
+                  {showIndicatorBefore ? <TaskDropGap /> : null}
                   <TaskCard
                     dispatch={dispatch}
                     documents={documents}
                     drawerOpen={openTaskId === task.id}
                     expanded={expandedTaskId === task.id}
+                    isSelected={
+                      openTaskId !== null
+                        ? openTaskId === task.id
+                        : expandedTaskId === task.id
+                    }
+                    onSelectTask={
+                      openTaskId !== null
+                        ? (taskId) =>
+                            dispatch({
+                              type: "select-task",
+                              taskId,
+                              section: "overview",
+                            })
+                        : undefined
+                    }
                     onToggleExpanded={onToggleTaskExpanded}
                     task={task}
                     taskCount={tasks.length}
@@ -111,7 +127,7 @@ export function OverviewDirectionColumn({
             <p className="empty-state">Нет задач в этом направлении.</p>
           )}
           {directionDropTarget?.index === positionedTasks.length ? (
-            <TaskDropIndicator />
+            <TaskDropGap />
           ) : null}
         </SortableContext>
       </div>
@@ -164,8 +180,4 @@ function DirectionTitleInput({
       value={draft}
     />
   );
-}
-
-function TaskDropIndicator(): JSX.Element {
-  return <div className="task-drop-indicator" aria-hidden="true" />;
 }

@@ -67,6 +67,7 @@ export type PrototypeTask = {
   completedAt: string | null;
   signal: TaskSignal;
   starred: boolean;
+  myDay: boolean;
   area?: string;
   dueDate?: string;
   links: PrototypeTaskLink[];
@@ -164,6 +165,14 @@ export const projectSections: {
     description: "Захваченные материалы до превращения в знания или задачи.",
   },
 ];
+
+export const publicProjectSections = projectSections.filter(({ id }) =>
+  ["overview", "knowledge", "tasks"].includes(id),
+);
+
+export function isPublicProjectSection(section: ProjectSection): boolean {
+  return publicProjectSections.some((item) => item.id === section);
+}
 
 export const inboxFilters: {
   id: InboxFilter;
@@ -285,6 +294,7 @@ export const initialTasks: PrototypeTask[] = [
     completedAt: null,
     signal: "red",
     starred: true,
+    myDay: true,
     area: "Персонажи",
     dueDate: "18 июл",
     links: [],
@@ -321,6 +331,7 @@ export const initialTasks: PrototypeTask[] = [
     completedAt: null,
     signal: "yellow",
     starred: false,
+    myDay: true,
     area: "Сценарии",
     dueDate: "19 июл",
     links: [],
@@ -351,6 +362,7 @@ export const initialTasks: PrototypeTask[] = [
     completedAt: null,
     signal: "green",
     starred: true,
+    myDay: true,
     area: "Мир",
     dueDate: "22 июл",
     links: [],
@@ -380,6 +392,7 @@ export const initialTasks: PrototypeTask[] = [
     completedAt: null,
     signal: "none",
     starred: false,
+    myDay: false,
     area: "Визуальная разработка",
     links: [],
     linkedDocumentIds: ["doc-l-scenes"],
@@ -408,6 +421,7 @@ export const initialTasks: PrototypeTask[] = [
     completedAt: null,
     signal: "yellow",
     starred: false,
+    myDay: false,
     area: "Производство",
     links: [],
     linkedDocumentIds: ["doc-l-production"],
@@ -436,6 +450,7 @@ export const initialTasks: PrototypeTask[] = [
     completedAt: "2026-07-10T12:00:00.000Z",
     signal: "green",
     starred: true,
+    myDay: true,
     area: "Производство",
     dueDate: "15 июл",
     links: [],
@@ -461,6 +476,7 @@ export const initialTasks: PrototypeTask[] = [
     completedAt: null,
     signal: "none",
     starred: true,
+    myDay: true,
     area: "Исследование",
     dueDate: "20 июл",
     links: [],
@@ -490,6 +506,7 @@ export const initialTasks: PrototypeTask[] = [
     completedAt: null,
     signal: "none",
     starred: false,
+    myDay: false,
     area: "Интервью",
     links: [],
     linkedDocumentIds: ["doc-a-questions"],
@@ -513,6 +530,7 @@ export const initialTasks: PrototypeTask[] = [
     completedAt: null,
     signal: "none",
     starred: true,
+    myDay: true,
     area: "Сценарий",
     dueDate: "17 июл",
     links: [],
@@ -542,6 +560,7 @@ export const initialTasks: PrototypeTask[] = [
     completedAt: null,
     signal: "none",
     starred: true,
+    myDay: false,
     area: "Неделя",
     links: [],
     linkedDocumentIds: ["doc-p-week"],

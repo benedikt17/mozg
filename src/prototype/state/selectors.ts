@@ -6,6 +6,7 @@ import type {
   CommandResult,
   DesktopPrototypeState,
 } from "@/prototype/state/types";
+import { publicProjectSections } from "@/prototype/desktop-mock-data";
 import {
   getCanvasById,
   getCanvasObjectById,
@@ -81,6 +82,9 @@ export function getCommandResults(
     ["canvases", "Холсты"],
     ["inbox", "Входящие"],
   ]
+    .filter(([id]) =>
+      publicProjectSections.some((section) => section.id === id),
+    )
     .filter(([, label]) => matches(label))
     .map(([id, label]) => ({
       kind: "section",
@@ -130,14 +134,16 @@ export function getCommandResults(
       subtitle: `Р’С…РѕРґСЏС‰РµРµ В· ${getProjectName(state, item.projectId)}`,
     }));
 
-  return visibleCommandResults([
-    ...projectResults,
-    ...sectionResults,
-    ...taskResults,
-    ...documentResults,
-    ...canvasResults,
-    ...inboxResults,
-  ]);
+  return visibleCommandResults(
+    [
+      ...projectResults,
+      ...sectionResults,
+      ...taskResults,
+      ...documentResults,
+      ...canvasResults,
+      ...inboxResults,
+    ].filter((result) => result.kind !== "canvas" && result.kind !== "inbox"),
+  );
 }
 
 export function visibleCommandResults<T>(results: T[]): T[] {

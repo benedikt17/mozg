@@ -4,6 +4,9 @@ import {
   getKnowledgePaneState,
   getOpenDocuments,
   getDocumentBreadcrumb,
+  getDocumentFolderPath,
+  getDocumentTitle,
+  knowledgePathsEqual,
   type DesktopPrototypeAction,
   type DesktopPrototypeState,
 } from "@/prototype/desktop-state";
@@ -14,6 +17,7 @@ import { MarkdownSourceEditor } from "./markdown-source-editor";
 import {
   getDocumentHeadings,
   MarkdownDocumentPreview,
+  toggleTaskListMarker,
 } from "./markdown-document-preview";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
@@ -248,7 +252,13 @@ export function KnowledgeWorkspace({
   }
 
   return (
-    <div className="document-workspace">
+    <div
+      className={`document-workspace ${
+        state.contextPanel?.kind === "knowledge-task-attach"
+          ? "is-task-attachment-mode"
+          : ""
+      }`}
+    >
       <div className="document-tabs-row">
         <div
           className="document-tabs"
@@ -277,7 +287,7 @@ export function KnowledgeWorkspace({
                 role="tab"
                 type="button"
               >
-                <span>{document.title}</span>
+                <span title={document.title}>{document.title}</span>
                 {document.id === "doc-l-magic" ? (
                   <span
                     className="tab-unsaved"
@@ -330,6 +340,7 @@ export function KnowledgeWorkspace({
             />
           </div>
           <IconButton
+            className="knowledge-edit-action"
             active={editingDocumentId === activePaneDocumentId}
             icon={
               <UiIcon
@@ -390,6 +401,7 @@ export function KnowledgeWorkspace({
             </PrototypeButton>
           </div>
           <PrototypeButton
+            className="knowledge-legacy-task-button"
             active={state.contextPanel?.kind === "knowledge-tasks"}
             onClick={() => dispatch({ type: "open-knowledge-task-linker" })}
             size="compact"
@@ -489,21 +501,20 @@ export function KnowledgeWorkspace({
             {!splitEnabled ? (
               <DocumentOutline document={selectedDocument} />
             ) : null}
-            <div
-              className={`document-breadcrumb-row is-primary ${
-                activePane === "primary" ? "is-active" : ""
-              }`}
-            >
-              {getDocumentBreadcrumb(selectedDocument)}
-            </div>
+            <DocumentBreadcrumb
+              active={activePane === "primary"}
+              dispatch={dispatch}
+              document={selectedDocument}
+              state={state}
+            />
             {splitEnabled && splitDocument ? (
-              <div
-                className={`document-breadcrumb-row is-secondary ${
-                  activePane === "secondary" ? "is-active" : ""
-                }`}
-              >
-                {getDocumentBreadcrumb(splitDocument)}
-              </div>
+              <DocumentBreadcrumb
+                active={activePane === "secondary"}
+                dispatch={dispatch}
+                document={splitDocument}
+                secondary
+                state={state}
+              />
             ) : null}
             {splitEnabled ? (
               <div
@@ -511,6 +522,34 @@ export function KnowledgeWorkspace({
                 className="knowledge-split-switcher"
                 role="tablist"
               >
+                {splitDocument ? (
+                  <div
+                    aria-selected={activePane === "secondary"}
+                    className="knowledge-split-tab active"
+                    role="tab"
+                  >
+                    <button
+                      className="knowledge-split-tab-label"
+                      onClick={() => activatePane("secondary")}
+                      title={`${getDocumentFolderPath(splitDocument).join(" / ")} / ${getDocumentTitle(splitDocument)}`}
+                      type="button"
+                    >
+                      {getDocumentFolderPath(splitDocument).at(-1) ?? "Корень"}{" "}
+                      / {getDocumentTitle(splitDocument)}
+                    </button>
+                    <IconButton
+                      aria-label={`Закрыть Split: ${getDocumentTitle(splitDocument)}`}
+                      className="knowledge-split-tab-close"
+                      icon={<UiIcon name="close" />}
+                      label={`Закрыть Split: ${getDocumentTitle(splitDocument)}`}
+                      onClick={() =>
+                        dispatch({ type: "close-knowledge-split-view" })
+                      }
+                      title={`Закрыть Split: ${getDocumentTitle(splitDocument)}`}
+                      variant="ghost"
+                    />
+                  </div>
+                ) : null}
                 <button
                   aria-selected={activePane === "primary"}
                   className={activePane === "primary" ? "active" : ""}
@@ -538,11 +577,24 @@ export function KnowledgeWorkspace({
               ]
                 .filter(Boolean)
                 .join(" ")}
+              onClick={(event) => {
+                const target = event.target;
+                if (!(target instanceof Element)) return;
+                if (
+                  target.closest(
+                    'button, a, input, textarea, select, [contenteditable="true"], .markdown-toolbar, .document-tabs-row',
+                  )
+                )
+                  return;
+                dispatch({ type: "clear-knowledge-breadcrumb-highlight" });
+              }}
             >
               <DocumentArticle
                 active={activePane === "primary"}
                 dispatch={dispatch}
                 document={selectedDocument}
+                documents={state.documents}
+                activeProjectId={state.activeProjectId}
                 editing={editingDocumentId === selectedDocument.id}
                 onActivate={() => activatePane("primary")}
               />
@@ -551,6 +603,8 @@ export function KnowledgeWorkspace({
                   active={activePane === "secondary"}
                   dispatch={dispatch}
                   document={splitDocument}
+                  documents={state.documents}
+                  activeProjectId={state.activeProjectId}
                   editing={
                     Boolean(splitDocument) &&
                     editingDocumentId === splitDocument?.id
@@ -611,8 +665,84 @@ function DocumentOutline({
   );
 }
 
+function DocumentBreadcrumb({
+  document,
+  state,
+  dispatch,
+  secondary = false,
+  active,
+}: {
+  document: PrototypeDocument;
+  state: DesktopPrototypeState;
+  dispatch: Dispatch;
+  secondary?: boolean;
+  active: boolean;
+}): React.JSX.Element {
+  const folderPath = getDocumentFolderPath(document);
+  const segments = [...folderPath, getDocumentTitle(document)];
+  const selectedPath = state.selectedKnowledgePath;
+
+  return (
+    <div
+      className={`document-breadcrumb-row ${
+        secondary ? "is-secondary" : "is-primary"
+      } ${active ? "is-active" : ""}`}
+      aria-label="РџСѓС‚СЊ Рє СЃС‚Р°С‚СЊРµ"
+    >
+      {segments.map((segment, index) => {
+        const isDocument = index === folderPath.length;
+        const path = folderPath.slice(0, index + 1);
+        const isSelected =
+          state.knowledgeBreadcrumbHighlightVisible &&
+          (isDocument
+            ? selectedPath?.kind === "document" &&
+              selectedPath.documentId === document.id
+            : selectedPath?.kind === "folder" &&
+              knowledgePathsEqual(selectedPath.path, path));
+        return (
+          <React.Fragment key={`${segment}-${index}`}>
+            {index > 0 ? (
+              <span
+                aria-hidden="true"
+                className="document-breadcrumb-separator"
+              >
+                /
+              </span>
+            ) : null}
+            <button
+              aria-current={isSelected ? "location" : undefined}
+              className={`document-breadcrumb-item ${
+                isSelected ? "is-selected" : ""
+              }`}
+              data-breadcrumb-kind={isDocument ? "document" : "folder"}
+              data-breadcrumb-path={isDocument ? document.id : path.join("/")}
+              onClick={() =>
+                isDocument
+                  ? dispatch({
+                      type: "open-knowledge-document-from-breadcrumb",
+                      documentId: document.id,
+                    })
+                  : dispatch({
+                      type: "select-knowledge-folder-from-breadcrumb",
+                      path,
+                    })
+              }
+              title={segment}
+              type="button"
+            >
+              {segment}
+            </button>
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
 function DocumentArticle({
   document,
+  documents,
+  activeProjectId,
   secondary = false,
   active,
   editing,
@@ -620,6 +750,8 @@ function DocumentArticle({
   onActivate,
 }: {
   document: PrototypeDocument | undefined;
+  documents: PrototypeDocument[];
+  activeProjectId: string;
   secondary?: boolean;
   active: boolean;
   editing: boolean;
@@ -652,11 +784,38 @@ function DocumentArticle({
         <MarkdownSourceEditor
           dispatch={dispatch}
           document={document}
+          documents={documents}
           key={document.id}
         />
       ) : (
         <div className="document-page-inner">
-          <MarkdownDocumentPreview document={document} />
+          <MarkdownDocumentPreview
+            document={document}
+            onTaskToggle={(lineIndex, checked) =>
+              dispatch({
+                type: "update-knowledge-document-markdown",
+                documentId: document.id,
+                markdown: toggleTaskListMarker(
+                  document.content.join("\n"),
+                  lineIndex,
+                  checked,
+                ),
+              })
+            }
+            onInternalLink={(documentId) => {
+              const target = documents.find((item) => item.id === documentId);
+              if (
+                !target ||
+                target.projectId !== activeProjectId ||
+                target.id === document.id
+              )
+                return;
+              dispatch({
+                type: "open-knowledge-document-in-active-pane",
+                documentId: target.id,
+              });
+            }}
+          />
         </div>
       )}
     </article>

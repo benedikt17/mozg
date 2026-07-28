@@ -34,15 +34,12 @@ export function OverviewSectionWorkspace({
     : undefined;
   const readerActive =
     sourceTask !== undefined &&
-    activeDocument !== undefined &&
     sourceDirection !== undefined &&
     sourceTask.projectId === state.activeProjectId &&
-    activeDocument.projectId === sourceTask.projectId &&
-    sourceTask.linkedDocumentIds.includes(activeDocument.id);
-  const openTaskDetails = (taskId: string): void => {
-    dispatch({ type: "select-task", taskId, section: "overview" });
-  };
-
+    (activeDocument === undefined
+      ? state.overviewArticlePreviewDocumentId === null
+      : activeDocument.projectId === sourceTask.projectId &&
+        sourceTask.linkedDocumentIds.includes(activeDocument.id));
   return (
     <div
       className={[
@@ -60,7 +57,7 @@ export function OverviewSectionWorkspace({
           expandedTaskId={state.overviewExpandedTaskId}
           hiddenDirectionIds={state.overviewHiddenDirectionIds}
           openTaskId={
-            state.contextPanel?.kind === "task"
+            readerActive && state.contextPanel?.kind === "task"
               ? state.contextPanel.taskId
               : null
           }
@@ -74,7 +71,7 @@ export function OverviewSectionWorkspace({
           direction={sourceDirection}
           dispatch={dispatch}
           documents={documents}
-          onOpenTaskDetails={openTaskDetails}
+          state={state}
           task={sourceTask}
         />
       ) : null}

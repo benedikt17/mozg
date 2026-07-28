@@ -4,6 +4,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useEffect,
   type Dispatch,
   type JSX,
 } from "react";
@@ -75,6 +76,25 @@ export function OverviewWorkspace({
       board.scrollLeft = overviewScrollLeft;
     }
   }, [overviewScrollLeft]);
+
+  useEffect(() => {
+    if (!expandedTaskId) return;
+
+    const handleDocumentPointerDown = (event: PointerEvent): void => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest(".task-card")) return;
+      if (!target.closest(".overview-board-mode")) return;
+      dispatch({
+        type: "toggle-overview-task-expanded",
+        taskId: expandedTaskId,
+      });
+    };
+
+    document.addEventListener("pointerdown", handleDocumentPointerDown);
+    return () =>
+      document.removeEventListener("pointerdown", handleDocumentPointerDown);
+  }, [dispatch, expandedTaskId]);
 
   const clearDragState = (): void => {
     setActiveTaskId(null);

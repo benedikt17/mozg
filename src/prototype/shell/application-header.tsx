@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { projectSections } from "@/prototype/desktop-mock-data";
+import { publicProjectSections } from "@/prototype/desktop-mock-data";
 import {
   getCanvasById,
   getActiveProject,
@@ -118,7 +118,7 @@ function ApplicationSectionNavigation({
       aria-label="Разделы приложения"
       className="application-section-navigation"
     >
-      {projectSections.map((section) => (
+      {publicProjectSections.map((section) => (
         <PrototypeButton
           active={state.activeSection === section.id}
           aria-current={state.activeSection === section.id ? "page" : undefined}
@@ -145,9 +145,18 @@ export function ApplicationHeader({
 }): React.JSX.Element {
   return (
     <header className="application-header">
-      <div className="application-project-title">
+      <button
+        className="application-project-title"
+        onClick={() =>
+          state.activeSection === "overview" &&
+          state.overviewArticlePreviewDocumentId !== null
+            ? dispatch({ type: "close-overview-article-preview" })
+            : dispatch({ type: "switch-section", section: "overview" })
+        }
+        type="button"
+      >
         <strong>{getActiveProject(state).name}</strong>
-      </div>
+      </button>
       <ApplicationSectionNavigation state={state} dispatch={dispatch} />
       <div className="application-header-right">
         <ApplicationSectionActions state={state} dispatch={dispatch} />

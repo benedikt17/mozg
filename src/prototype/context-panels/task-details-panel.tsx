@@ -5,7 +5,6 @@ import type {
 } from "@/prototype/desktop-mock-data";
 import {
   getDocumentById,
-  getProjectDocuments,
   isValidTaskLinkUrl,
   type DesktopPrototypeAction,
   type DesktopPrototypeState,
@@ -15,7 +14,7 @@ import {
   IconButton,
   PrototypeButton,
 } from "@/prototype/desktop-ui";
-import { taskSignalOptions } from "./task-signal-options";
+import { getKnowledgePaneState } from "@/prototype/state/knowledge-state";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 
@@ -23,15 +22,23 @@ export function TaskDetailsPanel({
   task,
   state,
   dispatch,
+  overviewMode = false,
 }: {
   task: PrototypeTask;
   state: DesktopPrototypeState;
   dispatch: Dispatch;
+  overviewMode?: boolean;
 }): React.JSX.Element {
+  const [editingTaskTitle, setEditingTaskTitle] = useState(false);
+  const [taskTitleDraft, setTaskTitleDraft] = useState(task.title);
+  const [isAddingSubtask, setIsAddingSubtask] = useState(false);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
   const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
   const [subtaskTitleDraft, setSubtaskTitleDraft] = useState("");
   const [openSubtaskMenuId, setOpenSubtaskMenuId] = useState<string | null>(
+    null,
+  );
+  const [openArticleMenuId, setOpenArticleMenuId] = useState<string | null>(
     null,
   );
   const [newLinkTitle, setNewLinkTitle] = useState("");
@@ -39,9 +46,11 @@ export function TaskDetailsPanel({
   const [editingLinkId, setEditingLinkId] = useState<string | null>(null);
   const [linkTitleDraft, setLinkTitleDraft] = useState("");
   const [linkUrlDraft, setLinkUrlDraft] = useState("");
-  const [articlePickerOpen, setArticlePickerOpen] = useState(false);
-  const [articleSearchQuery, setArticleSearchQuery] = useState("");
+  const subtaskAddButtonRef = useRef<HTMLButtonElement>(null);
+  const subtaskAddInputRef = useRef<HTMLInputElement>(null);
   const subtaskEditInputRef = useRef<HTMLInputElement>(null);
+  const taskTitleInputRef = useRef<HTMLInputElement>(null);
+  const taskTitleEditingRef = useRef(false);
   const subtaskRenameCancelledRef = useRef(false);
   const attachedDocuments = task.linkedDocumentIds
     .map((documentId) => getDocumentById(state, documentId))
@@ -49,28 +58,81 @@ export function TaskDetailsPanel({
       (document): document is PrototypeDocument =>
         document !== undefined && document.projectId === task.projectId,
     );
-  const normalizedArticleQuery = articleSearchQuery.trim().toLocaleLowerCase();
-  const availableDocuments = getProjectDocuments(state, task.projectId).filter(
-    (document) =>
-      !task.linkedDocumentIds.includes(document.id) &&
-      (normalizedArticleQuery.length === 0 ||
-        document.title.toLocaleLowerCase().includes(normalizedArticleQuery)),
-  );
+  const activeKnowledgeDocumentId = overviewMode
+    ? state.overviewArticlePreviewDocumentId
+    : getKnowledgePaneState(state).activeDocument?.id;
+
+  useEffect(() => {
+    if (!editingTaskTitle) return;
+    const input = taskTitleInputRef.current;
+    if (!input) return;
+    input.focus();
+    const caretPosition = task.title.length;
+    input.setSelectionRange(caretPosition, caretPosition);
+  }, [editingTaskTitle, task.title]);
+
+  function startTaskTitleEdit(event: React.MouseEvent<HTMLElement>): void {
+    event.stopPropagation();
+    setTaskTitleDraft(task.title);
+    taskTitleEditingRef.current = true;
+    setEditingTaskTitle(true);
+    dispatch({ type: "begin-task-title-edit", taskId: task.id });
+  }
+
+  function commitTaskTitleEdit(): void {
+    if (!taskTitleEditingRef.current) return;
+    taskTitleEditingRef.current = false;
+    setEditingTaskTitle(false);
+    dispatch({
+      type: "commit-task-title-edit",
+      taskId: task.id,
+      title: taskTitleDraft,
+    });
+  }
+
+  function cancelTaskTitleEdit(): void {
+    taskTitleEditingRef.current = false;
+    setTaskTitleDraft(task.title);
+    setEditingTaskTitle(false);
+    dispatch({ type: "cancel-task-title-edit" });
+  }
 
   useEffect(() => {
     if (!editingSubtaskId) return;
-    subtaskEditInputRef.current?.focus();
-    subtaskEditInputRef.current?.select();
+    const input = subtaskEditInputRef.current;
+    input?.focus();
+    if (input) {
+      const caretPosition = input.value.length;
+      input.setSelectionRange(caretPosition, caretPosition);
+    }
   }, [editingSubtaskId]);
 
+  useEffect(() => {
+    if (!isAddingSubtask) return;
+    subtaskAddInputRef.current?.focus();
+  }, [isAddingSubtask]);
+
   function addSubtask(): void {
-    if (newSubtaskTitle.trim().length === 0) return;
+    const trimmedTitle = newSubtaskTitle.trim();
+    if (trimmedTitle.length === 0) return;
     dispatch({
       type: "add-subtask",
       taskId: task.id,
-      title: newSubtaskTitle,
+      title: trimmedTitle,
     });
     setNewSubtaskTitle("");
+  }
+
+  function closeSubtaskComposer({
+    restoreFocus = false,
+  }: {
+    restoreFocus?: boolean;
+  } = {}): void {
+    setNewSubtaskTitle("");
+    setIsAddingSubtask(false);
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => subtaskAddButtonRef.current?.focus());
+    }
   }
 
   function startSubtaskRename(subtaskId: string, title: string): void {
@@ -150,88 +212,60 @@ export function TaskDetailsPanel({
   }
 
   return (
-    <div className="panel-stack">
-      <div className="field">
-        <textarea
-          aria-label="Название"
-          onChange={(event) =>
-            dispatch({
-              type: "edit-task-title",
-              taskId: task.id,
-              title: event.target.value,
-            })
-          }
-          value={task.title}
-        />
-      </div>
-      <fieldset aria-label="Сигнал задачи" className="task-signal-selector">
-        <div className="task-signal-options">
-          {taskSignalOptions.map((option) => (
-            <label
-              className={`task-signal-option task-signal-${option.id}`}
-              key={option.id}
-              title={option.label}
-            >
-              <input
-                aria-label={option.label}
-                checked={task.signal === option.id}
-                name={`task-signal-${task.id}`}
-                onChange={() =>
-                  dispatch({
-                    type: "set-task-signal",
-                    taskId: task.id,
-                    signal: option.id,
-                  })
-                }
-                type="radio"
-                value={option.id}
-              />
-              <span className="task-signal-swatch" aria-hidden="true" />
-            </label>
-          ))}
-        </div>
-      </fieldset>
-      <ContextPanelSection title="Подзадачи">
-        <form
-          className="subtask-add-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            addSubtask();
-          }}
-        >
-          <input
-            aria-label="Новая подзадача"
-            onChange={(event) => setNewSubtaskTitle(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key !== "Enter") return;
+    <div className="panel-stack overview-reader-task-details">
+      {editingTaskTitle ? (
+        <input
+          aria-label={`Название задачи: ${task.title}`}
+          className="subtask-title-input task-details-inline-title-input"
+          onBlur={commitTaskTitleEdit}
+          onChange={(event) => setTaskTitleDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
               event.preventDefault();
-              addSubtask();
-            }}
-            placeholder="Новая подзадача"
-            value={newSubtaskTitle}
-          />
-          <IconButton
-            icon={<span aria-hidden="true">+</span>}
-            label="Добавить подзадачу"
-            title="Добавить подзадачу"
-            type="submit"
-            variant="quiet"
-          />
-        </form>
-        {task.subtasks.length > 0 ? (
-          task.subtasks.map((subtask) => (
+              commitTaskTitleEdit();
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              cancelTaskTitleEdit();
+            }
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          ref={taskTitleInputRef}
+          value={taskTitleDraft}
+        />
+      ) : (
+        <button
+          className="task-details-title-button overview-reader-task-title"
+          onClick={startTaskTitleEdit}
+          onPointerDown={(event) => event.stopPropagation()}
+          type="button"
+        >
+          {task.title}
+        </button>
+      )}
+      <div
+        aria-label="Подзадачи"
+        className="task-details-tab-panel"
+        id={`task-details-${task.id}-subtasks-panel`}
+        role="region"
+      >
+        <section className="context-section task-subtasks-section">
+          {task.subtasks.map((subtask) => (
             <div className="subtask-row" key={subtask.id}>
-              <input
+              <button
+                aria-checked={subtask.done}
                 aria-label={subtask.title}
-                checked={subtask.done}
-                onChange={() =>
+                className="subtask-checkbox"
+                onClick={(event) => {
+                  event.stopPropagation();
                   dispatch({
                     type: "toggle-subtask",
                     taskId: task.id,
                     subtaskId: subtask.id,
-                  })
-                }
-                type="checkbox"
+                  });
+                }}
+                role="checkbox"
+                type="button"
               />
               {editingSubtaskId === subtask.id ? (
                 <input
@@ -281,7 +315,13 @@ export function TaskDetailsPanel({
                   aria-expanded={openSubtaskMenuId === subtask.id}
                   aria-haspopup="menu"
                   className="subtask-actions-button"
-                  icon={<span aria-hidden="true">⋮</span>}
+                  icon={
+                    <span aria-hidden="true" className="task-details-more-icon">
+                      <span />
+                      <span />
+                      <span />
+                    </span>
+                  }
                   label={`Действия подзадачи: ${subtask.title}`}
                   onClick={() =>
                     setOpenSubtaskMenuId((currentId) =>
@@ -323,199 +363,242 @@ export function TaskDetailsPanel({
                 ) : null}
               </div>
             </div>
-          ))
-        ) : (
-          <p>Подзадач пока нет.</p>
-        )}
-      </ContextPanelSection>
-      <ContextPanelSection title="Ссылки">
-        <form
-          className="task-link-add-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            addTaskLink();
-          }}
-        >
-          <input
-            aria-label="Описание ссылки"
-            onChange={(event) => setNewLinkTitle(event.target.value)}
-            placeholder="Описание"
-            value={newLinkTitle}
-          />
-          <input
-            aria-label="URL ссылки"
-            inputMode="url"
-            onChange={(event) => setNewLinkUrl(event.target.value)}
-            placeholder="https://…"
-            type="url"
-            value={newLinkUrl}
-          />
-          <IconButton
-            icon={<span aria-hidden="true">+</span>}
-            label="Добавить ссылку"
-            title="Добавить ссылку"
-            type="submit"
-            variant="quiet"
-          />
-        </form>
-        {task.links.map((link) =>
-          editingLinkId === link.id ? (
+          ))}
+          {isAddingSubtask ? (
             <form
-              className="task-link-edit-form"
-              key={link.id}
+              className="subtask-add-editor"
               onSubmit={(event) => {
                 event.preventDefault();
-                commitTaskLinkEdit();
+                addSubtask();
               }}
             >
+              <span aria-hidden="true" className="subtask-add-circle" />
               <input
-                aria-label={`Описание ссылки: ${link.title}`}
-                onChange={(event) => setLinkTitleDraft(event.target.value)}
-                value={linkTitleDraft}
+                aria-label="Новая подзадача"
+                onBlur={() => closeSubtaskComposer()}
+                onChange={(event) => setNewSubtaskTitle(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Escape") return;
+                  event.preventDefault();
+                  closeSubtaskComposer({ restoreFocus: true });
+                }}
+                placeholder="Введите следующий шаг"
+                ref={subtaskAddInputRef}
+                value={newSubtaskTitle}
               />
-              <input
-                aria-label={`URL ссылки: ${link.title}`}
-                inputMode="url"
-                onChange={(event) => setLinkUrlDraft(event.target.value)}
-                type="url"
-                value={linkUrlDraft}
-              />
-              <div className="task-link-edit-actions">
-                <PrototypeButton size="compact" type="submit" variant="quiet">
-                  Сохранить
-                </PrototypeButton>
-                <PrototypeButton
-                  onClick={cancelTaskLinkEdit}
-                  size="compact"
-                  type="button"
-                  variant="quiet"
-                >
-                  Отмена
-                </PrototypeButton>
-              </div>
             </form>
           ) : (
-            <div className="task-link-row" key={link.id}>
-              <a href={link.url} rel="noreferrer" target="_blank">
-                {link.title}
-              </a>
-              <IconButton
-                icon={<span aria-hidden="true">✎</span>}
-                label={`Изменить ссылку: ${link.title}`}
-                onClick={() => startTaskLinkEdit(link.id)}
-                title={`Изменить ссылку: ${link.title}`}
-                variant="ghost"
-              />
-              <IconButton
-                icon={<span aria-hidden="true">×</span>}
-                label={`Удалить ссылку: ${link.title}`}
-                onClick={() =>
-                  dispatch({
-                    type: "delete-task-link",
-                    taskId: task.id,
-                    linkId: link.id,
-                  })
-                }
-                title={`Удалить ссылку: ${link.title}`}
-                variant="ghost"
-              />
-            </div>
-          ),
-        )}
-      </ContextPanelSection>
-      <ContextPanelSection title="Статьи">
-        {attachedDocuments.map((document) => (
-          <div className="task-article-row" key={document.id}>
             <button
-              className="task-article-link"
-              onClick={() =>
-                dispatch({ type: "select-document", documentId: document.id })
-              }
+              aria-label="Добавить следующий шаг"
+              className="subtask-add-trigger"
+              onClick={() => setIsAddingSubtask(true)}
+              ref={subtaskAddButtonRef}
               type="button"
             >
-              {document.title}
+              <span aria-hidden="true">+</span>
+              <span>Следующий шаг</span>
             </button>
-            <IconButton
-              icon={<span aria-hidden="true">×</span>}
-              label={`Открепить статью: ${document.title}`}
-              onClick={() =>
-                dispatch({
-                  type: "detach-task-document",
-                  taskId: task.id,
-                  documentId: document.id,
-                })
-              }
-              title={`Открепить статью: ${document.title}`}
-              variant="ghost"
-            />
-          </div>
-        ))}
-        <PrototypeButton
-          aria-expanded={
-            state.activeSection === "overview" ? undefined : articlePickerOpen
-          }
-          onClick={() => {
-            if (state.activeSection === "overview") {
-              dispatch({
-                type: "open-overview-task-article-linker",
-                taskId: task.id,
-              });
-              return;
-            }
-            setArticlePickerOpen((open) => !open);
-          }}
-          size="compact"
-          variant="quiet"
-        >
-          + Прикрепить статью
-        </PrototypeButton>
-        {state.activeSection !== "overview" && articlePickerOpen ? (
-          <div className="task-article-picker">
-            <input
-              aria-label="Поиск статьи"
-              onChange={(event) => setArticleSearchQuery(event.target.value)}
-              placeholder="Поиск по статьям"
-              type="search"
-              value={articleSearchQuery}
-            />
-            <div className="task-article-picker-results">
-              {availableDocuments.length > 0 ? (
-                availableDocuments.map((document) => (
+          )}
+        </section>
+      </div>
+      <div
+        aria-label="Статьи"
+        className="task-details-tab-panel"
+        id={`task-details-${task.id}-articles-panel`}
+        role="region"
+      >
+        <ContextPanelSection title="Статьи">
+          {attachedDocuments.map((document) => (
+            <div
+              className={`task-article-row ${
+                activeKnowledgeDocumentId === document.id ? "is-active" : ""
+              }`}
+              key={document.id}
+            >
+              <button
+                className="task-article-link"
+                onClick={() =>
+                  dispatch(
+                    overviewMode
+                      ? {
+                          type: "open-overview-task-article",
+                          taskId: task.id,
+                          documentId: document.id,
+                        }
+                      : {
+                          type: "select-document",
+                          documentId: document.id,
+                        },
+                  )
+                }
+                type="button"
+              >
+                {document.title}
+              </button>
+              <IconButton
+                aria-expanded={openArticleMenuId === document.id}
+                className="subtask-actions-button"
+                label={`Открепить статью: ${document.title}`}
+                title={`Открепить статью: ${document.title}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setOpenArticleMenuId((currentId) =>
+                    currentId === document.id ? null : document.id,
+                  );
+                }}
+                icon={
+                  <span aria-hidden="true" className="task-details-more-icon">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                }
+              />
+              {openArticleMenuId === document.id ? (
+                <div className="subtask-actions-menu" role="menu">
                   <button
-                    key={document.id}
-                    onClick={() =>
+                    className="subtask-delete-action"
+                    onClick={() => {
                       dispatch({
-                        type: "attach-task-document",
+                        type: "detach-task-document",
                         taskId: task.id,
                         documentId: document.id,
-                      })
-                    }
+                      });
+                      setOpenArticleMenuId(null);
+                    }}
+                    role="menuitem"
                     type="button"
                   >
-                    {document.title}
+                    Удалить
                   </button>
-                ))
-              ) : (
-                <p>Нет доступных статей.</p>
-              )}
+                </div>
+              ) : null}
             </div>
-          </div>
-        ) : null}
-      </ContextPanelSection>
-      <label className="field">
-        Заметки
-        <textarea
-          onChange={(event) =>
-            dispatch({
-              type: "set-task-notes",
-              taskId: task.id,
-              notes: event.target.value,
-            })
-          }
-          rows={5}
-          value={task.notes ?? ""}
-        />
-      </label>
+          ))}
+          <PrototypeButton
+            onClick={() => {
+              dispatch({
+                type: "open-knowledge-article-attach",
+                taskId: task.id,
+                origin: {
+                  section:
+                    state.activeSection === "overview" ? "overview" : "tasks",
+                  taskId: task.id,
+                  documentId:
+                    state.activeSection === "overview"
+                      ? state.overviewArticlePreviewDocumentId
+                      : undefined,
+                },
+              });
+            }}
+            className="task-article-attach-trigger"
+          >
+            + Прикрепить статью
+          </PrototypeButton>
+        </ContextPanelSection>
+      </div>
+      <div
+        aria-label="Ссылки"
+        className="task-details-tab-panel"
+        id={`task-details-${task.id}-links-panel`}
+        role="region"
+      >
+        <ContextPanelSection title="Ссылки">
+          <form
+            className="task-link-add-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              addTaskLink();
+            }}
+          >
+            <input
+              aria-label="Описание ссылки"
+              onChange={(event) => setNewLinkTitle(event.target.value)}
+              placeholder="Описание"
+              value={newLinkTitle}
+            />
+            <input
+              aria-label="URL ссылки"
+              inputMode="url"
+              onChange={(event) => setNewLinkUrl(event.target.value)}
+              placeholder="https://…"
+              type="url"
+              value={newLinkUrl}
+            />
+            <IconButton
+              icon={<span aria-hidden="true">+</span>}
+              label="Добавить ссылку"
+              title="Добавить ссылку"
+              type="submit"
+              variant="quiet"
+            />
+          </form>
+          {task.links.map((link) =>
+            editingLinkId === link.id ? (
+              <form
+                className="task-link-edit-form"
+                key={link.id}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  commitTaskLinkEdit();
+                }}
+              >
+                <input
+                  aria-label={`Описание ссылки: ${link.title}`}
+                  onChange={(event) => setLinkTitleDraft(event.target.value)}
+                  value={linkTitleDraft}
+                />
+                <input
+                  aria-label={`URL ссылки: ${link.title}`}
+                  inputMode="url"
+                  onChange={(event) => setLinkUrlDraft(event.target.value)}
+                  type="url"
+                  value={linkUrlDraft}
+                />
+                <div className="task-link-edit-actions">
+                  <PrototypeButton size="compact" type="submit" variant="quiet">
+                    Сохранить
+                  </PrototypeButton>
+                  <PrototypeButton
+                    onClick={cancelTaskLinkEdit}
+                    size="compact"
+                    type="button"
+                    variant="quiet"
+                  >
+                    Отмена
+                  </PrototypeButton>
+                </div>
+              </form>
+            ) : (
+              <div className="task-link-row" key={link.id}>
+                <a href={link.url} rel="noreferrer" target="_blank">
+                  {link.title}
+                </a>
+                <IconButton
+                  icon={<span aria-hidden="true">✎</span>}
+                  label={`Изменить ссылку: ${link.title}`}
+                  onClick={() => startTaskLinkEdit(link.id)}
+                  title={`Изменить ссылку: ${link.title}`}
+                  variant="ghost"
+                />
+                <IconButton
+                  icon={<span aria-hidden="true">×</span>}
+                  label={`Удалить ссылку: ${link.title}`}
+                  onClick={() =>
+                    dispatch({
+                      type: "delete-task-link",
+                      taskId: task.id,
+                      linkId: link.id,
+                    })
+                  }
+                  title={`Удалить ссылку: ${link.title}`}
+                  variant="ghost"
+                />
+              </div>
+            ),
+          )}
+        </ContextPanelSection>
+      </div>
     </div>
   );
 }
