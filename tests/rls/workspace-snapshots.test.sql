@@ -153,25 +153,23 @@ select throws_ok(
   'owner cannot bypass CAS to change snapshot workspace_id'
 );
 select results_eq(
-  $$ select new_revision::text || ':' || (new_updated_at is not null)::text from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000001'::uuid, 1::bigint, 1::smallint, '{"projects":[{"id":"project-1"}]}'::jsonb) $$,
-  array['2:true'::text],
-  'owner CAS save succeeds, increments revision, and returns updated timestamp'
+  $$ select status || ':' || revision::text from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000001'::uuid, 1::bigint, 1::smallint, '{"projects":[{"id":"project-1"}]}'::jsonb) $$,
+  array['saved:2'::text],
+  'owner CAS save succeeds and returns saved revision'
 );
 select is(
   (select snapshot->'projects'->0->>'id' from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'),
   'project-1'::text,
   'successful CAS save stores the new snapshot'
 );
-select throws_ok(
-  $$ select * from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000001'::uuid, 1::bigint, 1::smallint, '{"projects":[]}'::jsonb) $$,
-  '40001',
-  'snapshot revision conflict',
+select results_eq(
+  $$ select status || ':' || revision::text from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000001'::uuid, 1::bigint, 1::smallint, '{"projects":[]}'::jsonb) $$,
+  array['conflict:2'::text],
   'stale expected revision returns conflict without overwriting'
 );
-select throws_ok(
-  $$ select * from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000001'::uuid, 1::bigint, 1::smallint, '{"projects":[]}'::jsonb) $$,
-  '40001',
-  'snapshot revision conflict',
+select results_eq(
+  $$ select status || ':' || revision::text from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000001'::uuid, 1::bigint, 1::smallint, '{"projects":[]}'::jsonb) $$,
+  array['conflict:2'::text],
   'repeated stale save returns conflict again'
 );
 select is(

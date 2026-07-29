@@ -33,6 +33,7 @@ import {
   useDesktopPersistence,
   type UseDesktopPersistenceResult,
 } from "@/prototype/persistence/use-desktop-persistence";
+import type { DesktopPersistenceErrorCode } from "@/prototype/persistence/persistence-adapter";
 import type { DesktopCloudBootstrap } from "@/prototype/persistence/cloud-snapshot-bridge";
 import "./desktop-shell.css";
 import "./desktop-workspaces.css";
@@ -54,7 +55,8 @@ export function DesktopPrototypeShell({
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
   const seededFromUrl = useRef(false);
   const persistence = useDesktopPersistence(state, dispatch, {
-    enabled: cloudBootstrap === undefined,
+    enabled: true,
+    cloudBootstrap,
   });
   const workspaceAvailable =
     persistence.lifecycle.status !== "loading" &&
@@ -243,6 +245,17 @@ function DesktopPersistenceStatus({
 }: {
   persistence: UseDesktopPersistenceResult;
 }): React.JSX.Element | null {
+  if (persistence.lifecycle.status === "ready") {
+    return (
+      <div
+        aria-live="polite"
+        className="desktop-persistence-status"
+        role="status"
+      >
+        Сохранено
+      </div>
+    );
+  }
   if (persistence.lifecycle.status === "saving") {
     return (
       <div
@@ -258,7 +271,7 @@ function DesktopPersistenceStatus({
     return (
       <div className="desktop-persistence-status is-error" role="alert">
         <span>
-          Не удалось сохранить изменения ({persistence.lifecycle.error.code})
+          {getDesktopPersistenceStatusMessage(persistence.lifecycle.error.code)}
         </span>
         <button
           className="ui-button"
@@ -271,6 +284,14 @@ function DesktopPersistenceStatus({
     );
   }
   return null;
+}
+
+export function getDesktopPersistenceStatusMessage(
+  code: DesktopPersistenceErrorCode,
+): string {
+  return code === "conflict"
+    ? "Конфликт изменений"
+    : "Не удалось сохранить изменения";
 }
 
 function SectionWorkspace({

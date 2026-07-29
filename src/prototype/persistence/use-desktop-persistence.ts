@@ -7,6 +7,8 @@ import {
   type DesktopPersistenceLifecycle,
 } from "@/prototype/persistence/desktop-persistence-runtime";
 import { IndexedDbDesktopPersistenceAdapter } from "@/prototype/persistence/indexeddb-adapter";
+import { CloudDesktopPersistenceAdapter } from "@/prototype/persistence/cloud-persistence-adapter";
+import type { DesktopCloudBootstrap } from "@/prototype/persistence/cloud-snapshot-bridge";
 import type {
   DesktopPrototypeAction,
   DesktopPrototypeState,
@@ -21,22 +23,29 @@ export type UseDesktopPersistenceResult = {
 export function useDesktopPersistence(
   state: DesktopPrototypeState,
   dispatch: React.Dispatch<DesktopPrototypeAction>,
-  options: { enabled?: boolean } = {},
+  options: { enabled?: boolean; cloudBootstrap?: DesktopCloudBootstrap } = {},
 ): UseDesktopPersistenceResult {
   const enabled = options.enabled ?? true;
+  const cloudBootstrap = options.cloudBootstrap;
   const snapshot = useMemo(() => createDesktopDomainSnapshot(state), [state]);
   const initialSnapshot = useRef(snapshot);
   const runtime = useRef<DesktopPersistenceRuntime | null>(null);
   const [lifecycle, setLifecycle] = useState<DesktopPersistenceLifecycle>(() =>
     enabled
       ? { status: "loading" }
-      : { status: "ready", revision: 0, savedAt: "cloud-read-only" },
+      : {
+          status: "ready",
+          revision: cloudBootstrap?.revision ?? 0,
+          savedAt: cloudBootstrap?.updatedAt ?? "cloud-read-only",
+        },
   );
 
   useEffect(() => {
     if (!enabled) return;
     let active = true;
-    const adapter = new IndexedDbDesktopPersistenceAdapter();
+    const adapter = cloudBootstrap
+      ? new CloudDesktopPersistenceAdapter(cloudBootstrap)
+      : new IndexedDbDesktopPersistenceAdapter();
     const coordinator = new DesktopPersistenceRuntime({
       adapter,
       initialSnapshot: initialSnapshot.current,
@@ -67,7 +76,7 @@ export function useDesktopPersistence(
       if (runtime.current === coordinator) runtime.current = null;
       coordinator.dispose();
     };
-  }, [dispatch, enabled]);
+  }, [cloudBootstrap, dispatch, enabled]);
 
   useEffect(() => {
     if (!enabled) return;

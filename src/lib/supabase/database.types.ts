@@ -243,8 +243,8 @@ export type Database = {
           target_workspace_id: string
         }
         Returns: {
-          new_revision: number
-          new_updated_at: string
+          status: string
+          revision: number
         }[]
       }
     }
