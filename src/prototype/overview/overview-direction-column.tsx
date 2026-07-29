@@ -124,7 +124,21 @@ export function OverviewDirectionColumn({
               );
             })
           ) : (
-            <p className="empty-state">Нет задач в этом направлении.</p>
+            <div className="direction-empty-state">
+              <p className="empty-state">Нет следующего шага</p>
+              <button
+                className="direction-next-step-action"
+                onClick={() =>
+                  dispatch({
+                    type: "create-task",
+                    overviewDirectionId: direction.id,
+                  })
+                }
+                type="button"
+              >
+                Создать следующий шаг
+              </button>
+            </div>
           )}
           {directionDropTarget?.index === positionedTasks.length ? (
             <TaskDropGap />

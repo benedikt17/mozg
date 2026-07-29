@@ -2700,6 +2700,52 @@ describe("desktop structural prototype state", () => {
     );
   });
 
+  it("keeps an empty Overview direction available for its next task", () => {
+    let state = freshState();
+    const directionId = "lukomorie-production";
+    const activeTasks = getTasksForDirection(state, directionId);
+
+    for (const task of activeTasks) {
+      state = desktopPrototypeReducer(state, {
+        type: "toggle-task-completed",
+        taskId: task.id,
+      });
+    }
+
+    expect(getProjectOverviewDirections(state)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: directionId })]),
+    );
+    expect(getTasksForDirection(state, directionId)).toEqual([]);
+
+    state = desktopPrototypeReducer(state, {
+      type: "create-task",
+      overviewDirectionId: directionId,
+    });
+
+    expect(state.tasks[0]).toMatchObject({
+      projectId: state.activeProjectId,
+      overviewDirectionId: directionId,
+      listId: "lukomorie-list-production",
+      showOnOverview: true,
+      completedAt: null,
+    });
+    expect(directionTaskIds(state, directionId)).toContain(state.tasks[0]?.id);
+  });
+
+  it("renders an explicit next-step action for an empty Overview direction", () => {
+    const source = readFileSync(
+      resolve(
+        process.cwd(),
+        "src/prototype/overview/overview-direction-column.tsx",
+      ),
+      "utf8",
+    );
+
+    expect(source).toContain("Нет следующего шага");
+    expect(source).toContain("Создать следующий шаг");
+    expect(source).toContain("overviewDirectionId: direction.id");
+  });
+
   it("normalizes stale BAZA integration fields when restoring tasks", () => {
     const mappings = [
       ["scenario", "lukomorie-list-scenario", "lukomorie-scenario"],

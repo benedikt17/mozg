@@ -1785,6 +1785,47 @@
     line-height: 18px;
   }
 
+  .direction-empty-state {
+    min-height: 92px;
+    display: grid;
+    align-content: center;
+    justify-items: start;
+    gap: 10px;
+    border: 1px dashed color-mix(in srgb, var(--border-strong) 72%, transparent);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--surface) 68%, transparent);
+    padding: 14px;
+  }
+
+  .direction-empty-state .empty-state {
+    color: var(--text-2);
+    font-weight: 500;
+  }
+
+  .direction-next-step-action {
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--accent-2);
+    padding: 0;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 18px;
+    text-align: left;
+  }
+
+  .direction-next-step-action:hover {
+    color: var(--text);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .direction-next-step-action:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 3px;
+  }
+
   .document-tabs {
     overflow-x: auto;
     padding-bottom: 8px;
