@@ -33,21 +33,29 @@ import {
   useDesktopPersistence,
   type UseDesktopPersistenceResult,
 } from "@/prototype/persistence/use-desktop-persistence";
+import type { DesktopCloudBootstrap } from "@/prototype/persistence/cloud-snapshot-bridge";
 import "./desktop-shell.css";
 import "./desktop-workspaces.css";
 import "./desktop-knowledge.css";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 
-export function DesktopPrototypeShell(): React.JSX.Element {
+export function DesktopPrototypeShell({
+  cloudBootstrap,
+}: {
+  cloudBootstrap?: DesktopCloudBootstrap;
+}): React.JSX.Element {
   const [state, dispatch] = useReducer(
     desktopPrototypeReducer,
-    initialDesktopPrototypeState,
+    cloudBootstrap?.snapshot,
+    initializeDesktopPrototypeState,
   );
   const [commandQuery, setCommandQuery] = useState(getInitialCommandQuery);
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
   const seededFromUrl = useRef(false);
-  const persistence = useDesktopPersistence(state, dispatch);
+  const persistence = useDesktopPersistence(state, dispatch, {
+    enabled: cloudBootstrap === undefined,
+  });
   const workspaceAvailable =
     persistence.lifecycle.status !== "loading" &&
     persistence.lifecycle.status !== "load-error";
@@ -189,6 +197,16 @@ export function DesktopPrototypeShell(): React.JSX.Element {
       ) : null}
     </main>
   );
+}
+
+function initializeDesktopPrototypeState(
+  snapshot: DesktopCloudBootstrap["snapshot"] | undefined,
+): DesktopPrototypeState {
+  if (!snapshot) return initialDesktopPrototypeState;
+  return desktopPrototypeReducer(initialDesktopPrototypeState, {
+    type: "hydrate-domain",
+    snapshot,
+  });
 }
 
 function DesktopPersistenceBoundary({

@@ -1,11 +1,41 @@
+import type { DesktopCloudSnapshotLoadResult } from "@/lib/supabase/desktop-snapshot-loader";
+import { loadDesktopCloudSnapshot } from "@/lib/supabase/desktop-snapshot-loader";
 import { DesktopPrototypeShell } from "@/prototype/desktop-shell";
-import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default async function DesktopPrototypePage() {
-  const { data } = await (await createClient()).auth.getUser();
-  if (!data.user) redirect("/sign-in?next=%2Fprototype%2Fdesktop");
-  return <DesktopPrototypeShell />;
+  const result = await loadDesktopCloudSnapshot();
+  if (result.kind === "unauthenticated") {
+    redirect("/sign-in?next=%2Fprototype%2Fdesktop");
+  }
+  if (result.kind !== "ready")
+    return <DesktopSnapshotBoundary kind={result.kind} />;
+  return <DesktopPrototypeShell cloudBootstrap={result.bootstrap} />;
+}
+
+function DesktopSnapshotBoundary({
+  kind,
+}: {
+  kind: Exclude<
+    DesktopCloudSnapshotLoadResult["kind"],
+    "ready" | "unauthenticated"
+  >;
+}): React.JSX.Element {
+  const message =
+    kind === "workspace-unavailable"
+      ? "Для пользователя недоступно workspace."
+      : kind === "snapshot-missing"
+        ? "Для workspace ещё нет облачного snapshot."
+        : kind === "unsupported-schema"
+          ? "Облачный snapshot имеет неподдерживаемую версию."
+          : "Не удалось загрузить облачное состояние workspace.";
+  return (
+    <main className="desktop-prototype desktop-persistence-boundary">
+      <div className="desktop-persistence-message" role="alert">
+        <strong>{message}</strong>
+      </div>
+    </main>
+  );
 }

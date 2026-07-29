@@ -21,15 +21,20 @@ export type UseDesktopPersistenceResult = {
 export function useDesktopPersistence(
   state: DesktopPrototypeState,
   dispatch: React.Dispatch<DesktopPrototypeAction>,
+  options: { enabled?: boolean } = {},
 ): UseDesktopPersistenceResult {
+  const enabled = options.enabled ?? true;
   const snapshot = useMemo(() => createDesktopDomainSnapshot(state), [state]);
   const initialSnapshot = useRef(snapshot);
   const runtime = useRef<DesktopPersistenceRuntime | null>(null);
-  const [lifecycle, setLifecycle] = useState<DesktopPersistenceLifecycle>({
-    status: "loading",
-  });
+  const [lifecycle, setLifecycle] = useState<DesktopPersistenceLifecycle>(() =>
+    enabled
+      ? { status: "loading" }
+      : { status: "ready", revision: 0, savedAt: "cloud-read-only" },
+  );
 
   useEffect(() => {
+    if (!enabled) return;
     let active = true;
     const adapter = new IndexedDbDesktopPersistenceAdapter();
     const coordinator = new DesktopPersistenceRuntime({
@@ -62,18 +67,21 @@ export function useDesktopPersistence(
       if (runtime.current === coordinator) runtime.current = null;
       coordinator.dispose();
     };
-  }, [dispatch]);
+  }, [dispatch, enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     runtime.current?.observeSnapshot(snapshot);
-  }, [snapshot]);
+  }, [enabled, snapshot]);
 
   const retryLoad = useCallback(() => {
+    if (!enabled) return;
     void runtime.current?.retryLoad();
-  }, []);
+  }, [enabled]);
   const retrySave = useCallback(() => {
+    if (!enabled) return;
     void runtime.current?.retrySave();
-  }, []);
+  }, [enabled]);
 
   return { lifecycle, retryLoad, retrySave };
 }
