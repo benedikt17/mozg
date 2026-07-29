@@ -1,0 +1,251 @@
+.screen {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 32px 20px;
+  background: #f6f6f4;
+  color: #20201d;
+  font-family:
+    Inter,
+    Geist Sans,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+.card {
+  width: min(100%, 400px);
+  box-sizing: border-box;
+  border: 1px solid #deddd8;
+  border-radius: 8px;
+  background: #fbfbfa;
+  box-shadow: 0 24px 64px rgb(32 32 29 / 10%);
+  padding: 28px;
+}
+
+.header {
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  color: #52524c;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.eyebrow::before {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff5200;
+  content: "";
+}
+
+.title {
+  margin: 0;
+  color: #20201d;
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.subtitle {
+  max-width: 340px;
+  margin: 8px 0 0;
+  color: #52524c;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.actions {
+  display: grid;
+  gap: 16px;
+}
+
+.button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  outline: 0;
+  padding: 0 12px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+.button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.button:focus-visible {
+  box-shadow:
+    0 0 0 2px #fbfbfa,
+    0 0 0 4px #6f66ff;
+}
+
+.button:disabled,
+.button[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.google {
+  border-color: #ff5200;
+  background: #ff5200;
+  color: #fff;
+}
+
+.google:hover:not(:disabled) {
+  border-color: #c83f00;
+  background: #c83f00;
+}
+
+.googleMark {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #fff;
+  color: #ff5200;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.secondary {
+  border-color: #c8c6bf;
+  background: #fbfbfa;
+  color: #20201d;
+}
+
+.secondary:hover:not(:disabled) {
+  border-color: #7a7a72;
+  background: #f1f1ef;
+}
+
+.pending {
+  cursor: progress;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #7a7a72;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.divider::before,
+.divider::after {
+  height: 1px;
+  flex: 1;
+  background: #deddd8;
+  content: "";
+}
+
+.form {
+  display: grid;
+  gap: 14px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  color: #52524c;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+}
+
+.input {
+  width: 100%;
+  min-height: 40px;
+  box-sizing: border-box;
+  border: 1px solid #c8c6bf;
+  border-radius: 6px;
+  outline: 0;
+  background: #fff;
+  padding: 0 10px;
+  color: #20201d;
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.input:hover {
+  border-color: #7a7a72;
+}
+
+.input:focus-visible {
+  border-color: #6f66ff;
+  box-shadow: 0 0 0 3px rgb(111 102 255 / 18%);
+}
+
+.error {
+  margin: 0;
+  border: 1px solid rgb(180 35 24 / 28%);
+  border-radius: 6px;
+  background: #fff4f2;
+  padding: 9px 10px;
+  color: #b42318;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+@media (max-width: 480px) {
+  .screen {
+    padding: 20px 12px;
+  }
+
+  .card {
+    padding: 24px 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button,
+  .input {
+    transition: none;
+  }
+
+  .button:hover:not(:disabled) {
+    transform: none;
+  }
+}

@@ -2,62 +2,117 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import styles from "@/components/auth/sign-in-form.module.css";
 import { createClient } from "@/lib/supabase/browser";
 import {
+  getOAuthErrorMessage,
   getSafeRedirectPath,
   getSignInErrorMessage,
 } from "@/lib/auth/safe-redirect";
 
-export function SignInForm({ redirectPath }: { redirectPath: string }) {
+export function SignInForm({
+  redirectPath,
+  oauthError = false,
+}: {
+  redirectPath: string;
+  oauthError?: boolean;
+}) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(
+    oauthError ? getOAuthErrorMessage() : null,
+  );
+  const [pending, setPending] = useState<"password" | "google" | null>(null);
+  const safeRedirectPath = getSafeRedirectPath(redirectPath);
+  const googleHref = `/auth/google?next=${encodeURIComponent(safeRedirectPath)}`;
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setPending(true);
+    setPending("password");
     setError(null);
     const { error: signInError } = await createClient().auth.signInWithPassword(
       { email, password },
     );
     if (signInError) {
       setError(getSignInErrorMessage());
-      setPending(false);
+      setPending(null);
       return;
     }
-    router.replace(getSafeRedirectPath(redirectPath));
+    router.replace(safeRedirectPath);
     router.refresh();
   }
+
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center p-8">
-      <form className="flex flex-col gap-4" onSubmit={submit}>
-        <h1 className="text-3xl font-semibold">Вход</h1>
-        <label className="flex flex-col gap-1">
-          Email
-          <input
-            autoComplete="email"
-            required
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          Пароль
-          <input
-            autoComplete="current-password"
-            required
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
-        {error ? <p role="alert">{error}</p> : null}
-        <button disabled={pending} type="submit">
-          {pending ? "Входим…" : "Войти"}
-        </button>
-      </form>
+    <main className={styles.screen}>
+      <section className={styles.card}>
+        <header className={styles.header}>
+          <p className={styles.eyebrow}>MOZG</p>
+          <h1 className={styles.title}>Войти в MOZG</h1>
+          <p className={styles.subtitle}>
+            Откройте своё рабочее пространство и продолжите с того места, где
+            остановились.
+          </p>
+        </header>
+
+        <div className={styles.actions}>
+          <a
+            aria-busy={pending === "google"}
+            className={`${styles.button} ${styles.google} ${pending === "google" ? styles.pending : ""}`}
+            href={googleHref}
+            onClick={() => {
+              if (!pending) setPending("google");
+            }}
+          >
+            <span aria-hidden="true" className={styles.googleMark}>
+              G
+            </span>
+            {pending === "google" ? "Переходим…" : "Продолжить с Google"}
+          </a>
+
+          <div aria-hidden="true" className={styles.divider}>
+            или войти с email
+          </div>
+
+          <form className={styles.form} onSubmit={submit}>
+            <label className={styles.field}>
+              <span>Email</span>
+              <input
+                className={styles.input}
+                autoComplete="email"
+                required
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </label>
+            <label className={styles.field}>
+              <span>Пароль</span>
+              <input
+                className={styles.input}
+                autoComplete="current-password"
+                required
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </label>
+            {error ? (
+              <p className={styles.error} role="alert">
+                {error}
+              </p>
+            ) : null}
+            <button
+              aria-busy={pending === "password"}
+              className={`${styles.button} ${styles.secondary} ${pending === "password" ? styles.pending : ""}`}
+              disabled={pending !== null}
+              type="submit"
+            >
+              {pending === "password" ? "Входим…" : "Войти"}
+            </button>
+          </form>
+        </div>
+      </section>
     </main>
   );
 }
