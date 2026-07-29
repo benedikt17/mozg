@@ -7,6 +7,31 @@ export type Json =
   | Json[]
 
 export type Database = {
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       notes: {
@@ -141,6 +166,41 @@ export type Database = {
           },
         ]
       }
+      workspace_snapshots: {
+        Row: {
+          created_at: string
+          revision: number
+          schema_version: number
+          snapshot: Json
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          revision?: number
+          schema_version?: number
+          snapshot: Json
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          revision?: number
+          schema_version?: number
+          snapshot?: Json
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_snapshots_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workspaces: {
         Row: {
           created_at: string
@@ -174,6 +234,18 @@ export type Database = {
       is_workspace_member: {
         Args: { target_workspace_id: string }
         Returns: boolean
+      }
+      save_workspace_snapshot: {
+        Args: {
+          target_expected_revision: number
+          target_schema_version: number
+          target_snapshot: Json
+          target_workspace_id: string
+        }
+        Returns: {
+          new_revision: number
+          new_updated_at: string
+        }[]
       }
     }
     Enums: {
@@ -303,6 +375,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },
