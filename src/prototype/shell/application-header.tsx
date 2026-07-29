@@ -8,6 +8,8 @@ import {
   type DesktopPrototypeState,
 } from "@/prototype/desktop-state";
 import { PrototypeButton } from "@/prototype/desktop-ui";
+import { createClient } from "@/lib/supabase/browser";
+import { useRouter } from "next/navigation";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 
@@ -143,6 +145,12 @@ export function ApplicationHeader({
   state: DesktopPrototypeState;
   dispatch: Dispatch;
 }): React.JSX.Element {
+  const router = useRouter();
+  const logout = async (): Promise<void> => {
+    await createClient().auth.signOut();
+    router.replace("/sign-in");
+    router.refresh();
+  };
   return (
     <header className="application-header">
       <button
@@ -176,7 +184,9 @@ export function ApplicationHeader({
               AI
             </PrototypeButton>
           )}
-          <PrototypeButton variant="quiet">Профиль</PrototypeButton>
+          <PrototypeButton onClick={logout} variant="quiet">
+            Выйти
+          </PrototypeButton>
         </div>
       </div>
     </header>
