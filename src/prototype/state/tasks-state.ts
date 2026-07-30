@@ -455,6 +455,7 @@ export function addSubtask(
         id: getNextSubtaskId(currentTask),
         title: trimmedTitle,
         done: false,
+        detailsMarkdown: "",
       },
     ],
   }));

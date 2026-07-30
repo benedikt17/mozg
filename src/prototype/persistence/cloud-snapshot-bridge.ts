@@ -1,4 +1,5 @@
 import {
+  DESKTOP_DOMAIN_V1_SCHEMA_VERSION,
   DESKTOP_DOMAIN_SCHEMA_VERSION,
   parseDesktopDomainSnapshot,
   type DesktopDomainSnapshot,
@@ -27,6 +28,14 @@ export type DesktopCloudSnapshotParseResult =
   | { kind: "invalid-snapshot" }
   | { kind: "invalid-metadata" };
 
+function snapshotSchemaVersion(value: unknown): number | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const schemaVersion = (value as { schemaVersion?: unknown }).schemaVersion;
+  return typeof schemaVersion === "number" ? schemaVersion : undefined;
+}
+
 export function parseDesktopCloudSnapshotRow(
   row: DesktopCloudSnapshotRow,
   workspaceName: string,
@@ -42,8 +51,14 @@ export function parseDesktopCloudSnapshotRow(
   ) {
     return { kind: "invalid-metadata" };
   }
-  if (row.schema_version !== DESKTOP_DOMAIN_SCHEMA_VERSION) {
+  if (
+    row.schema_version !== DESKTOP_DOMAIN_V1_SCHEMA_VERSION &&
+    row.schema_version !== DESKTOP_DOMAIN_SCHEMA_VERSION
+  ) {
     return { kind: "unsupported-schema", schemaVersion: row.schema_version };
+  }
+  if (snapshotSchemaVersion(row.snapshot) !== row.schema_version) {
+    return { kind: "invalid-snapshot" };
   }
   const parsed = parseDesktopDomainSnapshot(row.snapshot);
   if (!parsed.ok) return { kind: "invalid-snapshot" };
@@ -52,7 +67,7 @@ export function parseDesktopCloudSnapshotRow(
     bootstrap: {
       workspaceId: row.workspace_id,
       workspaceName,
-      schemaVersion: row.schema_version,
+      schemaVersion: DESKTOP_DOMAIN_SCHEMA_VERSION,
       revision: row.revision,
       updatedAt: row.updated_at,
       snapshot: parsed.snapshot,

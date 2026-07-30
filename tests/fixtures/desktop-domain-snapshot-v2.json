@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 2,
+  "projects": [
+    {
+      "id": "project-v2",
+      "name": "Compatibility project",
+      "shortName": "V2",
+      "description": "Stable v2 fixture"
+    }
+  ],
+  "overviewDirections": [
+    {
+      "id": "direction-v2",
+      "projectId": "project-v2",
+      "title": "Direction",
+      "order": 0
+    }
+  ],
+  "taskGroups": [
+    {
+      "id": "group-v2",
+      "projectId": "project-v2",
+      "title": "System group",
+      "order": 0,
+      "kind": "system"
+    }
+  ],
+  "taskLists": [
+    {
+      "id": "list-v2",
+      "projectId": "project-v2",
+      "groupId": "group-v2",
+      "title": "System list",
+      "order": 0,
+      "kind": "system",
+      "overviewDirectionId": "direction-v2"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-v2",
+      "projectId": "project-v2",
+      "title": "Compatibility task",
+      "overviewDirectionId": "direction-v2",
+      "overviewOrder": 0,
+      "taskListOrder": 0,
+      "listId": "list-v2",
+      "showOnOverview": true,
+      "completedAt": null,
+      "signal": "green",
+      "starred": true,
+      "myDay": false,
+      "area": "Compatibility",
+      "dueDate": "2030-01-01",
+      "links": [
+        {
+          "id": "link-v2",
+          "title": "Reference",
+          "url": "https://example.test/v2"
+        }
+      ],
+      "linkedDocumentIds": ["document-v2"],
+      "subtasks": [
+        {
+          "id": "subtask-v2-empty",
+          "title": "Empty explanation",
+          "done": false,
+          "detailsMarkdown": ""
+        },
+        {
+          "id": "subtask-v2-markdown",
+          "title": "Markdown explanation",
+          "done": true,
+          "detailsMarkdown": "- First point\n- [literal] text\n\n[Reference](https://example.test/details)"
+        }
+      ],
+      "notes": "Persistent notes"
+    }
+  ],
+  "knowledgeFolders": [
+    {
+      "id": "project-v2:knowledge",
+      "projectId": "project-v2",
+      "path": ["Knowledge"]
+    }
+  ],
+  "documents": [
+    {
+      "id": "document-v2",
+      "projectId": "project-v2",
+      "order": 0,
+      "folder": "Knowledge",
+      "folderPath": ["Knowledge"],
+      "isKeyDocument": true,
+      "title": "Compatibility document",
+      "excerpt": "Fixture document",
+      "content": ["# v2", "Persistent Markdown content"],
+      "linkedTaskIds": ["task-v2"],
+      "backlinks": []
+    }
+  ]
+}

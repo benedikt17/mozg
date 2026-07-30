@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import v1Fixture from "./fixtures/desktop-domain-snapshot-v1.json";
 import { initialDesktopPrototypeState } from "@/prototype/desktop-state";
 import { createDesktopDomainSnapshot } from "@/prototype/persistence/domain-snapshot";
 import type { DesktopCloudSnapshotRow } from "@/prototype/persistence/cloud-snapshot-bridge";
@@ -37,7 +38,7 @@ function createRow(
 ): DesktopCloudSnapshotRow {
   return {
     workspace_id: "workspace-local",
-    schema_version: 1,
+    schema_version: 2,
     snapshot,
     revision: 9,
     updated_at: "2026-07-29T10:00:00.000Z",
@@ -115,7 +116,7 @@ describe("loadDesktopCloudSnapshot", () => {
       bootstrap: {
         workspaceId: "workspace-local",
         workspaceName: "Лукоморье",
-        schemaVersion: 1,
+        schemaVersion: 2,
         revision: 9,
       },
     });
@@ -177,11 +178,28 @@ describe("loadDesktopCloudSnapshot", () => {
   });
 
   it("returns unsupported-schema for a future schema version", async () => {
-    configureClient({ row: createRow({ schema_version: 2 }) });
+    configureClient({ row: createRow({ schema_version: 3 }) });
 
     const result = await loadDesktopCloudSnapshot();
 
-    expect(result).toEqual({ kind: "unsupported-schema", schemaVersion: 2 });
+    expect(result).toEqual({ kind: "unsupported-schema", schemaVersion: 3 });
+  });
+
+  it("loads a v1 row as a migrated v2 runtime snapshot", async () => {
+    configureClient({
+      row: createRow({ schema_version: 1, snapshot: v1Fixture }),
+    });
+
+    const result = await loadDesktopCloudSnapshot();
+
+    expect(result).toMatchObject({
+      kind: "ready",
+      bootstrap: { schemaVersion: 2, revision: 9 },
+    });
+    if (result.kind !== "ready") return;
+    expect(
+      result.bootstrap.snapshot.tasks[0]?.subtasks[0]?.detailsMarkdown,
+    ).toBe("");
   });
 
   it("returns invalid-snapshot for a malformed payload", async () => {

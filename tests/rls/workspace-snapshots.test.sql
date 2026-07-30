@@ -27,6 +27,31 @@ exception when sqlstate '22023' then
 end;
 $$;
 
+create function public.test_valid_desktop_snapshot_v2()
+returns jsonb
+language sql
+immutable
+as $$
+  select '{"schemaVersion":2,"projects":[{"id":"project-1","name":"","shortName":"","description":""}],"overviewDirections":[{"id":"direction-1","projectId":"project-1","title":"","order":0}],"taskGroups":[{"id":"group-1","projectId":"project-1","title":"","order":0,"kind":"system"}],"taskLists":[{"id":"list-1","projectId":"project-1","groupId":"group-1","title":"","order":0,"kind":"system","overviewDirectionId":"direction-1"}],"tasks":[{"id":"task-1","projectId":"project-1","title":"","overviewDirectionId":"direction-1","overviewOrder":0,"taskListOrder":0,"listId":"list-1","showOnOverview":false,"completedAt":null,"signal":"none","starred":false,"myDay":false,"links":[],"linkedDocumentIds":[],"subtasks":[{"id":"subtask-1","title":"Duplicate titles are valid","done":false,"detailsMarkdown":"- First point\\n\\n[Reference](https://example.test/details)"}]}],"knowledgeFolders":[],"documents":[]}'::jsonb
+$$;
+
+create function public.test_reject_desktop_snapshot_v2(target jsonb, version smallint default 2)
+returns void
+language plpgsql
+as $$
+begin
+  perform * from public.save_workspace_snapshot(
+    '22000000-0000-0000-0000-000000000001'::uuid,
+    2::bigint,
+    version,
+    target
+  );
+  raise exception 'expected desktop snapshot validation failure';
+exception when sqlstate '22023' then
+  null;
+end;
+$$;
+
 select has_table('public', 'workspace_snapshots', 'workspace_snapshots table exists');
 select has_function(
   'public',
@@ -195,6 +220,7 @@ select is(
   'project-1'::text,
   'successful CAS save stores the new snapshot'
 );
+
 select lives_ok($$ select public.test_reject_desktop_snapshot_v1('{}'::jsonb) $$, 'empty snapshot is rejected with 22023');
 select is((select revision from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'), 2::bigint, 'empty snapshot leaves revision unchanged');
 select is((select snapshot from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'), public.test_valid_desktop_snapshot_v1(), 'empty snapshot leaves winner unchanged');
@@ -232,6 +258,61 @@ select is(
   (select revision from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'),
   2::bigint,
   'conflict leaves server revision unchanged'
+);
+
+select results_eq(
+  $$ select status || ':' || revision::text from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000001'::uuid, 2::bigint, 2::smallint, public.test_valid_desktop_snapshot_v2()) $$,
+  array['saved:3'::text],
+  'owner CAS upgrades a v1 snapshot to v2'
+);
+select is(
+  (select schema_version from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'),
+  2::smallint,
+  'v1 to v2 upgrade stores schema version two'
+);
+select is(
+  (select snapshot->'tasks'->0->'subtasks'->0->>'detailsMarkdown' from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'),
+  '- First point\n\n[Reference](https://example.test/details)'::text,
+  'v2 upgrade stores structured subtask details'
+);
+select results_eq(
+  $$ select status || ':' || revision::text from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000001'::uuid, 3::bigint, 2::smallint, public.test_valid_desktop_snapshot_v2()) $$,
+  array['saved:4'::text],
+  'owner CAS saves a v2 snapshot'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v2(jsonb_set(public.test_valid_desktop_snapshot_v2(), '{tasks,0,subtasks,0}', '{"id":"subtask-1","title":"Missing details","done":false}'::jsonb)) $$,
+  'v2 subtask without detailsMarkdown is rejected'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v2(jsonb_set(public.test_valid_desktop_snapshot_v2(), '{tasks,0,subtasks,0,detailsMarkdown}', 'false'::jsonb)) $$,
+  'v2 non-string detailsMarkdown is rejected'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v2(jsonb_set(public.test_valid_desktop_snapshot_v2(), '{tasks,0,subtasks,0,futureField}', 'true'::jsonb)) $$,
+  'v2 unknown subtask fields are rejected'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v2(public.test_valid_desktop_snapshot_v2(), 3::smallint) $$,
+  'future schema versions are rejected'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v2(public.test_valid_desktop_snapshot_v1(), 2::smallint) $$,
+  'target and payload schema mismatch is rejected'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v2(public.test_valid_desktop_snapshot_v1(), 1::smallint) $$,
+  'v2 rows reject downgrade saves to v1'
+);
+select results_eq(
+  $$ select status || ':' || revision::text from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000001'::uuid, 3::bigint, 2::smallint, public.test_valid_desktop_snapshot_v2()) $$,
+  array['conflict:4'::text],
+  'stale v2 CAS save returns a typed conflict'
+);
+select is(
+  (select revision from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'),
+  4::bigint,
+  'v2 validation and stale save attempts leave revision unchanged'
 );
 select throws_ok(
   $$ select * from public.save_workspace_snapshot('33000000-0000-0000-0000-000000000001'::uuid, 1::bigint, 1::smallint, '{"projects":[]}'::jsonb) $$,

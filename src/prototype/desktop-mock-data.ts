@@ -25,6 +25,7 @@ export type PrototypeSubtask = {
   id: string;
   title: string;
   done: boolean;
+  detailsMarkdown: string;
 };
 
 export type PrototypeTaskGroupKind = "system" | "user";
@@ -304,16 +305,19 @@ export const initialTasks: PrototypeTask[] = [
         id: "luko-characters-map-1",
         title: "Выделить главную цель героя",
         done: true,
+        detailsMarkdown: "",
       },
       {
         id: "luko-characters-map-2",
         title: "Проверить конфликт наставника",
         done: false,
+        detailsMarkdown: "",
       },
       {
         id: "luko-characters-map-3",
         title: "Уточнить роль антагониста",
         done: false,
+        detailsMarkdown: "",
       },
     ],
     notes:
@@ -341,11 +345,13 @@ export const initialTasks: PrototypeTask[] = [
         id: "luko-first-scene-1",
         title: "Убрать вступительное объяснение",
         done: true,
+        detailsMarkdown: "",
       },
       {
         id: "luko-first-scene-2",
         title: "Добавить видимую ставку",
         done: false,
+        detailsMarkdown: "",
       },
     ],
     notes: "Сцена должна начинаться с выбора, а не с описания мира.",
@@ -372,11 +378,13 @@ export const initialTasks: PrototypeTask[] = [
         id: "luko-world-rules-1",
         title: "Найти противоречия в заметках",
         done: false,
+        detailsMarkdown: "",
       },
       {
         id: "luko-world-rules-2",
         title: "Записать короткую финальную формулировку",
         done: false,
+        detailsMarkdown: "",
       },
     ],
   },
@@ -401,11 +409,13 @@ export const initialTasks: PrototypeTask[] = [
         id: "luko-shot-list-1",
         title: "Отобрать 12 референсов",
         done: true,
+        detailsMarkdown: "",
       },
       {
         id: "luko-shot-list-2",
         title: "Разнести по настроению и функции",
         done: false,
+        detailsMarkdown: "",
       },
     ],
   },
@@ -430,11 +440,13 @@ export const initialTasks: PrototypeTask[] = [
         id: "luko-production-plan-1",
         title: "Оценить один рабочий спринт",
         done: false,
+        detailsMarkdown: "",
       },
       {
         id: "luko-production-plan-2",
         title: "Отделить сценарную работу от визуальной",
         done: false,
+        detailsMarkdown: "",
       },
     ],
   },
@@ -456,11 +468,17 @@ export const initialTasks: PrototypeTask[] = [
     links: [],
     linkedDocumentIds: ["doc-l-production"],
     subtasks: [
-      { id: "luko-brief-done-1", title: "Собрать цели", done: true },
+      {
+        id: "luko-brief-done-1",
+        title: "Собрать цели",
+        done: true,
+        detailsMarkdown: "",
+      },
       {
         id: "luko-brief-done-2",
         title: "Убрать черновые формулировки",
         done: true,
+        detailsMarkdown: "",
       },
     ],
   },
@@ -486,11 +504,13 @@ export const initialTasks: PrototypeTask[] = [
         id: "ammonit-index-1",
         title: "Отделить источники от выводов",
         done: false,
+        detailsMarkdown: "",
       },
       {
         id: "ammonit-index-2",
         title: "Пометить спорные места",
         done: false,
+        detailsMarkdown: "",
       },
     ],
   },
@@ -515,6 +535,7 @@ export const initialTasks: PrototypeTask[] = [
         id: "ammonit-interview-1",
         title: "Сократить до пяти вопросов",
         done: false,
+        detailsMarkdown: "",
       },
     ],
   },
@@ -540,11 +561,13 @@ export const initialTasks: PrototypeTask[] = [
         id: "voice-script-1",
         title: "Убрать длинный вступительный блок",
         done: true,
+        detailsMarkdown: "",
       },
       {
         id: "voice-script-2",
         title: "Оставить один пример интонации",
         done: false,
+        detailsMarkdown: "",
       },
     ],
   },
@@ -569,11 +592,13 @@ export const initialTasks: PrototypeTask[] = [
         id: "personal-calendar-1",
         title: "Проверить повторяющиеся события",
         done: false,
+        detailsMarkdown: "",
       },
       {
         id: "personal-calendar-2",
         title: "Оставить реальные обязательства",
         done: false,
+        detailsMarkdown: "",
       },
     ],
   },

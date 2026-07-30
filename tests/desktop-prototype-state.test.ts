@@ -1084,6 +1084,7 @@ describe("desktop structural prototype state", () => {
     expect(targetAfter?.subtasks.at(-1)).toMatchObject({
       title: "Проверить переход сцены",
       done: false,
+      detailsMarkdown: "",
     });
     expect(otherAfter?.subtasks).toEqual(otherBefore?.subtasks);
   });
@@ -1902,6 +1903,11 @@ describe("desktop structural prototype state", () => {
 
   it("renames and trims only the selected subtask", () => {
     const state = freshState();
+    const selected = state.tasks
+      .find((task) => task.id === "luko-first-scene")
+      ?.subtasks.find((subtask) => subtask.id === "luko-first-scene-2");
+    if (!selected) throw new Error("Expected a selected subtask.");
+    selected.detailsMarkdown = "# Preserve details";
     const otherBefore = state.tasks.find(
       (task) => task.id === "luko-world-rules",
     )?.subtasks;
@@ -1920,6 +1926,12 @@ describe("desktop structural prototype state", () => {
     expect(
       next.tasks.find((task) => task.id === "luko-world-rules")?.subtasks,
     ).toEqual(otherBefore);
+    expect(
+      next.tasks
+        .find((task) => task.id === "luko-first-scene")
+        ?.subtasks.find((subtask) => subtask.id === "luko-first-scene-2")
+        ?.detailsMarkdown,
+    ).toBe("# Preserve details");
   });
 
   it("rejects an empty renamed subtask title", () => {

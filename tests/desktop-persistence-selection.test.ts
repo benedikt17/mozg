@@ -16,7 +16,7 @@ const { CloudDesktopPersistenceAdapter } =
 const bootstrap = {
   workspaceId: "workspace-1",
   workspaceName: "Workspace",
-  schemaVersion: 1,
+  schemaVersion: 2,
   revision: 1,
   updatedAt: "2026-07-30T00:00:00.000Z",
   snapshot: createDesktopDomainSnapshot(initialDesktopPrototypeState),

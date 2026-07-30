@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import v1Fixture from "./fixtures/desktop-domain-snapshot-v1.json";
 import { initialDesktopPrototypeState } from "@/prototype/desktop-state";
 import {
   IndexedDbDesktopPersistenceAdapter,
@@ -448,11 +449,37 @@ describe("IndexedDbDesktopPersistenceAdapter", () => {
       storageKey: STORAGE_KEY,
       revision: 1,
       savedAt: SAVED_AT,
-      snapshot: { ...snapshot(), schemaVersion: 2 },
+      snapshot: { ...snapshot(), schemaVersion: 3 },
     });
     await expect(adapter.loadWorkspace(STORAGE_KEY)).rejects.toSatisfy(
       (error: unknown) => expectPersistenceError(error, "unsupported-version"),
     );
+  });
+
+  it("loads a v1 envelope as v2 and writes the next save in v2", async () => {
+    await adapter.loadWorkspace(STORAGE_KEY);
+    factory.seed(DATABASE_NAME, STORAGE_KEY, {
+      storageVersion: MOZG_DESKTOP_STORAGE_VERSION,
+      storageKey: STORAGE_KEY,
+      revision: 1,
+      savedAt: SAVED_AT,
+      snapshot: v1Fixture,
+    });
+
+    const loaded = await adapter.loadWorkspace(STORAGE_KEY);
+    expect(loaded).toMatchObject({ kind: "loaded", revision: 1 });
+    if (loaded.kind !== "loaded") return;
+    expect(loaded.snapshot.schemaVersion).toBe(2);
+    expect(loaded.snapshot.tasks[0]?.subtasks[0]?.detailsMarkdown).toBe("");
+
+    await adapter.saveWorkspace(STORAGE_KEY, loaded.snapshot, 1);
+    expect(factory.raw(DATABASE_NAME, STORAGE_KEY)).toMatchObject({
+      revision: 2,
+      snapshot: {
+        schemaVersion: 2,
+        tasks: [{ subtasks: [{ detailsMarkdown: "" }] }],
+      },
+    });
   });
 
   it("reports invalid stored relations as corrupt data", async () => {
@@ -550,7 +577,7 @@ describe("IndexedDbDesktopPersistenceAdapter", () => {
       storageKey: STORAGE_KEY,
       revision: 1,
       savedAt: SAVED_AT,
-      snapshot: { schemaVersion: 1 },
+      snapshot: { schemaVersion: 2 },
     });
   });
 });

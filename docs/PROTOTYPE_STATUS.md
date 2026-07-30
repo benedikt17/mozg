@@ -55,12 +55,14 @@ idempotent import adapter в Supabase; такой adapter пока не реал
 
 ### Task Subtask Details Workspace contract
 
-The concept is architecturally accepted for the first implementation; no
-implementation exists yet. Structured subtasks remain the source of truth,
-with per-subtask `detailsMarkdown` planned for snapshot v2. Strict snapshot v1
-remains current, and the next implementation checkpoint is the snapshot v2
-foundation. Split, gallery, canvas, and AI are deferred. Current production
-behavior is unchanged.
+The concept is architecturally accepted for the first implementation, and the
+snapshot v2 foundation is implemented on this branch. Structured subtasks
+remain the source of truth; v1 loading is migrated to runtime v2, where each
+subtask has `detailsMarkdown`, and local database validation accepts v1 loading
+and v2 saves without downgrade. The central Subtasks view, Split for Task
+Details, gallery, canvas, and AI are not implemented. Production data has not
+been migrated or deployed; the next implementation checkpoint is the snapshot
+v2 foundation follow-up.
 
 ## Production readiness gaps
 

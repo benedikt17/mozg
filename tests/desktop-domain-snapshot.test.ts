@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import v1Fixture from "./fixtures/desktop-domain-snapshot-v1.json";
+import v2Fixture from "./fixtures/desktop-domain-snapshot-v2.json";
 import {
   desktopPrototypeReducer,
   initialDesktopPrototypeState,
@@ -32,7 +34,7 @@ function expectInvalid(
   return result;
 }
 
-describe("desktop domain snapshot v1", () => {
+describe("desktop domain snapshot v2", () => {
   it("creates a deterministic JSON-serializable snapshot from initial state", () => {
     const first = validSnapshot();
     const second = validSnapshot();
@@ -40,7 +42,64 @@ describe("desktop domain snapshot v1", () => {
     expect(first.schemaVersion).toBe(DESKTOP_DOMAIN_SCHEMA_VERSION);
     expect(first).toEqual(second);
     expect(JSON.parse(JSON.stringify(first))).toEqual(first);
+    expect(
+      first.tasks.every((task) =>
+        task.subtasks.every(
+          (subtask) => typeof subtask.detailsMarkdown === "string",
+        ),
+      ),
+    ).toBe(true);
     expect(parseDesktopDomainSnapshot(first)).toMatchObject({ ok: true });
+  });
+
+  it("parses the v2 fixture without migration warnings and preserves details", () => {
+    const result = parseDesktopDomainSnapshot(v2Fixture);
+
+    expect(result).toMatchObject({ ok: true, warnings: [] });
+    if (!result.ok) return;
+    expect(result.snapshot.schemaVersion).toBe(2);
+    expect(result.snapshot.tasks[0]?.subtasks).toEqual([
+      {
+        id: "subtask-v2-empty",
+        title: "Empty explanation",
+        done: false,
+        detailsMarkdown: "",
+      },
+      {
+        id: "subtask-v2-markdown",
+        title: "Markdown explanation",
+        done: true,
+        detailsMarkdown:
+          "- First point\n- [literal] text\n\n[Reference](https://example.test/details)",
+      },
+    ]);
+  });
+
+  it("migrates the v1 fixture to runtime v2 without mutating the source", () => {
+    const source = structuredClone(v1Fixture);
+    const result = parseDesktopDomainSnapshot(source);
+
+    expect(result).toMatchObject({
+      ok: true,
+      warnings: [
+        expect.objectContaining({
+          code: "migrated-schema-version",
+          path: "schemaVersion",
+        }),
+      ],
+    });
+    expect(source).toEqual(v1Fixture);
+    if (!result.ok) return;
+    expect(result.snapshot.schemaVersion).toBe(2);
+    expect(result.snapshot.tasks[0]?.subtasks).toEqual([
+      {
+        id: "subtask-v1",
+        title: "Nested task",
+        done: false,
+        detailsMarkdown: "",
+      },
+    ]);
+    expect(result.snapshot.tasks[0]?.notes).toBe("Persistent notes");
   });
 
   it("includes only active MVP domain collections", () => {
@@ -179,7 +238,7 @@ describe("desktop domain snapshot v1", () => {
     ],
     [
       "unsupported version",
-      { ...validSnapshot(), schemaVersion: 2 },
+      { ...validSnapshot(), schemaVersion: 3 },
       "unsupported-schema-version",
     ],
     [
@@ -200,7 +259,7 @@ describe("desktop domain snapshot v1", () => {
     expectInvalid(value, code);
   });
 
-  it("accepts the exact current v1 persistent contract", () => {
+  it("accepts the exact current v2 persistent contract", () => {
     const snapshot = cloneSnapshot();
     delete snapshot.tasks[0]!.area;
     delete snapshot.tasks[0]!.dueDate;
@@ -210,6 +269,72 @@ describe("desktop domain snapshot v1", () => {
     delete snapshot.documents[0]!.isKeyDocument;
 
     expect(parseDesktopDomainSnapshot(snapshot)).toMatchObject({ ok: true });
+  });
+
+  it.each([
+    ["unknown field", { futureField: true }, "unknown-field"],
+    [
+      "missing detailsMarkdown",
+      { detailsMarkdown: undefined },
+      "invalid-string",
+    ],
+    [
+      "non-string detailsMarkdown",
+      { detailsMarkdown: false },
+      "invalid-string",
+    ],
+  ])("rejects v2 subtask with %s", (_name, change, code) => {
+    const value = cloneSnapshot();
+    const subtask = value.tasks[0]!.subtasks[0] as unknown as Record<
+      string,
+      unknown
+    >;
+    if ("detailsMarkdown" in change && change.detailsMarkdown === undefined) {
+      delete subtask.detailsMarkdown;
+    } else {
+      Object.assign(subtask, change);
+    }
+    expectInvalid(value, code);
+  });
+
+  it("rejects v1 subtasks with unknown fields instead of silently treating them as v2", () => {
+    const value = structuredClone(v1Fixture) as Record<string, unknown>;
+    const tasks = value.tasks as Array<Record<string, unknown>>;
+    const subtasks = tasks[0]!.subtasks as Array<Record<string, unknown>>;
+    subtasks[0]!.detailsMarkdown = "not allowed in v1";
+
+    expectInvalid(value, "unknown-field");
+  });
+
+  it("round-trips non-empty v2 details through hydration", () => {
+    const state = structuredClone(initialDesktopPrototypeState);
+    const task = state.tasks[0];
+    if (!task?.subtasks[0]) throw new Error("Expected a fixture subtask.");
+    task.subtasks[0].detailsMarkdown = "# Details\n\n- Keep this Markdown";
+
+    const parsed = parseDesktopDomainSnapshot(
+      createDesktopDomainSnapshot(state),
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.snapshot.tasks[0]?.subtasks[0]?.detailsMarkdown).toBe(
+      "# Details\n\n- Keep this Markdown",
+    );
+  });
+
+  it("allows duplicate subtask titles because identity is the subtask ID", () => {
+    const snapshot = cloneSnapshot();
+    const subtasks = snapshot.tasks[0]!.subtasks;
+    subtasks[1]!.title = subtasks[0]!.title;
+
+    const result = parseDesktopDomainSnapshot(snapshot);
+
+    expect(result).toMatchObject({ ok: true });
+    expect(subtasks.map((subtask) => subtask.id)).toEqual([
+      "luko-characters-map-1",
+      "luko-characters-map-2",
+      "luko-characters-map-3",
+    ]);
   });
 
   it("rejects unknown persistent fields without normalizing them away", () => {

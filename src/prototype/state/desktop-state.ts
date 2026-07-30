@@ -1357,6 +1357,7 @@ export function desktopPrototypeReducer(
                 id: `ai-task-${nextState.nextTaskNumber}-subtask`,
                 title: "Уточнить критерий готовности",
                 done: false,
+                detailsMarkdown: "",
               },
             ],
             notes:

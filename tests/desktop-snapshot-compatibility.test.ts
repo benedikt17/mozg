@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fixture from "./fixtures/desktop-domain-snapshot-v1.json";
+import v2Fixture from "./fixtures/desktop-domain-snapshot-v2.json";
 import {
   createDesktopDomainSnapshot,
   parseDesktopDomainSnapshot,
@@ -15,6 +16,11 @@ describe("desktop snapshot v1 compatibility fixture", () => {
     const parsed = parseDesktopDomainSnapshot(fixture);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
+    expect(parsed.warnings).toEqual([
+      expect.objectContaining({ code: "migrated-schema-version" }),
+    ]);
+    expect(parsed.snapshot.schemaVersion).toBe(2);
+    expect(parsed.snapshot.tasks[0]?.subtasks[0]?.detailsMarkdown).toBe("");
 
     const hydrated = desktopPrototypeReducer(initialDesktopPrototypeState, {
       type: "hydrate-domain",
@@ -41,8 +47,19 @@ describe("desktop snapshot v1 compatibility fixture", () => {
     ).toEqual(
       expect.objectContaining({
         kind: "ready",
-        bootstrap: expect.objectContaining({ snapshot: parsed.snapshot }),
+        bootstrap: expect.objectContaining({
+          schemaVersion: 2,
+          snapshot: parsed.snapshot,
+        }),
       }),
     );
+  });
+
+  it("accepts a native v2 fixture without migration", () => {
+    const parsed = parseDesktopDomainSnapshot(v2Fixture);
+
+    expect(parsed).toMatchObject({ ok: true, warnings: [] });
+    if (!parsed.ok) return;
+    expect(parsed.snapshot).toEqual(v2Fixture);
   });
 });

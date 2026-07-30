@@ -117,10 +117,15 @@ function parseStoredEnvelope(
   }
   const parsed = parseDesktopDomainSnapshot(value.snapshot);
   if (!parsed.ok) {
-    const unsupportedDomainVersion =
+    const storedSchemaVersion =
       isRecord(value.snapshot) &&
-      "schemaVersion" in value.snapshot &&
-      value.snapshot.schemaVersion !== DESKTOP_DOMAIN_SCHEMA_VERSION;
+      typeof value.snapshot.schemaVersion === "number"
+        ? value.snapshot.schemaVersion
+        : undefined;
+    const unsupportedDomainVersion =
+      storedSchemaVersion !== undefined &&
+      storedSchemaVersion !== DESKTOP_DOMAIN_SCHEMA_VERSION &&
+      storedSchemaVersion !== 1;
     throw new DesktopPersistenceError(
       unsupportedDomainVersion ? "unsupported-version" : "corrupt-data",
       unsupportedDomainVersion

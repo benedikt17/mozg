@@ -13,7 +13,22 @@ import type {
   PrototypeKnowledgeFolder,
 } from "@/prototype/state/types";
 
-export const DESKTOP_DOMAIN_SCHEMA_VERSION = 1 as const;
+export const DESKTOP_DOMAIN_V1_SCHEMA_VERSION = 1 as const;
+export const DESKTOP_DOMAIN_SCHEMA_VERSION = 2 as const;
+
+export type PrototypeSubtaskV1 = Omit<PrototypeSubtask, "detailsMarkdown">;
+
+export type PrototypeTaskV1 = Omit<PrototypeTask, "subtasks"> & {
+  subtasks: PrototypeSubtaskV1[];
+};
+
+export type DesktopDomainSnapshotV1 = Omit<
+  DesktopDomainSnapshot,
+  "schemaVersion" | "tasks"
+> & {
+  schemaVersion: typeof DESKTOP_DOMAIN_V1_SCHEMA_VERSION;
+  tasks: PrototypeTaskV1[];
+};
 
 export type DesktopDomainSnapshot = {
   schemaVersion: typeof DESKTOP_DOMAIN_SCHEMA_VERSION;
@@ -25,6 +40,8 @@ export type DesktopDomainSnapshot = {
   knowledgeFolders: PrototypeKnowledgeFolder[];
   documents: PrototypeDocument[];
 };
+
+export type DesktopDomainSnapshotV2 = DesktopDomainSnapshot;
 
 export type DesktopDomainCollections = Omit<
   DesktopDomainSnapshot,
@@ -65,12 +82,25 @@ function cloneSubtask(subtask: PrototypeSubtask): PrototypeSubtask {
   return { ...subtask };
 }
 
+function cloneSubtaskV1(subtask: PrototypeSubtaskV1): PrototypeSubtaskV1 {
+  return { ...subtask };
+}
+
 function cloneTask(task: PrototypeTask): PrototypeTask {
   return {
     ...task,
     links: task.links.map(cloneTaskLink),
     linkedDocumentIds: [...task.linkedDocumentIds],
     subtasks: task.subtasks.map(cloneSubtask),
+  };
+}
+
+function cloneTaskV1(task: PrototypeTaskV1): PrototypeTaskV1 {
+  return {
+    ...task,
+    links: task.links.map(cloneTaskLink),
+    linkedDocumentIds: [...task.linkedDocumentIds],
+    subtasks: task.subtasks.map(cloneSubtaskV1),
   };
 }
 
@@ -90,6 +120,29 @@ function cloneKnowledgeFolder(
   folder: PrototypeKnowledgeFolder,
 ): PrototypeKnowledgeFolder {
   return { ...folder, path: [...folder.path] };
+}
+
+export function migrateDesktopDomainSnapshotV1ToV2(
+  snapshot: DesktopDomainSnapshotV1,
+): DesktopDomainSnapshot {
+  return {
+    schemaVersion: DESKTOP_DOMAIN_SCHEMA_VERSION,
+    projects: snapshot.projects.map((project) => ({ ...project })),
+    overviewDirections: snapshot.overviewDirections.map((direction) => ({
+      ...direction,
+    })),
+    taskGroups: snapshot.taskGroups.map((group) => ({ ...group })),
+    taskLists: snapshot.taskLists.map((list) => ({ ...list })),
+    tasks: snapshot.tasks.map((task) => ({
+      ...cloneTaskV1(task),
+      subtasks: task.subtasks.map((subtask) => ({
+        ...cloneSubtaskV1(subtask),
+        detailsMarkdown: "",
+      })),
+    })),
+    knowledgeFolders: snapshot.knowledgeFolders.map(cloneKnowledgeFolder),
+    documents: snapshot.documents.map(cloneDocument),
+  };
 }
 
 export function createDesktopDomainSnapshot(
@@ -458,11 +511,14 @@ function parseTaskLinks(
     : undefined;
 }
 
-function parseSubtasks(
+function parseSubtasks<Subtask extends PrototypeSubtaskV1>(
   value: unknown,
   path: string,
   issues: DesktopDomainValidationIssue[],
-): PrototypeSubtask[] | undefined {
+  schemaVersion:
+    | typeof DESKTOP_DOMAIN_V1_SCHEMA_VERSION
+    | typeof DESKTOP_DOMAIN_SCHEMA_VERSION,
+): Subtask[] | undefined {
   if (!Array.isArray(value)) {
     addIssue(issues, "invalid-array", path, "Expected an array.");
     return undefined;
@@ -473,16 +529,36 @@ function parseSubtasks(
       addIssue(issues, "invalid-record", itemPath, "Expected an object.");
       return undefined;
     }
-    rejectUnknownFields(item, itemPath, ["id", "title", "done"], issues);
+    const allowedKeys =
+      schemaVersion === DESKTOP_DOMAIN_V1_SCHEMA_VERSION
+        ? ["id", "title", "done"]
+        : ["id", "title", "done", "detailsMarkdown"];
+    rejectUnknownFields(item, itemPath, allowedKeys, issues);
     const id = readString(item, "id", itemPath, issues, { nonEmpty: true });
     const title = readString(item, "title", itemPath, issues);
     const done = readBoolean(item, "done", itemPath, issues);
-    return id !== undefined && title !== undefined && done !== undefined
-      ? { id, title, done }
-      : undefined;
+    const detailsMarkdown =
+      schemaVersion === DESKTOP_DOMAIN_SCHEMA_VERSION
+        ? readString(item, "detailsMarkdown", itemPath, issues)
+        : undefined;
+    if (
+      id === undefined ||
+      title === undefined ||
+      done === undefined ||
+      (schemaVersion === DESKTOP_DOMAIN_SCHEMA_VERSION &&
+        detailsMarkdown === undefined)
+    ) {
+      return undefined;
+    }
+    return {
+      id,
+      title,
+      done,
+      ...(detailsMarkdown === undefined ? {} : { detailsMarkdown }),
+    } as Subtask;
   });
   return subtasks.every((subtask) => subtask !== undefined)
-    ? (subtasks as PrototypeSubtask[])
+    ? (subtasks as Subtask[])
     : undefined;
 }
 
@@ -498,11 +574,14 @@ function parseSignal(
   return value as PrototypeTask["signal"];
 }
 
-function parseTask(
+function parseTask<Subtask extends PrototypeSubtaskV1>(
   value: unknown,
   path: string,
   issues: DesktopDomainValidationIssue[],
-): PrototypeTask | undefined {
+  schemaVersion:
+    | typeof DESKTOP_DOMAIN_V1_SCHEMA_VERSION
+    | typeof DESKTOP_DOMAIN_SCHEMA_VERSION,
+): (Omit<PrototypeTask, "subtasks"> & { subtasks: Subtask[] }) | undefined {
   if (!isRecord(value)) {
     addIssue(issues, "invalid-record", path, "Expected an object.");
     return undefined;
@@ -575,7 +654,12 @@ function parseTask(
     issues,
     { nonEmptyItems: true },
   );
-  const subtasks = parseSubtasks(value.subtasks, `${path}.subtasks`, issues);
+  const subtasks = parseSubtasks<Subtask>(
+    value.subtasks,
+    `${path}.subtasks`,
+    issues,
+    schemaVersion,
+  );
   const notes = readString(value, "notes", path, issues, { optional: true });
   if (
     id === undefined ||
@@ -1026,12 +1110,17 @@ export function parseDesktopDomainSnapshot(
     ],
     errors,
   );
-  if (value.schemaVersion !== DESKTOP_DOMAIN_SCHEMA_VERSION) {
+  const sourceSchemaVersion =
+    value.schemaVersion === DESKTOP_DOMAIN_V1_SCHEMA_VERSION ||
+    value.schemaVersion === DESKTOP_DOMAIN_SCHEMA_VERSION
+      ? value.schemaVersion
+      : undefined;
+  if (sourceSchemaVersion === undefined) {
     addIssue(
       errors,
       "unsupported-schema-version",
       "schemaVersion",
-      `Expected schema version ${DESKTOP_DOMAIN_SCHEMA_VERSION}.`,
+      `Expected schema version ${DESKTOP_DOMAIN_V1_SCHEMA_VERSION} or ${DESKTOP_DOMAIN_SCHEMA_VERSION}.`,
     );
   }
   const projects = parseCollection(value, "projects", errors, parseProject);
@@ -1048,7 +1137,24 @@ export function parseDesktopDomainSnapshot(
     parseTaskGroup,
   );
   const taskLists = parseCollection(value, "taskLists", errors, parseTaskList);
-  const tasks = parseCollection(value, "tasks", errors, parseTask);
+  const tasks =
+    sourceSchemaVersion === DESKTOP_DOMAIN_V1_SCHEMA_VERSION
+      ? parseCollection(value, "tasks", errors, (item, path, issues) =>
+          parseTask<PrototypeSubtaskV1>(
+            item,
+            path,
+            issues,
+            DESKTOP_DOMAIN_V1_SCHEMA_VERSION,
+          ),
+        )
+      : parseCollection(value, "tasks", errors, (item, path, issues) =>
+          parseTask<PrototypeSubtask>(
+            item,
+            path,
+            issues,
+            DESKTOP_DOMAIN_SCHEMA_VERSION,
+          ),
+        );
   const knowledgeFolders = parseCollection(
     value,
     "knowledgeFolders",
@@ -1068,13 +1174,42 @@ export function parseDesktopDomainSnapshot(
   ) {
     return { ok: false, errors };
   }
+  if (sourceSchemaVersion === DESKTOP_DOMAIN_V1_SCHEMA_VERSION) {
+    const v1Snapshot: DesktopDomainSnapshotV1 = {
+      schemaVersion: DESKTOP_DOMAIN_V1_SCHEMA_VERSION,
+      projects,
+      overviewDirections,
+      taskGroups,
+      taskLists,
+      tasks: tasks as PrototypeTaskV1[],
+      knowledgeFolders,
+      documents,
+    };
+    const snapshot = migrateDesktopDomainSnapshotV1ToV2(v1Snapshot);
+    const integrityErrors = validateIntegrity(snapshot);
+    return integrityErrors.length > 0
+      ? { ok: false, errors: integrityErrors }
+      : {
+          ok: true,
+          snapshot,
+          warnings: [
+            {
+              code: "migrated-schema-version",
+              path: "schemaVersion",
+              message:
+                "Migrated desktop snapshot from schema version 1 to runtime schema version 2.",
+            },
+          ],
+        };
+  }
+
   const snapshot: DesktopDomainSnapshot = {
     schemaVersion: DESKTOP_DOMAIN_SCHEMA_VERSION,
     projects,
     overviewDirections,
     taskGroups,
     taskLists,
-    tasks,
+    tasks: tasks as PrototypeTask[],
     knowledgeFolders,
     documents,
   };
