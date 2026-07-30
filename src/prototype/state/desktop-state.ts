@@ -101,6 +101,7 @@ import {
   getTaskById,
   moveTaskList,
   moveTaskToList,
+  moveSubtask,
   renameSubtask,
   renameTaskGroup,
   renameTaskList,
@@ -115,6 +116,7 @@ import {
   toggleTaskCompleted,
   toggleTaskGroup,
   toggleTaskStar,
+  updateSubtaskDetailsMarkdown,
   updateTask,
 } from "@/prototype/state/tasks-state";
 
@@ -864,6 +866,20 @@ export function desktopPrototypeReducer(
         action.taskId,
         action.subtaskId,
         action.title,
+      );
+    case "update-subtask-details-markdown":
+      return updateSubtaskDetailsMarkdown(
+        state,
+        action.taskId,
+        action.subtaskId,
+        action.markdown,
+      );
+    case "move-subtask":
+      return moveSubtask(
+        state,
+        action.taskId,
+        action.subtaskId,
+        action.targetSubtaskId,
       );
     case "delete-subtask":
       return deleteSubtask(state, action.taskId, action.subtaskId);

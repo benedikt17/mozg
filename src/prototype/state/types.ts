@@ -190,6 +190,18 @@ export type DesktopPrototypeAction =
       subtaskId: string;
       title: string;
     }
+  | {
+      type: "update-subtask-details-markdown";
+      taskId: string;
+      subtaskId: string;
+      markdown: string;
+    }
+  | {
+      type: "move-subtask";
+      taskId: string;
+      subtaskId: string;
+      targetSubtaskId: string | null;
+    }
   | { type: "delete-subtask"; taskId: string; subtaskId: string }
   | {
       type: "move-task";

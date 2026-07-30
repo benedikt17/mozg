@@ -1,6 +1,7 @@
 import { canonicalOverviewDirectionDefinitions } from "@/prototype/desktop-mock-data";
 import type {
   PrototypeOverviewDirection,
+  PrototypeSubtask,
   PrototypeTask,
   PrototypeTaskGroup,
   PrototypeTaskList,
@@ -17,6 +18,16 @@ export function getTaskById(
 ): PrototypeTask | undefined {
   if (!taskId) return undefined;
   return state.tasks.find((task) => task.id === taskId);
+}
+
+export function getSubtaskById(
+  state: DesktopPrototypeState,
+  taskId: string,
+  subtaskId: string,
+): PrototypeSubtask | undefined {
+  const task = getTaskById(state, taskId);
+  if (!task || task.projectId !== state.activeProjectId) return undefined;
+  return task.subtasks.find((subtask) => subtask.id === subtaskId);
 }
 
 export function getProjectTasks(
@@ -439,6 +450,40 @@ export function toggleSubtask(
   }));
 }
 
+function updateSubtask(
+  state: DesktopPrototypeState,
+  taskId: string,
+  subtaskId: string,
+  updater: (subtask: PrototypeSubtask) => PrototypeSubtask,
+): DesktopPrototypeState {
+  if (!getSubtaskById(state, taskId, subtaskId)) return state;
+  return updateTask(state, taskId, (task) => {
+    const subtask = task.subtasks.find((item) => item.id === subtaskId);
+    if (!subtask) return task;
+    const updatedSubtask = updater(subtask);
+    if (updatedSubtask === subtask) return task;
+    return {
+      ...task,
+      subtasks: task.subtasks.map((item) =>
+        item.id === subtaskId ? updatedSubtask : item,
+      ),
+    };
+  });
+}
+
+export function updateSubtaskDetailsMarkdown(
+  state: DesktopPrototypeState,
+  taskId: string,
+  subtaskId: string,
+  markdown: string,
+): DesktopPrototypeState {
+  return updateSubtask(state, taskId, subtaskId, (subtask) =>
+    subtask.detailsMarkdown === markdown
+      ? subtask
+      : { ...subtask, detailsMarkdown: markdown },
+  );
+}
+
 export function addSubtask(
   state: DesktopPrototypeState,
   taskId: string,
@@ -489,6 +534,55 @@ export function deleteSubtask(
   return updateTask(state, task.id, (currentTask) => ({
     ...currentTask,
     subtasks: currentTask.subtasks.filter((item) => item.id !== subtaskId),
+  }));
+}
+
+export function moveSubtask(
+  state: DesktopPrototypeState,
+  taskId: string,
+  subtaskId: string,
+  targetSubtaskId: string | null,
+): DesktopPrototypeState {
+  const task = getTaskById(state, taskId);
+  if (!task || task.projectId !== state.activeProjectId) return state;
+  const sourceIndex = task.subtasks.findIndex(
+    (subtask) => subtask.id === subtaskId,
+  );
+  if (sourceIndex < 0) return state;
+  if (targetSubtaskId === subtaskId) return state;
+
+  const targetIndex =
+    targetSubtaskId === null
+      ? task.subtasks.length
+      : task.subtasks.findIndex((subtask) => subtask.id === targetSubtaskId);
+  if (targetIndex < 0) return state;
+
+  const movingSubtask = task.subtasks[sourceIndex];
+  if (!movingSubtask) return state;
+  const remainingSubtasks = task.subtasks.filter(
+    (subtask) => subtask.id !== subtaskId,
+  );
+  const insertionIndex =
+    targetSubtaskId === null
+      ? remainingSubtasks.length
+      : remainingSubtasks.findIndex(
+          (subtask) => subtask.id === targetSubtaskId,
+        );
+  if (insertionIndex < 0) return state;
+
+  const reorderedSubtasks = [...remainingSubtasks];
+  reorderedSubtasks.splice(insertionIndex, 0, movingSubtask);
+  if (
+    reorderedSubtasks.every(
+      (subtask, index) => subtask === task.subtasks[index],
+    )
+  ) {
+    return state;
+  }
+
+  return updateTask(state, taskId, (currentTask) => ({
+    ...currentTask,
+    subtasks: reorderedSubtasks,
   }));
 }
 
