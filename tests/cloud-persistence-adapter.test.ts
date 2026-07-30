@@ -72,4 +72,16 @@ describe("CloudDesktopPersistenceAdapter", () => {
       adapter.saveWorkspace("ignored", bootstrap.snapshot, 4),
     ).rejects.toMatchObject({ code: "transaction-failed" });
   });
+
+  it("maps server-side snapshot validation failures", async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: { code: "22023", message: "desktop snapshot validation failed" },
+    });
+    const adapter = new CloudDesktopPersistenceAdapter(bootstrap);
+
+    await expect(
+      adapter.saveWorkspace("ignored", bootstrap.snapshot, 4),
+    ).rejects.toMatchObject({ code: "invalid-snapshot" });
+  });
 });

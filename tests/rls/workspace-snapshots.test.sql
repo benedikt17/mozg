@@ -2,6 +2,31 @@ begin;
 
 select no_plan();
 
+create function public.test_valid_desktop_snapshot_v1()
+returns jsonb
+language sql
+immutable
+as $$
+  select '{"schemaVersion":1,"projects":[{"id":"project-1","name":"","shortName":"","description":""}],"overviewDirections":[],"taskGroups":[],"taskLists":[],"tasks":[],"knowledgeFolders":[],"documents":[]}'::jsonb
+$$;
+
+create function public.test_reject_desktop_snapshot_v1(target jsonb, version smallint default 1)
+returns void
+language plpgsql
+as $$
+begin
+  perform * from public.save_workspace_snapshot(
+    '22000000-0000-0000-0000-000000000001'::uuid,
+    2::bigint,
+    version,
+    target
+  );
+  raise exception 'expected desktop snapshot validation failure';
+exception when sqlstate '22023' then
+  null;
+end;
+$$;
+
 select has_table('public', 'workspace_snapshots', 'workspace_snapshots table exists');
 select has_function(
   'public',
@@ -79,6 +104,30 @@ values
   ('22000000-0000-0000-0000-000000000001', '12000000-0000-0000-0000-000000000003', 'viewer'),
   ('22000000-0000-0000-0000-000000000002', '12000000-0000-0000-0000-000000000001', 'owner');
 
+insert into public.workspace_snapshots (workspace_id, snapshot)
+values
+  ('22000000-0000-0000-0000-000000000001', public.test_valid_desktop_snapshot_v1()),
+  ('22000000-0000-0000-0000-000000000002', public.test_valid_desktop_snapshot_v1());
+
+select throws_ok(
+  $$ insert into public.workspace_snapshots (workspace_id, schema_version, snapshot) values ('22000000-0000-0000-0000-000000000001', 0, '{}') $$,
+  '23514',
+  null,
+  'table check rejects non-positive schema version'
+);
+select throws_ok(
+  $$ insert into public.workspace_snapshots (workspace_id, revision, snapshot) values ('22000000-0000-0000-0000-000000000001', 0, '{}') $$,
+  '23514',
+  null,
+  'table check rejects non-positive revision'
+);
+select throws_ok(
+  $$ insert into public.workspace_snapshots (workspace_id, snapshot) values ('22000000-0000-0000-0000-000000000002', '[]') $$,
+  '23514',
+  null,
+  'table check rejects non-object snapshot'
+);
+
 set local role anon;
 select set_config('request.jwt.claim.sub', '', true);
 select results_eq(
@@ -102,9 +151,17 @@ reset role;
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '12000000-0000-0000-0000-000000000001', true);
-select lives_ok(
-  $$ insert into public.workspace_snapshots (workspace_id, snapshot) values ('22000000-0000-0000-0000-000000000001', '{"projects":[]}') $$,
-  'owner can create the initial snapshot'
+select throws_ok(
+  $$ insert into public.workspace_snapshots (workspace_id, snapshot) values ('22000000-0000-0000-0000-000000000002', public.test_valid_desktop_snapshot_v1()) $$,
+  '42501',
+  null,
+  'owner cannot directly insert a valid snapshot'
+);
+select throws_ok(
+  $$ insert into public.workspace_snapshots (workspace_id, snapshot) values ('22000000-0000-0000-0000-000000000002', '{}') $$,
+  '42501',
+  null,
+  'owner cannot directly insert an invalid v1 snapshot'
 );
 select is(
   (select revision from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'),
@@ -123,37 +180,13 @@ select ok(
   'snapshot timestamps are populated'
 );
 select throws_ok(
-  $$ insert into public.workspace_snapshots (workspace_id, schema_version, snapshot) values ('22000000-0000-0000-0000-000000000001', 0, '{}') $$,
-  '23514',
-  null,
-  'schema version must be positive'
-);
-select throws_ok(
-  $$ insert into public.workspace_snapshots (workspace_id, revision, snapshot) values ('22000000-0000-0000-0000-000000000001', 0, '{}') $$,
-  '23514',
-  null,
-  'revision must be positive'
-);
-select throws_ok(
-  $$ insert into public.workspace_snapshots (workspace_id, snapshot) values ('22000000-0000-0000-0000-000000000002', '[]') $$,
-  '23514',
-  null,
-  'snapshot must be a JSON object'
-);
-select throws_ok(
-  $$ insert into public.workspace_snapshots (workspace_id, snapshot) values ('22000000-0000-0000-0000-000000000001', '{"projects":[]}') $$,
-  '23505',
-  null,
-  'second initial insert cannot replace the existing snapshot'
-);
-select throws_ok(
   $$ update public.workspace_snapshots set workspace_id = '22000000-0000-0000-0000-000000000002' where workspace_id = '22000000-0000-0000-0000-000000000001' $$,
   '42501',
   null,
   'owner cannot bypass CAS to change snapshot workspace_id'
 );
 select results_eq(
-  $$ select status || ':' || revision::text from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000001'::uuid, 1::bigint, 1::smallint, '{"projects":[{"id":"project-1"}]}'::jsonb) $$,
+  $$ select status || ':' || revision::text from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000001'::uuid, 1::bigint, 1::smallint, public.test_valid_desktop_snapshot_v1()) $$,
   array['saved:2'::text],
   'owner CAS save succeeds and returns saved revision'
 );
@@ -162,13 +195,36 @@ select is(
   'project-1'::text,
   'successful CAS save stores the new snapshot'
 );
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1('{}'::jsonb) $$, 'empty snapshot is rejected with 22023');
+select is((select revision from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'), 2::bigint, 'empty snapshot leaves revision unchanged');
+select is((select snapshot from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'), public.test_valid_desktop_snapshot_v1(), 'empty snapshot leaves winner unchanged');
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1('{"projects":[]}'::jsonb) $$, 'missing collections are rejected with 22023');
+select is((select revision from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'), 2::bigint, 'missing collections leave revision unchanged');
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1(public.test_valid_desktop_snapshot_v1() - 'tasks') $$, 'missing tasks are rejected with 22023');
+select is((select snapshot from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'), public.test_valid_desktop_snapshot_v1(), 'missing tasks leave winner unchanged');
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1(jsonb_set(public.test_valid_desktop_snapshot_v1(), '{tasks}', '{}'::jsonb)) $$, 'non-array tasks are rejected with 22023');
+select is((select revision from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'), 2::bigint, 'non-array tasks leave revision unchanged');
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1(public.test_valid_desktop_snapshot_v1() || '{"future":true}'::jsonb) $$, 'unknown top-level field is rejected with 22023');
+select is((select snapshot from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'), public.test_valid_desktop_snapshot_v1(), 'unknown field leaves winner unchanged');
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1(public.test_valid_desktop_snapshot_v1(), 2::smallint) $$, 'schema version mismatch is rejected with 22023');
+select is((select revision from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'), 2::bigint, 'schema mismatch leaves revision unchanged');
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1(jsonb_set(public.test_valid_desktop_snapshot_v1(), '{tasks}', '[{}]'::jsonb)) $$, 'malformed task is rejected with 22023');
+select is((select snapshot from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'), public.test_valid_desktop_snapshot_v1(), 'malformed task leaves winner unchanged');
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1(jsonb_set(public.test_valid_desktop_snapshot_v1(), '{tasks}', '[{"id":"task-1","projectId":"project-1","title":"","overviewDirectionId":"missing","overviewOrder":0,"taskListOrder":0,"listId":"missing","showOnOverview":false,"completedAt":null,"signal":"none","starred":false,"myDay":false,"links":[],"linkedDocumentIds":[],"subtasks":[]}]'::jsonb)) $$, 'task with missing list is rejected with 22023');
+select is((select revision from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'), 2::bigint, 'missing list leaves revision unchanged');
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1(jsonb_set(jsonb_set(public.test_valid_desktop_snapshot_v1(), '{tasks}', '[{"id":"task-1","projectId":"project-1","title":"","overviewDirectionId":"missing","overviewOrder":0,"taskListOrder":0,"listId":"missing","showOnOverview":false,"completedAt":null,"signal":"none","starred":false,"myDay":false,"links":[],"linkedDocumentIds":["document-1"],"subtasks":[]}]'::jsonb), '{documents}', '[{"id":"document-1","projectId":"project-2","folder":"","title":"","excerpt":"","content":[],"linkedTaskIds":[],"backlinks":[]}]'::jsonb)) $$, 'cross-project task document relation is rejected with 22023');
+select is((select snapshot from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'), public.test_valid_desktop_snapshot_v1(), 'cross-project relation leaves winner unchanged');
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1(jsonb_set(public.test_valid_desktop_snapshot_v1(), '{tasks}', '[{"id":"task-1","projectId":"project-1","title":"","overviewDirectionId":"missing","overviewOrder":0,"taskListOrder":0,"listId":"missing","showOnOverview":false,"completedAt":null,"signal":"none","starred":false,"myDay":false,"links":[],"linkedDocumentIds":[],"subtasks":[]},{"id":"task-1","projectId":"project-1","title":"","overviewDirectionId":"missing","overviewOrder":0,"taskListOrder":0,"listId":"missing","showOnOverview":false,"completedAt":null,"signal":"none","starred":false,"myDay":false,"links":[],"linkedDocumentIds":[],"subtasks":[]}]'::jsonb)) $$, 'duplicate task ID is rejected with 22023');
+select is((select revision from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'), 2::bigint, 'duplicate task leaves revision unchanged');
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1(jsonb_set(public.test_valid_desktop_snapshot_v1(), '{tasks}', '[{"id":"task-1","projectId":"project-1","title":"","overviewDirectionId":"missing","overviewOrder":0,"taskListOrder":0,"listId":"missing","showOnOverview":false,"completedAt":null,"signal":"none","starred":false,"myDay":false,"links":[{}],"linkedDocumentIds":[],"subtasks":[]}]'::jsonb)) $$, 'malformed nested link is rejected with 22023');
+select is((select snapshot from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'), public.test_valid_desktop_snapshot_v1(), 'malformed nested record leaves winner unchanged');
 select results_eq(
-  $$ select status || ':' || revision::text from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000001'::uuid, 1::bigint, 1::smallint, '{"projects":[]}'::jsonb) $$,
+  $$ select status || ':' || revision::text from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000001'::uuid, 1::bigint, 1::smallint, public.test_valid_desktop_snapshot_v1()) $$,
   array['conflict:2'::text],
   'stale expected revision returns conflict without overwriting'
 );
 select results_eq(
-  $$ select status || ':' || revision::text from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000001'::uuid, 1::bigint, 1::smallint, '{"projects":[]}'::jsonb) $$,
+  $$ select status || ':' || revision::text from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000001'::uuid, 1::bigint, 1::smallint, public.test_valid_desktop_snapshot_v1()) $$,
   array['conflict:2'::text],
   'repeated stale save returns conflict again'
 );
@@ -199,6 +255,12 @@ select throws_ok(
   'editor cannot create an owner-only snapshot'
 );
 select throws_ok(
+  $$ insert into public.workspace_snapshots (workspace_id, snapshot) values ('22000000-0000-0000-0000-000000000002', public.test_valid_desktop_snapshot_v1()) $$,
+  '42501',
+  null,
+  'editor cannot directly insert a valid snapshot'
+);
+select throws_ok(
   $$ select * from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000001'::uuid, 2::bigint, 1::smallint, '{"projects":[]}'::jsonb) $$,
   '42501',
   'workspace access denied',
@@ -212,6 +274,18 @@ select results_eq(
   $$ select count(*)::bigint from public.workspace_snapshots $$,
   array[1::bigint],
   'viewer can read a member workspace snapshot'
+);
+select throws_ok(
+  $$ insert into public.workspace_snapshots (workspace_id, snapshot) values ('22000000-0000-0000-0000-000000000001', public.test_valid_desktop_snapshot_v1()) $$,
+  '42501',
+  null,
+  'viewer cannot directly insert a valid snapshot'
+);
+select throws_ok(
+  $$ insert into public.workspace_snapshots (workspace_id, snapshot) values ('22000000-0000-0000-0000-000000000001', '{}') $$,
+  '42501',
+  null,
+  'viewer cannot directly insert an invalid v1 snapshot'
 );
 select throws_ok(
   $$ update public.workspace_snapshots set snapshot = '{"projects":[]}' where workspace_id = '22000000-0000-0000-0000-000000000001' $$,
@@ -229,6 +303,12 @@ select results_eq(
   'outsider cannot read another workspace snapshot'
 );
 select throws_ok(
+  $$ insert into public.workspace_snapshots (workspace_id, snapshot) values ('22000000-0000-0000-0000-000000000001', public.test_valid_desktop_snapshot_v1()) $$,
+  '42501',
+  null,
+  'outsider cannot directly insert a valid snapshot'
+);
+select throws_ok(
   $$ insert into public.workspace_snapshots (workspace_id, snapshot) values ('22000000-0000-0000-0000-000000000001', '{}') $$,
   '42501',
   null,
@@ -244,10 +324,6 @@ reset role;
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '12000000-0000-0000-0000-000000000001', true);
-select lives_ok(
-  $$ insert into public.workspace_snapshots (workspace_id, snapshot) values ('22000000-0000-0000-0000-000000000002', '{"projects":[]}') $$,
-  'owner can create a snapshot in a second owned workspace'
-);
 select lives_ok(
   $$ delete from public.workspaces where id = '22000000-0000-0000-0000-000000000002' $$,
   'owner can delete a workspace with snapshot lifecycle cascade'

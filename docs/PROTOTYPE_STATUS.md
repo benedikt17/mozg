@@ -7,6 +7,12 @@
 
 ## Local persistence
 
+Cloud status: Google/Auth and a protected cloud desktop route are available.
+Cloud persistence uses Supabase workspace snapshots with CAS, not IndexedDB as
+an automatic cache. IndexedDB remains local-development persistence. Inbox and
+Canvases are outside the persisted MVP snapshot, and the JSONB snapshot remains
+a temporary production bridge.
+
 Прототип сохраняет domain data в локальную IndexedDB базу
 `mozg-desktop-prototype` через versioned snapshot schema. В snapshot входят:
 

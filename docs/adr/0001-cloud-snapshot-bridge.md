@@ -265,6 +265,13 @@ migration debt и необходимость пересмотра при рос�
 
 ## Consequences
 
+### Current local/cloud boundary
+
+Cloud mode reads and writes the Supabase workspace snapshot with CAS. It does
+not keep an automatic IndexedDB cache. IndexedDB is reserved for the isolated
+local development mode; local data is never automatically uploaded to the
+cloud workspace.
+
 ### Positive
 
 - Пользователь получает одно состояние на нескольких компьютерах.

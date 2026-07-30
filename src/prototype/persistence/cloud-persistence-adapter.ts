@@ -80,6 +80,12 @@ export class CloudDesktopPersistenceAdapter implements DesktopPersistenceAdapter
           "Cloud workspace is unavailable.",
         );
       }
+      if (error.code === "22023") {
+        throw new DesktopPersistenceError(
+          "invalid-snapshot",
+          "Cloud snapshot validation failed.",
+        );
+      }
       throw new DesktopPersistenceError(
         "unavailable",
         "Cloud snapshot save failed.",

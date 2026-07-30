@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "projects": [
+    {
+      "id": "project-v1",
+      "name": "Compatibility project",
+      "shortName": "V1",
+      "description": "Stable v1 fixture"
+    }
+  ],
+  "overviewDirections": [
+    {
+      "id": "direction-v1",
+      "projectId": "project-v1",
+      "title": "Direction",
+      "order": 0
+    }
+  ],
+  "taskGroups": [
+    {
+      "id": "group-v1",
+      "projectId": "project-v1",
+      "title": "System group",
+      "order": 0,
+      "kind": "system"
+    }
+  ],
+  "taskLists": [
+    {
+      "id": "list-v1",
+      "projectId": "project-v1",
+      "groupId": "group-v1",
+      "title": "System list",
+      "order": 0,
+      "kind": "system",
+      "overviewDirectionId": "direction-v1"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-v1",
+      "projectId": "project-v1",
+      "title": "Compatibility task",
+      "overviewDirectionId": "direction-v1",
+      "overviewOrder": 0,
+      "taskListOrder": 0,
+      "listId": "list-v1",
+      "showOnOverview": true,
+      "completedAt": null,
+      "signal": "green",
+      "starred": true,
+      "myDay": false,
+      "area": "Compatibility",
+      "dueDate": "2030-01-01",
+      "links": [
+        {
+          "id": "link-v1",
+          "title": "Reference",
+          "url": "https://example.test/v1"
+        }
+      ],
+      "linkedDocumentIds": ["document-v1"],
+      "subtasks": [
+        { "id": "subtask-v1", "title": "Nested task", "done": false }
+      ],
+      "notes": "Persistent notes"
+    }
+  ],
+  "knowledgeFolders": [
+    {
+      "id": "project-v1:knowledge",
+      "projectId": "project-v1",
+      "path": ["Knowledge"]
+    }
+  ],
+  "documents": [
+    {
+      "id": "document-v1",
+      "projectId": "project-v1",
+      "order": 0,
+      "folder": "Knowledge",
+      "folderPath": ["Knowledge"],
+      "isKeyDocument": true,
+      "title": "Compatibility document",
+      "excerpt": "Fixture document",
+      "content": ["# v1", "Persistent Markdown content"],
+      "linkedTaskIds": ["task-v1"],
+      "backlinks": []
+    }
+  ]
+}

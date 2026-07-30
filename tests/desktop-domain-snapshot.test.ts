@@ -200,6 +200,54 @@ describe("desktop domain snapshot v1", () => {
     expectInvalid(value, code);
   });
 
+  it("accepts the exact current v1 persistent contract", () => {
+    const snapshot = cloneSnapshot();
+    delete snapshot.tasks[0]!.area;
+    delete snapshot.tasks[0]!.dueDate;
+    delete snapshot.tasks[0]!.notes;
+    delete snapshot.documents[0]!.order;
+    delete snapshot.documents[0]!.folderPath;
+    delete snapshot.documents[0]!.isKeyDocument;
+
+    expect(parseDesktopDomainSnapshot(snapshot)).toMatchObject({ ok: true });
+  });
+
+  it("rejects unknown persistent fields without normalizing them away", () => {
+    const topLevel = { ...cloneSnapshot(), futureField: true };
+    const topLevelResult = expectInvalid(topLevel, "unknown-field");
+    if (!topLevelResult.ok) {
+      expect(topLevelResult.errors).toContainEqual(
+        expect.objectContaining({ path: "futureField" }),
+      );
+    }
+
+    const task = cloneSnapshot();
+    (task.tasks[0] as unknown as Record<string, unknown>).futureField = true;
+    const taskResult = expectInvalid(task, "unknown-field");
+    if (!taskResult.ok) {
+      expect(taskResult.errors).toContainEqual(
+        expect.objectContaining({ path: "tasks[0].futureField" }),
+      );
+    }
+
+    const nested = cloneSnapshot();
+    nested.tasks[0]!.links.push({
+      id: "future-link",
+      title: "Future link",
+      url: "https://example.test/future",
+    });
+    (
+      nested.tasks[0]!.subtasks[0] as unknown as Record<string, unknown>
+    ).future = true;
+    (nested.tasks[0]!.links[0] as unknown as Record<string, unknown>).future =
+      true;
+    expectInvalid(nested, "unknown-field");
+
+    const document = cloneSnapshot();
+    (document.documents[0] as unknown as Record<string, unknown>).future = true;
+    expectInvalid(document, "unknown-field");
+  });
+
   it("rejects invalid booleans, enums, arrays, paths and orders", () => {
     const invalidBoolean = cloneSnapshot();
     (invalidBoolean.tasks[0] as unknown as { myDay: unknown }).myDay = "yes";

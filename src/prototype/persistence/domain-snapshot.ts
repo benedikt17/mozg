@@ -138,6 +138,24 @@ function addIssue(
   issues.push({ code, path, message });
 }
 
+function rejectUnknownFields(
+  record: UnknownRecord,
+  path: string,
+  allowedKeys: readonly string[],
+  issues: DesktopDomainValidationIssue[],
+): void {
+  const allowed = new Set(allowedKeys);
+  Object.keys(record).forEach((key) => {
+    if (allowed.has(key)) return;
+    addIssue(
+      issues,
+      "unknown-field",
+      path === "$" ? key : `${path}.${key}`,
+      "Field is not part of the desktop snapshot v1 contract.",
+    );
+  });
+}
+
 function readString(
   record: UnknownRecord,
   key: string,
@@ -264,6 +282,12 @@ function parseProject(
     addIssue(issues, "invalid-record", path, "Expected an object.");
     return undefined;
   }
+  rejectUnknownFields(
+    value,
+    path,
+    ["id", "name", "shortName", "description"],
+    issues,
+  );
   const id = readString(value, "id", path, issues, { nonEmpty: true });
   const name = readString(value, "name", path, issues);
   const shortName = readString(value, "shortName", path, issues);
@@ -285,6 +309,12 @@ function parseDirection(
     addIssue(issues, "invalid-record", path, "Expected an object.");
     return undefined;
   }
+  rejectUnknownFields(
+    value,
+    path,
+    ["id", "projectId", "title", "order"],
+    issues,
+  );
   const id = readString(value, "id", path, issues, { nonEmpty: true });
   const projectId = readString(value, "projectId", path, issues, {
     nonEmpty: true,
@@ -320,6 +350,12 @@ function parseTaskGroup(
     addIssue(issues, "invalid-record", path, "Expected an object.");
     return undefined;
   }
+  rejectUnknownFields(
+    value,
+    path,
+    ["id", "projectId", "title", "order", "kind"],
+    issues,
+  );
   const id = readString(value, "id", path, issues, { nonEmpty: true });
   const projectId = readString(value, "projectId", path, issues, {
     nonEmpty: true,
@@ -345,6 +381,20 @@ function parseTaskList(
     addIssue(issues, "invalid-record", path, "Expected an object.");
     return undefined;
   }
+  rejectUnknownFields(
+    value,
+    path,
+    [
+      "id",
+      "projectId",
+      "groupId",
+      "title",
+      "order",
+      "kind",
+      "overviewDirectionId",
+    ],
+    issues,
+  );
   const id = readString(value, "id", path, issues, { nonEmpty: true });
   const projectId = readString(value, "projectId", path, issues, {
     nonEmpty: true,
@@ -395,6 +445,7 @@ function parseTaskLinks(
       addIssue(issues, "invalid-record", itemPath, "Expected an object.");
       return undefined;
     }
+    rejectUnknownFields(item, itemPath, ["id", "title", "url"], issues);
     const id = readString(item, "id", itemPath, issues, { nonEmpty: true });
     const title = readString(item, "title", itemPath, issues);
     const url = readString(item, "url", itemPath, issues);
@@ -422,6 +473,7 @@ function parseSubtasks(
       addIssue(issues, "invalid-record", itemPath, "Expected an object.");
       return undefined;
     }
+    rejectUnknownFields(item, itemPath, ["id", "title", "done"], issues);
     const id = readString(item, "id", itemPath, issues, { nonEmpty: true });
     const title = readString(item, "title", itemPath, issues);
     const done = readBoolean(item, "done", itemPath, issues);
@@ -455,6 +507,31 @@ function parseTask(
     addIssue(issues, "invalid-record", path, "Expected an object.");
     return undefined;
   }
+  rejectUnknownFields(
+    value,
+    path,
+    [
+      "id",
+      "projectId",
+      "title",
+      "overviewDirectionId",
+      "overviewOrder",
+      "taskListOrder",
+      "listId",
+      "showOnOverview",
+      "completedAt",
+      "signal",
+      "starred",
+      "myDay",
+      "area",
+      "dueDate",
+      "links",
+      "linkedDocumentIds",
+      "subtasks",
+      "notes",
+    ],
+    issues,
+  );
   const id = readString(value, "id", path, issues, { nonEmpty: true });
   const projectId = readString(value, "projectId", path, issues, {
     nonEmpty: true,
@@ -550,6 +627,7 @@ function parseKnowledgeFolder(
     addIssue(issues, "invalid-record", path, "Expected an object.");
     return undefined;
   }
+  rejectUnknownFields(value, path, ["id", "projectId", "path"], issues);
   const id = readString(value, "id", path, issues, { nonEmpty: true });
   const projectId = readString(value, "projectId", path, issues, {
     nonEmpty: true,
@@ -572,6 +650,24 @@ function parseDocument(
     addIssue(issues, "invalid-record", path, "Expected an object.");
     return undefined;
   }
+  rejectUnknownFields(
+    value,
+    path,
+    [
+      "id",
+      "projectId",
+      "order",
+      "folder",
+      "folderPath",
+      "isKeyDocument",
+      "title",
+      "excerpt",
+      "content",
+      "linkedTaskIds",
+      "backlinks",
+    ],
+    issues,
+  );
   const id = readString(value, "id", path, issues, { nonEmpty: true });
   const projectId = readString(value, "projectId", path, issues, {
     nonEmpty: true,
@@ -915,6 +1011,21 @@ export function parseDesktopDomainSnapshot(
       ],
     };
   }
+  rejectUnknownFields(
+    value,
+    "$",
+    [
+      "schemaVersion",
+      "projects",
+      "overviewDirections",
+      "taskGroups",
+      "taskLists",
+      "tasks",
+      "knowledgeFolders",
+      "documents",
+    ],
+    errors,
+  );
   if (value.schemaVersion !== DESKTOP_DOMAIN_SCHEMA_VERSION) {
     addIssue(
       errors,
