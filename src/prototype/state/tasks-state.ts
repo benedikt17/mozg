@@ -312,7 +312,11 @@ export function commitTaskTitleEdit(
   const task = getTaskById(state, taskId);
   if (!task || task.projectId !== state.activeProjectId) return state;
   const trimmedTitle = title.trim();
-  if (state.editingTaskTitleId !== taskId || trimmedTitle.length === 0) {
+  if (
+    state.editingTaskTitleId !== taskId ||
+    trimmedTitle.length === 0 ||
+    trimmedTitle === task.title
+  ) {
     return {
       ...state,
       editingTaskTitleId: null,

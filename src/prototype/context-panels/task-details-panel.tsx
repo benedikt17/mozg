@@ -15,6 +15,7 @@ import {
   PrototypeButton,
 } from "@/prototype/desktop-ui";
 import { getKnowledgePaneState } from "@/prototype/state/knowledge-state";
+import { createTaskTitleEditLifecycle } from "./task-title-edit-lifecycle";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 
@@ -50,7 +51,7 @@ export function TaskDetailsPanel({
   const subtaskAddInputRef = useRef<HTMLInputElement>(null);
   const subtaskEditInputRef = useRef<HTMLInputElement>(null);
   const taskTitleInputRef = useRef<HTMLInputElement>(null);
-  const taskTitleEditingRef = useRef(false);
+  const taskTitleEditLifecycleRef = useRef(createTaskTitleEditLifecycle());
   const subtaskRenameCancelledRef = useRef(false);
   const attachedDocuments = task.linkedDocumentIds
     .map((documentId) => getDocumentById(state, documentId))
@@ -74,25 +75,28 @@ export function TaskDetailsPanel({
   function startTaskTitleEdit(event: React.MouseEvent<HTMLElement>): void {
     event.stopPropagation();
     setTaskTitleDraft(task.title);
-    taskTitleEditingRef.current = true;
+    taskTitleEditLifecycleRef.current.begin(task.id, task.title);
     setEditingTaskTitle(true);
     dispatch({ type: "begin-task-title-edit", taskId: task.id });
   }
 
-  function commitTaskTitleEdit(): void {
-    if (!taskTitleEditingRef.current) return;
-    taskTitleEditingRef.current = false;
+  function commitTaskTitleEdit(title?: string): void {
+    const transition = taskTitleEditLifecycleRef.current.commit(
+      title ?? taskTitleInputRef.current?.value,
+    );
+    if (!transition) return;
     setEditingTaskTitle(false);
     dispatch({
       type: "commit-task-title-edit",
-      taskId: task.id,
-      title: taskTitleDraft,
+      taskId: transition.taskId,
+      title: transition.title,
     });
   }
 
   function cancelTaskTitleEdit(): void {
-    taskTitleEditingRef.current = false;
-    setTaskTitleDraft(task.title);
+    const transition = taskTitleEditLifecycleRef.current.cancel();
+    if (!transition) return;
+    setTaskTitleDraft(transition.originalTitle);
     setEditingTaskTitle(false);
     dispatch({ type: "cancel-task-title-edit" });
   }
@@ -212,17 +216,31 @@ export function TaskDetailsPanel({
   }
 
   return (
-    <div className="panel-stack overview-reader-task-details">
+    <div
+      className="panel-stack overview-reader-task-details"
+      onPointerDownCapture={(event) => {
+        if (
+          taskTitleEditLifecycleRef.current.activeTaskId === null ||
+          event.target === taskTitleInputRef.current
+        ) {
+          return;
+        }
+        commitTaskTitleEdit();
+      }}
+    >
       {editingTaskTitle ? (
         <input
           aria-label={`Название задачи: ${task.title}`}
           className="subtask-title-input task-details-inline-title-input"
-          onBlur={commitTaskTitleEdit}
-          onChange={(event) => setTaskTitleDraft(event.target.value)}
+          onBlur={(event) => commitTaskTitleEdit(event.currentTarget.value)}
+          onChange={(event) => {
+            taskTitleEditLifecycleRef.current.update(event.target.value);
+            setTaskTitleDraft(event.target.value);
+          }}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               event.preventDefault();
-              commitTaskTitleEdit();
+              commitTaskTitleEdit(event.currentTarget.value);
             }
             if (event.key === "Escape") {
               event.preventDefault();
