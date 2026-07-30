@@ -53,6 +53,15 @@ idempotent import adapter в Supabase; такой adapter пока не реал
 - Collapse branches и task-scoped article attachment.
 - Split закрывается перед открытием attach panel.
 
+### Task Subtask Details Workspace contract
+
+The concept is architecturally accepted for the first implementation; no
+implementation exists yet. Structured subtasks remain the source of truth,
+with per-subtask `detailsMarkdown` planned for snapshot v2. Strict snapshot v1
+remains current, and the next implementation checkpoint is the snapshot v2
+foundation. Split, gallery, canvas, and AI are deferred. Current production
+behavior is unchanged.
+
 ## Production readiness gaps
 
 Прототип не готов к production deployment. Пока отсутствуют или не завершены:
