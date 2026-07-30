@@ -9,6 +9,10 @@ import {
 } from "@/prototype/desktop-state";
 import { PrototypeButton } from "@/prototype/desktop-ui";
 import { createClient } from "@/lib/supabase/browser";
+import {
+  shouldShowAuthenticatedAccountControls,
+  type DesktopRuntimeMode,
+} from "@/lib/desktop-runtime-mode";
 import { useRouter } from "next/navigation";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
@@ -141,9 +145,11 @@ function ApplicationSectionNavigation({
 export function ApplicationHeader({
   state,
   dispatch,
+  runtimeMode,
 }: {
   state: DesktopPrototypeState;
   dispatch: Dispatch;
+  runtimeMode: DesktopRuntimeMode;
 }): React.JSX.Element {
   const router = useRouter();
   const logout = async (): Promise<void> => {
@@ -184,9 +190,11 @@ export function ApplicationHeader({
               AI
             </PrototypeButton>
           )}
-          <PrototypeButton onClick={logout} variant="quiet">
-            Выйти
-          </PrototypeButton>
+          {shouldShowAuthenticatedAccountControls(runtimeMode) ? (
+            <PrototypeButton onClick={logout} variant="quiet">
+              Выйти
+            </PrototypeButton>
+          ) : null}
         </div>
       </div>
     </header>

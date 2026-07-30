@@ -35,6 +35,7 @@ import {
 } from "@/prototype/persistence/use-desktop-persistence";
 import type { DesktopPersistenceErrorCode } from "@/prototype/persistence/persistence-adapter";
 import type { DesktopCloudBootstrap } from "@/prototype/persistence/cloud-snapshot-bridge";
+import type { DesktopRuntimeMode } from "@/lib/desktop-runtime-mode";
 import "./desktop-shell.css";
 import "./desktop-workspaces.css";
 import "./desktop-knowledge.css";
@@ -43,8 +44,10 @@ type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 
 export function DesktopPrototypeShell({
   cloudBootstrap,
+  runtimeMode,
 }: {
   cloudBootstrap?: DesktopCloudBootstrap;
+  runtimeMode: DesktopRuntimeMode;
 }): React.JSX.Element {
   const [state, dispatch] = useReducer(
     desktopPrototypeReducer,
@@ -57,6 +60,7 @@ export function DesktopPrototypeShell({
   const persistence = useDesktopPersistence(state, dispatch, {
     enabled: true,
     cloudBootstrap,
+    runtimeMode,
   });
   const workspaceAvailable =
     persistence.lifecycle.status !== "loading" &&
@@ -181,7 +185,11 @@ export function DesktopPrototypeShell({
     >
       <SectionRail state={state} dispatch={dispatch} />
       <div className="project-workspace">
-        <ApplicationHeader state={state} dispatch={dispatch} />
+        <ApplicationHeader
+          dispatch={dispatch}
+          runtimeMode={runtimeMode}
+          state={state}
+        />
         <SectionWorkspace state={state} dispatch={dispatch} />
       </div>
       <DesktopPersistenceStatus persistence={persistence} />

@@ -1,10 +1,12 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { getDesktopRuntimeMode } from "@/lib/local-development-mode";
 import type { Database } from "@/lib/supabase/database.types";
 import { getPublicEnv } from "@/lib/env";
 
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next({ request });
+  if (getDesktopRuntimeMode() === "local") return response;
   const env = getPublicEnv();
   const supabase = createServerClient<Database>(
     env.NEXT_PUBLIC_SUPABASE_URL,

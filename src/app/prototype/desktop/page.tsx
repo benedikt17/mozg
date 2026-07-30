@@ -1,18 +1,29 @@
 import type { DesktopCloudSnapshotLoadResult } from "@/lib/supabase/desktop-snapshot-loader";
-import { loadDesktopCloudSnapshot } from "@/lib/supabase/desktop-snapshot-loader";
+import { getDesktopRuntimeMode } from "@/lib/local-development-mode";
 import { DesktopPrototypeShell } from "@/prototype/desktop-shell";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default async function DesktopPrototypePage() {
+  if (getDesktopRuntimeMode() === "local") {
+    return <DesktopPrototypeShell runtimeMode="local" />;
+  }
+
+  const { loadDesktopCloudSnapshot } =
+    await import("@/lib/supabase/desktop-snapshot-loader");
   const result = await loadDesktopCloudSnapshot();
   if (result.kind === "unauthenticated") {
     redirect("/sign-in?next=%2Fprototype%2Fdesktop");
   }
   if (result.kind !== "ready")
     return <DesktopSnapshotBoundary kind={result.kind} />;
-  return <DesktopPrototypeShell cloudBootstrap={result.bootstrap} />;
+  return (
+    <DesktopPrototypeShell
+      cloudBootstrap={result.bootstrap}
+      runtimeMode="cloud"
+    />
+  );
 }
 
 function DesktopSnapshotBoundary({

@@ -9,6 +9,8 @@ import {
 import { IndexedDbDesktopPersistenceAdapter } from "@/prototype/persistence/indexeddb-adapter";
 import { CloudDesktopPersistenceAdapter } from "@/prototype/persistence/cloud-persistence-adapter";
 import type { DesktopCloudBootstrap } from "@/prototype/persistence/cloud-snapshot-bridge";
+import type { DesktopRuntimeMode } from "@/lib/desktop-runtime-mode";
+import type { DesktopPersistenceAdapter } from "@/prototype/persistence/persistence-adapter";
 import type {
   DesktopPrototypeAction,
   DesktopPrototypeState,
@@ -20,13 +22,32 @@ export type UseDesktopPersistenceResult = {
   retrySave: () => void;
 };
 
+export function createDesktopPersistenceAdapter({
+  cloudBootstrap,
+  runtimeMode,
+}: {
+  cloudBootstrap?: DesktopCloudBootstrap;
+  runtimeMode: DesktopRuntimeMode;
+}): DesktopPersistenceAdapter {
+  if (runtimeMode === "local") return new IndexedDbDesktopPersistenceAdapter();
+  if (!cloudBootstrap) {
+    throw new Error("Cloud desktop persistence requires a cloud bootstrap.");
+  }
+  return new CloudDesktopPersistenceAdapter(cloudBootstrap);
+}
+
 export function useDesktopPersistence(
   state: DesktopPrototypeState,
   dispatch: React.Dispatch<DesktopPrototypeAction>,
-  options: { enabled?: boolean; cloudBootstrap?: DesktopCloudBootstrap } = {},
+  options: {
+    enabled?: boolean;
+    cloudBootstrap?: DesktopCloudBootstrap;
+    runtimeMode: DesktopRuntimeMode;
+  },
 ): UseDesktopPersistenceResult {
   const enabled = options.enabled ?? true;
   const cloudBootstrap = options.cloudBootstrap;
+  const runtimeMode = options.runtimeMode;
   const snapshot = useMemo(() => createDesktopDomainSnapshot(state), [state]);
   const initialSnapshot = useRef(snapshot);
   const runtime = useRef<DesktopPersistenceRuntime | null>(null);
@@ -43,9 +64,10 @@ export function useDesktopPersistence(
   useEffect(() => {
     if (!enabled) return;
     let active = true;
-    const adapter = cloudBootstrap
-      ? new CloudDesktopPersistenceAdapter(cloudBootstrap)
-      : new IndexedDbDesktopPersistenceAdapter();
+    const adapter = createDesktopPersistenceAdapter({
+      cloudBootstrap,
+      runtimeMode,
+    });
     const coordinator = new DesktopPersistenceRuntime({
       adapter,
       initialSnapshot: initialSnapshot.current,
@@ -76,7 +98,7 @@ export function useDesktopPersistence(
       if (runtime.current === coordinator) runtime.current = null;
       coordinator.dispose();
     };
-  }, [cloudBootstrap, dispatch, enabled]);
+  }, [cloudBootstrap, dispatch, enabled, runtimeMode]);
 
   useEffect(() => {
     if (!enabled) return;
