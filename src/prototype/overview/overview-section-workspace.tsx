@@ -4,6 +4,7 @@ import {
   getProjectDocuments,
   getProjectOverviewDirections,
   getTaskById,
+  getOverviewTaskDetailMaterial,
   getVisibleOverviewTasks,
   type DesktopPrototypeAction,
   type DesktopPrototypeState,
@@ -23,9 +24,12 @@ export function OverviewSectionWorkspace({
   const directions = getProjectOverviewDirections(state);
   const documents = getProjectDocuments(state);
   const sourceTask = getTaskById(state, state.overviewArticleSourceTaskId);
+  const material = sourceTask
+    ? getOverviewTaskDetailMaterial(state, sourceTask.id)
+    : null;
   const activeDocument = getDocumentById(
     state,
-    state.overviewArticlePreviewDocumentId,
+    material?.kind === "knowledge" ? material.documentId : null,
   );
   const sourceDirection = sourceTask
     ? directions.find(
@@ -36,10 +40,8 @@ export function OverviewSectionWorkspace({
     sourceTask !== undefined &&
     sourceDirection !== undefined &&
     sourceTask.projectId === state.activeProjectId &&
-    (activeDocument === undefined
-      ? state.overviewArticlePreviewDocumentId === null
-      : activeDocument.projectId === sourceTask.projectId &&
-        sourceTask.linkedDocumentIds.includes(activeDocument.id));
+    material !== null &&
+    (material.kind === "subtasks" || activeDocument !== undefined);
   return (
     <div
       className={[
@@ -68,9 +70,9 @@ export function OverviewSectionWorkspace({
       {readerActive ? (
         <OverviewContextualReader
           activeDocument={activeDocument}
-          direction={sourceDirection}
           dispatch={dispatch}
           documents={documents}
+          material={material ?? { kind: "subtasks" }}
           state={state}
           task={sourceTask}
         />

@@ -5,6 +5,8 @@ import type {
 } from "@/prototype/desktop-mock-data";
 import {
   getDocumentById,
+  getOverviewTaskDetailMaterial,
+  getOverviewTaskDetailSplitDocument,
   isValidTaskLinkUrl,
   type DesktopPrototypeAction,
   type DesktopPrototypeState,
@@ -59,8 +61,18 @@ export function TaskDetailsPanel({
       (document): document is PrototypeDocument =>
         document !== undefined && document.projectId === task.projectId,
     );
+  const overviewMaterial = overviewMode
+    ? getOverviewTaskDetailMaterial(state, task.id)
+    : null;
+  const overviewSplitDocument = overviewMode
+    ? getOverviewTaskDetailSplitDocument(state, task.id)
+    : undefined;
   const activeKnowledgeDocumentId = overviewMode
-    ? state.overviewArticlePreviewDocumentId
+    ? overviewSplitDocument
+      ? overviewSplitDocument.id
+      : overviewMaterial?.kind === "knowledge"
+        ? overviewMaterial.documentId
+        : null
     : getKnowledgePaneState(state).activeDocument?.id;
 
   useEffect(() => {
@@ -267,6 +279,27 @@ export function TaskDetailsPanel({
         id={`task-details-${task.id}-subtasks-panel`}
         role="region"
       >
+        {overviewMode ? (
+          <button
+            aria-current={
+              overviewMaterial?.kind === "subtasks" ? "page" : undefined
+            }
+            className="task-details-section-heading-button"
+            onClick={(event) => {
+              event.stopPropagation();
+              dispatch({
+                type: "open-overview-task-subtasks",
+                taskId: task.id,
+              });
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+            type="button"
+          >
+            Подзадачи
+          </button>
+        ) : (
+          <h3>Подзадачи</h3>
+        )}
         <section className="context-section task-subtasks-section">
           {task.subtasks.map((subtask) => (
             <div className="subtask-row" key={subtask.id}>
@@ -439,7 +472,9 @@ export function TaskDetailsPanel({
                   dispatch(
                     overviewMode
                       ? {
-                          type: "open-overview-task-article",
+                          type: state.overviewTaskDetailSplit.enabled
+                            ? "select-overview-task-split-article"
+                            : "open-overview-task-article",
                           taskId: task.id,
                           documentId: document.id,
                         }

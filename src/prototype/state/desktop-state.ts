@@ -44,6 +44,7 @@ import {
 } from "@/prototype/state/inbox-state";
 import {
   getNextOverviewOrder,
+  getOverviewTaskAttachedDocuments,
   getOverviewDirectionById,
   getProjectOverviewDirections,
   getVisibleOverviewTasks,
@@ -125,6 +126,7 @@ import type {
   ContextPanelState,
   DesktopPrototypeAction,
   DesktopPrototypeState,
+  OverviewTaskDetailContextPanel,
 } from "@/prototype/state/types";
 
 const initialProjectId = "lukomorie";
@@ -154,6 +156,9 @@ export const initialDesktopPrototypeState: DesktopPrototypeState = {
   overviewScrollLeft: 0,
   overviewArticleSourceTaskId: null,
   overviewArticlePreviewDocumentId: null,
+  overviewTaskDetailMaterial: null,
+  overviewTaskDetailSplit: { enabled: false },
+  overviewTaskDetailContextPanel: null,
   editingTaskTitleId: null,
   selectedTaskId: null,
   taskDetailViewTaskId: null,
@@ -318,6 +323,9 @@ function hydrateDesktopDomain(
     overviewScrollLeft: 0,
     overviewArticleSourceTaskId: null,
     overviewArticlePreviewDocumentId: null,
+    overviewTaskDetailMaterial: null,
+    overviewTaskDetailSplit: { enabled: false },
+    overviewTaskDetailContextPanel: null,
     editingTaskTitleId: null,
     selectedTaskId: null,
     taskDetailViewTaskId: null,
@@ -360,6 +368,9 @@ function switchToProject(
     overviewScrollLeft: 0,
     overviewArticleSourceTaskId: null,
     overviewArticlePreviewDocumentId: null,
+    overviewTaskDetailMaterial: null,
+    overviewTaskDetailSplit: { enabled: false },
+    overviewTaskDetailContextPanel: null,
     editingTaskTitleId: null,
     selectedTaskId: null,
     taskDetailViewTaskId: null,
@@ -402,6 +413,26 @@ function switchToProject(
   };
 }
 
+function getValidOverviewTaskDetailContextPanel(
+  state: DesktopPrototypeState,
+): OverviewTaskDetailContextPanel | null {
+  const sourceTaskId = state.overviewArticleSourceTaskId;
+  const sourceTask = sourceTaskId
+    ? getTaskById(state, sourceTaskId)
+    : undefined;
+  if (!sourceTask || sourceTask.projectId !== state.activeProjectId)
+    return null;
+
+  const candidates: Array<OverviewTaskDetailContextPanel | null | undefined> = [
+    state.contextPanel?.kind === "task" ? state.contextPanel : null,
+    state.contextPanelBeforeAi?.kind === "task"
+      ? state.contextPanelBeforeAi
+      : null,
+    state.overviewTaskDetailContextPanel,
+  ];
+  return candidates.find((panel) => panel?.taskId === sourceTask.id) ?? null;
+}
+
 function openOverviewTaskFocus(
   state: DesktopPrototypeState,
   taskId: string,
@@ -437,15 +468,100 @@ function openOverviewTaskFocus(
     ...nextState,
     activeSection: "overview",
     editingTaskTitleId: null,
-    overviewExpandedTaskId: null,
+    overviewExpandedTaskId: task.id,
     overviewArticleSourceTaskId: task.id,
     overviewArticlePreviewDocumentId: previewDocumentId,
+    overviewTaskDetailMaterial:
+      previewDocumentId === null
+        ? { kind: "subtasks" }
+        : { kind: "knowledge", documentId: previewDocumentId },
+    overviewTaskDetailSplit: { enabled: false },
+    overviewTaskDetailContextPanel: { kind: "task", taskId: task.id },
     selectedTaskId: task.id,
     taskDetailViewTaskId: null,
     contextPanel: { kind: "task", taskId: task.id },
     contextPanelBeforeAi: null,
     commandPaletteOpen: false,
   };
+}
+
+function openOverviewTaskSubtasks(
+  state: DesktopPrototypeState,
+  taskId: string,
+): DesktopPrototypeState {
+  const task = getTaskById(state, taskId);
+  if (!task) return state;
+
+  const nextState =
+    task.projectId === state.activeProjectId
+      ? state
+      : switchToProject(state, task.projectId);
+
+  return {
+    ...nextState,
+    activeSection: "overview",
+    editingTaskTitleId: null,
+    overviewExpandedTaskId: task.id,
+    overviewArticleSourceTaskId: task.id,
+    overviewArticlePreviewDocumentId: null,
+    overviewTaskDetailMaterial: { kind: "subtasks" },
+    overviewTaskDetailSplit: { enabled: false },
+    overviewTaskDetailContextPanel: { kind: "task", taskId: task.id },
+    selectedTaskId: task.id,
+    taskDetailViewTaskId: null,
+    contextPanel: { kind: "task", taskId: task.id },
+    contextPanelBeforeAi: null,
+    commandPaletteOpen: false,
+  };
+}
+
+function openOverviewTaskSplit(
+  state: DesktopPrototypeState,
+  taskId: string,
+  requestedDocumentId?: string,
+): DesktopPrototypeState {
+  const task = getTaskById(state, taskId);
+  if (
+    !task ||
+    task.projectId !== state.activeProjectId ||
+    state.overviewArticleSourceTaskId !== task.id
+  ) {
+    return state;
+  }
+  const attachedDocuments = getOverviewTaskAttachedDocuments(state, task.id);
+  const currentMaterialDocumentId =
+    state.overviewTaskDetailMaterial?.kind === "knowledge"
+      ? state.overviewTaskDetailMaterial.documentId
+      : undefined;
+  const currentAttachedDocumentId = attachedDocuments.some(
+    (document) => document.id === currentMaterialDocumentId,
+  )
+    ? currentMaterialDocumentId
+    : undefined;
+  const documentId =
+    requestedDocumentId === undefined
+      ? (currentAttachedDocumentId ?? attachedDocuments[0]?.id)
+      : attachedDocuments.some(
+            (document) => document.id === requestedDocumentId,
+          )
+        ? requestedDocumentId
+        : undefined;
+  return documentId
+    ? {
+        ...state,
+        overviewTaskDetailMaterial: { kind: "subtasks" },
+        overviewTaskDetailSplit: { enabled: true, documentId },
+      }
+    : state;
+}
+
+function selectOverviewTaskSplitArticle(
+  state: DesktopPrototypeState,
+  taskId: string,
+  documentId: string,
+): DesktopPrototypeState {
+  if (!state.overviewTaskDetailSplit.enabled) return state;
+  return openOverviewTaskSplit(state, taskId, documentId);
 }
 
 function selectKnowledgeDocument(
@@ -653,6 +769,9 @@ export function desktopPrototypeReducer(
         overviewScrollLeft: 0,
         overviewArticleSourceTaskId: null,
         overviewArticlePreviewDocumentId: null,
+        overviewTaskDetailMaterial: null,
+        overviewTaskDetailSplit: { enabled: false },
+        overviewTaskDetailContextPanel: null,
         editingTaskTitleId: null,
         selectedTaskId: null,
         taskDetailViewTaskId: null,
@@ -682,7 +801,10 @@ export function desktopPrototypeReducer(
         nextProjectNumber: state.nextProjectNumber + 1,
       };
     }
-    case "switch-section":
+    case "switch-section": {
+      const overviewTaskContext = getValidOverviewTaskDetailContextPanel(state);
+      const restoreOverviewContext =
+        action.section === "overview" ? overviewTaskContext : null;
       return {
         ...state,
         activeSection: action.section,
@@ -690,10 +812,12 @@ export function desktopPrototypeReducer(
         editingKnowledgeFolderId: null,
         editingKnowledgeDocumentId: null,
         taskDetailViewTaskId: null,
-        contextPanel: null,
+        overviewTaskDetailContextPanel: overviewTaskContext,
+        contextPanel: restoreOverviewContext,
         contextPanelBeforeAi: null,
         commandPaletteOpen: false,
       };
+    }
     case "select-task": {
       const task = getTaskById(state, action.taskId);
       if (!task) return state;
@@ -794,6 +918,18 @@ export function desktopPrototypeReducer(
           state.overviewArticleSourceTaskId === task.id
             ? null
             : state.overviewArticlePreviewDocumentId,
+        overviewTaskDetailMaterial:
+          state.overviewArticleSourceTaskId === task.id
+            ? null
+            : state.overviewTaskDetailMaterial,
+        overviewTaskDetailSplit:
+          state.overviewArticleSourceTaskId === task.id
+            ? { enabled: false }
+            : state.overviewTaskDetailSplit,
+        overviewTaskDetailContextPanel:
+          state.overviewArticleSourceTaskId === task.id
+            ? null
+            : state.overviewTaskDetailContextPanel,
         contextPanel: contextPanelReferencesTask ? null : state.contextPanel,
         contextPanelBeforeAi: restorablePanelReferencesTask
           ? null
@@ -849,12 +985,20 @@ export function desktopPrototypeReducer(
       const task = getTaskById(state, action.taskId);
       if (!task?.linkedDocumentIds.includes(action.documentId)) return state;
 
-      return updateTask(state, task.id, (currentTask) => ({
+      const nextState = updateTask(state, task.id, (currentTask) => ({
         ...currentTask,
         linkedDocumentIds: currentTask.linkedDocumentIds.filter(
           (documentId) => documentId !== action.documentId,
         ),
       }));
+      return state.overviewTaskDetailSplit.enabled &&
+        state.overviewArticleSourceTaskId === task.id &&
+        state.overviewTaskDetailSplit.documentId === action.documentId
+        ? {
+            ...nextState,
+            overviewTaskDetailSplit: { enabled: false },
+          }
+        : nextState;
     }
     case "toggle-subtask":
       return toggleSubtask(state, action.taskId, action.subtaskId);
@@ -1193,6 +1337,18 @@ export function desktopPrototypeReducer(
     }
     case "open-overview-task-focus":
       return openOverviewTaskFocus(state, action.taskId, action.documentId);
+    case "open-overview-task-subtasks":
+      return openOverviewTaskSubtasks(state, action.taskId);
+    case "open-overview-task-split":
+      return openOverviewTaskSplit(state, action.taskId, action.documentId);
+    case "close-overview-task-split":
+      return { ...state, overviewTaskDetailSplit: { enabled: false } };
+    case "select-overview-task-split-article":
+      return selectOverviewTaskSplitArticle(
+        state,
+        action.taskId,
+        action.documentId,
+      );
     case "open-overview-task-article":
       return openOverviewTaskFocus(state, action.taskId, action.documentId);
     case "close-overview-article-preview": {
@@ -1206,6 +1362,9 @@ export function desktopPrototypeReducer(
         overviewExpandedTaskId: taskToRestore,
         overviewArticleSourceTaskId: null,
         overviewArticlePreviewDocumentId: null,
+        overviewTaskDetailMaterial: null,
+        overviewTaskDetailSplit: { enabled: false },
+        overviewTaskDetailContextPanel: null,
         taskDetailViewTaskId: null,
         contextPanel:
           state.contextPanel?.kind === "task" ? null : state.contextPanel,
@@ -1264,6 +1423,11 @@ export function desktopPrototypeReducer(
           ...openOverviewTaskFocus(state, task.id, overviewDocumentId),
           taskAttachOrigin: null,
           contextPanel: {
+            kind: "task",
+            taskId: task.id,
+            initialTab: "articles",
+          },
+          overviewTaskDetailContextPanel: {
             kind: "task",
             taskId: task.id,
             initialTab: "articles",

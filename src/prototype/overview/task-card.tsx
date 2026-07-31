@@ -318,9 +318,22 @@ export function TaskCard({
             className="task-card-expanded"
             id={`task-card-details-${task.id}`}
           >
-            {task.subtasks.length > 0 ? (
-              <section className="task-card-expanded-section">
-                <h4>Подзадачи</h4>
+            <section className="task-card-expanded-section">
+              <button
+                className="task-card-expanded-section-heading"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  dispatch({
+                    type: "open-overview-task-subtasks",
+                    taskId: task.id,
+                  });
+                }}
+                onPointerDown={(event) => event.stopPropagation()}
+                type="button"
+              >
+                Подзадачи
+              </button>
+              {task.subtasks.length > 0 ? (
                 <ul className="task-card-subtasks">
                   {task.subtasks.map((subtask) => (
                     <li
@@ -346,8 +359,8 @@ export function TaskCard({
                     </li>
                   ))}
                 </ul>
-              </section>
-            ) : null}
+              ) : null}
+            </section>
             {attachedDocuments.length > 0 ? (
               <section className="task-card-expanded-section">
                 <h4>Статьи</h4>

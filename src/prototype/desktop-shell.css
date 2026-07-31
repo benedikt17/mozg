@@ -1673,6 +1673,26 @@
     font-weight: 600;
   }
 
+  .task-card-expanded-section-heading {
+    width: fit-content;
+    border: 0;
+    background: transparent;
+    color: var(--text-3);
+    padding: 0;
+    font: inherit;
+    font-size: 12px;
+    line-height: 19px;
+    font-weight: 600;
+    text-align: left;
+  }
+
+  .task-card-expanded-section-heading:hover,
+  .task-card-expanded-section-heading:focus-visible {
+    color: var(--text);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
   .task-card-subtasks,
   .task-card-resource-list {
     display: grid;
@@ -2281,6 +2301,27 @@
     font: inherit;
     text-align: left;
     cursor: text;
+  }
+
+  .task-details-section-heading-button {
+    width: fit-content;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    padding: 0;
+    font: inherit;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 600;
+    text-align: left;
+  }
+
+  .task-details-section-heading-button:hover,
+  .task-details-section-heading-button:focus-visible,
+  .task-details-section-heading-button[aria-current="page"] {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 3px;
   }
 
   .task-details-inline-title-input {

@@ -24,6 +24,12 @@ export type TaskAttachOrigin =
   | { section: "overview"; taskId: string; documentId?: string | null }
   | { section: "tasks"; taskId: string; documentId?: string | null };
 
+export type OverviewTaskDetailMaterial =
+  { kind: "subtasks" } | { kind: "knowledge"; documentId: string };
+
+export type OverviewTaskDetailSplitState =
+  { enabled: false } | { enabled: true; documentId: string };
+
 export type ContextPanelState =
   | { kind: "task"; taskId: string; initialTab?: "articles" }
   | { kind: "knowledge-tasks" }
@@ -34,6 +40,11 @@ export type ContextPanelState =
   | { kind: "inbox-item"; itemId: string }
   | { kind: "ai" }
   | null;
+
+export type OverviewTaskDetailContextPanel = Extract<
+  Exclude<ContextPanelState, null>,
+  { kind: "task" }
+>;
 
 export type RestorableContextPanelState = Exclude<
   ContextPanelState,
@@ -97,6 +108,9 @@ export type DesktopPrototypeState = {
   overviewScrollLeft: number;
   overviewArticleSourceTaskId: string | null;
   overviewArticlePreviewDocumentId: string | null;
+  overviewTaskDetailMaterial: OverviewTaskDetailMaterial | null;
+  overviewTaskDetailSplit: OverviewTaskDetailSplitState;
+  overviewTaskDetailContextPanel: OverviewTaskDetailContextPanel | null;
   editingTaskTitleId: string | null;
   selectedTaskId: string | null;
   taskDetailViewTaskId: string | null;
@@ -318,7 +332,15 @@ export type DesktopPrototypeAction =
       taskId: string;
       documentId: string;
     }
+  | { type: "open-overview-task-subtasks"; taskId: string }
   | { type: "open-overview-task-focus"; taskId: string; documentId?: string }
+  | { type: "open-overview-task-split"; taskId: string; documentId?: string }
+  | { type: "close-overview-task-split" }
+  | {
+      type: "select-overview-task-split-article";
+      taskId: string;
+      documentId: string;
+    }
   | { type: "close-overview-article-preview" }
   | { type: "open-overview-task-article-linker"; taskId: string }
   | { type: "return-to-overview-from-task-article" }

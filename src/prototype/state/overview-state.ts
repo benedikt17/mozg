@@ -1,9 +1,76 @@
 import type {
   OverviewDirectionId,
+  PrototypeDocument,
   PrototypeOverviewDirection,
   PrototypeTask,
 } from "@/prototype/desktop-mock-data";
-import type { DesktopPrototypeState } from "@/prototype/state/types";
+import type {
+  DesktopPrototypeState,
+  OverviewTaskDetailMaterial,
+} from "@/prototype/state/types";
+
+export function getOverviewTaskAttachedDocuments(
+  state: DesktopPrototypeState,
+  taskId: string,
+) {
+  const task = state.tasks.find((item) => item.id === taskId);
+  if (!task || task.projectId !== state.activeProjectId) return [];
+  return task.linkedDocumentIds
+    .map((documentId) =>
+      state.documents.find((document) => document.id === documentId),
+    )
+    .filter(
+      (document): document is PrototypeDocument =>
+        document !== undefined && document.projectId === task.projectId,
+    );
+}
+
+export function getOverviewTaskDetailSplitDocument(
+  state: DesktopPrototypeState,
+  taskId: string,
+) {
+  const split = state.overviewTaskDetailSplit;
+  if (state.overviewArticleSourceTaskId !== taskId || !split.enabled) {
+    return undefined;
+  }
+  return getOverviewTaskAttachedDocuments(state, taskId).find(
+    (document) => document.id === split.documentId,
+  );
+}
+
+export function getOverviewTaskDetailMaterial(
+  state: DesktopPrototypeState,
+  taskId: string,
+): OverviewTaskDetailMaterial | null {
+  const task = state.tasks.find((item) => item.id === taskId);
+  if (
+    !task ||
+    task.projectId !== state.activeProjectId ||
+    state.overviewArticleSourceTaskId !== task.id
+  ) {
+    return null;
+  }
+
+  const material = state.overviewTaskDetailMaterial;
+  if (material?.kind === "subtasks") return material;
+
+  const documentId =
+    material?.kind === "knowledge"
+      ? material.documentId
+      : state.overviewArticlePreviewDocumentId;
+  const document = documentId
+    ? state.documents.find((item) => item.id === documentId)
+    : undefined;
+  if (
+    document &&
+    document.projectId === task.projectId &&
+    task.linkedDocumentIds.includes(document.id)
+  ) {
+    return { kind: "knowledge", documentId: document.id };
+  }
+
+  return { kind: "subtasks" };
+}
 
 export function getProjectOverviewDirections(
   state: DesktopPrototypeState,

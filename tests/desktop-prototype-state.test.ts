@@ -620,7 +620,7 @@ describe("desktop structural prototype state", () => {
     });
     expect(next.overviewArticleSourceTaskId).toBe("luko-world-rules");
     expect(next.overviewArticlePreviewDocumentId).toBe("doc-l-geography");
-    expect(next.overviewExpandedTaskId).toBeNull();
+    expect(next.overviewExpandedTaskId).toBe("luko-world-rules");
   });
 
   it("restores the previous contextual panel after AI is closed", () => {
@@ -1856,7 +1856,7 @@ describe("desktop structural prototype state", () => {
     expect(next.activeSection).toBe("overview");
     expect(next.overviewArticleSourceTaskId).toBe("luko-world-rules");
     expect(next.overviewArticlePreviewDocumentId).toBe("doc-l-geography");
-    expect(next.overviewExpandedTaskId).toBeNull();
+    expect(next.overviewExpandedTaskId).toBe("luko-world-rules");
     expect(next.contextPanel).toEqual({
       kind: "task",
       taskId: "luko-world-rules",

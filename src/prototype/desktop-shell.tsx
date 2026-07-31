@@ -10,6 +10,7 @@ import {
   desktopPrototypeReducer,
   getActiveProject,
   getCommandResults,
+  getOverviewTaskDetailMaterial,
   initialDesktopPrototypeState,
   type CommandResult,
   type DesktopPrototypeAction,
@@ -319,18 +320,25 @@ function SectionWorkspace({
   const overviewSourceTask = state.tasks.find(
     (task) => task.id === state.overviewArticleSourceTaskId,
   );
+  const overviewMaterial = overviewSourceTask
+    ? getOverviewTaskDetailMaterial(state, overviewSourceTask.id)
+    : null;
   const overviewPreviewDocument = state.documents.find(
-    (document) => document.id === state.overviewArticlePreviewDocumentId,
+    (document) =>
+      document.id ===
+      (overviewMaterial?.kind === "knowledge"
+        ? overviewMaterial.documentId
+        : null),
   );
   const overviewReaderActive =
     state.activeSection === "overview" &&
     overviewSourceTask?.projectId === state.activeProjectId &&
-    (state.overviewArticlePreviewDocumentId === null
-      ? true
-      : overviewPreviewDocument?.projectId === overviewSourceTask.projectId &&
+    overviewMaterial !== null &&
+    (overviewMaterial.kind === "subtasks" ||
+      (overviewPreviewDocument?.projectId === overviewSourceTask.projectId &&
         overviewSourceTask.linkedDocumentIds.includes(
           overviewPreviewDocument.id,
-        ));
+        )));
   const hasContextPanel =
     state.contextPanel !== null && state.activeSection !== "overview";
   const knowledgeAiOpen =

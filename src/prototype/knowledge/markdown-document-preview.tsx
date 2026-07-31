@@ -29,6 +29,17 @@ export type NestedListNode = NestedListItem & {
   children: NestedListNode[];
 };
 
+export type MarkdownTaskListMode = "interactive" | "static";
+
+export function getMarkdownTaskListPresentation(
+  line: string,
+  mode: MarkdownTaskListMode,
+): "interactive" | "literal" | null {
+  const item = parseNestedListItem(line);
+  if (item?.kind !== "task") return null;
+  return mode === "static" ? "literal" : "interactive";
+}
+
 type DocumentCollapseState = {
   documentId: string;
   collapsed: Set<number>;
@@ -123,13 +134,20 @@ export function parseExternalLinkToken(
 export function getDocumentHeadings(
   document: PrototypeDocument,
 ): DocumentHeading[] {
-  return document.content.flatMap((line, index) => {
+  return getMarkdownHeadings(document.id, document.content);
+}
+
+function getMarkdownHeadings(
+  documentId: string,
+  lines: string[],
+): DocumentHeading[] {
+  return lines.flatMap((line, index) => {
     const match = /^(#{1,3})\s+(.+)$/.exec(line);
     if (!match) return [];
     const level = match[1]?.length;
     return [
       {
-        id: `document-${document.id}-heading-${index}`,
+        id: `document-${documentId}-heading-${index}`,
         label: match[2] ?? line,
         level: level === 3 ? 3 : level === 2 ? 2 : 1,
       } satisfies DocumentHeading,
@@ -150,12 +168,60 @@ export function MarkdownDocumentPreview({
   onInternalLink?: (documentId: string) => void;
   onTaskToggle?: (lineIndex: number, checked: boolean) => void;
 }): React.JSX.Element {
+  return (
+    <MarkdownContentPreview
+      contentId={document.id}
+      headingIdPrefix={headingIdPrefix}
+      hideLeadingTitle={hideLeadingTitle}
+      lines={document.content}
+      onInternalLink={onInternalLink}
+      onTaskToggle={onTaskToggle}
+      title={document.title}
+    />
+  );
+}
+
+export function MarkdownStringPreview({
+  contentId,
+  markdown,
+}: {
+  contentId: string;
+  markdown: string;
+}): React.JSX.Element {
+  return (
+    <MarkdownContentPreview
+      contentId={contentId}
+      lines={markdown.split("\n")}
+      taskListMode="static"
+    />
+  );
+}
+
+function MarkdownContentPreview({
+  contentId,
+  headingIdPrefix = "",
+  hideLeadingTitle = false,
+  lines,
+  onInternalLink,
+  onTaskToggle,
+  taskListMode = "interactive",
+  title = "",
+}: {
+  contentId: string;
+  headingIdPrefix?: string;
+  hideLeadingTitle?: boolean;
+  lines: string[];
+  onInternalLink?: (documentId: string) => void;
+  onTaskToggle?: (lineIndex: number, checked: boolean) => void;
+  taskListMode?: MarkdownTaskListMode;
+  title?: string;
+}): React.JSX.Element {
   const [collapseState, setCollapseState] = useState<DocumentCollapseState>({
-    documentId: document.id,
+    documentId: contentId,
     collapsed: new Set(),
   });
   const collapsed =
-    collapseState.documentId === document.id
+    collapseState.documentId === contentId
       ? collapseState.collapsed
       : new Set<number>();
   const setCollapsed: React.Dispatch<React.SetStateAction<Set<number>>> = (
@@ -163,42 +229,34 @@ export function MarkdownDocumentPreview({
   ) => {
     setCollapseState((current) => {
       const currentCollapsed =
-        current.documentId === document.id
+        current.documentId === contentId
           ? current.collapsed
           : new Set<number>();
       const nextCollapsed =
         typeof update === "function" ? update(currentCollapsed) : update;
-      return { documentId: document.id, collapsed: nextCollapsed };
+      return { documentId: contentId, collapsed: nextCollapsed };
     });
   };
-  const headings = getDocumentHeadings(document);
+  const headings = getMarkdownHeadings(contentId, lines);
   const blocks: React.ReactNode[] = [];
   const firstContentIndex =
-    hideLeadingTitle && document.content[0]?.trim() === `# ${document.title}`
-      ? 1
-      : 0;
-  for (
-    let index = firstContentIndex;
-    index < document.content.length;
-    index += 1
-  ) {
-    const line = document.content[index] ?? "";
+    hideLeadingTitle && lines[0]?.trim() === `# ${title}` ? 1 : 0;
+  for (let index = firstContentIndex; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
     const listItem = parseNestedListItem(line);
     if (listItem) {
-      const tree = buildNestedListTree(document.content, index);
+      const tree = buildNestedListTree(lines, index);
       blocks.push(
-        <div
-          className="document-list-group"
-          key={`${document.id}-list-${index}`}
-        >
+        <div className="document-list-group" key={`${contentId}-list-${index}`}>
           {tree.roots.map((node) =>
             renderNestedListNode(node, {
               anchorId: undefined,
               collapsed,
-              documentId: document.id,
+              documentId: contentId,
               headingIdPrefix,
               onInternalLink,
               onTaskToggle,
+              taskListMode,
               setCollapsed,
             }),
           )}
@@ -211,25 +269,25 @@ export function MarkdownDocumentPreview({
       const code: string[] = [];
       let codeIndex = index + 1;
       while (
-        codeIndex < document.content.length &&
-        !(document.content[codeIndex] ?? "").startsWith("```")
+        codeIndex < lines.length &&
+        !(lines[codeIndex] ?? "").startsWith("```")
       ) {
-        code.push(document.content[codeIndex] ?? "");
+        code.push(lines[codeIndex] ?? "");
         codeIndex += 1;
       }
       blocks.push(
-        <pre className="document-code-block" key={`${document.id}-${index}`}>
+        <pre className="document-code-block" key={`${contentId}-${index}`}>
           <code>{code.join("\n")}</code>
         </pre>,
       );
       index = codeIndex;
       continue;
     }
-    const table = getMarkdownTable(document.content, index);
+    const table = getMarkdownTable(lines, index);
     if (table) {
       blocks.push(
         <MarkdownTable
-          key={`${document.id}-table-${index}`}
+          key={`${contentId}-table-${index}`}
           table={table.table}
         />,
       );
@@ -237,16 +295,17 @@ export function MarkdownDocumentPreview({
       continue;
     }
     const heading = headings.find(
-      (item) => item.id === `document-${document.id}-heading-${index}`,
+      (item) => item.id === `document-${contentId}-heading-${index}`,
     );
     blocks.push(
       <MarkdownPreviewBlock
         anchorId={heading ? `${headingIdPrefix}${heading.id}` : undefined}
-        key={`${document.id}-${index}`}
+        key={`${contentId}-${index}`}
         line={line}
         onInternalLink={onInternalLink}
         hasChildren={false}
         collapsed={false}
+        taskListMode={taskListMode}
       />,
     );
   }
@@ -260,6 +319,7 @@ type NestedListRenderContext = {
   headingIdPrefix: string;
   onInternalLink?: (documentId: string) => void;
   onTaskToggle?: (lineIndex: number, checked: boolean) => void;
+  taskListMode: MarkdownTaskListMode;
   setCollapsed: React.Dispatch<React.SetStateAction<Set<number>>>;
 };
 
@@ -282,6 +342,7 @@ function renderNestedListNode(
               ? (checked) => context.onTaskToggle?.(node.lineIndex, checked)
               : undefined
           }
+          taskListMode={context.taskListMode}
           hasChildren={node.children.length > 0}
           collapsed={isCollapsed}
           onToggleCollapse={
@@ -482,6 +543,7 @@ function MarkdownPreviewBlock({
   anchorId,
   onInternalLink,
   onTaskToggle,
+  taskListMode = "interactive",
   hasChildren,
   collapsed,
   onToggleCollapse,
@@ -490,6 +552,7 @@ function MarkdownPreviewBlock({
   anchorId?: string;
   onInternalLink?: (documentId: string) => void;
   onTaskToggle?: (checked: boolean) => void;
+  taskListMode?: MarkdownTaskListMode;
   hasChildren: boolean;
   collapsed: boolean;
   onToggleCollapse?: () => void;
@@ -502,6 +565,30 @@ function MarkdownPreviewBlock({
   if (line.startsWith("### "))
     return <h3 id={anchorId}>{renderInlineMarkdown(line.slice(4))}</h3>;
   const checklist = parseNestedListItem(line);
+  if (
+    checklist?.kind === "task" &&
+    getMarkdownTaskListPresentation(line, taskListMode) === "literal"
+  ) {
+    return (
+      <p
+        className={`document-list-item document-checklist-static document-list-depth-${checklist.depth} ${checklist.depth === 0 ? "document-list-item-root" : ""}`}
+        style={{ marginInlineStart: `${checklist.depth * 24}px` }}
+      >
+        <span className="markdown-task-expander-slot">
+          <ListExpander
+            hasChildren={hasChildren}
+            collapsed={collapsed}
+            onToggle={onToggleCollapse}
+          />
+        </span>
+        <span className="markdown-task-checkbox-slot" aria-hidden="true" />
+        <span className="markdown-task-content">
+          {checklist.marker}
+          {renderInlineMarkdown(checklist.text, onInternalLink)}
+        </span>
+      </p>
+    );
+  }
   if (checklist?.kind === "task") {
     return (
       <p

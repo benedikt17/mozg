@@ -4,10 +4,11 @@ import type {
   PrototypeTask,
 } from "@/prototype/desktop-mock-data";
 import {
-  getProjectOverviewDirections,
+  getOverviewTaskDetailSplitDocument,
   type DesktopPrototypeState,
   type DesktopPrototypeAction,
 } from "@/prototype/desktop-state";
+import type { OverviewTaskDetailMaterial } from "@/prototype/state/types";
 import { UiIcon } from "@/prototype/desktop-icons";
 import {
   getDocumentHeadings,
@@ -16,6 +17,7 @@ import {
 } from "@/prototype/knowledge/markdown-document-preview";
 import { IconButton, PrototypeButton } from "@/prototype/desktop-ui";
 import { TaskDetailsPanel } from "@/prototype/context-panels/task-details-panel";
+import { TaskSubtasksDocument } from "@/prototype/overview/task-subtasks-document";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 
@@ -50,23 +52,100 @@ function OverviewReaderOutline({
   );
 }
 
+function TaskDetailsWorkspaceToolbar({
+  attachedDocuments,
+  contextCollapsed,
+  editing,
+  material,
+  onToggleContext,
+  onToggleEditing,
+  onToggleSplit,
+  splitDocument,
+}: {
+  attachedDocuments: PrototypeDocument[];
+  contextCollapsed: boolean;
+  editing: boolean;
+  material: OverviewTaskDetailMaterial;
+  onToggleContext: () => void;
+  onToggleEditing: () => void;
+  onToggleSplit: () => void;
+  splitDocument: PrototypeDocument | undefined;
+}): React.JSX.Element {
+  const subtasksMaterial = material.kind === "subtasks";
+  const splitEnabled = splitDocument !== undefined;
+  const splitAvailable = attachedDocuments.length > 0;
+  const editLabel = editing
+    ? "\u0413\u043e\u0442\u043e\u0432\u043e"
+    : "\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c";
+
+  return (
+    <div className="document-tabs-row task-details-workspace-toolbar">
+      <div aria-hidden="true" className="task-details-toolbar-spacer" />
+      <div className="document-actions">
+        <IconButton
+          icon={
+            <UiIcon name={contextCollapsed ? "panel-right" : "panel-left"} />
+          }
+          label={
+            contextCollapsed
+              ? "\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442 \u0437\u0430\u0434\u0430\u0447\u0438"
+              : "\u0421\u043a\u0440\u044b\u0442\u044c \u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442 \u0437\u0430\u0434\u0430\u0447\u0438"
+          }
+          onClick={onToggleContext}
+          title={
+            contextCollapsed
+              ? "\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442 \u0437\u0430\u0434\u0430\u0447\u0438"
+              : "\u0421\u043a\u0440\u044b\u0442\u044c \u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442 \u0437\u0430\u0434\u0430\u0447\u0438"
+          }
+          variant="quiet"
+        />
+        <IconButton
+          active={editing}
+          aria-pressed={editing}
+          disabled={!subtasksMaterial}
+          icon={<UiIcon name={editing ? "eye" : "pencil"} />}
+          label={
+            subtasksMaterial
+              ? editLabel
+              : "\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u043f\u043e\u0434\u0437\u0430\u0434\u0430\u0447\u0438"
+          }
+          onClick={onToggleEditing}
+          title={editLabel}
+          variant="quiet"
+        />
+        <IconButton
+          active={splitEnabled}
+          aria-pressed={splitEnabled}
+          disabled={!splitAvailable && !splitEnabled}
+          icon={<UiIcon name="split" />}
+          label="\u0412\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u0438\u043b\u0438 \u0432\u044b\u043a\u043b\u044e\u0447\u0438\u0442\u044c Split"
+          onClick={onToggleSplit}
+          title="\u0412\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u0438\u043b\u0438 \u0432\u044b\u043a\u043b\u044e\u0447\u0438\u0442\u044c Split"
+          variant="quiet"
+        />
+      </div>
+    </div>
+  );
+}
+
 export function OverviewContextualReader({
   activeDocument,
-  direction,
   dispatch,
   documents,
+  material,
   task,
   state,
 }: {
   activeDocument: PrototypeDocument | undefined;
-  direction: ReturnType<typeof getProjectOverviewDirections>[number];
   dispatch: Dispatch;
   documents: PrototypeDocument[];
+  material: OverviewTaskDetailMaterial;
   task: PrototypeTask;
   state: DesktopPrototypeState;
 }): React.JSX.Element {
   const [contextCollapsed, setContextCollapsed] = useState(false);
   const [mobileContextOpen, setMobileContextOpen] = useState(false);
+  const [subtasksEditing, setSubtasksEditing] = useState(false);
   const articleRef = useRef<HTMLElement>(null);
   const articleScrollDocumentIdRef = useRef<string | null>(
     activeDocument?.id ?? null,
@@ -81,6 +160,14 @@ export function OverviewContextualReader({
     .filter(
       (document): document is PrototypeDocument => document !== undefined,
     );
+  const splitDocument = getOverviewTaskDetailSplitDocument(state, task.id);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setSubtasksEditing(false);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [material.kind, task.id]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -124,10 +211,6 @@ export function OverviewContextualReader({
 
   const returnToBoard = (): void => {
     dispatch({ type: "close-overview-article-preview" });
-  };
-
-  const openTaskOnBoard = (): void => {
-    returnToBoard();
   };
 
   const closeMobileContext = (): void => {
@@ -274,115 +357,118 @@ export function OverviewContextualReader({
           </section>
         )}
       </aside>
-      <IconButton
-        className="overview-reader-context-toggle"
-        icon={<UiIcon name={contextCollapsed ? "panel-right" : "panel-left"} />}
-        label={
-          contextCollapsed
-            ? "Показать контекст задачи"
-            : "Скрыть контекст задачи"
-        }
-        onClick={() => setContextCollapsed((collapsed) => !collapsed)}
-        title={
-          contextCollapsed
-            ? "Показать контекст задачи"
-            : "Скрыть контекст задачи"
-        }
-        variant="quiet"
-      />
-      <article
-        className="document-page overview-reader-article"
-        onScroll={(event) => {
-          const documentId = articleScrollDocumentIdRef.current;
-          if (documentId) {
-            articleScrollPositionsRef.current.set(
-              documentId,
-              event.currentTarget.scrollTop,
-            );
-          }
-        }}
-        ref={articleRef}
-      >
-        <OverviewReaderOutline
-          document={activeDocument}
-          onSelectHeading={scrollToHeading}
+      <div className="overview-reader-main">
+        <TaskDetailsWorkspaceToolbar
+          attachedDocuments={attachedDocuments}
+          contextCollapsed={contextCollapsed}
+          editing={subtasksEditing}
+          material={material}
+          onToggleContext={() => setContextCollapsed((collapsed) => !collapsed)}
+          onToggleEditing={() => setSubtasksEditing((editing) => !editing)}
+          onToggleSplit={() => {
+            if (splitDocument) {
+              dispatch({ type: "close-overview-task-split" });
+            } else {
+              dispatch({ type: "open-overview-task-split", taskId: task.id });
+            }
+          }}
+          splitDocument={splitDocument}
         />
-        <div className="document-page-inner">
-          <div className="overview-reader-mobile-actions">
-            <button
-              className="ui-button ui-button-quiet ui-button-compact"
-              onClick={() => setMobileContextOpen(true)}
-              ref={mobileContextTriggerRef}
-              type="button"
-            >
-              Контекст задачи
-            </button>
-            <PrototypeButton
-              onClick={returnToBoard}
-              size="compact"
-              variant="ghost"
-            >
-              ← К доске
-            </PrototypeButton>
-          </div>
-          <nav
-            aria-label="Контекст статьи"
-            className="overview-reader-breadcrumb"
+        <div
+          className={`overview-reader-material-surface ${splitDocument ? "is-split" : ""}`}
+        >
+          <article
+            className={`document-page overview-reader-article ${material.kind === "subtasks" ? "is-subtasks-material" : ""}`}
+            onScroll={(event) => {
+              const documentId = articleScrollDocumentIdRef.current;
+              if (documentId) {
+                articleScrollPositionsRef.current.set(
+                  documentId,
+                  event.currentTarget.scrollTop,
+                );
+              }
+            }}
+            ref={articleRef}
           >
-            <ol>
-              <li>
-                <button
-                  onClick={returnToBoard}
-                  title={`К направлению «${direction.title}»`}
-                  type="button"
-                >
-                  {direction.title}
-                </button>
-              </li>
-              <li className="is-task">
-                <button
-                  onClick={openTaskOnBoard}
-                  title={task.title}
-                  type="button"
-                >
-                  {task.title}
-                </button>
-              </li>
-              {activeDocument ? (
-                <li aria-current="page" title={activeDocument.title}>
-                  <span>{activeDocument.title}</span>
-                </li>
-              ) : null}
-            </ol>
-          </nav>
-          {activeDocument ? (
-            <>
-              <h1 id={getDocumentHeadings(activeDocument)[0]?.id}>
-                {activeDocument.title}
-              </h1>
-              <MarkdownDocumentPreview
+            {material.kind === "knowledge" ? (
+              <OverviewReaderOutline
                 document={activeDocument}
-                hideLeadingTitle
-                onTaskToggle={(lineIndex, checked) =>
-                  dispatch({
-                    type: "update-knowledge-document-markdown",
-                    documentId: activeDocument.id,
-                    markdown: toggleTaskListMarker(
-                      activeDocument.content.join("\n"),
-                      lineIndex,
-                      checked,
-                    ),
-                  })
-                }
+                onSelectHeading={scrollToHeading}
               />
-            </>
-          ) : (
-            <p className="overview-reader-empty-state" role="status">
-              К задаче пока не прикреплены статьи
-            </p>
-          )}
+            ) : null}
+            <div className="document-page-inner overview-reader-pane-content">
+              <div className="overview-reader-mobile-actions">
+                <button
+                  className="ui-button ui-button-quiet ui-button-compact"
+                  onClick={() => setMobileContextOpen(true)}
+                  ref={mobileContextTriggerRef}
+                  type="button"
+                >
+                  Контекст задачи
+                </button>
+                <PrototypeButton
+                  onClick={returnToBoard}
+                  size="compact"
+                  variant="ghost"
+                >
+                  ← К доске
+                </PrototypeButton>
+              </div>
+              {material.kind === "knowledge" && activeDocument ? (
+                <>
+                  <h1 id={getDocumentHeadings(activeDocument)[0]?.id}>
+                    {activeDocument.title}
+                  </h1>
+                  <MarkdownDocumentPreview
+                    document={activeDocument}
+                    hideLeadingTitle
+                    onTaskToggle={(lineIndex, checked) =>
+                      dispatch({
+                        type: "update-knowledge-document-markdown",
+                        documentId: activeDocument.id,
+                        markdown: toggleTaskListMarker(
+                          activeDocument.content.join("\n"),
+                          lineIndex,
+                          checked,
+                        ),
+                      })
+                    }
+                  />
+                </>
+              ) : (
+                <TaskSubtasksDocument
+                  key={task.id}
+                  dispatch={dispatch}
+                  editing={subtasksEditing}
+                  task={task}
+                />
+              )}
+            </div>
+          </article>
+          {splitDocument ? (
+            <article className="document-page overview-reader-article overview-reader-secondary-article is-split-pane">
+              <div className="document-page-inner overview-reader-pane-content">
+                <h1>{splitDocument.title}</h1>
+                <MarkdownDocumentPreview
+                  document={splitDocument}
+                  hideLeadingTitle
+                  onTaskToggle={(lineIndex, checked) =>
+                    dispatch({
+                      type: "update-knowledge-document-markdown",
+                      documentId: splitDocument.id,
+                      markdown: toggleTaskListMarker(
+                        splitDocument.content.join("\n"),
+                        lineIndex,
+                        checked,
+                      ),
+                    })
+                  }
+                />
+              </div>
+            </article>
+          ) : null}
         </div>
-      </article>
+      </div>
     </section>
   );
 }
