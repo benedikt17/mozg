@@ -34,6 +34,144 @@ export type Database = {
   }
   public: {
     Tables: {
+      canvas_assets: {
+        Row: {
+          byte_size: number
+          checksum: string | null
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          height: number
+          id: string
+          mime_type: string
+          preview_storage_key: string | null
+          ready_at: string | null
+          storage_key: string
+          width: number
+          workspace_id: string
+        }
+        Insert: {
+          byte_size: number
+          checksum?: string | null
+          created_at?: string
+          created_by: string
+          deleted_at?: string | null
+          height: number
+          id?: string
+          mime_type: string
+          preview_storage_key?: string | null
+          ready_at?: string | null
+          storage_key: string
+          width: number
+          workspace_id: string
+        }
+        Update: {
+          byte_size?: number
+          checksum?: string | null
+          created_at?: string
+          created_by?: string
+          deleted_at?: string | null
+          height?: number
+          id?: string
+          mime_type?: string
+          preview_storage_key?: string | null
+          ready_at?: string | null
+          storage_key?: string
+          width?: number
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canvas_assets_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      canvas_view_states: {
+        Row: {
+          canvas_id: string
+          updated_at: string
+          user_id: string
+          viewport_x: number
+          viewport_y: number
+          zoom: number
+        }
+        Insert: {
+          canvas_id: string
+          updated_at?: string
+          user_id: string
+          viewport_x?: number
+          viewport_y?: number
+          zoom?: number
+        }
+        Update: {
+          canvas_id?: string
+          updated_at?: string
+          user_id?: string
+          viewport_x?: number
+          viewport_y?: number
+          zoom?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canvas_view_states_canvas_id_fkey"
+            columns: ["canvas_id"]
+            isOneToOne: false
+            referencedRelation: "canvases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      canvases: {
+        Row: {
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          document: Json
+          id: string
+          revision: number
+          schema_version: number
+          title: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          deleted_at?: string | null
+          document?: Json
+          id?: string
+          revision?: number
+          schema_version?: number
+          title: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          deleted_at?: string | null
+          document?: Json
+          id?: string
+          revision?: number
+          schema_version?: number
+          title?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canvases_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notes: {
         Row: {
           archived_at: string | null
@@ -227,6 +365,31 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      create_canvas: {
+        Args: { target_title: string; target_workspace_id: string }
+        Returns: {
+          id: string
+          revision: number
+        }[]
+      }
+      delete_canvas: {
+        Args: { target_canvas_id: string }
+        Returns: {
+          deleted: boolean
+        }[]
+      }
+      save_canvas_document: {
+        Args: {
+          target_canvas_id: string
+          target_document: Json
+          target_expected_revision: number
+          target_title: string
+        }
+        Returns: {
+          revision: number
+          status: string
+        }[]
+      }
       has_workspace_role: {
         Args: { roles: string[]; target_workspace_id: string }
         Returns: boolean
@@ -382,4 +545,3 @@ export const Constants = {
     Enums: {},
   },
 } as const
-
