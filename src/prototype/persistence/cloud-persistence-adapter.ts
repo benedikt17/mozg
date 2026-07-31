@@ -107,6 +107,10 @@ export class CloudDesktopPersistenceAdapter implements DesktopPersistenceAdapter
       throw new DesktopPersistenceError(
         "conflict",
         "Cloud snapshot revision is stale.",
+        {
+          expectedRevision,
+          actualRevision: result.revision,
+        },
       );
     }
     return { revision: result.revision, savedAt: new Date().toISOString() };

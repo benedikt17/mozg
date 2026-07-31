@@ -16,6 +16,11 @@ export type DesktopPersistenceLifecycle =
       revision: number;
       error: DesktopPersistenceError;
     }
+  | {
+      status: "conflict";
+      revision: number;
+      error: DesktopPersistenceError;
+    }
   | { status: "load-error"; error: DesktopPersistenceError };
 
 export type DesktopPersistenceRuntimeOptions = {
@@ -129,7 +134,11 @@ export class DesktopPersistenceRuntime {
   }
 
   retrySave(): Promise<void> {
-    if (this.disposed || this.lifecycleValue.status !== "save-error") {
+    if (
+      this.disposed ||
+      this.lifecycleValue.status !== "save-error" ||
+      this.lifecycleValue.error.code === "conflict"
+    ) {
       return Promise.resolve();
     }
     if (this.latestFingerprint === this.persistedFingerprint) {
@@ -304,12 +313,13 @@ export class DesktopPersistenceRuntime {
       })
       .catch((error: unknown) => {
         if (this.disposed) return;
+        const typedError = persistenceError(error);
         this.pendingSnapshot = this.latestSnapshot;
         this.pendingFingerprint = this.latestFingerprint;
         this.setLifecycle({
-          status: "save-error",
+          status: typedError.code === "conflict" ? "conflict" : "save-error",
           revision: expectedRevision,
-          error: persistenceError(error),
+          error: typedError,
         });
       })
       .finally(() => {

@@ -193,7 +193,12 @@ export function DesktopPrototypeShell({
         />
         <SectionWorkspace state={state} dispatch={dispatch} />
       </div>
-      <DesktopPersistenceStatus persistence={persistence} />
+      <DesktopPersistenceStatus
+        avoidRightPanel={
+          state.contextPanel !== null && state.activeSection !== "overview"
+        }
+        persistence={persistence}
+      />
       {state.commandPaletteOpen ? (
         <CommandPalette
           activeIndex={activeCommandIndex}
@@ -251,44 +256,50 @@ function DesktopPersistenceBoundary({
 
 function DesktopPersistenceStatus({
   persistence,
+  avoidRightPanel,
 }: {
   persistence: UseDesktopPersistenceResult;
+  avoidRightPanel: boolean;
 }): React.JSX.Element | null {
+  const className = [
+    "desktop-persistence-status",
+    avoidRightPanel ? "has-right-panel" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
   if (persistence.lifecycle.status === "ready") {
     return (
-      <div
-        aria-live="polite"
-        className="desktop-persistence-status"
-        role="status"
-      >
+      <div aria-live="polite" className={className} role="status">
         Сохранено
       </div>
     );
   }
   if (persistence.lifecycle.status === "saving") {
     return (
-      <div
-        aria-live="polite"
-        className="desktop-persistence-status"
-        role="status"
-      >
+      <div aria-live="polite" className={className} role="status">
         Сохранение…
       </div>
     );
   }
-  if (persistence.lifecycle.status === "save-error") {
+  if (
+    persistence.lifecycle.status === "save-error" ||
+    persistence.lifecycle.status === "conflict"
+  ) {
+    const isConflict = persistence.lifecycle.status === "conflict";
     return (
-      <div className="desktop-persistence-status is-error" role="alert">
+      <div className={`${className} is-error`} role="alert">
         <span>
           {getDesktopPersistenceStatusMessage(persistence.lifecycle.error.code)}
         </span>
-        <button
-          className="ui-button"
-          onClick={persistence.retrySave}
-          type="button"
-        >
-          Повторить
-        </button>
+        {isConflict ? null : (
+          <button
+            className="ui-button"
+            onClick={persistence.retrySave}
+            type="button"
+          >
+            Повторить
+          </button>
+        )}
       </div>
     );
   }

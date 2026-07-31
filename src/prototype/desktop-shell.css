@@ -129,6 +129,21 @@
     padding: 8px 12px;
     color: var(--text-2);
     font-size: 13px;
+    pointer-events: none;
+  }
+
+  .desktop-persistence-status.has-right-panel {
+    right: calc(var(--context-width) + 16px);
+  }
+
+  .desktop-persistence-status > .ui-button {
+    pointer-events: auto;
+  }
+
+  @media (max-width: 1360px) {
+    .desktop-persistence-status.has-right-panel {
+      right: calc(min(392px, calc(100vw - 48px)) + 16px);
+    }
   }
 
   .desktop-persistence-status.is-error {

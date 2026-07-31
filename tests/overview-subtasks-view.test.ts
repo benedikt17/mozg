@@ -536,11 +536,15 @@ describe("central Subtasks view helpers", () => {
     );
     expect(readerSource).not.toContain("overview-reader-breadcrumb");
     expect(readerSource.match(/overview-reader-pane-content/g)).toHaveLength(2);
+    expect(readerSource).toContain("overview-reader-secondary-article");
+    expect(readerSource).toContain("{splitDocument.title}");
     expect(workspaceStyles).toContain(".task-subtask-document-checkbox");
     expect(workspaceStyles).toContain("accent-color: #ff5200");
     expect(workspaceStyles).toContain(
       "padding: 32px var(--overview-reader-pane-inline-padding) 48px",
     );
+    expect(workspaceStyles).not.toContain("@media (max-width: 1099px)");
+    expect(workspaceStyles).toContain("@media (max-width: 899px)");
     expect(workspaceStyles).toMatch(
       /\.task-subtasks-sections\s*\{[\s\S]*?margin-top:\s*0;/,
     );

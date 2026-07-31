@@ -51,6 +51,8 @@ describe("CloudDesktopPersistenceAdapter", () => {
       adapter.saveWorkspace("ignored", bootstrap.snapshot, 4),
     ).rejects.toMatchObject({
       code: "conflict",
+      expectedRevision: 4,
+      actualRevision: 5,
     });
   });
 

@@ -143,6 +143,56 @@ class FakeDesktopPersistenceAdapter implements DesktopPersistenceAdapter {
   }
 }
 
+class SharedCasStore {
+  snapshot = initialSnapshot();
+  revision = 9;
+  readonly saveCalls: Array<{ expectedRevision: number; title: string }> = [];
+}
+
+class SharedCasAdapter implements DesktopPersistenceAdapter {
+  constructor(private readonly store: SharedCasStore) {}
+
+  loadWorkspace(): Promise<DesktopPersistenceLoadResult> {
+    return Promise.resolve({
+      kind: "loaded",
+      snapshot: structuredClone(this.store.snapshot),
+      revision: this.store.revision,
+      savedAt: `revision-${this.store.revision}`,
+    });
+  }
+
+  initializeWorkspace(): Promise<DesktopPersistenceSaveResult> {
+    throw new Error("The shared CAS test starts from an existing snapshot.");
+  }
+
+  saveWorkspace(
+    _storageKey: string,
+    snapshot: DesktopDomainSnapshot,
+    expectedRevision: number,
+  ): Promise<DesktopPersistenceSaveResult> {
+    this.store.saveCalls.push({
+      expectedRevision,
+      title: snapshot.tasks[0]?.title ?? "",
+    });
+    if (expectedRevision !== this.store.revision) {
+      return Promise.reject(
+        new DesktopPersistenceError("conflict", "stale revision", {
+          expectedRevision,
+          actualRevision: this.store.revision,
+        }),
+      );
+    }
+    this.store.snapshot = structuredClone(snapshot);
+    this.store.revision += 1;
+    return Promise.resolve({
+      revision: this.store.revision,
+      savedAt: `revision-${this.store.revision}`,
+    });
+  }
+
+  close(): void {}
+}
+
 function initialSnapshot(): DesktopDomainSnapshot {
   return createDesktopDomainSnapshot(initialDesktopPrototypeState);
 }
@@ -429,9 +479,45 @@ describe("DesktopPersistenceRuntime", () => {
 
     expect(adapter.saveCalls).toHaveLength(1);
     expect(runtime.lifecycle).toMatchObject({
-      status: "save-error",
+      status: "conflict",
       error: { code: "conflict" },
     });
+  });
+
+  it("proves the two-runtime CAS winner and visible stale conflict lifecycle", async () => {
+    const store = new SharedCasStore();
+    const runtimeA = createRuntime(new SharedCasAdapter(store));
+    const runtimeB = createRuntime(new SharedCasAdapter(store));
+
+    await Promise.all([runtimeA.start(), runtimeB.start()]);
+    expect(runtimeA.lifecycle).toMatchObject({ status: "ready", revision: 9 });
+    expect(runtimeB.lifecycle).toMatchObject({ status: "ready", revision: 9 });
+
+    runtimeA.observeSnapshot(changedSnapshot("Tab A winner"));
+    await vi.advanceTimersByTimeAsync(DESKTOP_AUTOSAVE_DEBOUNCE_MS);
+    expect(runtimeA.lifecycle).toMatchObject({ status: "ready", revision: 10 });
+
+    runtimeB.observeSnapshot(changedSnapshot("Tab B stale local edit"));
+    await vi.advanceTimersByTimeAsync(DESKTOP_AUTOSAVE_DEBOUNCE_MS);
+    expect(runtimeB.lifecycle).toMatchObject({
+      status: "conflict",
+      revision: 9,
+      error: { code: "conflict", expectedRevision: 9, actualRevision: 10 },
+    });
+    expect(store.saveCalls).toEqual([
+      { expectedRevision: 9, title: "Tab A winner" },
+      { expectedRevision: 9, title: "Tab B stale local edit" },
+    ]);
+
+    await runtimeB.retrySave();
+    await vi.advanceTimersByTimeAsync(DESKTOP_AUTOSAVE_DEBOUNCE_MS * 2);
+    expect(store.saveCalls).toHaveLength(2);
+    expect(runtimeB.lifecycle).toMatchObject({ status: "conflict" });
+
+    const reloaded = createRuntime(new SharedCasAdapter(store));
+    await reloaded.start();
+    expect(reloaded.lifecycle).toMatchObject({ status: "ready", revision: 10 });
+    expect(store.snapshot.tasks[0]?.title).toBe("Tab A winner");
   });
 
   it("flushes a pending snapshot before the debounce expires", async () => {

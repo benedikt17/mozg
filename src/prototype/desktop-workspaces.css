@@ -1767,7 +1767,7 @@
     padding: 0;
   }
 
-  @media (max-width: 1099px) {
+  @media (max-width: 899px) {
     .overview-reader-material-surface.is-split {
       grid-template-columns: minmax(0, 1fr);
     }
