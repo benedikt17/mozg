@@ -35,7 +35,8 @@
 - приложение работает по модели online-first;
 - офлайн-режим поддерживается только для быстрого Inbox;
 - заметки хранятся в переносимом Markdown;
-- холсты строятся на tldraw;
+- production Canvas следует независимому persistence-domain контракту; engine
+  выбирается только после disposable spike, а текущий mock не является production;
 - внешние сервисы подключаются через заменяемые адаптеры.
 
 ---
@@ -47,7 +48,7 @@
 | Framework | Next.js — current stable major, закреплённый в `package.json`; App Router; TypeScript strict | Смена major-версии — только отдельным ADR |
 | UI | Tailwind CSS + shadcn/ui | Другие UI-киты не добавлять |
 | Редактор | TipTap | Источник правды — чистый Markdown |
-| Холст | tldraw | Собственный canvas не разрабатывать |
+| Холст | `CanvasDocumentV1` + library-independent adapter boundary | Engine не выбран; React Flow и tldraw оцениваются только в disposable spike |
 | Server state | TanStack Query | Запросы, кэш, мутации |
 | UI state | Zustand | Только локальное состояние интерфейса |
 | БД / Auth / Storage | Supabase: PostgreSQL, RLS, Auth, Storage | |
@@ -72,7 +73,8 @@
 5. Чекбокс внутри Markdown — представление задачи, а не самостоятельная запись.
 6. Удаление пользовательских данных по умолчанию означает архивацию.
 7. Полный offline-sync заметок не реализуется.
-8. Собственный canvas, CRDT и realtime-коллаборация не разрабатываются.
+8. Canvas persistence не зависит от engine-specific store; engine выбирается
+   только после disposable spike. CRDT и realtime-коллаборация не реализуются.
 9. Любое изменение Markdown-пайплайна проходит golden round-trip tests.
 10. Внешние провайдеры не должны проникать напрямую в доменную логику.
 
@@ -316,74 +318,29 @@ tasks (
 
 ---
 
-### 4.7 Canvases
+### 4.7 Canvases: canonical v0.1 contract
 
-```sql
-canvases (
-  id uuid primary key,
-  workspace_id uuid not null,
-  project_id uuid not null,
-  name text not null,
-  document jsonb not null default '{}'::jsonb,
-  archived_at timestamptz,
-  share_token uuid,
-  created_at timestamptz not null,
-  updated_at timestamptz not null,
+Legacy Canvas schema из предыдущей версии этого документа superseded ADR-0004.
+Для новой реализации Canvas является отдельным workspace-scoped persistence
+domain с `title`, строгим `CanvasDocumentV1`, независимым `revision`,
+`deleted_at`, typed CAS и отдельным personal view state. Canvas не хранится в
+workspace snapshot v2/v3; snapshot v3 не требуется.
 
-  unique (workspace_id, id),
+Изображения представлены метаданными `canvas_assets`, а binary живут только в
+private object storage. Canvas JSON не содержит Base64, Blob или engine-specific
+snapshot. Текущий mock Canvas не является production persistence.
 
-  foreign key (workspace_id, project_id)
-    references projects (workspace_id, id)
-)
-```
+Полный контракт и границы checkpoint находятся в
+[`docs/infinite-canvas-v0-architecture.md`](docs/infinite-canvas-v0-architecture.md),
+а precedence и список superseded решений — в
+[`docs/adr/0004-infinite-canvas-independent-persistence-domain.md`](docs/adr/0004-infinite-canvas-independent-persistence-domain.md).
 
-`document` хранит сериализованный snapshot tldraw store.
+### 4.8 Legacy attachments
 
-Пользовательские параметры сессии, например текущая камера, выделение и локальное состояние редактора, не обязаны храниться в общем документе и могут находиться локально.
-
----
-
-### 4.8 Attachments
-
-```sql
-attachments (
-  id uuid primary key,
-  workspace_id uuid not null,
-  note_id uuid,
-  canvas_id uuid,
-  inbox_item_id uuid,
-  object_path text not null,
-  original_name text,
-  mime_type text not null,
-  size_bytes bigint not null,
-  checksum text,
-  created_by uuid references auth.users(id),
-  archived_at timestamptz,
-  created_at timestamptz not null,
-  updated_at timestamptz not null,
-
-  unique (workspace_id, id),
-
-  foreign key (workspace_id, note_id)
-    references notes (workspace_id, id),
-
-  foreign key (workspace_id, canvas_id)
-    references canvases (workspace_id, id)
-)
-```
-
-Один объект Storage обязан иметь соответствующую строку в `attachments`.
-
-Таблица используется для:
-
-- контроля принадлежности workspace;
-- экспорта;
-- бэкапа;
-- поиска orphan-файлов;
-- проверки квот;
-- физической очистки архивных объектов.
-
-Для связи Inbox с вложением используется отдельный составной FK после создания таблицы `inbox_items`.
+Ранее описанная таблица `attachments` и её Canvas-specific FK больше не являются
+контрактом Infinite Canvas. Она может оставаться историческим описанием общих
+вложений для других доменов, но новые Canvas assets должны использовать только
+`canvas_assets` и private object storage согласно ADR-0004.
 
 ---
 
@@ -438,7 +395,9 @@ references inbox_items (workspace_id, id);
 
 ### 4.10 Share tokens
 
-Для `notes`, `tasks` и `canvases` создаются partial unique indexes:
+Для `notes` и `tasks` создаются partial unique indexes. Canvas v0.1 не
+использует этот legacy share-token contract; его sharing boundary будет
+определён отдельным checkpoint.
 
 ```sql
 create unique index notes_share_token_unique
@@ -474,6 +433,10 @@ share_links (
 ```text
 archived_at = now()
 ```
+
+Для Canvas v0.1 действует отдельное правило: soft-delete хранится в
+`deleted_at`, как зафиксировано в ADR-0004. `archived_at` в этом разделе
+относится к legacy-моделям остальных доменов.
 
 Физическое удаление выполняется только вручную владельцем БД или специальной административной процедурой.
 
@@ -768,15 +731,20 @@ Share-токены изменяются только через серверны
 Buckets:
 
 ```text
-attachments/{workspace_id}/{uuid}.{ext}
+canvas-assets/{workspace_id}/{asset_id}/original
+canvas-assets/{workspace_id}/{asset_id}/preview.webp
 inbox-audio/{workspace_id}/{uuid}.webm
 ```
 
 Storage policies проверяют членство в workspace.
 
-Путь объекта не является единственным источником метаданных.
+Путь объекта не является единственным источником метаданных. Для Canvas
+authoritative metadata хранится в `canvas_assets`; Canvas JSON не содержит
+binary, Base64 или Blob. Bucket `canvas-assets` приватный, а object keys
+детерминированы по workspace и asset ID.
 
-Каждый объект должен иметь запись в `attachments`.
+Legacy `attachments` path относится только к другим доменам и не используется
+для Canvas v0.1.
 
 Изображения перед загрузкой:
 
@@ -978,7 +946,8 @@ URL:
 - read-only;
 - поиск ресурса только по токену;
 - service-role клиент существует только на сервере;
-- отдельные handlers для note, task и canvas;
+- отдельные handlers для note и task; Canvas sharing не входит в v0.1 и
+  потребует отдельного checkpoint;
 - универсальный endpoint с передаваемым именем таблицы запрещён;
 - архивный ресурс не открывается;
 - токен можно отозвать и перевыпустить;
@@ -1008,7 +977,7 @@ Cache-Control: private, no-store
 - Markdown-файлы заметок;
 - JSON проектов;
 - JSON задач;
-- JSON холстов;
+- JSON документов независимого Canvas domain;
 - JSON Inbox;
 - manifest вложений;
 - метаданные workspace;
@@ -1025,9 +994,11 @@ export/
       project.json
       notes/
       tasks.json
-      canvases/
+  canvases/
+    <canvas-id>/
+      canvas.json
   inbox/
-  attachments-manifest.json
+  canvas-assets-manifest.json
 ```
 
 ### 15.2 Автоматический бэкап
@@ -1038,7 +1009,8 @@ GitHub Actions cron:
 
 1. вызывает защищённый export endpoint;
 2. выгружает Markdown и JSON;
-3. выгружает файлы из Storage по таблице `attachments`;
+3. выгружает Canvas assets по metadata из `canvas_assets`, а прочие файлы — по
+   их доменным manifest-таблицам;
 4. сохраняет snapshot в приватном GitHub-репозитории или S3-совместимом хранилище;
 5. записывает результат и checksum;
 6. сообщает об ошибке выполнения.
@@ -1149,7 +1121,8 @@ tests/
 8. Пользовательское удаление означает архивацию.
 9. Снапшоты создаются с throttling и hash-проверкой.
 10. Изменения Markdown-пайплайна проходят golden tests.
-11. tldraw используется как готовый canvas.
+11. Canvas persistence остаётся library-independent; engine выбирается только
+    после disposable spike, а library snapshot не становится canonical data.
 12. Полный offline-sync заметок не реализуется.
 13. Background Sync является enhancement, а не единственным механизмом.
 14. Провайдер транскрипции подключается через адаптер.
@@ -1163,7 +1136,7 @@ tests/
 - realtime collaboration;
 - CRDT;
 - совместное редактирование заметок;
-- совместное редактирование tldraw;
+- совместное редактирование Canvas engine;
 - полный offline-sync;
 - конфликт-резолюция офлайн-изменений;
 - backlinks;
@@ -1171,7 +1144,7 @@ tests/
 - semantic search;
 - embeddings;
 - AI-генерация текста внутри редактора;
-- собственный canvas;
+- production engine Canvas до завершения disposable spike;
 - мобильные native-приложения;
 - публичные каталоги workspace;
 - сложные ACL на уровне отдельных заметок.
@@ -1224,16 +1197,14 @@ tests/
 - retry и idempotency;
 - автоматический бэкап БД и Storage.
 
-### Этап 3 — холсты и шаринг
+### Этап 3 — Infinite Canvas v0.1
 
-- tldraw;
-- сохранение snapshot;
-- attachments UI;
-- загрузка изображений;
-- публичный шаринг заметок;
-- публичный шаринг задач;
-- публичный шаринг холстов;
-- отзыв и перевыпуск токенов.
+- независимый workspace-scoped Canvas domain и `CanvasDocumentV1`;
+- отдельные revision/CAS, view state и `canvas_assets` metadata;
+- disposable engine spike и последующий engine decision;
+- navigation, layout, nodes, assets и edges по checkpoint-плану
+  [`docs/infinite-canvas-v0-architecture.md`](docs/infinite-canvas-v0-architecture.md);
+- публичный Canvas sharing не входит в v0.1 и не получает legacy share-token schema.
 
 ### Этап 4 — развитие продукта
 
