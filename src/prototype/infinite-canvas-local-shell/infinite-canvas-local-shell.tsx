@@ -23,20 +23,34 @@ import {
 import {
   attachCanvasImagePasteListener,
   createObjectUrlRegistry,
+  eventTouchesEditingSurface,
   shouldPreventCanvasImagePaste,
   shouldPreventFileNavigation,
+  transferHasSupportedImage,
   transferHasFiles,
   type CanvasImageTransferPayload,
 } from "@/lib/canvas/canvas-image-ingestion";
 import {
   CANVAS_IMAGE_NODE_TYPE,
+  CANVAS_TEXT_NODE_TYPE,
   canvasDocumentToImageNodes,
+  canvasDocumentToTextNodes,
+  createCanvasTextFlowNode,
   ingestCanvasImageTransferToNodes,
   restoreCanvasImageNodes,
   type CanvasImageAdapterDependencies,
+  type CanvasFlowNode,
   type CanvasImageFlowNode,
+  type CanvasTextFlowNode,
   type FlowPosition,
 } from "@/lib/canvas/react-flow-canvas-adapter";
+import {
+  createCanvasTextId,
+  hasMeaningfulPlainText,
+  plainTextFromClipboard,
+  commitTextMarkdown,
+} from "@/lib/canvas/text-canvas-interactions";
+import { MarkdownStringPreview } from "@/prototype/knowledge/markdown-document-preview";
 import {
   IndexedDbCanvasRepository,
   type CanvasSummary,
@@ -114,12 +128,97 @@ function CanvasImageNodeView({
   );
 }
 
-const nodeTypes = { [CANVAS_IMAGE_NODE_TYPE]: CanvasImageNodeView };
+function CanvasTextNodeView({
+  data,
+  selected,
+  id,
+}: NodeProps<CanvasTextFlowNode>): React.JSX.Element {
+  const [draft, setDraft] = useState(data.markdown);
+  const update = (value: string) => {
+    setDraft(value);
+    window.dispatchEvent(
+      new CustomEvent("mozg:canvas-text-draft", {
+        detail: { id, markdown: value },
+      }),
+    );
+  };
+  const commit = () => {
+    window.dispatchEvent(
+      new CustomEvent("mozg:canvas-text-commit", {
+        detail: { id, markdown: commitTextMarkdown(draft) },
+      }),
+    );
+  };
+  const cancel = () => {
+    setDraft(data.markdown);
+    window.dispatchEvent(
+      new CustomEvent("mozg:canvas-text-cancel", { detail: { id } }),
+    );
+  };
+  return (
+    <div
+      className={`${styles.textNode} ${selected ? styles.selectedNode : ""}`}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        window.dispatchEvent(
+          new CustomEvent("mozg:canvas-text-edit", { detail: { id } }),
+        );
+      }}
+    >
+      <NodeResizer color="#0f766e" minWidth={180} minHeight={100} />
+      {data.isEditing ? (
+        <div className={styles.textEditor}>
+          <textarea
+            autoFocus
+            value={draft}
+            aria-label="Markdown text"
+            onChange={(event) => update(event.target.value)}
+            onKeyDown={(event) => {
+              event.stopPropagation();
+              if (event.key === "Escape") {
+                event.preventDefault();
+                cancel();
+              } else if (
+                event.key === "Enter" &&
+                (event.ctrlKey || event.metaKey)
+              ) {
+                event.preventDefault();
+                commit();
+              }
+            }}
+            onPaste={(event) => event.stopPropagation()}
+          />
+          <div className={styles.textEditorActions}>
+            <button type="button" className={styles.button} onClick={cancel}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className={`${styles.button} ${styles.primary}`}
+              onClick={commit}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className={styles.textPreview}>
+          <MarkdownStringPreview contentId={id} markdown={data.markdown} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+const nodeTypes = {
+  [CANVAS_IMAGE_NODE_TYPE]: CanvasImageNodeView,
+  [CANVAS_TEXT_NODE_TYPE]: CanvasTextNodeView,
+};
 
 function InfiniteCanvasLocalShellSurface(): React.JSX.Element {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const pointerRef = useRef<FlowPosition | null>(null);
-  const nodesRef = useRef<CanvasImageFlowNode[]>([]);
+  const nodesRef = useRef<CanvasFlowNode[]>([]);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const viewportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const restoreControllerRef = useRef<AbortController | null>(null);
@@ -129,9 +228,7 @@ function InfiniteCanvasLocalShellSurface(): React.JSX.Element {
   const screenToFlowRef = useRef<
     (point: { x: number; y: number }) => FlowPosition
   >(() => ({ x: 0, y: 0 }));
-  const [nodes, setNodes, onNodesChange] = useNodesState<CanvasImageFlowNode>(
-    [],
-  );
+  const [nodes, setNodes, onNodesChange] = useNodesState<CanvasFlowNode>([]);
   const [summaries, setSummaries] = useState<CanvasSummary[]>([]);
   const [shellState, setShellState] =
     useState<LocalCanvasShellState>(emptyShellState);
@@ -155,7 +252,7 @@ function InfiniteCanvasLocalShellSurface(): React.JSX.Element {
         userId: INFINITE_CANVAS_LOCAL_SHELL_USER_ID,
       }),
   );
-  const reactFlow = useReactFlow<CanvasImageFlowNode>();
+  const reactFlow = useReactFlow<CanvasFlowNode>();
   const adapterDependencies = useMemo<CanvasImageAdapterDependencies>(
     () => ({
       assetRepository: repository,
@@ -183,7 +280,7 @@ function InfiniteCanvasLocalShellSurface(): React.JSX.Element {
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null;
       if (hydratingRef.current) return;
-      controller.setImageNodes(nodesRef.current);
+      controller.setRuntimeNodes(nodesRef.current);
       void controller.save().then(syncState).catch(syncState);
     }, 260);
   }, [controller, syncState]);
@@ -194,7 +291,10 @@ function InfiniteCanvasLocalShellSurface(): React.JSX.Element {
       restoreControllerRef.current = new AbortController();
       objectUrls.revokeAll();
       const signal = restoreControllerRef.current.signal;
-      const placeholders = canvasDocumentToImageNodes(nextState.document);
+      const placeholders: CanvasFlowNode[] = [
+        ...canvasDocumentToImageNodes(nextState.document),
+        ...canvasDocumentToTextNodes(nextState.document),
+      ];
       setNodes(placeholders);
       hydratingRef.current = true;
       setRestoreStats(EMPTY_RESTORE_STATS);
@@ -299,6 +399,102 @@ function InfiniteCanvasLocalShellSurface(): React.JSX.Element {
     });
   }, []);
 
+  const setTextEditing = useCallback(
+    (id: string, isEditing: boolean) => {
+      setNodes((current) =>
+        current.map((node) =>
+          node.id === id && node.type === CANVAS_TEXT_NODE_TYPE
+            ? { ...node, data: { ...node.data, isEditing } }
+            : node,
+        ),
+      );
+    },
+    [setNodes],
+  );
+
+  const commitTextNode = useCallback(
+    (id: string, markdown: string) => {
+      setNodes((current) =>
+        current.map((node) =>
+          node.id === id && node.type === CANVAS_TEXT_NODE_TYPE
+            ? { ...node, data: { markdown: commitTextMarkdown(markdown) } }
+            : node,
+        ),
+      );
+      const node = nodesRef.current.find(
+        (candidate): candidate is CanvasTextFlowNode =>
+          candidate.id === id && candidate.type === CANVAS_TEXT_NODE_TYPE,
+      );
+      if (node) {
+        controller.setRuntimeNodes(
+          nodesRef.current.map((candidate) =>
+            candidate.id === id && candidate.type === CANVAS_TEXT_NODE_TYPE
+              ? {
+                  ...candidate,
+                  data: { markdown: commitTextMarkdown(markdown) },
+                }
+              : candidate,
+          ),
+        );
+        syncState();
+        scheduleSave();
+      }
+    },
+    [controller, scheduleSave, setNodes, syncState],
+  );
+
+  const createTextNode = useCallback(
+    (client: FlowPosition | null, markdown: string, editing = true) => {
+      if (!shellState.canvasId) return;
+      const position = client
+        ? screenToFlowRef.current(client)
+        : centerPosition();
+      const node = createCanvasTextFlowNode({
+        id: createCanvasTextId(),
+        markdown: commitTextMarkdown(markdown),
+        position,
+        isEditing: editing,
+      });
+      setNodes((current) => [...current, node]);
+      controller.insertTextNode(node);
+      syncState();
+      if (!editing) scheduleSave();
+    },
+    [
+      centerPosition,
+      controller,
+      scheduleSave,
+      setNodes,
+      shellState.canvasId,
+      syncState,
+    ],
+  );
+
+  useEffect(() => {
+    const onEdit = (event: Event) => {
+      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (id) setTextEditing(id, true);
+    };
+    const onCommit = (event: Event) => {
+      const detail = (event as CustomEvent<{ id?: string; markdown?: string }>)
+        .detail;
+      if (detail.id && typeof detail.markdown === "string")
+        commitTextNode(detail.id, detail.markdown);
+    };
+    const onCancel = (event: Event) => {
+      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (id) setTextEditing(id, false);
+    };
+    window.addEventListener("mozg:canvas-text-edit", onEdit);
+    window.addEventListener("mozg:canvas-text-commit", onCommit);
+    window.addEventListener("mozg:canvas-text-cancel", onCancel);
+    return () => {
+      window.removeEventListener("mozg:canvas-text-edit", onEdit);
+      window.removeEventListener("mozg:canvas-text-commit", onCommit);
+      window.removeEventListener("mozg:canvas-text-cancel", onCancel);
+    };
+  }, [commitTextNode, setTextEditing]);
+
   const ingest = useCallback(
     async (
       payload: CanvasImageTransferPayload,
@@ -348,16 +544,21 @@ function InfiniteCanvasLocalShellSurface(): React.JSX.Element {
 
   useEffect(() => {
     const onPaste = (event: ClipboardEvent) => {
-      if (!shouldPreventCanvasImagePaste(event)) return;
+      if (eventTouchesEditingSurface(event)) return;
+      const payload = transferPayload(event);
+      if (shouldPreventCanvasImagePaste(event)) {
+        event.preventDefault();
+        void ingestRef.current(payload, "clipboard", pointerRef.current);
+        return;
+      }
+      if (transferHasSupportedImage(payload)) return;
+      const text = plainTextFromClipboard(event);
+      if (!hasMeaningfulPlainText(text)) return;
       event.preventDefault();
-      void ingestRef.current(
-        transferPayload(event),
-        "clipboard",
-        pointerRef.current,
-      );
+      createTextNode(pointerRef.current, text, false);
     };
     return attachCanvasImagePasteListener(onPaste);
-  }, []);
+  }, [createTextNode]);
 
   useEffect(() => {
     const guard = (event: DragEvent) => {
@@ -379,21 +580,20 @@ function InfiniteCanvasLocalShellSurface(): React.JSX.Element {
   }, []);
 
   const handleNodesChange = useCallback(
-    (changes: NodeChange<CanvasImageFlowNode>[]) => {
+    (changes: NodeChange<CanvasFlowNode>[]) => {
       const removed = changes.filter(
         (
           change,
-        ): change is Extract<
-          NodeChange<CanvasImageFlowNode>,
-          { type: "remove" }
-        > => change.type === "remove",
+        ): change is Extract<NodeChange<CanvasFlowNode>, { type: "remove" }> =>
+          change.type === "remove",
       );
       for (const change of removed) {
         const node = nodesRef.current.find((item) => item.id === change.id);
-        if (node?.data.objectUrl) objectUrls.revoke(node.data.objectUrl);
+        if (node?.type === CANVAS_IMAGE_NODE_TYPE && node.data.objectUrl)
+          objectUrls.revoke(node.data.objectUrl);
       }
       if (removed.length > 0) {
-        controller.removeImageNodes(removed.map((change) => change.id));
+        controller.removeCanvasNodes(removed.map((change) => change.id));
         syncState();
       }
       onNodesChange(changes);
@@ -629,6 +829,13 @@ function InfiniteCanvasLocalShellSurface(): React.JSX.Element {
               onChange={onPicker}
             />
           </label>
+          <button
+            className={styles.button}
+            type="button"
+            onClick={() => createTextNode(null, "", true)}
+          >
+            Text
+          </button>
         </div>
       </header>
       <div className={styles.canvasWrap}>
@@ -649,6 +856,10 @@ function InfiniteCanvasLocalShellSurface(): React.JSX.Element {
             nodeTypes={nodeTypes}
             onNodesChange={handleNodesChange}
             onMoveEnd={onMoveEnd}
+            onPaneClick={(event) => {
+              if (event.detail !== 2) return;
+              createTextNode({ x: event.clientX, y: event.clientY }, "", true);
+            }}
             onPaneMouseMove={(event) => {
               pointerRef.current = { x: event.clientX, y: event.clientY };
             }}

@@ -3,10 +3,14 @@ import {
   parseCanvasDocumentV1,
   type CanvasDocumentV1,
   type CanvasViewport,
+  type CanvasTextNode,
 } from "@/lib/canvas/canvas-document";
 import {
   imageNodesToCanvasDocument,
+  runtimeNodesToCanvasDocument,
+  type CanvasFlowNode,
   type CanvasImageFlowNode,
+  type CanvasTextFlowNode,
 } from "@/lib/canvas/react-flow-canvas-adapter";
 import type {
   CanvasRepository,
@@ -153,7 +157,22 @@ export class LocalCanvasShellController {
     return this.state;
   }
 
+  setRuntimeNodes(nodes: readonly CanvasFlowNode[]): LocalCanvasShellState {
+    if (!this.stateValue.canvasId) return this.state;
+    this.stateValue = {
+      ...this.stateValue,
+      document: runtimeNodesToCanvasDocument(this.stateValue.document, nodes),
+      status: "saving",
+      error: null,
+    };
+    return this.state;
+  }
+
   removeImageNodes(nodeIds: readonly string[]): LocalCanvasShellState {
+    return this.removeCanvasNodes(nodeIds);
+  }
+
+  removeCanvasNodes(nodeIds: readonly string[]): LocalCanvasShellState {
     if (nodeIds.length === 0) return this.state;
     const removed = new Set(nodeIds);
     this.stateValue = {
@@ -163,6 +182,43 @@ export class LocalCanvasShellController {
         nodes: this.stateValue.document.nodes.filter(
           (node) => !removed.has(node.id),
         ),
+      }),
+      status: "saving",
+      error: null,
+    };
+    return this.state;
+  }
+
+  insertTextNode(node: CanvasTextFlowNode): LocalCanvasShellState {
+    if (!this.stateValue.canvasId) return this.state;
+    if (
+      this.stateValue.document.nodes.some((existing) => existing.id === node.id)
+    ) {
+      return this.state;
+    }
+    const textNode: CanvasTextNode = {
+      id: node.id,
+      kind: "text",
+      markdown: node.data.markdown,
+      position: { ...node.position },
+      size: {
+        width: typeof node.style?.width === "number" ? node.style.width : 320,
+        height:
+          typeof node.style?.height === "number" ? node.style.height : 220,
+      },
+      zIndex:
+        typeof node.zIndex === "number"
+          ? node.zIndex
+          : this.stateValue.document.nodes.reduce(
+              (maximum, current) => Math.max(maximum, current.zIndex),
+              0,
+            ) + 1,
+    };
+    this.stateValue = {
+      ...this.stateValue,
+      document: parseCanvasDocumentV1({
+        ...this.stateValue.document,
+        nodes: [...this.stateValue.document.nodes, textNode],
       }),
       status: "saving",
       error: null,

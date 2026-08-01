@@ -6,6 +6,7 @@ import {
   type CanvasNode,
   type CanvasPoint,
   type CanvasSize,
+  type CanvasTextNode,
 } from "@/lib/canvas/canvas-document";
 import {
   extractCanvasImageTransfer,
@@ -22,6 +23,7 @@ import type {
 import type { ObjectUrlRegistry } from "@/lib/canvas/canvas-image-ingestion";
 
 export const CANVAS_IMAGE_NODE_TYPE = "canvasImage";
+export const CANVAS_TEXT_NODE_TYPE = "canvasText";
 const MAX_INITIAL_WIDTH = 640;
 const MAX_INITIAL_HEIGHT = 480;
 const MIN_INITIAL_WIDTH = 160;
@@ -44,7 +46,17 @@ export type CanvasImageFlowNode = Node<
   typeof CANVAS_IMAGE_NODE_TYPE
 >;
 
-export type CanvasFlowNode = CanvasImageFlowNode;
+export type CanvasTextNodeData = {
+  markdown: string;
+  isEditing?: boolean;
+};
+
+export type CanvasTextFlowNode = Node<
+  CanvasTextNodeData,
+  typeof CANVAS_TEXT_NODE_TYPE
+>;
+
+export type CanvasFlowNode = CanvasImageFlowNode | CanvasTextFlowNode;
 
 export type CanvasImageAdapterDependencies = {
   assetRepository: CanvasAssetRepository;
@@ -170,6 +182,43 @@ export function canvasDocumentToImageNodes(
     }));
 }
 
+export function createCanvasTextFlowNode(input: {
+  id: string;
+  markdown: string;
+  position?: FlowPosition;
+  size?: CanvasSize;
+  zIndex?: number;
+  isEditing?: boolean;
+}): CanvasTextFlowNode {
+  return {
+    id: input.id,
+    type: CANVAS_TEXT_NODE_TYPE,
+    position: { ...(input.position ?? { x: 0, y: 0 }) },
+    style: {
+      width: input.size?.width ?? 320,
+      height: input.size?.height ?? 220,
+    },
+    zIndex: input.zIndex,
+    data: { markdown: input.markdown, isEditing: input.isEditing },
+  };
+}
+
+export function canvasDocumentToTextNodes(
+  document: CanvasDocumentV1,
+): CanvasTextFlowNode[] {
+  return document.nodes
+    .filter((node): node is CanvasTextNode => node.kind === "text")
+    .map((node) =>
+      createCanvasTextFlowNode({
+        id: node.id,
+        markdown: node.markdown,
+        position: node.position,
+        size: node.size,
+        zIndex: node.zIndex,
+      }),
+    );
+}
+
 export function imageNodesToCanvasDocument(
   source: CanvasDocumentV1,
   nodes: readonly CanvasImageFlowNode[],
@@ -189,6 +238,48 @@ export function imageNodesToCanvasDocument(
       position: { ...runtime.position },
       size: nodeSize(runtime),
     };
+  });
+  return parseCanvasDocumentV1({
+    schemaVersion: source.schemaVersion,
+    nodes: nextNodes,
+    edges: source.edges.map((edge) => ({ ...edge })),
+  });
+}
+
+function runtimeNodeSize(node: CanvasFlowNode): CanvasSize {
+  const style = node.style ?? {};
+  const width = node.width ?? style.width;
+  const height = node.height ?? style.height;
+  if (typeof width !== "number" || typeof height !== "number") {
+    throw new Error(`Canvas node ${node.id} has no numeric dimensions.`);
+  }
+  return { width, height };
+}
+
+export function runtimeNodesToCanvasDocument(
+  source: CanvasDocumentV1,
+  nodes: readonly CanvasFlowNode[],
+): CanvasDocumentV1 {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const nextNodes: CanvasNode[] = source.nodes.map((canonical) => {
+    const runtime = byId.get(canonical.id);
+    if (!runtime) return { ...canonical } as CanvasNode;
+    if (canonical.kind === "image" && runtime.type === CANVAS_IMAGE_NODE_TYPE) {
+      return {
+        ...canonical,
+        position: { ...runtime.position },
+        size: runtimeNodeSize(runtime),
+      };
+    }
+    if (canonical.kind === "text" && runtime.type === CANVAS_TEXT_NODE_TYPE) {
+      return {
+        ...canonical,
+        markdown: runtime.data.markdown,
+        position: { ...runtime.position },
+        size: runtimeNodeSize(runtime),
+      };
+    }
+    return { ...canonical } as CanvasNode;
   });
   return parseCanvasDocumentV1({
     schemaVersion: source.schemaVersion,
