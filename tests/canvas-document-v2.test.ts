@@ -142,6 +142,37 @@ describe("CanvasDocumentV2", () => {
     });
   });
 
+  it("uses UTF-16 code units for identifier limits", () => {
+    const acceptedId = "😀".repeat(128);
+    const rejectedId = "😀".repeat(129);
+    const accepted = validateCanvasDocumentV2({
+      schemaVersion: 2,
+      nodes: [
+        {
+          ...nodes[0],
+          id: acceptedId,
+        },
+      ],
+      edges: [],
+    });
+    const rejected = validateCanvasDocumentV2({
+      schemaVersion: 2,
+      nodes: [
+        {
+          ...nodes[0],
+          id: rejectedId,
+        },
+      ],
+      edges: [],
+    });
+
+    expect(accepted.ok).toBe(true);
+    expect(rejected).toMatchObject({
+      ok: false,
+      errors: [{ code: "invalid_identifier" }],
+    });
+  });
+
   it("keeps the dedicated V1 parser strict for legacy callers", () => {
     expect(() =>
       parseCanvasDocumentV1({ schemaVersion: 2, nodes: [], edges: [] }),

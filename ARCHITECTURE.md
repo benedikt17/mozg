@@ -48,7 +48,7 @@
 | Framework | Next.js — current stable major, закреплённый в `package.json`; App Router; TypeScript strict | Смена major-версии — только отдельным ADR |
 | UI | Tailwind CSS + shadcn/ui | Другие UI-киты не добавлять |
 | Редактор | TipTap | Источник правды — чистый Markdown |
-| Холст | `CanvasDocumentV1` + library-independent adapter boundary | Engine не выбран; React Flow и tldraw оцениваются только в disposable spike |
+| Холст | `CanvasDocumentV2` для cloud persistence, V1 → V2 migration на local/client boundary и library-independent adapter | Engine не выбран; React Flow и tldraw оцениваются только в disposable spike |
 | Server state | TanStack Query | Запросы, кэш, мутации |
 | UI state | Zustand | Только локальное состояние интерфейса |
 | БД / Auth / Storage | Supabase: PostgreSQL, RLS, Auth, Storage | |
@@ -334,6 +334,9 @@ snapshot. Текущий mock Canvas не является production persistenc
 [`docs/infinite-canvas-v0-architecture.md`](docs/infinite-canvas-v0-architecture.md),
 а precedence и список superseded решений — в
 [`docs/adr/0004-infinite-canvas-independent-persistence-domain.md`](docs/adr/0004-infinite-canvas-independent-persistence-domain.md).
+После V2 cloud persistence checkpoint `20260801120000_canvas_document_v2_persistence.sql`
+cloud canonical document — `CanvasDocumentV2`; V1 остаётся только входом для
+local/client migration boundary и не принимается cloud write boundary.
 
 ### 4.8 Legacy attachments
 

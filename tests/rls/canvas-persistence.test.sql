@@ -113,18 +113,40 @@ select is(
 );
 select is(
   (select schema_version from public.canvases where id = current_setting('test.canvas_id')::uuid),
-  1::smallint,
-  'created Canvas uses schema version one'
+  2::smallint,
+  'created Canvas uses schema version two'
 );
 select is(
   (select document from public.canvases where id = current_setting('test.canvas_id')::uuid),
-  '{"schemaVersion":1,"nodes":[],"edges":[]}'::jsonb,
-  'created Canvas uses the canonical empty document'
+  '{"schemaVersion":2,"nodes":[],"edges":[]}'::jsonb,
+  'created Canvas uses the canonical empty V2 document'
 );
 select results_eq(
   $$ select count(*)::bigint from public.canvases where workspace_id = '22000000-0000-0000-0000-000000000001' and deleted_at is null $$,
   array[1::bigint],
   'workspace member can read an active Canvas'
+);
+
+select set_config(
+  'test.v2_document',
+  $json$
+  {
+    "schemaVersion": 2,
+    "nodes": [
+      {"id":"task-1","kind":"task","taskId":"task-source","position":{"x":0,"y":0},"size":{"width":100,"height":100},"zIndex":0},
+      {"id":"text-1","kind":"text","position":{"x":200,"y":0},"size":{"width":100,"height":100},"zIndex":1,"markdown":"  exact  "},
+      {"id":"image-1","kind":"image","assetId":"asset-1","aspectRatioLocked":true,"position":{"x":400,"y":0},"size":{"width":100,"height":100},"zIndex":2},
+      {"id":"article-1","kind":"article","articleId":"article-source","position":{"x":600,"y":0},"size":{"width":100,"height":100},"zIndex":3}
+    ],
+    "edges": [
+      {"id":"edge-1","sourceNodeId":"task-1","sourceHandle":"top","targetNodeId":"text-1","targetHandle":"bottom","routing":"orthogonal","arrows":"none"},
+      {"id":"edge-2","sourceNodeId":"text-1","sourceHandle":"right","targetNodeId":"image-1","targetHandle":"left","routing":"curved","arrows":"start"},
+      {"id":"edge-3","sourceNodeId":"image-1","sourceHandle":"bottom","targetNodeId":"article-1","targetHandle":"top","routing":"straight","arrows":"end"},
+      {"id":"edge-4","sourceNodeId":"article-1","sourceHandle":"left","targetNodeId":"task-1","targetHandle":"right","routing":"curved","arrows":"both"}
+    ]
+  }
+  $json$,
+  true
 );
 
 select throws_ok(
@@ -141,7 +163,7 @@ select throws_ok(
 );
 
 select results_eq(
-  $$ select status || ':' || revision::text from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 1, 'Saved Canvas', '{"schemaVersion":1,"nodes":[{"id":"text-1","kind":"text","position":{"x":0,"y":0},"size":{"width":100,"height":100},"zIndex":0,"markdown":"  exact  "}],"edges":[]}'::jsonb) $$,
+  $$ select status || ':' || revision::text from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 1, 'Saved Canvas', current_setting('test.v2_document')::jsonb) $$,
   array['saved:2'::text],
   'valid Canvas CAS save succeeds'
 );
@@ -151,13 +173,13 @@ select is(
   'Canvas CAS updates title atomically'
 );
 select is(
-  (select document -> 'nodes' -> 0 ->> 'markdown' from public.canvases where id = current_setting('test.canvas_id')::uuid),
+  (select document -> 'nodes' -> 1 ->> 'markdown' from public.canvases where id = current_setting('test.canvas_id')::uuid),
   '  exact  '::text,
   'Canvas CAS preserves exact Markdown'
 );
 
 select results_eq(
-  $$ select status || ':' || revision::text from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 1, 'Stale title', '{"schemaVersion":1,"nodes":[],"edges":[]}'::jsonb) $$,
+  $$ select status || ':' || revision::text from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 1, 'Stale title', current_setting('test.v2_document')::jsonb) $$,
   array['conflict:2'::text],
   'stale Canvas CAS returns the authoritative revision'
 );
@@ -168,28 +190,70 @@ select is(
 );
 
 select throws_ok(
-  $$ select * from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 2, 'Invalid', '{"schemaVersion":1,"nodes":[{"id":"text-1","kind":"text","position":{"x":0,"y":0},"size":{"width":100,"height":100},"zIndex":0,"markdown":"x","future":true}],"edges":[]}'::jsonb) $$,
+  $$ select * from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 2, 'Invalid', jsonb_set(current_setting('test.v2_document')::jsonb, '{nodes,1,future}', 'true'::jsonb)) $$,
   '22023',
   null,
-  'unknown Canvas properties are rejected'
+  'unknown V2 node properties are rejected'
 );
 select throws_ok(
-  $$ select * from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 2, 'Invalid', '{"schemaVersion":2,"nodes":[],"edges":[]}'::jsonb) $$,
+  $$ select * from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 2, 'Invalid', '{"schemaVersion":1,"nodes":[],"edges":[]}'::jsonb) $$,
   '22023',
-  'CanvasDocumentV1 validation failed',
-  'unsupported Canvas schema versions are rejected'
+  'CanvasDocumentV2 validation failed',
+  'V1 Canvas documents are rejected'
 );
 select throws_ok(
-  $$ select * from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 2, 'Invalid', '{"schemaVersion":1,"nodes":[{"id":"text-1","kind":"text","position":{"x":0,"y":0},"size":{"width":100,"height":100},"zIndex":0,"markdown":"x"}],"edges":[{"id":"edge-1","sourceNodeId":"text-1","targetNodeId":"missing"}]}'::jsonb) $$,
+  $$ select * from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 2, 'Invalid', jsonb_set(current_setting('test.v2_document')::jsonb, '{edges,0,targetNodeId}', '"missing"'::jsonb)) $$,
   '22023',
   'Canvas edge references a missing node',
   'dangling Canvas edges are rejected'
 );
 select throws_ok(
-  $$ select * from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 2, 'Invalid', '{"schemaVersion":1,"nodes":[{"id":"text-1","kind":"text","position":{"x":0,"y":0},"size":{"width":100,"height":100},"zIndex":0,"markdown":"x"},{"id":"text-2","kind":"text","position":{"x":200,"y":0},"size":{"width":100,"height":100},"zIndex":0,"markdown":"y"}],"edges":[{"id":"edge-1","sourceNodeId":"text-1","targetNodeId":"text-2"},{"id":"edge-2","sourceNodeId":"text-1","targetNodeId":"text-2"}]}'::jsonb) $$,
+  $$ select * from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 2, 'Invalid', jsonb_set(jsonb_set(current_setting('test.v2_document')::jsonb, '{edges,1,sourceNodeId}', '"task-1"'::jsonb), '{edges,1,targetNodeId}', '"text-1"'::jsonb)) $$,
   '22023',
   'duplicate Canvas edge endpoints',
   'duplicate Canvas edge endpoints are rejected'
+);
+select throws_ok(
+  $$ select * from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 2, 'Invalid', current_setting('test.v2_document')::jsonb || '{"future":true}'::jsonb) $$,
+  '22023',
+  'CanvasDocumentV2 validation failed',
+  'unknown V2 top-level properties are rejected'
+);
+select throws_ok(
+  $$ select * from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 2, 'Invalid', current_setting('test.v2_document')::jsonb #- '{edges,0,routing}') $$,
+  '22023',
+  'invalid Canvas V2 edge',
+  'missing V2 edge properties are rejected'
+);
+select throws_ok(
+  $$ select * from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 2, 'Invalid', jsonb_set(current_setting('test.v2_document')::jsonb, '{edges,0,routing}', '"elbow"'::jsonb)) $$,
+  '22023',
+  'invalid Canvas routing',
+  'invalid V2 edge enums are rejected'
+);
+select throws_ok(
+  $$ select * from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 2, 'Invalid', jsonb_set(current_setting('test.v2_document')::jsonb, '{nodes,1,id}', '"task-1"'::jsonb)) $$,
+  '22023',
+  'duplicate Canvas node ID',
+  'duplicate V2 node IDs are rejected'
+);
+select throws_ok(
+  $$ select * from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 2, 'Invalid', jsonb_set(current_setting('test.v2_document')::jsonb, '{edges,1,id}', '"edge-1"'::jsonb)) $$,
+  '22023',
+  'duplicate Canvas edge ID',
+  'duplicate V2 edge IDs are rejected'
+);
+select throws_ok(
+  $$ select * from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 2, 'Invalid', jsonb_set(current_setting('test.v2_document')::jsonb, '{edges,0,targetNodeId}', '"task-1"'::jsonb)) $$,
+  '22023',
+  'Canvas self-edge is not allowed',
+  'V2 self-connections are rejected'
+);
+select throws_ok(
+  $$ select * from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 2, 'Invalid', jsonb_set(current_setting('test.v2_document')::jsonb, '{nodes,0,id}', to_jsonb(repeat('😀', 129)))) $$,
+  '22023',
+  'invalid Canvas identifier',
+  'Canvas identifier limits use UTF-16 code units'
 );
 select is(
   (select revision from public.canvases where id = current_setting('test.canvas_id')::uuid),
@@ -203,11 +267,25 @@ select is(
   1::bigint,
   'Canvas row remains available to the database owner'
 );
+select throws_ok(
+  $$ insert into public.canvases (id, workspace_id, title, schema_version, document, revision, created_by)
+     values ('62000000-0000-0000-0000-000000000099'::uuid, '22000000-0000-0000-0000-000000000001'::uuid, 'V1 row', 1, '{"schemaVersion":2,"nodes":[],"edges":[]}'::jsonb, 1, '12000000-0000-0000-0000-000000000001'::uuid) $$,
+  '22023',
+  'CanvasDocumentV2 validation failed',
+  'rows with schema_version one are rejected'
+);
 
 set local role authenticated;
+select set_config('request.jwt.claim.sub', '12000000-0000-0000-0000-000000000003', true);
+select throws_ok(
+  $$ select * from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 2, 'Viewer Save', '{"schemaVersion":2,"nodes":[],"edges":[]}'::jsonb) $$,
+  '42501',
+  'Canvas access denied',
+  'viewer cannot save a Canvas'
+);
 select set_config('request.jwt.claim.sub', '12000000-0000-0000-0000-000000000002', true);
 select results_eq(
-  $$ select status || ':' || revision::text from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 2, 'Editor Save', '{"schemaVersion":1,"nodes":[],"edges":[]}'::jsonb) $$,
+  $$ select status || ':' || revision::text from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 2, 'Editor Save', '{"schemaVersion":2,"nodes":[],"edges":[]}'::jsonb) $$,
   array['saved:3'::text],
   'authorized editor can save the Canvas'
 );
@@ -227,7 +305,7 @@ select results_eq(
   'soft-deleted Canvas is excluded from the active policy'
 );
 select throws_ok(
-  $$ select * from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 3, 'After delete', '{"schemaVersion":1,"nodes":[],"edges":[]}'::jsonb) $$,
+  $$ select * from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 3, 'After delete', '{"schemaVersion":2,"nodes":[],"edges":[]}'::jsonb) $$,
   '42501',
   'Canvas access denied',
   'soft-deleted Canvas cannot be saved'
@@ -305,7 +383,7 @@ select is(
   'non-member cannot read Canvas view state'
 );
 select throws_ok(
-  $$ select * from public.save_canvas_document(current_setting('test.active_canvas_id')::uuid, 1, 'Outsider', '{"schemaVersion":1,"nodes":[],"edges":[]}'::jsonb) $$,
+  $$ select * from public.save_canvas_document(current_setting('test.active_canvas_id')::uuid, 1, 'Outsider', '{"schemaVersion":2,"nodes":[],"edges":[]}'::jsonb) $$,
   '42501',
   'Canvas access denied',
   'non-member cannot save a Canvas'

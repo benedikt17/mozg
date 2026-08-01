@@ -609,16 +609,16 @@ RLS and `git diff --check` gates defined by `AGENTS.md`.
 
 ## 17. Risks and mitigations
 
-| Risk                                          | Mitigation                                                                   |
-| --------------------------------------------- | ---------------------------------------------------------------------------- |
-| Canvas document leaks into workspace snapshot | Separate repository interfaces and strict snapshot parser tests.             |
-| Engine becomes data model                     | Persist only `CanvasDocumentV1`; map through `CanvasEngineAdapter`.          |
-| Asset orphan/cost growth                      | Delayed reference-audited cleanup, checksum/metadata and monitoring.         |
-| Cross-workspace asset access                  | Private bucket, path convention, Storage RLS, table RLS and tests.           |
-| Drag causes excessive writes                  | Local previews; pointer-up/debounced semantic saves; one serial coordinator. |
-| Stale tab loses edits                         | Typed per-Canvas CAS, no automatic overwrite, explicit reload/recovery UI.   |
-| Large images harm the browser                 | Decode/file/count limits and no animated formats.                            |
-| Existing mock Canvas is extended accidentally | Treat it as frozen prototype UI; production route uses new module only.      |
+| Risk                                          | Mitigation                                                                             |
+| --------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Canvas document leaks into workspace snapshot | Separate repository interfaces and strict snapshot parser tests.                       |
+| Engine becomes data model                     | Persist only canonical `CanvasDocumentV2` in cloud; map through `CanvasEngineAdapter`. |
+| Asset orphan/cost growth                      | Delayed reference-audited cleanup, checksum/metadata and monitoring.                   |
+| Cross-workspace asset access                  | Private bucket, path convention, Storage RLS, table RLS and tests.                     |
+| Drag causes excessive writes                  | Local previews; pointer-up/debounced semantic saves; one serial coordinator.           |
+| Stale tab loses edits                         | Typed per-Canvas CAS, no automatic overwrite, explicit reload/recovery UI.             |
+| Large images harm the browser                 | Decode/file/count limits and no animated formats.                                      |
+| Existing mock Canvas is extended accidentally | Treat it as frozen prototype UI; production route uses new module only.                |
 
 ## 18. Remaining evidence questions
 
@@ -639,9 +639,24 @@ domain decision:
 
 ## 19. Definition of Done for this documentation task
 
-This document records the accepted separate persistence domain, exact v1 document
-contract, cloud/local CAS model, private image lifecycle, state/engine/UI boundaries,
-testing, rollout and checkpoints. It introduces no source code, migration, dependency,
-production configuration, Auth change or deployment. It preserves the Supabase,
-workspace and Markdown decisions; engine selection remains gated by the disposable
-spike and canonical `CanvasDocumentV1` contract.
+This document records the accepted separate persistence domain, cloud `CanvasDocumentV2`
+contract, local V1-to-V2 read migration, cloud/local CAS model, private image lifecycle,
+state/engine/UI boundaries, testing, rollout and checkpoints. It introduces no source
+code, migration, dependency, production configuration, Auth change or deployment. It
+preserves the Supabase, workspace and Markdown decisions; engine selection remains
+gated by the disposable spike and the canonical library-independent Canvas contract.
+
+## 20. Cloud CanvasDocumentV2 persistence checkpoint
+
+The cloud persistence boundary is V2-only after the forward migration
+`20260801120000_canvas_document_v2_persistence.sql`:
+
+- cloud rows use `schema_version = 2` and canonical `CanvasDocumentV2` JSON;
+- the PostgreSQL validator rejects V1 documents, unknown fields and invalid V2 edges;
+- the existing create/save/delete RPC signatures and CAS result semantics remain stable;
+- V1-to-V2 migration remains only at the TypeScript local/client repository boundary;
+- server-side V1-to-V2 normalization and mixed V1/V2 cloud writes are not supported;
+- an unexpected pre-existing V1 cloud row fails the migration closed and is never silently
+  rewritten;
+- viewport, asset metadata, Storage, binary lifecycle and the main MOZG UI remain outside
+  this checkpoint.

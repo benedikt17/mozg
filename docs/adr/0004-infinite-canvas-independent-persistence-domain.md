@@ -72,6 +72,14 @@ library snapshots не являются форматом persistence MOZG.
 Supabase CLI migration, generated types и RLS/CAS tests. Production schema,
 Storage bucket и engine dependency этим ADR не создаются.
 
+## V2 cloud persistence checkpoint
+
+The accepted independent Canvas domain now has a V2 cloud persistence checkpoint.
+The V1 document remains the local/client migration input, while cloud rows created
+after `20260801120000_canvas_document_v2_persistence.sql` are V2-only. This does not
+change the independent workspace-scoped domain, CAS boundary, soft-delete rule,
+view-state separation or asset metadata boundary decided by this ADR.
+
 ## References
 
 - [`ARCHITECTURE.md`](../../ARCHITECTURE.md)
