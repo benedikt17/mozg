@@ -1,6 +1,6 @@
 import "@xyflow/react/dist/style.css";
-import { InfiniteCanvasLocalShell } from "@/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell";
+import { InfiniteCanvasLocalShellPage as InfiniteCanvasLocalShellComposition } from "@/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell-page";
 
-export default function InfiniteCanvasLocalShellPage() {
-  return <InfiniteCanvasLocalShell />;
+export default function InfiniteCanvasLocalShellPage(): React.JSX.Element {
+  return <InfiniteCanvasLocalShellComposition />;
 }

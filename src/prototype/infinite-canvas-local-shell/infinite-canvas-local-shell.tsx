@@ -51,6 +51,7 @@ import {
   commitTextMarkdown,
 } from "@/lib/canvas/text-canvas-interactions";
 import { MarkdownStringPreview } from "@/prototype/knowledge/markdown-document-preview";
+import type { CanvasTaskBridge } from "@/lib/canvas/canvas-task-bridge";
 import {
   IndexedDbCanvasRepository,
   type CanvasSummary,
@@ -215,8 +216,18 @@ const nodeTypes = {
   [CANVAS_TEXT_NODE_TYPE]: CanvasTextNodeView,
 };
 
-function InfiniteCanvasLocalShellSurface(): React.JSX.Element {
+function InfiniteCanvasLocalShellSurface({
+  taskBridge,
+  taskWorkspaceId,
+}: {
+  taskBridge?: CanvasTaskBridge;
+  taskWorkspaceId?: string;
+}): React.JSX.Element {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const taskBridgeRef = useRef<CanvasTaskBridge | undefined>(taskBridge);
+  const taskWorkspaceIdRef = useRef<string | undefined>(taskWorkspaceId);
+  taskBridgeRef.current = taskBridge;
+  taskWorkspaceIdRef.current = taskWorkspaceId;
   const pointerRef = useRef<FlowPosition | null>(null);
   const nodesRef = useRef<CanvasFlowNode[]>([]);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -913,10 +924,19 @@ function InfiniteCanvasLocalShellSurface(): React.JSX.Element {
   );
 }
 
-export function InfiniteCanvasLocalShell(): React.JSX.Element {
+export function InfiniteCanvasLocalShell({
+  taskBridge,
+  taskWorkspaceId,
+}: {
+  taskBridge?: CanvasTaskBridge;
+  taskWorkspaceId?: string;
+} = {}): React.JSX.Element {
   return (
     <ReactFlowProvider>
-      <InfiniteCanvasLocalShellSurface />
+      <InfiniteCanvasLocalShellSurface
+        taskBridge={taskBridge}
+        taskWorkspaceId={taskWorkspaceId}
+      />
     </ReactFlowProvider>
   );
 }

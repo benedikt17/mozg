@@ -1,17 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   isPublicProjectSection,
   publicProjectSections,
   type ProjectSection,
 } from "@/prototype/desktop-mock-data";
 import {
-  desktopPrototypeReducer,
   getActiveProject,
   getCommandResults,
   getOverviewTaskDetailMaterial,
-  initialDesktopPrototypeState,
   type CommandResult,
   type DesktopPrototypeAction,
   type DesktopPrototypeState,
@@ -30,13 +28,14 @@ import { InboxWorkspace } from "@/prototype/inbox/inbox-workspace";
 import { ApplicationHeader } from "@/prototype/shell/application-header";
 import { CommandPalette } from "@/prototype/shell/command-palette";
 import { SectionRail } from "@/prototype/shell/section-rail";
-import {
-  useDesktopPersistence,
-  type UseDesktopPersistenceResult,
-} from "@/prototype/persistence/use-desktop-persistence";
+import type { UseDesktopPersistenceResult } from "@/prototype/persistence/use-desktop-persistence";
 import type { DesktopPersistenceErrorCode } from "@/prototype/persistence/persistence-adapter";
 import type { DesktopCloudBootstrap } from "@/prototype/persistence/cloud-snapshot-bridge";
 import type { DesktopRuntimeMode } from "@/lib/desktop-runtime-mode";
+import {
+  DesktopTaskRuntimeProvider,
+  useDesktopTaskRuntime,
+} from "@/prototype/tasks/desktop-task-runtime";
 import "./desktop-shell.css";
 import "./desktop-workspaces.css";
 import "./desktop-knowledge.css";
@@ -50,22 +49,26 @@ export function DesktopPrototypeShell({
   cloudBootstrap?: DesktopCloudBootstrap;
   runtimeMode: DesktopRuntimeMode;
 }): React.JSX.Element {
-  const [state, dispatch] = useReducer(
-    desktopPrototypeReducer,
-    cloudBootstrap?.snapshot,
-    initializeDesktopPrototypeState,
+  return (
+    <DesktopTaskRuntimeProvider
+      cloudBootstrap={cloudBootstrap}
+      runtimeMode={runtimeMode}
+    >
+      <DesktopPrototypeShellContent runtimeMode={runtimeMode} />
+    </DesktopTaskRuntimeProvider>
   );
+}
+
+function DesktopPrototypeShellContent({
+  runtimeMode,
+}: {
+  runtimeMode: DesktopRuntimeMode;
+}): React.JSX.Element {
+  const { dispatch, persistence, state, workspaceAvailable } =
+    useDesktopTaskRuntime();
   const [commandQuery, setCommandQuery] = useState(getInitialCommandQuery);
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
   const seededFromUrl = useRef(false);
-  const persistence = useDesktopPersistence(state, dispatch, {
-    enabled: true,
-    cloudBootstrap,
-    runtimeMode,
-  });
-  const workspaceAvailable =
-    persistence.lifecycle.status !== "loading" &&
-    persistence.lifecycle.status !== "load-error";
   const commandResults = useMemo(
     () => getCommandResults(state, commandQuery),
     [state, commandQuery],
@@ -213,16 +216,6 @@ export function DesktopPrototypeShell({
       ) : null}
     </main>
   );
-}
-
-function initializeDesktopPrototypeState(
-  snapshot: DesktopCloudBootstrap["snapshot"] | undefined,
-): DesktopPrototypeState {
-  if (!snapshot) return initialDesktopPrototypeState;
-  return desktopPrototypeReducer(initialDesktopPrototypeState, {
-    type: "hydrate-domain",
-    snapshot,
-  });
 }
 
 function DesktopPersistenceBoundary({
