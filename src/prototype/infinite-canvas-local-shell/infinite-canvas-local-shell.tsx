@@ -2,11 +2,24 @@
 
 import {
   Background,
+  ConnectionMode,
   Controls,
+  EdgeToolbar,
   ReactFlow,
   ReactFlowProvider,
+  applyEdgeChanges,
+  getBezierPath,
+  getSmoothStepPath,
+  getStraightPath,
+  useEdgesState,
   useNodesState,
+  useInternalNode,
   useReactFlow,
+  type Connection,
+  type ConnectionLineComponentProps,
+  type EdgeChange,
+  type EdgeProps,
+  type InternalNode,
   type NodeChange,
   type NodeProps,
 } from "@xyflow/react";
@@ -33,21 +46,48 @@ import {
   CANVAS_IMAGE_NODE_TYPE,
   CANVAS_TASK_NODE_TYPE,
   CANVAS_TEXT_NODE_TYPE,
+  CANVAS_EDGE_TYPE,
+  canvasDocumentToEdges,
   canvasDocumentToImageNodes,
   canvasDocumentToTaskNodes,
   canvasDocumentToTextNodes,
   createCanvasTaskFlowNode,
   createCanvasTaskId,
+  createCanvasEdgeFromConnection,
   createCanvasTextFlowNode,
   ingestCanvasImageTransferToNodes,
   restoreCanvasImageNodes,
+  updateCanvasEdgeFlowRuntime,
   type CanvasImageAdapterDependencies,
   type CanvasFlowNode,
+  type CanvasEdgeFlow,
+  type CanvasEdgeFlowData,
   type CanvasImageFlowNode,
   type CanvasTaskFlowNode,
   type CanvasTextFlowNode,
   type FlowPosition,
 } from "@/lib/canvas/react-flow-canvas-adapter";
+import type {
+  CanvasEdgeArrows,
+  CanvasEdgeV2,
+  CanvasEdgeRouting,
+  CanvasHandleSide,
+} from "@/lib/canvas/canvas-document";
+import {
+  canvasArrowsToEndpointArrows,
+  endpointArrowsToCanvasArrows,
+  swapCanvasEdgeArrows,
+} from "@/lib/canvas/canvas-edge-controls";
+import {
+  canvasHandleCenterToPerimeter,
+  canvasNodePerimeterAnchor,
+  type CanvasNodeBounds,
+} from "@/lib/canvas/canvas-edge-geometry";
+import {
+  findShortestCanvasHandlePair,
+  recomputeCanvasRuntimeEdgeHandles,
+  type CanvasNodeBoundsRecord,
+} from "@/lib/canvas/canvas-shortest-handle-pair";
 import {
   createCanvasTextId,
   hasMeaningfulPlainText,
@@ -69,7 +109,11 @@ import {
   type LocalCanvasShellState,
 } from "@/lib/canvas/local-canvas-shell-controller";
 import { shouldCloseCanvasTaskDetails } from "@/lib/canvas/canvas-task-selection";
-import { CanvasNodeFrame } from "./canvas-node-frame";
+import {
+  CanvasEdgeMarkerDefinitions,
+  CanvasVisibleEdge,
+} from "@/lib/canvas/canvas-visible-edge";
+import { CanvasNodeFrame, ConnectionHandleLayer } from "./canvas-node-frame";
 import styles from "./infinite-canvas-local-shell.module.css";
 
 export const INFINITE_CANVAS_LOCAL_SHELL_WORKSPACE_ID =
@@ -90,6 +134,61 @@ const EMPTY_RESTORE_STATS: RestoreStats = {
   maxConcurrency: 0,
   missing: 0,
 };
+
+function canvasFlowNodeBounds(
+  node: CanvasFlowNode,
+): CanvasNodeBoundsRecord | null {
+  const width = node.measured?.width ?? node.width ?? node.style?.width;
+  const height = node.measured?.height ?? node.height ?? node.style?.height;
+  if (typeof width !== "number" || typeof height !== "number") return null;
+  return {
+    id: node.id,
+    x: node.position.x,
+    y: node.position.y,
+    width,
+    height,
+  };
+}
+
+function canvasInternalNodeBounds(
+  node: InternalNode<CanvasFlowNode> | undefined,
+): CanvasNodeBounds | null {
+  if (!node) return null;
+  const width = node.measured.width ?? node.width ?? node.style?.width;
+  const height = node.measured.height ?? node.height ?? node.style?.height;
+  if (typeof width !== "number" || typeof height !== "number") return null;
+  return {
+    x: node.internals.positionAbsolute.x,
+    y: node.internals.positionAbsolute.y,
+    width,
+    height,
+  };
+}
+
+function canvasFlowNodeBoundsRecords(
+  nodes: readonly CanvasFlowNode[],
+): CanvasNodeBoundsRecord[] {
+  return nodes.flatMap((node) => {
+    const bounds = canvasFlowNodeBounds(node);
+    return bounds ? [bounds] : [];
+  });
+}
+
+function autoAttachCanvasEdge(
+  edge: CanvasEdgeV2,
+  bounds: readonly CanvasNodeBoundsRecord[],
+): CanvasEdgeV2 {
+  const boundsById = new Map(bounds.map((node) => [node.id, node]));
+  const sourceBounds = boundsById.get(edge.sourceNodeId);
+  const targetBounds = boundsById.get(edge.targetNodeId);
+  if (!sourceBounds || !targetBounds) return edge;
+  const pair = findShortestCanvasHandlePair(sourceBounds, targetBounds);
+  return {
+    ...edge,
+    sourceHandle: pair.sourceHandle,
+    targetHandle: pair.targetHandle,
+  };
+}
 
 function transferPayload(
   event: ClipboardEvent | DragEvent,
@@ -114,6 +213,7 @@ function ImageNodeBody({
       minHeight={80}
       keepAspectRatio
       className={styles.imageNodeFrame}
+      connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
     >
       {data.objectUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -126,12 +226,6 @@ function ImageNodeBody({
       ) : (
         <div className={styles.image} aria-label="Loading canvas image" />
       )}
-      <div className={styles.caption}>
-        <span>{data.mimeType.replace("image/", "")}</span>
-        <span>
-          {data.intrinsicWidth} × {data.intrinsicHeight}
-        </span>
-      </div>
     </CanvasNodeFrame>
   );
 }
@@ -169,6 +263,7 @@ function TextNodeBody({
       minWidth={180}
       minHeight={100}
       className={styles.textNodeFrame}
+      connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
     >
       <div
         className={styles.textNodeContent}
@@ -349,6 +444,7 @@ function TaskNodeBody({
       minWidth={220}
       minHeight={contentMinHeight}
       className={styles.taskNodeFrame}
+      connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
     >
       <div
         ref={taskContentRef}
@@ -439,10 +535,271 @@ function TaskNodeBody({
   );
 }
 
+export function CanvasEdgeBody({
+  id,
+  source,
+  sourcePosition,
+  targetPosition,
+  target,
+  selected,
+  data,
+  markerStart,
+  markerEnd,
+}: EdgeProps<CanvasEdgeFlow>): React.JSX.Element | null {
+  const [lineTypeOpen, setLineTypeOpen] = useState(false);
+  const sourceNode = useInternalNode<CanvasFlowNode>(source);
+  const targetNode = useInternalNode<CanvasFlowNode>(target);
+  const sourcePositionSide = sourcePosition as CanvasHandleSide;
+  const targetPositionSide = targetPosition as CanvasHandleSide;
+  const sourceBounds = canvasInternalNodeBounds(sourceNode);
+  const targetBounds = canvasInternalNodeBounds(targetNode);
+  if (!sourceBounds || !targetBounds) return null;
+  const sourceAnchor = canvasNodePerimeterAnchor(
+    sourceBounds,
+    sourcePositionSide,
+  );
+  const targetAnchor = canvasNodePerimeterAnchor(
+    targetBounds,
+    targetPositionSide,
+  );
+  const [path, labelX, labelY] =
+    data?.routing === "orthogonal"
+      ? getSmoothStepPath({
+          sourceX: sourceAnchor.x,
+          sourceY: sourceAnchor.y,
+          sourcePosition,
+          targetX: targetAnchor.x,
+          targetY: targetAnchor.y,
+          targetPosition,
+        })
+      : data?.routing === "straight"
+        ? getStraightPath({
+            sourceX: sourceAnchor.x,
+            sourceY: sourceAnchor.y,
+            targetX: targetAnchor.x,
+            targetY: targetAnchor.y,
+          })
+        : getBezierPath({
+            sourceX: sourceAnchor.x,
+            sourceY: sourceAnchor.y,
+            sourcePosition,
+            targetX: targetAnchor.x,
+            targetY: targetAnchor.y,
+            targetPosition,
+          });
+  const arrows = data?.arrows ?? "none";
+  const endpointArrows = canvasArrowsToEndpointArrows(arrows);
+  const routing = data?.routing ?? "curved";
+  const stopToolbarEvent = (event: React.SyntheticEvent): void => {
+    event.stopPropagation();
+  };
+  return (
+    <>
+      <CanvasVisibleEdge
+        id={id}
+        path={path}
+        className={selected ? styles.selectedEdge : styles.canvasEdge}
+        markerStart={markerStart}
+        markerEnd={markerEnd}
+        interactionWidth={24}
+      />
+      {selected ? (
+        <EdgeToolbar
+          edgeId={id}
+          x={labelX}
+          y={labelY}
+          isVisible={selected}
+          alignY="top"
+          className={`${styles.edgeToolbar} nodrag nopan nowheel`}
+          onPointerDown={stopToolbarEvent}
+          onPointerUp={stopToolbarEvent}
+          onClick={stopToolbarEvent}
+          onWheel={stopToolbarEvent}
+        >
+          <button
+            type="button"
+            className={`${styles.edgeToolButton} nodrag nopan nowheel`}
+            aria-label="Переключить стрелку в начале линии"
+            aria-pressed={endpointArrows.source}
+            title="Стрелка в начале"
+            onClick={() =>
+              data?.onUpdate?.(id, {
+                routing,
+                arrows: endpointArrowsToCanvasArrows({
+                  source: !endpointArrows.source,
+                  target: endpointArrows.target,
+                }),
+              })
+            }
+          >
+            {endpointArrows.source ? "◀" : "○"}
+          </button>
+          <button
+            type="button"
+            className={`${styles.edgeToolButton} nodrag nopan nowheel`}
+            aria-label="Поменять стрелки местами"
+            title="Поменять стрелки местами"
+            onClick={() =>
+              data?.onUpdate?.(id, {
+                routing,
+                arrows: swapCanvasEdgeArrows(arrows),
+              })
+            }
+          >
+            ↔
+          </button>
+          <button
+            type="button"
+            className={`${styles.edgeToolButton} nodrag nopan nowheel`}
+            aria-label="Переключить стрелку в конце линии"
+            aria-pressed={endpointArrows.target}
+            title="Стрелка в конце"
+            onClick={() =>
+              data?.onUpdate?.(id, {
+                routing,
+                arrows: endpointArrowsToCanvasArrows({
+                  source: endpointArrows.source,
+                  target: !endpointArrows.target,
+                }),
+              })
+            }
+          >
+            {endpointArrows.target ? "▶" : "○"}
+          </button>
+          <button
+            type="button"
+            className={`${styles.edgeToolButton} nodrag nopan nowheel`}
+            aria-label="Тип линии: открыть выбор"
+            aria-expanded={lineTypeOpen}
+            title="Тип линии"
+            onClick={(event) => {
+              stopToolbarEvent(event);
+              setLineTypeOpen((open) => !open);
+            }}
+          >
+            {routing === "orthogonal"
+              ? "┐"
+              : routing === "straight"
+                ? "／"
+                : "⌒"}
+          </button>
+          {lineTypeOpen ? (
+            <div className={styles.edgeLinePopover} role="menu">
+              {(
+                [
+                  ["orthogonal", "┐", "Прямоугольная"],
+                  ["curved", "⌒", "Дугообразная"],
+                  ["straight", "／", "Прямая"],
+                ] as const
+              ).map(([value, glyph, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`${styles.edgeLineOption} nodrag nopan nowheel`}
+                  role="menuitemradio"
+                  aria-checked={routing === value}
+                  onClick={(event) => {
+                    stopToolbarEvent(event);
+                    setLineTypeOpen(false);
+                    data?.onUpdate?.(id, {
+                      routing: value,
+                      arrows,
+                    });
+                  }}
+                >
+                  <span aria-hidden="true">{glyph}</span>
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <label>
+            Линия
+            <select
+              className="nodrag nopan"
+              value={data?.routing ?? "curved"}
+              onChange={(event) =>
+                data?.onUpdate?.(id, {
+                  routing: event.target.value as CanvasEdgeRouting,
+                  arrows,
+                })
+              }
+            >
+              <option value="orthogonal">Прямоугольная</option>
+              <option value="curved">Дугообразная</option>
+              <option value="straight">Прямая</option>
+            </select>
+          </label>
+          <label>
+            Стрелки
+            <select
+              className="nodrag nopan"
+              value={arrows}
+              onChange={(event) =>
+                data?.onUpdate?.(id, {
+                  routing: data?.routing ?? "curved",
+                  arrows: event.target.value as CanvasEdgeArrows,
+                })
+              }
+            >
+              <option value="none">Нет</option>
+              <option value="start">В начале</option>
+              <option value="end">В конце</option>
+              <option value="both">С обеих сторон</option>
+            </select>
+          </label>
+        </EdgeToolbar>
+      ) : null}
+    </>
+  );
+}
+
+function CanvasConnectionLine({
+  fromX,
+  fromY,
+  fromPosition,
+  toX,
+  toY,
+  toPosition,
+  toHandle,
+  connectionStatus,
+}: ConnectionLineComponentProps<CanvasFlowNode>): React.JSX.Element {
+  const source = canvasHandleCenterToPerimeter(
+    { x: fromX, y: fromY },
+    fromPosition as CanvasHandleSide,
+  );
+  const target = toHandle
+    ? canvasHandleCenterToPerimeter(
+        { x: toX, y: toY },
+        toPosition as CanvasHandleSide,
+      )
+    : { x: toX, y: toY };
+  const [path] = getBezierPath({
+    sourceX: source.x,
+    sourceY: source.y,
+    sourcePosition: fromPosition,
+    targetX: target.x,
+    targetY: target.y,
+    targetPosition: toPosition,
+  });
+  return (
+    <path
+      d={path}
+      fill="none"
+      className={styles.connectionPreview}
+      data-status={connectionStatus ?? "pending"}
+    />
+  );
+}
+
 const nodeTypes = {
   [CANVAS_IMAGE_NODE_TYPE]: ImageNodeBody,
   [CANVAS_TASK_NODE_TYPE]: TaskNodeBody,
   [CANVAS_TEXT_NODE_TYPE]: TextNodeBody,
+};
+
+const edgeTypes = {
+  [CANVAS_EDGE_TYPE]: CanvasEdgeBody,
 };
 
 function InfiniteCanvasLocalShellSurface({
@@ -461,10 +818,12 @@ function InfiniteCanvasLocalShellSurface({
   taskWorkspaceIdRef.current = taskWorkspaceId;
   const pointerRef = useRef<FlowPosition | null>(null);
   const nodesRef = useRef<CanvasFlowNode[]>([]);
+  const edgesRef = useRef<CanvasEdgeFlow[]>([]);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const viewportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const restoreControllerRef = useRef<AbortController | null>(null);
   const pendingContentHeightSaveRef = useRef(false);
+  const nodeGeometrySignatureRef = useRef("");
   const hydratingRef = useRef(true);
   const viewportApplyRef = useRef<string | null>(null);
   const suppressViewportSaveRef = useRef(false);
@@ -472,6 +831,7 @@ function InfiniteCanvasLocalShellSurface({
     (point: { x: number; y: number }) => FlowPosition
   >(() => ({ x: 0, y: 0 }));
   const [nodes, setNodes, onNodesChange] = useNodesState<CanvasFlowNode>([]);
+  const [edges, setEdges] = useEdgesState<CanvasEdgeFlow>([]);
   const [summaries, setSummaries] = useState<CanvasSummary[]>([]);
   const [shellState, setShellState] =
     useState<LocalCanvasShellState>(emptyShellState);
@@ -525,6 +885,10 @@ function InfiniteCanvasLocalShellSurface({
   useEffect(() => {
     nodesRef.current = nodes;
   }, [nodes]);
+
+  useEffect(() => {
+    edgesRef.current = edges;
+  }, [edges]);
 
   useEffect(() => {
     screenToFlowRef.current = reactFlow.screenToFlowPosition;
@@ -596,9 +960,89 @@ function InfiniteCanvasLocalShellSurface({
       saveTimerRef.current = null;
       if (hydratingRef.current) return;
       controller.setRuntimeNodes(nodesRef.current);
+      controller.setRuntimeEdges(edgesRef.current);
       void controller.save().then(syncState).catch(syncState);
     }, 260);
   }, [controller, syncState]);
+
+  useEffect(() => {
+    const bounds = canvasFlowNodeBoundsRecords(nodes);
+    const signature = bounds
+      .map(
+        (node) => `${node.id}:${node.x}:${node.y}:${node.width}:${node.height}`,
+      )
+      .join("|");
+    if (signature === nodeGeometrySignatureRef.current) return;
+    nodeGeometrySignatureRef.current = signature;
+
+    const nextEdges = recomputeCanvasRuntimeEdgeHandles(
+      edgesRef.current,
+      bounds,
+    );
+    const handlesChanged = nextEdges.some(
+      (edge, index) =>
+        edge.sourceHandle !== edgesRef.current[index]?.sourceHandle ||
+        edge.targetHandle !== edgesRef.current[index]?.targetHandle,
+    );
+    if (!handlesChanged) return;
+    setEdges((current) => recomputeCanvasRuntimeEdgeHandles(current, bounds));
+  }, [nodes, setEdges]);
+
+  const handleEdgeUpdate = useCallback(
+    (
+      edgeId: string,
+      update: Pick<CanvasEdgeFlowData, "routing" | "arrows">,
+    ) => {
+      const nextState = controller.updateCanvasEdge(edgeId, update);
+      setEdges((current) =>
+        current.map((edge) =>
+          edge.id === edgeId ? updateCanvasEdgeFlowRuntime(edge, update) : edge,
+        ),
+      );
+      setShellState(nextState);
+      scheduleSave();
+    },
+    [controller, scheduleSave, setEdges],
+  );
+
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      const edge = createCanvasEdgeFromConnection(connection);
+      if (!edge) return;
+      const attachedEdge = autoAttachCanvasEdge(
+        edge,
+        canvasFlowNodeBoundsRecords(nodesRef.current),
+      );
+      const previousEdgeCount = controller.state.document.edges.length;
+      const nextState = controller.insertCanvasEdge(attachedEdge);
+      if (nextState.document.edges.length > previousEdgeCount) {
+        setEdges(canvasDocumentToEdges(nextState.document, handleEdgeUpdate));
+        setShellState(nextState);
+        scheduleSave();
+      }
+    },
+    [controller, handleEdgeUpdate, scheduleSave, setEdges],
+  );
+
+  const handleEdgesChange = useCallback(
+    (changes: EdgeChange<CanvasEdgeFlow>[]) => {
+      const removed = changes.filter(
+        (
+          change,
+        ): change is Extract<EdgeChange<CanvasEdgeFlow>, { type: "remove" }> =>
+          change.type === "remove",
+      );
+      if (removed.length > 0) {
+        const nextState = controller.removeCanvasEdges(
+          removed.map((change) => change.id),
+        );
+        setShellState(nextState);
+        scheduleSave();
+      }
+      setEdges((current) => applyEdgeChanges(changes, current));
+    },
+    [controller, scheduleSave, setEdges],
+  );
 
   const handleTaskNodeContentHeightChange = useCallback(
     (nodeId: string, requiredHeight: number): void => {
@@ -647,6 +1091,7 @@ function InfiniteCanvasLocalShellSurface({
         ...canvasDocumentToTextNodes(nextState.document),
       ];
       setNodes(placeholders);
+      setEdges(canvasDocumentToEdges(nextState.document, handleEdgeUpdate));
       hydratingRef.current = true;
       setRestoreStats(EMPTY_RESTORE_STATS);
       const result = await restoreCanvasImageNodes(
@@ -680,14 +1125,16 @@ function InfiniteCanvasLocalShellSurface({
       hydratingRef.current = false;
       if (pendingContentHeightSaveRef.current) {
         pendingContentHeightSaveRef.current = false;
-        scheduleSave();
       }
+      scheduleSave();
     },
     [
       adapterDependencies,
+      handleEdgeUpdate,
       handleTaskNodeContentHeightChange,
       objectUrls,
       scheduleSave,
+      setEdges,
       setNodes,
     ],
   );
@@ -998,6 +1445,13 @@ function InfiniteCanvasLocalShellSurface({
       }
       if (removed.length > 0) {
         controller.removeCanvasNodes(removed.map((change) => change.id));
+        const removedIds = new Set(removed.map((change) => change.id));
+        setEdges((current) =>
+          current.filter(
+            (edge) =>
+              !removedIds.has(edge.source) && !removedIds.has(edge.target),
+          ),
+        );
         syncState();
       }
       onNodesChange(changes);
@@ -1009,7 +1463,7 @@ function InfiniteCanvasLocalShellSurface({
       );
       if (shouldPersist) scheduleSave();
     },
-    [controller, objectUrls, onNodesChange, scheduleSave, syncState],
+    [controller, objectUrls, onNodesChange, scheduleSave, setEdges, syncState],
   );
 
   const onDrop = useCallback(
@@ -1048,8 +1502,9 @@ function InfiniteCanvasLocalShellSurface({
     setShellState(created);
     setRenameTitle(created.title);
     setNodes([]);
+    setEdges([]);
     hydratingRef.current = false;
-  }, [controller, newTitle, setNodes]);
+  }, [controller, newTitle, setEdges, setNodes]);
 
   const renameCanvas = useCallback(() => {
     if (!renameTitle.trim() || !shellState.canvasId) return;
@@ -1073,6 +1528,7 @@ function InfiniteCanvasLocalShellSurface({
     const next = await controller.listCanvases();
     setSummaries(next);
     setNodes([]);
+    setEdges([]);
     if (next[0]) await openCanvas(next[0].id);
     else {
       hydratingRef.current = false;
@@ -1083,6 +1539,7 @@ function InfiniteCanvasLocalShellSurface({
     objectUrls,
     openCanvas,
     repository,
+    setEdges,
     setNodes,
     shellState.canvasId,
     shellState.title,
@@ -1322,9 +1779,14 @@ function InfiniteCanvasLocalShellSurface({
         >
           <ReactFlow
             nodes={nodes}
-            edges={[]}
+            edges={edges}
             nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
             onNodesChange={handleNodesChange}
+            onEdgesChange={handleEdgesChange}
+            onConnect={handleConnect}
+            connectionMode={ConnectionMode.Loose}
+            connectionLineComponent={CanvasConnectionLine}
             onMoveEnd={onMoveEnd}
             onPaneClick={(event) => {
               if (event.detail !== 2) return;
@@ -1337,6 +1799,7 @@ function InfiniteCanvasLocalShellSurface({
           >
             <Background gap={24} color="#d6d3d1" />
             <Controls showInteractive={false} />
+            <CanvasEdgeMarkerDefinitions />
           </ReactFlow>
           <div className={styles.canvasHint}>
             {dropActive

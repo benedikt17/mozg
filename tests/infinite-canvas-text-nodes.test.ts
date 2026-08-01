@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   createEmptyCanvasDocumentV1,
+  createEmptyCanvasDocumentV2,
   parseCanvasDocumentV1,
+  type CanvasEdgeV2,
   type CanvasDocumentV1,
 } from "@/lib/canvas/canvas-document";
 import {
@@ -348,6 +350,69 @@ describe("canonical text nodes", () => {
       viewportY: 20,
       zoom: 1.5,
     });
-    expect(controller.state.document).toEqual(createEmptyCanvasDocumentV1());
+    expect(controller.state.document).toEqual(createEmptyCanvasDocumentV2());
+  });
+
+  it("persists V2 edges through controller save, reload, and node deletion", async () => {
+    const repository = new MemoryRepository();
+    const controller = new LocalCanvasShellController(
+      controllerOptions(repository),
+    );
+    const created = await controller.createCanvas("Connections");
+    const first = createCanvasTextFlowNode({
+      id: "text-node-1",
+      markdown: "Source",
+      position: { x: 0, y: 0 },
+    });
+    const second = createCanvasTextFlowNode({
+      id: "text-node-2",
+      markdown: "Target",
+      position: { x: 320, y: 0 },
+    });
+    controller.insertTextNode(first);
+    controller.insertTextNode(second);
+    const edge: CanvasEdgeV2 = {
+      id: "edge-persistent",
+      sourceNodeId: first.id,
+      sourceHandle: "right",
+      targetNodeId: second.id,
+      targetHandle: "left",
+      routing: "straight",
+      arrows: "both",
+    };
+    controller.insertCanvasEdge(edge);
+    await controller.save();
+
+    const reloaded = new LocalCanvasShellController(
+      controllerOptions(repository),
+    );
+    await reloaded.openCanvas(created.canvasId!);
+    expect(reloaded.state.document.schemaVersion).toBe(2);
+    expect(reloaded.state.document.edges).toEqual([edge]);
+
+    reloaded.updateCanvasEdge(edge.id, {
+      routing: "orthogonal",
+      arrows: "end",
+    });
+    await reloaded.save();
+    const afterUpdate = new LocalCanvasShellController(
+      controllerOptions(repository),
+    );
+    await afterUpdate.openCanvas(created.canvasId!);
+    expect(afterUpdate.state.document.edges[0]).toMatchObject({
+      routing: "orthogonal",
+      arrows: "end",
+    });
+
+    afterUpdate.removeCanvasNodes([first.id]);
+    await afterUpdate.save();
+    const afterDelete = new LocalCanvasShellController(
+      controllerOptions(repository),
+    );
+    await afterDelete.openCanvas(created.canvasId!);
+    expect(afterDelete.state.document.nodes.map((node) => node.id)).toEqual([
+      second.id,
+    ]);
+    expect(afterDelete.state.document.edges).toEqual([]);
   });
 });

@@ -1,7 +1,13 @@
 "use client";
 
-import { NodeResizer } from "@xyflow/react";
-import type { ReactNode } from "react";
+import { Handle, NodeResizer, Position } from "@xyflow/react";
+import type { CSSProperties, ReactNode } from "react";
+import {
+  CANVAS_CONNECTION_HANDLE_CENTER_OFFSET,
+  CANVAS_CONNECTION_HANDLE_DIAMETER,
+  CANVAS_CONNECTION_HANDLE_GAP,
+  CANVAS_CONNECTION_HANDLE_RADIUS,
+} from "@/lib/canvas/canvas-edge-geometry";
 import styles from "./infinite-canvas-local-shell.module.css";
 
 export type CanvasNodeFrameProps = {
@@ -13,7 +19,7 @@ export type CanvasNodeFrameProps = {
   className?: string;
   toolbar?: ReactNode;
   contextMenu?: ReactNode;
-  /** Reserved contract for future edge connection affordances. */
+  /** Shared interaction layer for persistent Canvas connections. */
   connectionHandleLayer?: ReactNode;
 };
 
@@ -50,14 +56,42 @@ function ResizeLayer({
   );
 }
 
-function ConnectionHandleLayer({
-  children,
+const CONNECTION_HANDLES = [
+  { id: "top", position: Position.Top },
+  { id: "right", position: Position.Right },
+  { id: "bottom", position: Position.Bottom },
+  { id: "left", position: Position.Left },
+] as const;
+
+const CONNECTION_HANDLE_STYLE = {
+  "--connection-handle-diameter": `${CANVAS_CONNECTION_HANDLE_DIAMETER}px`,
+  "--connection-handle-radius": `${CANVAS_CONNECTION_HANDLE_RADIUS}px`,
+  "--connection-handle-gap": `${CANVAS_CONNECTION_HANDLE_GAP}px`,
+  "--connection-handle-center-offset": `${CANVAS_CONNECTION_HANDLE_CENTER_OFFSET}px`,
+} as CSSProperties;
+
+export function ConnectionHandleLayer({
+  selected,
 }: {
-  children: ReactNode;
+  selected: boolean;
 }): React.JSX.Element {
   return (
     <div className={styles.connectionHandleLayer} data-slot="connections">
-      {children}
+      {CONNECTION_HANDLES.map((handle) => (
+        <Handle
+          key={handle.id}
+          id={handle.id}
+          type="source"
+          position={handle.position}
+          className={`${styles.connectionHandle} nodrag nopan nowheel`}
+          data-side={handle.id}
+          data-visible={selected ? "true" : "false"}
+          style={CONNECTION_HANDLE_STYLE}
+          isConnectableStart
+          isConnectableEnd
+          aria-label={`${handle.id} connection handle`}
+        />
+      ))}
     </div>
   );
 }
@@ -110,9 +144,7 @@ export function CanvasNodeFrame({
         minWidth={minWidth}
         minHeight={minHeight}
       />
-      {connectionHandleLayer ? (
-        <ConnectionHandleLayer>{connectionHandleLayer}</ConnectionHandleLayer>
-      ) : null}
+      {connectionHandleLayer}
       {toolbar ? <NodeToolbarSlot>{toolbar}</NodeToolbarSlot> : null}
       {contextMenu ? (
         <NodeContextMenuSlot>{contextMenu}</NodeContextMenuSlot>

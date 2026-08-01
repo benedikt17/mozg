@@ -1,7 +1,12 @@
-import type { Node } from "@xyflow/react";
+import type { Edge, Node } from "@xyflow/react";
 import {
-  parseCanvasDocumentV1,
-  type CanvasDocumentV1,
+  parseCanvasDocumentV2,
+  type CanvasDocument,
+  type CanvasDocumentV2,
+  type CanvasEdgeArrows,
+  type CanvasEdgeRouting,
+  type CanvasEdgeV2,
+  type CanvasHandleSide,
   type CanvasImageNode,
   type CanvasNode,
   type CanvasPoint,
@@ -22,10 +27,12 @@ import type {
 } from "@/lib/canvas/local-canvas-repository";
 import type { ObjectUrlRegistry } from "@/lib/canvas/canvas-image-ingestion";
 import type { CanvasTaskBridge } from "@/lib/canvas/canvas-task-bridge";
+import { canvasArrowsToRuntimeMarkers } from "@/lib/canvas/canvas-edge-markers";
 
 export const CANVAS_IMAGE_NODE_TYPE = "canvasImage";
 export const CANVAS_TEXT_NODE_TYPE = "canvasText";
 export const CANVAS_TASK_NODE_TYPE = "canvasTask";
+export const CANVAS_EDGE_TYPE = "canvasEdge";
 const MAX_INITIAL_WIDTH = 640;
 const MAX_INITIAL_HEIGHT = 480;
 const MIN_INITIAL_WIDTH = 160;
@@ -74,6 +81,29 @@ export type CanvasTaskFlowNode = Node<
 export type CanvasFlowNode =
   CanvasImageFlowNode | CanvasTextFlowNode | CanvasTaskFlowNode;
 
+export type CanvasEdgeFlowData = {
+  routing: CanvasEdgeRouting;
+  arrows: CanvasEdgeArrows;
+  onUpdate?: (
+    edgeId: string,
+    update: Pick<CanvasEdgeV2, "routing" | "arrows">,
+  ) => void;
+};
+
+export type CanvasEdgeFlow = Edge<CanvasEdgeFlowData, typeof CANVAS_EDGE_TYPE>;
+
+export function updateCanvasEdgeFlowRuntime(
+  edge: CanvasEdgeFlow,
+  update: Pick<CanvasEdgeFlowData, "routing" | "arrows">,
+): CanvasEdgeFlow {
+  const markers = canvasArrowsToRuntimeMarkers(update.arrows);
+  return {
+    ...edge,
+    ...markers,
+    data: { ...edge.data, ...update },
+  };
+}
+
 export type CanvasImageAdapterDependencies = {
   assetRepository: CanvasAssetRepository;
   objectUrls: ObjectUrlRegistry;
@@ -97,7 +127,7 @@ export type RestoreCanvasImageResult = {
 };
 
 export type CanvasDocumentEditor = {
-  document: CanvasDocumentV1;
+  document: CanvasDocumentV2;
   nodes: CanvasImageFlowNode[];
 };
 
@@ -178,7 +208,7 @@ function imageNodeForCanonical(
 }
 
 export function canvasDocumentToImageNodes(
-  document: CanvasDocumentV1,
+  document: CanvasDocument,
 ): CanvasImageFlowNode[] {
   return document.nodes
     .filter((node): node is CanvasImageNode => node.kind === "image")
@@ -262,7 +292,7 @@ export function createCanvasTaskFlowNode(input: {
 }
 
 export function canvasDocumentToTextNodes(
-  document: CanvasDocumentV1,
+  document: CanvasDocument,
 ): CanvasTextFlowNode[] {
   return document.nodes
     .filter((node): node is CanvasTextNode => node.kind === "text")
@@ -278,7 +308,7 @@ export function canvasDocumentToTextNodes(
 }
 
 export function canvasDocumentToTaskNodes(
-  document: CanvasDocumentV1,
+  document: CanvasDocument,
   options: {
     taskBridge?: CanvasTaskBridge;
     taskWorkspaceId?: string;
@@ -306,29 +336,30 @@ export function canvasDocumentToTaskNodes(
 }
 
 export function imageNodesToCanvasDocument(
-  source: CanvasDocumentV1,
+  source: CanvasDocument,
   nodes: readonly CanvasImageFlowNode[],
-): CanvasDocumentV1 {
+): CanvasDocumentV2 {
+  const canonical = parseCanvasDocumentV2(source);
   const byId = new Map(nodes.map((node) => [node.id, node]));
-  const nextNodes: CanvasNode[] = source.nodes.map((canonical) => {
-    if (canonical.kind !== "image") return { ...canonical } as CanvasNode;
-    const runtime = byId.get(canonical.id);
+  const nextNodes: CanvasNode[] = canonical.nodes.map((node) => {
+    if (node.kind !== "image") return { ...node } as CanvasNode;
+    const runtime = byId.get(node.id);
     if (!runtime)
       return {
-        ...canonical,
-        position: { ...canonical.position },
-        size: { ...canonical.size },
+        ...node,
+        position: { ...node.position },
+        size: { ...node.size },
       };
     return {
-      ...canonical,
+      ...node,
       position: { ...runtime.position },
       size: nodeSize(runtime),
     };
   });
-  return parseCanvasDocumentV1({
-    schemaVersion: source.schemaVersion,
+  return parseCanvasDocumentV2({
+    schemaVersion: canonical.schemaVersion,
     nodes: nextNodes,
-    edges: source.edges.map((edge) => ({ ...edge })),
+    edges: canonical.edges.map((edge) => ({ ...edge })),
   });
 }
 
@@ -343,41 +374,142 @@ function runtimeNodeSize(node: CanvasFlowNode): CanvasSize {
 }
 
 export function runtimeNodesToCanvasDocument(
-  source: CanvasDocumentV1,
+  source: CanvasDocument,
   nodes: readonly CanvasFlowNode[],
-): CanvasDocumentV1 {
+): CanvasDocumentV2 {
+  const canonical = parseCanvasDocumentV2(source);
   const byId = new Map(nodes.map((node) => [node.id, node]));
-  const nextNodes: CanvasNode[] = source.nodes.map((canonical) => {
-    const runtime = byId.get(canonical.id);
-    if (!runtime) return { ...canonical } as CanvasNode;
-    if (canonical.kind === "image" && runtime.type === CANVAS_IMAGE_NODE_TYPE) {
+  const nextNodes: CanvasNode[] = canonical.nodes.map((node) => {
+    const runtime = byId.get(node.id);
+    if (!runtime) return { ...node } as CanvasNode;
+    if (node.kind === "image" && runtime.type === CANVAS_IMAGE_NODE_TYPE) {
       return {
-        ...canonical,
+        ...node,
         position: { ...runtime.position },
         size: runtimeNodeSize(runtime),
       };
     }
-    if (canonical.kind === "text" && runtime.type === CANVAS_TEXT_NODE_TYPE) {
+    if (node.kind === "text" && runtime.type === CANVAS_TEXT_NODE_TYPE) {
       return {
-        ...canonical,
+        ...node,
         markdown: runtime.data.markdown,
         position: { ...runtime.position },
         size: runtimeNodeSize(runtime),
       };
     }
-    if (canonical.kind === "task" && runtime.type === CANVAS_TASK_NODE_TYPE) {
+    if (node.kind === "task" && runtime.type === CANVAS_TASK_NODE_TYPE) {
       return {
-        ...canonical,
+        ...node,
         position: { ...runtime.position },
         size: runtimeNodeSize(runtime),
       };
     }
-    return { ...canonical } as CanvasNode;
+    return { ...node } as CanvasNode;
   });
-  return parseCanvasDocumentV1({
-    schemaVersion: source.schemaVersion,
+  return parseCanvasDocumentV2({
+    schemaVersion: canonical.schemaVersion,
     nodes: nextNodes,
-    edges: source.edges.map((edge) => ({ ...edge })),
+    edges: canonical.edges.map((edge) => ({ ...edge })),
+  });
+}
+
+export function createCanvasEdgeId(
+  idGenerator: () => string = () =>
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+): string {
+  return `edge-${idGenerator()}`;
+}
+
+function isCanvasHandleSide(
+  value: string | null | undefined,
+): value is CanvasHandleSide {
+  return (
+    value === "top" ||
+    value === "right" ||
+    value === "bottom" ||
+    value === "left"
+  );
+}
+
+export function createCanvasEdgeFromConnection(input: {
+  id?: string;
+  source: string | null;
+  sourceHandle: string | null;
+  target: string | null;
+  targetHandle: string | null;
+}): CanvasEdgeV2 | null {
+  if (
+    !input.source ||
+    !input.target ||
+    input.source === input.target ||
+    !isCanvasHandleSide(input.sourceHandle) ||
+    !isCanvasHandleSide(input.targetHandle)
+  )
+    return null;
+  return {
+    id: input.id ?? createCanvasEdgeId(),
+    sourceNodeId: input.source,
+    sourceHandle: input.sourceHandle,
+    targetNodeId: input.target,
+    targetHandle: input.targetHandle,
+    routing: "curved",
+    arrows: "none",
+  };
+}
+
+export function canvasEdgeToFlowEdge(
+  edge: CanvasEdgeV2,
+  onUpdate?: CanvasEdgeFlowData["onUpdate"],
+): CanvasEdgeFlow {
+  const markers = canvasArrowsToRuntimeMarkers(edge.arrows);
+  return {
+    id: edge.id,
+    type: CANVAS_EDGE_TYPE,
+    source: edge.sourceNodeId,
+    sourceHandle: edge.sourceHandle,
+    target: edge.targetNodeId,
+    targetHandle: edge.targetHandle,
+    markerStart: markers.markerStart,
+    markerEnd: markers.markerEnd,
+    data: {
+      routing: edge.routing,
+      arrows: edge.arrows,
+      onUpdate,
+    },
+  };
+}
+
+export function canvasDocumentToEdges(
+  document: CanvasDocumentV2,
+  onUpdate?: CanvasEdgeFlowData["onUpdate"],
+): CanvasEdgeFlow[] {
+  return document.edges.map((edge) => canvasEdgeToFlowEdge(edge, onUpdate));
+}
+
+export function runtimeEdgesToCanvasDocument(
+  source: CanvasDocumentV2,
+  edges: readonly CanvasEdgeFlow[],
+): CanvasDocumentV2 {
+  const byId = new Map(edges.map((edge) => [edge.id, edge]));
+  return parseCanvasDocumentV2({
+    ...source,
+    edges: source.edges.map((canonical) => {
+      const runtime = byId.get(canonical.id);
+      if (
+        !runtime ||
+        !isCanvasHandleSide(runtime.sourceHandle) ||
+        !isCanvasHandleSide(runtime.targetHandle)
+      )
+        return { ...canonical };
+      return {
+        ...canonical,
+        sourceNodeId: runtime.source,
+        sourceHandle: runtime.sourceHandle,
+        targetNodeId: runtime.target,
+        targetHandle: runtime.targetHandle,
+      };
+    }),
   });
 }
 
@@ -423,7 +555,7 @@ export async function ingestCanvasImageTransferToNodes(
 }
 
 export async function restoreCanvasImageNodes(
-  document: CanvasDocumentV1,
+  document: CanvasDocument,
   dependencies: CanvasImageAdapterDependencies,
   options: RestoreCanvasImageOptions = {},
 ): Promise<RestoreCanvasImageResult> {

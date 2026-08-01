@@ -3,8 +3,10 @@ import {
   CANVAS_DOCUMENT_SCHEMA_VERSION,
   CANVAS_VIEWPORT_LIMITS,
   createEmptyCanvasDocumentV1,
+  parseCanvasDocument,
   parseCanvasDocumentV1,
-  type CanvasDocumentV1,
+  type CanvasDocument,
+  type CanvasDocumentV2,
   type CanvasViewport,
 } from "@/lib/canvas/canvas-document";
 import {
@@ -58,7 +60,7 @@ export type CanvasSummary = {
 };
 export type LoadedCanvas = CanvasSummary & {
   schemaVersion: typeof CANVAS_DOCUMENT_SCHEMA_VERSION;
-  document: CanvasDocumentV1;
+  document: CanvasDocument;
 };
 export type CanvasSaveResult =
   | { status: "saved"; revision: number }
@@ -78,7 +80,7 @@ export interface CanvasRepository {
     canvasId: string;
     expectedRevision: number;
     title: string;
-    document: CanvasDocumentV1;
+    document: CanvasDocument;
   }): Promise<CanvasSaveResult>;
   softDeleteCanvas(input: {
     workspaceId: string;
@@ -375,9 +377,13 @@ function storedCanvas(value: unknown): LoadedCanvas {
       "invalid-stored-record",
       "Stored Canvas schema version is invalid.",
     );
-  let document: CanvasDocumentV1;
+  let document: CanvasDocument;
   try {
-    document = parseCanvasDocumentV1(value.document);
+    document =
+      isRecord(value.document) &&
+      value.document.schemaVersion === CANVAS_DOCUMENT_SCHEMA_VERSION
+        ? parseCanvasDocumentV1(value.document)
+        : parseCanvasDocument(value.document);
   } catch (cause) {
     throw new CanvasRepositoryError(
       "invalid-stored-record",
@@ -398,9 +404,9 @@ function storedCanvas(value: unknown): LoadedCanvas {
       value.deletedAt === null ? null : timestamp(value.deletedAt, "deletedAt"),
   };
 }
-function inputDocument(value: unknown): CanvasDocumentV1 {
+function inputDocument(value: unknown): CanvasDocumentV2 {
   try {
-    return parseCanvasDocumentV1(value);
+    return parseCanvasDocument(value);
   } catch (cause) {
     throw new CanvasRepositoryError(
       "invalid-input",
@@ -670,7 +676,7 @@ export class IndexedDbCanvasRepository
     canvasId: string;
     expectedRevision: number;
     title: string;
-    document: CanvasDocumentV1;
+    document: CanvasDocument;
   }): Promise<CanvasSaveResult> {
     const workspaceId = identifier(input.workspaceId, "workspaceId");
     identifier(input.canvasId, "canvasId");

@@ -1,4 +1,5 @@
 export const CANVAS_DOCUMENT_SCHEMA_VERSION = 1 as const;
+export const CANVAS_DOCUMENT_V2_SCHEMA_VERSION = 2 as const;
 
 export const CANVAS_DOCUMENT_LIMITS = {
   maxNodes: 5_000,
@@ -67,6 +68,22 @@ export type CanvasEdge = {
   targetNodeId: string;
 };
 
+export type CanvasHandleSide = "top" | "right" | "bottom" | "left";
+
+export type CanvasEdgeRouting = "orthogonal" | "curved" | "straight";
+
+export type CanvasEdgeArrows = "none" | "start" | "end" | "both";
+
+export type CanvasEdgeV2 = {
+  id: string;
+  sourceNodeId: string;
+  sourceHandle: CanvasHandleSide;
+  targetNodeId: string;
+  targetHandle: CanvasHandleSide;
+  routing: CanvasEdgeRouting;
+  arrows: CanvasEdgeArrows;
+};
+
 export type CanvasViewport = {
   x: number;
   y: number;
@@ -79,6 +96,14 @@ export type CanvasDocumentV1 = {
   edges: CanvasEdge[];
 };
 
+export type CanvasDocumentV2 = {
+  schemaVersion: typeof CANVAS_DOCUMENT_V2_SCHEMA_VERSION;
+  nodes: CanvasNode[];
+  edges: CanvasEdgeV2[];
+};
+
+export type CanvasDocument = CanvasDocumentV1 | CanvasDocumentV2;
+
 export type CanvasDocumentValidationIssue = {
   code: string;
   path: string;
@@ -87,6 +112,10 @@ export type CanvasDocumentValidationIssue = {
 
 export type CanvasDocumentValidationResult =
   | { ok: true; document: CanvasDocumentV1 }
+  | { ok: false; errors: CanvasDocumentValidationIssue[] };
+
+export type CanvasDocumentV2ValidationResult =
+  | { ok: true; document: CanvasDocumentV2 }
   | { ok: false; errors: CanvasDocumentValidationIssue[] };
 
 export class CanvasDocumentValidationError extends Error {
@@ -113,10 +142,27 @@ export function createEmptyCanvasDocumentV1(): CanvasDocumentV1 {
   };
 }
 
+export function createEmptyCanvasDocumentV2(): CanvasDocumentV2 {
+  return {
+    schemaVersion: CANVAS_DOCUMENT_V2_SCHEMA_VERSION,
+    nodes: [],
+    edges: [],
+  };
+}
+
 type UnknownRecord = Record<string, unknown>;
 
 const BASE_NODE_KEYS = ["id", "kind", "position", "size", "zIndex"];
 const EDGE_KEYS = ["id", "sourceNodeId", "targetNodeId"];
+const EDGE_V2_KEYS = [
+  "id",
+  "sourceNodeId",
+  "sourceHandle",
+  "targetNodeId",
+  "targetHandle",
+  "routing",
+  "arrows",
+];
 const POINT_KEYS = ["x", "y"];
 const SIZE_KEYS = ["width", "height"];
 
@@ -356,6 +402,116 @@ function parseEdge(value: unknown, path: string): CanvasEdge {
   };
 }
 
+const HANDLE_SIDES = ["top", "right", "bottom", "left"] as const;
+const EDGE_ROUTINGS = ["orthogonal", "curved", "straight"] as const;
+const EDGE_ARROWS = ["none", "start", "end", "both"] as const;
+
+function enumValue<T extends string>(
+  value: unknown,
+  values: readonly T[],
+  path: string,
+  label: string,
+): T {
+  if (typeof value !== "string" || !values.includes(value as T)) {
+    fail("invalid_enum", path, `Invalid Canvas ${label}`);
+  }
+  return value as T;
+}
+
+function parseEdgeV2(value: unknown, path: string): CanvasEdgeV2 {
+  const edge = requireRecord(value, path);
+  requireExactKeys(edge, EDGE_V2_KEYS, [], path);
+  return {
+    id: requireIdentifier(edge.id, `${path}.id`),
+    sourceNodeId: requireIdentifier(edge.sourceNodeId, `${path}.sourceNodeId`),
+    sourceHandle: enumValue(
+      edge.sourceHandle,
+      HANDLE_SIDES,
+      `${path}.sourceHandle`,
+      "handle side",
+    ),
+    targetNodeId: requireIdentifier(edge.targetNodeId, `${path}.targetNodeId`),
+    targetHandle: enumValue(
+      edge.targetHandle,
+      HANDLE_SIDES,
+      `${path}.targetHandle`,
+      "handle side",
+    ),
+    routing: enumValue(
+      edge.routing,
+      EDGE_ROUTINGS,
+      `${path}.routing`,
+      "edge routing",
+    ),
+    arrows: enumValue(
+      edge.arrows,
+      EDGE_ARROWS,
+      `${path}.arrows`,
+      "arrow placement",
+    ),
+  };
+}
+
+function validateNodesAndEdges<T extends CanvasEdge>(
+  nodes: CanvasNode[],
+  edges: T[],
+): void {
+  const nodeIds = new Set<string>();
+  for (const [index, node] of nodes.entries()) {
+    if (nodeIds.has(node.id)) {
+      fail(
+        "duplicate_node_id",
+        `document.nodes[${index}].id`,
+        "Canvas node IDs must be unique",
+      );
+    }
+    nodeIds.add(node.id);
+  }
+
+  const edgeIds = new Set<string>();
+  const edgeEndpoints = new Set<string>();
+  for (const [index, edge] of edges.entries()) {
+    if (edgeIds.has(edge.id)) {
+      fail(
+        "duplicate_edge_id",
+        `document.edges[${index}].id`,
+        "Canvas edge IDs must be unique",
+      );
+    }
+    if (edge.sourceNodeId === edge.targetNodeId) {
+      fail(
+        "self_edge",
+        `document.edges[${index}]`,
+        "Canvas edges cannot target the same node",
+      );
+    }
+    const endpointKey = `${edge.sourceNodeId}\u0000${edge.targetNodeId}`;
+    if (edgeEndpoints.has(endpointKey)) {
+      fail(
+        "duplicate_edge_endpoints",
+        `document.edges[${index}]`,
+        "Canvas edge endpoints must be unique",
+      );
+    }
+    if (!nodeIds.has(edge.sourceNodeId)) {
+      fail(
+        "dangling_edge",
+        `document.edges[${index}].sourceNodeId`,
+        "Edge source node does not exist",
+      );
+    }
+    if (!nodeIds.has(edge.targetNodeId)) {
+      fail(
+        "dangling_edge",
+        `document.edges[${index}].targetNodeId`,
+        "Edge target node does not exist",
+      );
+    }
+    edgeIds.add(edge.id);
+    edgeEndpoints.add(endpointKey);
+  }
+}
+
 export function parseCanvasDocumentV1(input: unknown): CanvasDocumentV1 {
   const document = requireRecord(input, "document");
   requireExactKeys(
@@ -452,6 +608,68 @@ export function parseCanvasDocumentV1(input: unknown): CanvasDocumentV1 {
   };
 }
 
+export function migrateCanvasDocumentV1ToV2(input: unknown): CanvasDocumentV2 {
+  const source = parseCanvasDocumentV1(input);
+  return {
+    schemaVersion: CANVAS_DOCUMENT_V2_SCHEMA_VERSION,
+    nodes: source.nodes.map((node) => ({ ...node })),
+    edges: source.edges.map((edge) => ({
+      id: edge.id,
+      sourceNodeId: edge.sourceNodeId,
+      sourceHandle: "right",
+      targetNodeId: edge.targetNodeId,
+      targetHandle: "left",
+      routing: "curved",
+      arrows: "none",
+    })),
+  };
+}
+
+export function parseCanvasDocumentV2(input: unknown): CanvasDocumentV2 {
+  const document = requireRecord(input, "document");
+  const schemaVersion = document.schemaVersion;
+  if (schemaVersion === CANVAS_DOCUMENT_SCHEMA_VERSION) {
+    return migrateCanvasDocumentV1ToV2(input);
+  }
+  requireExactKeys(
+    document,
+    ["schemaVersion", "nodes", "edges"],
+    [],
+    "document",
+  );
+  if (schemaVersion !== CANVAS_DOCUMENT_V2_SCHEMA_VERSION) {
+    fail(
+      "unsupported_schema_version",
+      "document.schemaVersion",
+      "Only CanvasDocumentV1 and CanvasDocumentV2 are supported",
+    );
+  }
+  if (!Array.isArray(document.nodes)) {
+    fail("array_required", "document.nodes", "nodes must be an array");
+  }
+  if (!Array.isArray(document.edges)) {
+    fail("array_required", "document.edges", "edges must be an array");
+  }
+  if (document.nodes.length > CANVAS_DOCUMENT_LIMITS.maxNodes) {
+    fail("node_limit_exceeded", "document.nodes", "Canvas node limit exceeded");
+  }
+  if (document.edges.length > CANVAS_DOCUMENT_LIMITS.maxEdges) {
+    fail("edge_limit_exceeded", "document.edges", "Canvas edge limit exceeded");
+  }
+  const nodes = document.nodes.map((node, index) =>
+    parseNode(node, `document.nodes[${index}]`),
+  );
+  const edges = document.edges.map((edge, index) =>
+    parseEdgeV2(edge, `document.edges[${index}]`),
+  );
+  validateNodesAndEdges(nodes, edges);
+  return {
+    schemaVersion: CANVAS_DOCUMENT_V2_SCHEMA_VERSION,
+    nodes,
+    edges,
+  };
+}
+
 export function validateCanvasDocumentV1(
   input: unknown,
 ): CanvasDocumentValidationResult {
@@ -465,5 +683,18 @@ export function validateCanvasDocumentV1(
   }
 }
 
-export const parseCanvasDocument = parseCanvasDocumentV1;
-export const validateCanvasDocument = validateCanvasDocumentV1;
+export function validateCanvasDocumentV2(
+  input: unknown,
+): CanvasDocumentV2ValidationResult {
+  try {
+    return { ok: true, document: parseCanvasDocumentV2(input) };
+  } catch (error) {
+    if (error instanceof CanvasDocumentValidationError) {
+      return { ok: false, errors: error.issues };
+    }
+    throw error;
+  }
+}
+
+export const parseCanvasDocument = parseCanvasDocumentV2;
+export const validateCanvasDocument = validateCanvasDocumentV2;

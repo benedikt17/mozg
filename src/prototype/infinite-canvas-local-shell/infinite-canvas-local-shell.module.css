@@ -137,17 +137,18 @@
 }
 .nodeBody {
   position: absolute;
-  inset: 8px;
+  inset: 0;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 .selectionLayer {
   position: absolute;
-  inset: -2px;
+  inset: 0;
+  box-sizing: border-box;
   z-index: 4;
   border: 2px solid #0f766e;
-  border-radius: 12px;
+  border-radius: 0;
   opacity: 0;
   pointer-events: none;
 }
@@ -165,6 +166,58 @@
   inset: 0;
   pointer-events: none;
 }
+.connectionHandle {
+  box-sizing: border-box;
+  width: var(--connection-handle-diameter);
+  height: var(--connection-handle-diameter);
+  border: 2px solid #0f766e;
+  border-radius: 999px;
+  background: transparent;
+  opacity: 0;
+  pointer-events: all;
+  transform: translate(-50%, -50%);
+  transition:
+    opacity 120ms ease,
+    background-color 120ms ease;
+}
+.connectionHandle[data-visible="true"],
+.nodeFrame:hover .connectionHandle {
+  opacity: 1;
+}
+.connectionHandle[data-side="top"] {
+  left: 50%;
+  right: auto;
+  top: calc(-1 * var(--connection-handle-center-offset));
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+.connectionHandle[data-side="right"] {
+  left: calc(100% + var(--connection-handle-center-offset));
+  right: auto;
+  top: 50%;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+.connectionHandle[data-side="bottom"] {
+  left: 50%;
+  right: auto;
+  top: calc(100% + var(--connection-handle-center-offset));
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+.connectionHandle[data-side="left"] {
+  left: calc(-1 * var(--connection-handle-center-offset));
+  right: auto;
+  top: 50%;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+.connectionHandle:hover,
+.connectionHandle:focus-visible,
+.connectionHandle:global(.connecting),
+.connectionHandle:global(.valid) {
+  background: #0f766e;
+}
 .nodeToolbarSlot {
   top: -34px;
   left: 0;
@@ -175,7 +228,7 @@
 }
 .imageNodeFrame {
   --node-visual-border: 0;
-  --node-visual-radius: 10px;
+  --node-visual-radius: 0;
   --node-visual-background: transparent;
   --node-visual-shadow: none;
 }
@@ -188,23 +241,14 @@
 .image {
   display: block;
   width: 100%;
-  height: calc(100% - 24px);
+  height: 100%;
   object-fit: contain;
   background: transparent;
-}
-.caption {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  height: 24px;
-  align-items: center;
-  padding: 0 8px;
-  color: #78716c;
-  font-size: 10px;
+  border-radius: 0;
 }
 .textNodeFrame {
   --node-visual-border: 1px solid rgba(68, 64, 60, 0.25);
-  --node-visual-radius: 10px;
+  --node-visual-radius: 0;
   --node-visual-background: #fffdf8;
   --node-visual-shadow: 0 8px 24px rgba(28, 25, 23, 0.1);
 }
@@ -265,7 +309,7 @@
 }
 .taskNodeFrame {
   --node-visual-border: 1px solid rgba(15, 118, 110, 0.32);
-  --node-visual-radius: 12px;
+  --node-visual-radius: 0;
   --node-visual-background: linear-gradient(145deg, #ffffff, #f0fdfa);
   --node-visual-shadow: 0 8px 24px rgba(28, 25, 23, 0.12);
 }
@@ -496,6 +540,100 @@
   background: rgba(255, 255, 255, 0.88);
   color: #78716c;
   font-size: 11px;
+  pointer-events: none;
+}
+.canvasEdge {
+  stroke: #78716c;
+  stroke-width: 2;
+}
+.selectedEdge {
+  stroke: #0f766e;
+  stroke-width: 3;
+}
+.edgeToolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 40px;
+  padding: 4px;
+  border: 1px solid #cfcac4;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8px 24px rgba(28, 25, 23, 0.14);
+  color: #57534e;
+  font-size: 16px;
+  pointer-events: all;
+  white-space: nowrap;
+}
+.edgeToolButton {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #57534e;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+.edgeToolButton:hover,
+.edgeToolButton:focus-visible,
+.edgeToolButton[aria-pressed="true"] {
+  outline: none;
+  background: #e6fffb;
+  color: #0f766e;
+}
+.edgeToolbar > label {
+  display: none;
+}
+.edgeLineControl {
+  position: relative;
+}
+.edgeLinePopover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 12;
+  display: grid;
+  gap: 3px;
+  min-width: 150px;
+  padding: 4px;
+  border: 1px solid #d6d3d1;
+  border-radius: 6px;
+  background: white;
+  box-shadow: 0 8px 24px rgba(28, 25, 23, 0.16);
+  pointer-events: all;
+}
+.edgeLineOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 7px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #57534e;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.edgeLineOption:hover,
+.edgeLineOption:focus-visible,
+.edgeLineOption[aria-checked="true"] {
+  outline: none;
+  background: #f0fdfa;
+  color: #0f766e;
+}
+.connectionPreview {
+  stroke: #0f766e;
+  stroke-width: 2;
+  opacity: 0.72;
   pointer-events: none;
 }
 .dropActive {

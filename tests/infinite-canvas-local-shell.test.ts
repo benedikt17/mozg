@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  parseCanvasDocumentV2,
   parseCanvasDocumentV1,
   type CanvasDocumentV1,
 } from "@/lib/canvas/canvas-document";
@@ -377,7 +378,7 @@ describe("production-shaped local Canvas shell", () => {
     );
     expect(JSON.stringify(serialized)).not.toContain("objectUrl");
     expect(JSON.stringify(serialized)).not.toContain("blob:runtime-only");
-    expect(parseCanvasDocumentV1(serialized)).toEqual(serialized);
+    expect(parseCanvasDocumentV2(serialized)).toEqual(serialized);
   });
 
   it("updates canonical position and size after move and resize", () => {
@@ -737,7 +738,7 @@ describe("production-shaped local Canvas shell", () => {
     runtime.position = { x: 99, y: 101 };
     const next = imageNodesToCanvasDocument(source, [runtime]);
     expect(next.nodes[0]).toEqual(source.nodes[0]);
-    expect(next.edges).toEqual(source.edges);
+    expect(next.edges).toEqual(parseCanvasDocumentV2(source).edges);
     expect(next.nodes[1]?.position).toEqual({ x: 99, y: 101 });
   });
 

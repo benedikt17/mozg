@@ -14,6 +14,12 @@ describe("CanvasNodeFrame composition", () => {
     expect(frame).toContain("function SelectionLayer");
     expect(frame).toContain("function ResizeLayer");
     expect(frame).toContain("function ConnectionHandleLayer");
+    expect(frame).toContain("id={handle.id}");
+    expect(frame).toContain('type="source"');
+    expect(frame).toContain("Position.Top");
+    expect(frame).toContain("Position.Right");
+    expect(frame).toContain("Position.Bottom");
+    expect(frame).toContain("Position.Left");
     expect(frame).toContain("function NodeToolbarSlot");
     expect(frame).toContain("function NodeContextMenuSlot");
     expect(frame).toContain('data-canvas-node-frame="true"');
@@ -50,14 +56,16 @@ describe("CanvasNodeFrame composition", () => {
   });
 
   it("keeps domain body styles separate from frame layout styles", () => {
+    const shell = source(
+      "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
+    );
     const styles = source(
       "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css",
     );
 
     expect(styles).toContain(".nodeFrame");
     expect(styles).toContain(".nodeBody");
-    expect(styles).toContain("inset: 8px");
-    expect(styles).toContain("inset: -2px");
+    expect(styles).toContain("box-sizing: border-box;");
     expect(styles).toContain("--node-visual-border");
     expect(styles).toContain(".imageNodeFrame .nodeBody");
     expect(styles).toMatch(
@@ -69,6 +77,39 @@ describe("CanvasNodeFrame composition", () => {
     expect(styles).toContain(".imageNodeFrame");
     expect(styles).toContain(".textNodeFrame");
     expect(styles).toContain(".taskNodeFrame");
+    expect(styles).toContain("--node-visual-radius: 0;");
+    expect(styles).toContain('.connectionHandle[data-side="top"]');
+    expect(styles).toContain('.connectionHandle[data-side="right"]');
+    expect(styles).toContain('.connectionHandle[data-side="bottom"]');
+    expect(styles).toContain('.connectionHandle[data-side="left"]');
+    expect(styles).toContain(
+      "top: calc(-1 * var(--connection-handle-center-offset));",
+    );
+    expect(styles).toContain(
+      "left: calc(100% + var(--connection-handle-center-offset));",
+    );
+    expect(styles).toContain(
+      "top: calc(100% + var(--connection-handle-center-offset));",
+    );
+    expect(styles).toContain(
+      "left: calc(-1 * var(--connection-handle-center-offset));",
+    );
+    expect(styles).toContain("right: auto;");
+    expect(styles).toContain("bottom: auto;");
+    expect(styles).toContain("transform: translate(-50%, -50%);");
+    expect(styles).not.toContain("transform: scale");
+    expect(shell).not.toContain("styles.caption");
+    expect(shell).toContain("EdgeToolbar");
+    expect(shell).toContain("connectionLineComponent={CanvasConnectionLine}");
+    expect(shell).toContain("markerStart={markerStart}");
+    expect(shell).toContain("markerEnd={markerEnd}");
+    expect(shell).toContain("canvasNodePerimeterAnchor");
+    expect(shell).not.toContain("canvasEdgePerimeterAnchors");
+    expect(shell).not.toContain("CANVAS_CONNECTION_HANDLE_EDGE_OFFSET");
+    expect(shell).toContain("findShortestCanvasHandlePair");
+    expect(shell).toContain("recomputeCanvasRuntimeEdgeHandles");
+    expect(shell).toContain("controller.setRuntimeEdges");
+    expect(styles).toContain("--connection-handle-center-offset");
     expect(styles).toContain(".taskNodeContent");
     expect(styles).toContain(".textNodeContent");
     expect(styles).not.toContain("overflow-y: auto");

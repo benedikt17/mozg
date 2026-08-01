@@ -1,14 +1,18 @@
 import {
-  createEmptyCanvasDocumentV1,
-  parseCanvasDocumentV1,
-  type CanvasDocumentV1,
+  createEmptyCanvasDocumentV2,
+  parseCanvasDocumentV2,
+  type CanvasDocument,
+  type CanvasDocumentV2,
+  type CanvasEdgeV2,
   type CanvasViewport,
   type CanvasTextNode,
 } from "@/lib/canvas/canvas-document";
 import {
   imageNodesToCanvasDocument,
+  runtimeEdgesToCanvasDocument,
   runtimeNodesToCanvasDocument,
   type CanvasFlowNode,
+  type CanvasEdgeFlow,
   type CanvasImageFlowNode,
   type CanvasTaskFlowNode,
   type CanvasTextFlowNode,
@@ -28,7 +32,7 @@ export type LocalCanvasShellState = {
   canvasId: string | null;
   title: string;
   revision: number;
-  document: CanvasDocumentV1;
+  document: CanvasDocumentV2;
   viewport: CanvasViewport;
   status: LocalCanvasShellStatus;
   error: string | null;
@@ -62,7 +66,7 @@ export function emptyShellState(): LocalCanvasShellState {
     canvasId: null,
     title: "",
     revision: 1,
-    document: createEmptyCanvasDocumentV1(),
+    document: createEmptyCanvasDocumentV2(),
     viewport: { ...DEFAULT_CANVAS_VIEWPORT },
     status: "loading",
     error: null,
@@ -126,7 +130,7 @@ export class LocalCanvasShellController {
     canvas: LoadedCanvas,
     viewState: Awaited<ReturnType<CanvasViewStateRepository["loadViewState"]>>,
   ): LocalCanvasShellState {
-    const document = parseCanvasDocumentV1(canvas.document);
+    const document = parseCanvasDocumentV2(canvas.document);
     this.stateValue = {
       canvasId: canvas.id,
       title: canvas.title,
@@ -169,6 +173,17 @@ export class LocalCanvasShellController {
     return this.state;
   }
 
+  setRuntimeEdges(edges: readonly CanvasEdgeFlow[]): LocalCanvasShellState {
+    if (!this.stateValue.canvasId) return this.state;
+    this.stateValue = {
+      ...this.stateValue,
+      document: runtimeEdgesToCanvasDocument(this.stateValue.document, edges),
+      status: "saving",
+      error: null,
+    };
+    return this.state;
+  }
+
   removeImageNodes(nodeIds: readonly string[]): LocalCanvasShellState {
     return this.removeCanvasNodes(nodeIds);
   }
@@ -178,10 +193,14 @@ export class LocalCanvasShellController {
     const removed = new Set(nodeIds);
     this.stateValue = {
       ...this.stateValue,
-      document: parseCanvasDocumentV1({
+      document: parseCanvasDocumentV2({
         ...this.stateValue.document,
         nodes: this.stateValue.document.nodes.filter(
           (node) => !removed.has(node.id),
+        ),
+        edges: this.stateValue.document.edges.filter(
+          (edge) =>
+            !removed.has(edge.sourceNodeId) && !removed.has(edge.targetNodeId),
         ),
       }),
       status: "saving",
@@ -217,7 +236,7 @@ export class LocalCanvasShellController {
     };
     this.stateValue = {
       ...this.stateValue,
-      document: parseCanvasDocumentV1({
+      document: parseCanvasDocumentV2({
         ...this.stateValue.document,
         nodes: [...this.stateValue.document.nodes, textNode],
       }),
@@ -257,7 +276,7 @@ export class LocalCanvasShellController {
     };
     this.stateValue = {
       ...this.stateValue,
-      document: parseCanvasDocumentV1({
+      document: parseCanvasDocumentV2({
         ...this.stateValue.document,
         nodes: [...this.stateValue.document.nodes, taskNode],
       }),
@@ -295,7 +314,7 @@ export class LocalCanvasShellController {
       }));
     this.stateValue = {
       ...this.stateValue,
-      document: parseCanvasDocumentV1({
+      document: parseCanvasDocumentV2({
         ...this.stateValue.document,
         nodes: [...this.stateValue.document.nodes, ...additions],
       }),
@@ -305,10 +324,68 @@ export class LocalCanvasShellController {
     return this.state;
   }
 
-  setDocument(document: CanvasDocumentV1): LocalCanvasShellState {
+  insertCanvasEdge(edge: CanvasEdgeV2): LocalCanvasShellState {
+    if (!this.stateValue.canvasId) return this.state;
+    if (
+      this.stateValue.document.edges.some((current) => current.id === edge.id)
+    )
+      return this.state;
     this.stateValue = {
       ...this.stateValue,
-      document: parseCanvasDocumentV1(document),
+      document: parseCanvasDocumentV2({
+        ...this.stateValue.document,
+        edges: [...this.stateValue.document.edges, edge],
+      }),
+      status: "saving",
+      error: null,
+    };
+    return this.state;
+  }
+
+  updateCanvasEdge(
+    edgeId: string,
+    update: Pick<CanvasEdgeV2, "routing" | "arrows">,
+  ): LocalCanvasShellState {
+    if (!this.stateValue.canvasId) return this.state;
+    const edge = this.stateValue.document.edges.find(
+      (current) => current.id === edgeId,
+    );
+    if (!edge) return this.state;
+    this.stateValue = {
+      ...this.stateValue,
+      document: parseCanvasDocumentV2({
+        ...this.stateValue.document,
+        edges: this.stateValue.document.edges.map((current) =>
+          current.id === edgeId ? { ...current, ...update } : current,
+        ),
+      }),
+      status: "saving",
+      error: null,
+    };
+    return this.state;
+  }
+
+  removeCanvasEdges(edgeIds: readonly string[]): LocalCanvasShellState {
+    if (edgeIds.length === 0) return this.state;
+    const removed = new Set(edgeIds);
+    this.stateValue = {
+      ...this.stateValue,
+      document: parseCanvasDocumentV2({
+        ...this.stateValue.document,
+        edges: this.stateValue.document.edges.filter(
+          (edge) => !removed.has(edge.id),
+        ),
+      }),
+      status: "saving",
+      error: null,
+    };
+    return this.state;
+  }
+
+  setDocument(document: CanvasDocument): LocalCanvasShellState {
+    this.stateValue = {
+      ...this.stateValue,
+      document: parseCanvasDocumentV2(document),
       status: "saving",
       error: null,
     };
@@ -330,7 +407,7 @@ export class LocalCanvasShellController {
         canvasId: current.canvasId,
         expectedRevision: current.revision,
         title: current.title,
-        document: parseCanvasDocumentV1(current.document),
+        document: parseCanvasDocumentV2(current.document),
       });
       if (result.status === "conflict") {
         this.stateValue = {
