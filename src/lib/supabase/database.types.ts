@@ -37,6 +37,7 @@ export type Database = {
       canvas_assets: {
         Row: {
           byte_size: number
+          canvas_id: string
           checksum: string | null
           created_at: string
           created_by: string
@@ -52,6 +53,7 @@ export type Database = {
         }
         Insert: {
           byte_size: number
+          canvas_id: string
           checksum?: string | null
           created_at?: string
           created_by: string
@@ -67,6 +69,7 @@ export type Database = {
         }
         Update: {
           byte_size?: number
+          canvas_id?: string
           checksum?: string | null
           created_at?: string
           created_by?: string
@@ -81,6 +84,13 @@ export type Database = {
           workspace_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "canvas_assets_canvas_workspace_fkey"
+            columns: ["workspace_id", "canvas_id"]
+            isOneToOne: false
+            referencedRelation: "canvases"
+            referencedColumns: ["workspace_id", "id"]
+          },
           {
             foreignKeyName: "canvas_assets_workspace_id_fkey"
             columns: ["workspace_id"]
@@ -417,6 +427,39 @@ export type Database = {
           deleted: boolean
         }[]
       }
+      delete_canvas_asset: {
+        Args: {
+          target_asset_id: string
+          target_canvas_id: string
+          target_workspace_id: string
+        }
+        Returns: {
+          deleted: boolean
+        }[]
+      }
+      finalize_canvas_asset: {
+        Args: {
+          target_asset_id: string
+          target_canvas_id: string
+          target_workspace_id: string
+        }
+        Returns: {
+          byte_size: number
+          canvas_id: string
+          checksum: string
+          created_at: string
+          created_by: string
+          deleted_at: string
+          height: number
+          id: string
+          mime_type: string
+          preview_storage_key: string
+          ready_at: string
+          storage_key: string
+          width: number
+          workspace_id: string
+        }[]
+      }
       has_workspace_role: {
         Args: { roles: string[]; target_workspace_id: string }
         Returns: boolean
@@ -435,6 +478,34 @@ export type Database = {
           schema_version: number
           title: string
           updated_at: string
+          workspace_id: string
+        }[]
+      }
+      reserve_canvas_asset: {
+        Args: {
+          target_asset_id: string
+          target_byte_size: number
+          target_canvas_id: string
+          target_checksum?: string
+          target_height: number
+          target_mime_type: string
+          target_width: number
+          target_workspace_id: string
+        }
+        Returns: {
+          byte_size: number
+          canvas_id: string
+          checksum: string
+          created_at: string
+          created_by: string
+          deleted_at: string
+          height: number
+          id: string
+          mime_type: string
+          preview_storage_key: string
+          ready_at: string
+          storage_key: string
+          width: number
           workspace_id: string
         }[]
       }

@@ -235,11 +235,11 @@ nodes own only layout and `assetId`, never a Base64 string, Blob, data URL or bi
 The next schema checkpoint creates the following logical entities; SQL and migrations
 are intentionally out of scope for this document.
 
-| Entity               | Required fields                                                                                                                                                                  | Rules                                                                                                 |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `canvases`           | `id`, `workspace_id`, `title`, `schema_version`, `document jsonb`, `revision bigint`, `created_by`, `created_at`, `updated_at`, `deleted_at`                                     | One independent content revision per Canvas. `workspace_id` immutable. User delete sets `deleted_at`. |
-| `canvas_view_states` | `canvas_id`, `user_id`, `viewport_x`, `viewport_y`, `zoom`, `last_opened_at`, `updated_at`                                                                                       | Primary key `(canvas_id, user_id)`; personal data only.                                               |
-| `canvas_assets`      | `id`, `workspace_id`, `storage_key`, `preview_storage_key nullable`, `mime_type`, `byte_size`, `width`, `height`, `checksum`, `created_by`, `created_at`, `orphaned_at nullable` | Metadata for a private object; `workspace_id` immutable.                                              |
+| Entity               | Required fields                                                                                                                                                                                                   | Rules                                                                                                 |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `canvases`           | `id`, `workspace_id`, `title`, `schema_version`, `document jsonb`, `revision bigint`, `created_by`, `created_at`, `updated_at`, `deleted_at`                                                                      | One independent content revision per Canvas. `workspace_id` immutable. User delete sets `deleted_at`. |
+| `canvas_view_states` | `canvas_id`, `user_id`, `viewport_x`, `viewport_y`, `zoom`, `last_opened_at`, `updated_at`                                                                                                                        | Primary key `(canvas_id, user_id)`; personal data only.                                               |
+| `canvas_assets`      | `id`, `workspace_id`, `canvas_id`, `storage_key`, `preview_storage_key nullable`, `mime_type`, `byte_size`, `width`, `height`, `checksum`, `created_by`, `created_at`, `ready_at nullable`, `deleted_at nullable` | Metadata for a private Canvas-scoped object; `(workspace_id, canvas_id)` is immutable.                |
 
 `canvases` has a composite uniqueness target `(workspace_id, id)` so subsequent
 Canvas-owned relations and validated source references cannot cross a workspace.
@@ -394,16 +394,18 @@ Use a private Supabase Storage bucket named `canvas-assets`. Object keys are
 deterministic and non-user-controlled:
 
 ```text
-{workspaceId}/{assetId}/original
-{workspaceId}/{assetId}/preview.webp   # only when a generated preview exists
+{workspaceId}/{canvasId}/{assetId}/original
+{workspaceId}/{canvasId}/{assetId}/preview.webp   # only when a generated preview exists
 ```
 
-Storage RLS parses the first path segment and permits only an authenticated member
-of that workspace; it denies public listing and cross-workspace object access.
-`canvas_assets.storage_key` must match this convention and be checked before the
-asset can be exposed. Browser rendering obtains a short-lived signed URL after
-authenticated authorization (or an authenticated download converted to an object
-URL); bucket objects are never public URLs.
+Storage RLS uses the authoritative metadata row and permits only an authenticated
+workspace member to read a ready asset for an active Canvas; owner/editor roles may
+upload or delete through the lifecycle boundary. It denies public listing and
+cross-workspace or cross-Canvas object access. `canvas_assets.storage_key` must
+match this convention and be checked before the asset can be exposed. Browser
+rendering obtains a short-lived signed URL after authenticated authorization (or an
+authenticated download converted to an object URL); bucket objects are never
+public URLs.
 
 Initial preview policy: retain an optional nullable preview field. The preview
 pipeline generates a bounded WebP preview after upload while preserving the original;
@@ -681,3 +683,23 @@ identity mismatches as server-contract failures.
   upload, download and Storage lifecycle remain outside this checkpoint;
 - the main MOZG UI, local IndexedDB repository and local Canvas shell are not
   connected to cloud mode in this pass.
+
+## 22. Cloud asset Storage checkpoint
+
+The cloud asset foundation uses a private `canvas-assets` bucket and
+Canvas-scoped metadata. Object keys are server-approved and deterministic:
+`{workspaceId}/{canvasId}/{assetId}/original`, with an optional matching WebP
+preview key. Bucket configuration limits uploads to PNG, JPEG and WebP with a
+20 MiB object limit; decoded dimensions remain bounded at 10,000 px per side and
+40 million pixels.
+
+Metadata writes are RPC-only. The tested lifecycle is reserve metadata, upload
+with `upsert: false`, finalize after the object exists, and clean up both sides
+on failure. Delete removes the Storage object first and then soft-deletes
+metadata; any incomplete cleanup is surfaced as a typed partial-failure error.
+
+Canvas CAS accepts an image `assetId` only when the asset is ready, active, and
+belongs to the same workspace and Canvas. Missing, pending, deleted, cross-Canvas
+and cross-workspace references fail atomically. Storage URLs, Blobs and upload
+state remain runtime-only and never enter `CanvasDocumentV2`; the local IndexedDB
+Blob repository and the main UI remain unchanged.

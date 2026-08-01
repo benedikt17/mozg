@@ -86,6 +86,12 @@ and uses `rename_canvas` as the only title mutation path. It does not connect th
 repository to the main UI, implement Storage/binary lifecycle, or alter the local
 IndexedDB repository contract.
 
+The following asset foundation keeps binary Storage outside `CanvasDocumentV2`.
+It extends the metadata foundation with Canvas-scoped identity, a private
+`canvas-assets` bucket, RPC-only reserve/finalize/delete lifecycle, and explicit
+cleanup errors. Canvas CAS accepts only ready assets belonging to the same
+workspace and Canvas; the local Blob repository and main UI remain separate.
+
 ## References
 
 - [`ARCHITECTURE.md`](../../ARCHITECTURE.md)

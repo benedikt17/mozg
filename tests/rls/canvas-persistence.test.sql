@@ -29,6 +29,34 @@ select has_function(
   array['uuid', 'text'],
   'Canvas rename function exists'
 );
+select has_function(
+  'public',
+  'reserve_canvas_asset',
+  array['uuid', 'uuid', 'uuid', 'text', 'bigint', 'integer', 'integer', 'text'],
+  'Canvas asset reserve function exists'
+);
+select has_function(
+  'public',
+  'finalize_canvas_asset',
+  array['uuid', 'uuid', 'uuid'],
+  'Canvas asset finalize function exists'
+);
+select has_function(
+  'public',
+  'delete_canvas_asset',
+  array['uuid', 'uuid', 'uuid'],
+  'Canvas asset delete function exists'
+);
+select is(
+  (select count(*)::bigint from information_schema.columns where table_schema = 'public' and table_name = 'canvas_assets' and column_name = 'canvas_id'),
+  1::bigint,
+  'canvas_assets is Canvas-scoped'
+);
+select is(
+  (select public from storage.buckets where id = 'canvas-assets'),
+  false,
+  'Canvas asset bucket is private'
+);
 select is(
   (select relrowsecurity from pg_class where oid = 'public.canvases'::regclass),
   true,
@@ -53,6 +81,21 @@ select is(
   has_table_privilege('authenticated', 'public.canvases', 'DELETE'),
   false,
   'authenticated clients cannot physically delete Canvases'
+);
+select is(
+  has_table_privilege('authenticated', 'public.canvas_assets', 'INSERT'),
+  false,
+  'authenticated clients cannot bypass asset reserve RPC with direct insert'
+);
+select is(
+  has_table_privilege('authenticated', 'public.canvas_assets', 'UPDATE'),
+  false,
+  'authenticated clients cannot bypass asset lifecycle with direct update'
+);
+select is(
+  has_table_privilege('authenticated', 'public.canvas_assets', 'DELETE'),
+  false,
+  'authenticated clients cannot bypass asset lifecycle with direct delete'
 );
 select is(
   has_function_privilege('anon', 'public.save_canvas_document(uuid,bigint,text,jsonb)', 'EXECUTE'),
@@ -153,6 +196,44 @@ select results_eq(
   'workspace member can read an active Canvas'
 );
 
+select set_config('test.asset_id', '62000000-0000-0000-0000-000000000001', true);
+select results_eq(
+  $$ select id::text || ':' || coalesce(ready_at::text, 'pending') from public.reserve_canvas_asset(
+    '22000000-0000-0000-0000-000000000001'::uuid,
+    current_setting('test.canvas_id')::uuid,
+    current_setting('test.asset_id')::uuid,
+    'image/png',
+    1024,
+    100,
+    100
+  ) $$,
+  array['62000000-0000-0000-0000-000000000001:pending'::text],
+  'owner can reserve Canvas asset metadata'
+);
+select lives_ok(
+  $$ insert into storage.objects (id, bucket_id, name, owner, metadata, version, owner_id, user_metadata)
+     values (
+       gen_random_uuid(),
+       'canvas-assets',
+       '22000000-0000-0000-0000-000000000001/' || current_setting('test.canvas_id') || '/62000000-0000-0000-0000-000000000001/original',
+       (select auth.uid()),
+       '{"mimetype":"image/png","size":1024}'::jsonb,
+       'test-version',
+       (select auth.uid())::text,
+       '{}'::jsonb
+     ) $$,
+  'write-capable member can upload only a reserved asset object'
+);
+select results_eq(
+  $$ select id::text || ':' || (ready_at is not null)::text from public.finalize_canvas_asset(
+    '22000000-0000-0000-0000-000000000001'::uuid,
+    current_setting('test.canvas_id')::uuid,
+    current_setting('test.asset_id')::uuid
+  ) $$,
+  array['62000000-0000-0000-0000-000000000001:true'::text],
+  'owner can finalize an uploaded Canvas asset'
+);
+
 select set_config(
   'test.v2_document',
   $json$
@@ -161,7 +242,7 @@ select set_config(
     "nodes": [
       {"id":"task-1","kind":"task","taskId":"task-source","position":{"x":0,"y":0},"size":{"width":100,"height":100},"zIndex":0},
       {"id":"text-1","kind":"text","position":{"x":200,"y":0},"size":{"width":100,"height":100},"zIndex":1,"markdown":"  exact  "},
-      {"id":"image-1","kind":"image","assetId":"asset-1","aspectRatioLocked":true,"position":{"x":400,"y":0},"size":{"width":100,"height":100},"zIndex":2},
+      {"id":"image-1","kind":"image","assetId":"62000000-0000-0000-0000-000000000001","aspectRatioLocked":true,"position":{"x":400,"y":0},"size":{"width":100,"height":100},"zIndex":2},
       {"id":"article-1","kind":"article","articleId":"article-source","position":{"x":600,"y":0},"size":{"width":100,"height":100},"zIndex":3}
     ],
     "edges": [
@@ -448,33 +529,245 @@ select throws_ok(
 );
 
 reset role;
-insert into public.canvas_assets (
-  id, workspace_id, storage_key, mime_type, byte_size, width, height, created_by
-)
-values (
-  '62000000-0000-0000-0000-000000000001',
-  '22000000-0000-0000-0000-000000000001',
-  '22000000-0000-0000-0000-000000000001/62000000-0000-0000-0000-000000000001/original',
-  'image/png',
-  1024,
-  100,
-  100,
-  '12000000-0000-0000-0000-000000000001'
-);
-
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '12000000-0000-0000-0000-000000000001', true);
+select set_config('test.active_asset_id', '62000000-0000-0000-0000-000000000002', true);
 select results_eq(
-  $$ select storage_key from public.canvas_assets where id = '62000000-0000-0000-0000-000000000001' $$,
-  array['22000000-0000-0000-0000-000000000001/62000000-0000-0000-0000-000000000001/original'::text],
+  $$ select id::text || ':' || coalesce(ready_at::text, 'pending') from public.reserve_canvas_asset(
+    '22000000-0000-0000-0000-000000000001'::uuid,
+    current_setting('test.active_canvas_id')::uuid,
+    current_setting('test.active_asset_id')::uuid,
+    'image/png',
+    1024,
+    100,
+    100
+  ) $$,
+  array['62000000-0000-0000-0000-000000000002:pending'::text],
+  'owner can reserve an active Canvas asset'
+);
+select lives_ok(
+  $$ insert into storage.objects (id, bucket_id, name, owner, metadata, version, owner_id, user_metadata)
+     values (
+       gen_random_uuid(),
+       'canvas-assets',
+       '22000000-0000-0000-0000-000000000001/' || current_setting('test.active_canvas_id') || '/62000000-0000-0000-0000-000000000002/original',
+       (select auth.uid()),
+       '{"mimetype":"image/png","size":1024}'::jsonb,
+       'test-version-active',
+       (select auth.uid())::text,
+       '{}'::jsonb
+     ) $$,
+  'owner can upload an active Canvas asset object'
+);
+select results_eq(
+  $$ select id::text || ':' || (ready_at is not null)::text from public.finalize_canvas_asset(
+    '22000000-0000-0000-0000-000000000001'::uuid,
+    current_setting('test.active_canvas_id')::uuid,
+    current_setting('test.active_asset_id')::uuid
+  ) $$,
+  array['62000000-0000-0000-0000-000000000002:true'::text],
+  'owner can finalize an active Canvas asset'
+);
+select results_eq(
+  $$ select storage_key from public.canvas_assets where id = current_setting('test.active_asset_id')::uuid $$,
+  array['22000000-0000-0000-0000-000000000001/' || current_setting('test.active_canvas_id') || '/62000000-0000-0000-0000-000000000002/original'::text],
   'workspace member can read Canvas asset metadata'
+);
+
+select set_config('request.jwt.claim.sub', '12000000-0000-0000-0000-000000000003', true);
+select is(
+  (select count(*)::bigint from public.canvas_assets where id = current_setting('test.active_asset_id')::uuid),
+  1::bigint,
+  'viewer can read ready asset metadata for a Canvas they can read'
+);
+select is(
+  (select count(*)::bigint from storage.objects where bucket_id = 'canvas-assets' and name like '%/62000000-0000-0000-0000-000000000002/original'),
+  1::bigint,
+  'viewer can read the ready Canvas asset object'
+);
+select throws_ok(
+  $$ insert into storage.objects (id, bucket_id, name, owner, metadata, version, owner_id, user_metadata)
+     values (gen_random_uuid(), 'canvas-assets', '22000000-0000-0000-0000-000000000001/' || current_setting('test.active_canvas_id') || '/62000000-0000-0000-0000-000000000099/original', (select auth.uid()), '{}'::jsonb, 'viewer-version', (select auth.uid())::text, '{}'::jsonb) $$,
+  '42501',
+  null,
+  'viewer cannot upload Canvas asset objects'
 );
 
 select set_config('request.jwt.claim.sub', '12000000-0000-0000-0000-000000000004', true);
 select results_eq(
-  $$ select count(*)::bigint from public.canvas_assets where id = '62000000-0000-0000-0000-000000000001' $$,
+  $$ select count(*)::bigint from public.canvas_assets where id = current_setting('test.active_asset_id')::uuid $$,
   array[0::bigint],
   'non-member cannot read Canvas asset metadata'
+);
+select is(
+  (select count(*)::bigint from storage.objects where bucket_id = 'canvas-assets' and name like '%/62000000-0000-0000-0000-000000000002/original'),
+  0::bigint,
+  'non-member cannot read Canvas asset objects'
+);
+
+select set_config('request.jwt.claim.sub', '12000000-0000-0000-0000-000000000001', true);
+select set_config(
+  'test.active_asset_document',
+  '{"schemaVersion":2,"nodes":[{"id":"image-active","kind":"image","assetId":"62000000-0000-0000-0000-000000000002","aspectRatioLocked":true,"position":{"x":0,"y":0},"size":{"width":100,"height":100},"zIndex":0}],"edges":[]}',
+  true
+);
+select results_eq(
+  $$ select status || ':' || revision::text from public.save_canvas_document(
+    current_setting('test.active_canvas_id')::uuid,
+    1,
+    'Active Canvas With Image',
+    current_setting('test.active_asset_document')::jsonb
+  ) $$,
+  array['saved:2'::text],
+  'same-Canvas ready asset reference is accepted by Canvas CAS'
+);
+select throws_ok(
+  $$ select * from public.save_canvas_document(
+    current_setting('test.active_canvas_id')::uuid,
+    2,
+    'Missing Asset',
+    jsonb_set(current_setting('test.active_asset_document')::jsonb, '{nodes,0,assetId}', '"62000000-0000-0000-0000-000000000099"'::jsonb)
+  ) $$,
+  '22023',
+  'Canvas image references an unavailable asset',
+  'missing asset references are rejected atomically'
+);
+select set_config('test.pending_asset_id', '62000000-0000-0000-0000-000000000003', true);
+select results_eq(
+  $$ select id::text || ':' || coalesce(ready_at::text, 'pending') from public.reserve_canvas_asset(
+    '22000000-0000-0000-0000-000000000001'::uuid,
+    current_setting('test.active_canvas_id')::uuid,
+    current_setting('test.pending_asset_id')::uuid,
+    'image/png',
+    1024,
+    100,
+    100
+  ) $$,
+  array['62000000-0000-0000-0000-000000000003:pending'::text],
+  'pending asset metadata is not finalized'
+);
+select throws_ok(
+  $$ select * from public.save_canvas_document(
+    current_setting('test.active_canvas_id')::uuid,
+    2,
+    'Pending Asset',
+    jsonb_set(current_setting('test.active_asset_document')::jsonb, '{nodes,0,assetId}', to_jsonb(current_setting('test.pending_asset_id')))
+  ) $$,
+  '22023',
+  'Canvas image references an unavailable asset',
+  'pending asset references are rejected'
+);
+
+select set_config(
+  'test.same_workspace_canvas_id',
+  (select id::text from public.create_canvas('22000000-0000-0000-0000-000000000001'::uuid, 'Second Canvas')),
+  true
+);
+select results_eq(
+  $$ select id::text || ':' || coalesce(ready_at::text, 'pending') from public.reserve_canvas_asset(
+    '22000000-0000-0000-0000-000000000001'::uuid,
+    current_setting('test.same_workspace_canvas_id')::uuid,
+    '62000000-0000-0000-0000-000000000004'::uuid,
+    'image/png',
+    1024,
+    100,
+    100
+  ) $$,
+  array['62000000-0000-0000-0000-000000000004:pending'::text],
+  'owner can reserve an asset for a second Canvas in the workspace'
+);
+select lives_ok(
+  $$ insert into storage.objects (id, bucket_id, name, owner, metadata, version, owner_id, user_metadata)
+     values (
+       gen_random_uuid(),
+       'canvas-assets',
+       '22000000-0000-0000-0000-000000000001/' || current_setting('test.same_workspace_canvas_id') || '/62000000-0000-0000-0000-000000000004/original',
+       (select auth.uid()), '{"mimetype":"image/png","size":1024}'::jsonb,
+       'same-canvas-version', (select auth.uid())::text, '{}'::jsonb
+     ) $$,
+  'owner can upload the second Canvas asset object'
+);
+select lives_ok(
+  $$ select * from public.finalize_canvas_asset('22000000-0000-0000-0000-000000000001'::uuid, current_setting('test.same_workspace_canvas_id')::uuid, '62000000-0000-0000-0000-000000000004'::uuid) $$,
+  'owner can finalize the second Canvas asset'
+);
+select throws_ok(
+  $$ select * from public.save_canvas_document(
+    current_setting('test.active_canvas_id')::uuid,
+    2,
+    'Other Canvas Asset',
+    jsonb_set(current_setting('test.active_asset_document')::jsonb, '{nodes,0,assetId}', '"62000000-0000-0000-0000-000000000004"'::jsonb)
+  ) $$,
+  '22023',
+  'Canvas image references an unavailable asset',
+  'asset references from another Canvas are rejected'
+);
+
+select results_eq(
+  $$ select id::text || ':' || coalesce(ready_at::text, 'pending') from public.reserve_canvas_asset(
+    '22000000-0000-0000-0000-000000000002'::uuid,
+    current_setting('test.other_canvas_id')::uuid,
+    '62000000-0000-0000-0000-000000000005'::uuid,
+    'image/png',
+    1024,
+    100,
+    100
+  ) $$,
+  array['62000000-0000-0000-0000-000000000005:pending'::text],
+  'owner can reserve an asset in another workspace'
+);
+select lives_ok(
+  $$ insert into storage.objects (id, bucket_id, name, owner, metadata, version, owner_id, user_metadata)
+     values (
+       gen_random_uuid(),
+       'canvas-assets',
+       '22000000-0000-0000-0000-000000000002/' || current_setting('test.other_canvas_id') || '/62000000-0000-0000-0000-000000000005/original',
+       (select auth.uid()), '{"mimetype":"image/png","size":1024}'::jsonb,
+       'other-workspace-version', (select auth.uid())::text, '{}'::jsonb
+     ) $$,
+  'owner can upload the other workspace asset object'
+);
+select lives_ok(
+  $$ select * from public.finalize_canvas_asset('22000000-0000-0000-0000-000000000002'::uuid, current_setting('test.other_canvas_id')::uuid, '62000000-0000-0000-0000-000000000005'::uuid) $$,
+  'owner can finalize the other workspace asset'
+);
+select throws_ok(
+  $$ select * from public.save_canvas_document(
+    current_setting('test.active_canvas_id')::uuid,
+    2,
+    'Other Workspace Asset',
+    jsonb_set(current_setting('test.active_asset_document')::jsonb, '{nodes,0,assetId}', '"62000000-0000-0000-0000-000000000005"'::jsonb)
+  ) $$,
+  '22023',
+  'Canvas image references an unavailable asset',
+  'asset references from another workspace are rejected'
+);
+
+select results_eq(
+  $$ select deleted::text from public.delete_canvas_asset('22000000-0000-0000-0000-000000000001'::uuid, current_setting('test.active_canvas_id')::uuid, current_setting('test.active_asset_id')::uuid) $$,
+  array['true'::text],
+  'owner can soft-delete asset metadata'
+);
+select is(
+  (select count(*)::bigint from storage.objects where bucket_id = 'canvas-assets' and name like '%/62000000-0000-0000-0000-000000000002/original'),
+  0::bigint,
+  'soft-deleted asset object is no longer readable through Storage policy'
+);
+select throws_ok(
+  $$ select * from public.save_canvas_document(
+    current_setting('test.active_canvas_id')::uuid,
+    2,
+    'Deleted Asset',
+    current_setting('test.active_asset_document')::jsonb
+  ) $$,
+  '22023',
+  'Canvas image references an unavailable asset',
+  'deleted asset references are rejected'
+);
+select results_eq(
+  $$ select status || ':' || revision::text from public.save_canvas_document(current_setting('test.active_canvas_id')::uuid, 2, 'Text Only', '{"schemaVersion":2,"nodes":[],"edges":[]}'::jsonb) $$,
+  array['saved:3'::text],
+  'non-image Canvas documents remain saveable without assets'
 );
 
 set local role anon;

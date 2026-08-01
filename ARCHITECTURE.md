@@ -344,6 +344,13 @@ RPC, workspace-scoped reads, server-owned revisions and authenticated RLS. Viewp
 state remains a separate user-scoped stream; binary assets and Storage resolution
 remain outside this repository checkpoint.
 
+The cloud asset foundation adds a private `canvas-assets` bucket and an injected
+typed asset repository. Metadata is reserved and finalized through authenticated
+RPCs, object paths are Canvas-scoped, and Storage policies use the metadata row
+plus active Canvas membership rather than trusting path parsing alone. Canvas CAS
+accepts only ready asset references belonging to the same workspace and Canvas;
+binary content, URLs and upload state remain runtime-only.
+
 ### 4.8 Legacy attachments
 
 Ранее описанная таблица `attachments` и её Canvas-specific FK больше не являются
@@ -740,8 +747,8 @@ Share-токены изменяются только через серверны
 Buckets:
 
 ```text
-canvas-assets/{workspace_id}/{asset_id}/original
-canvas-assets/{workspace_id}/{asset_id}/preview.webp
+canvas-assets/{workspace_id}/{canvas_id}/{asset_id}/original
+canvas-assets/{workspace_id}/{canvas_id}/{asset_id}/preview.webp
 inbox-audio/{workspace_id}/{uuid}.webm
 ```
 
@@ -750,7 +757,8 @@ Storage policies проверяют членство в workspace.
 Путь объекта не является единственным источником метаданных. Для Canvas
 authoritative metadata хранится в `canvas_assets`; Canvas JSON не содержит
 binary, Base64 или Blob. Bucket `canvas-assets` приватный, а object keys
-детерминированы по workspace и asset ID.
+детерминированы по workspace, Canvas и asset ID. Storage policy сверяет путь с
+authoritative metadata и active Canvas membership.
 
 Legacy `attachments` path относится только к другим доменам и не используется
 для Canvas v0.1.
