@@ -80,6 +80,12 @@ after `20260801120000_canvas_document_v2_persistence.sql` are V2-only. This does
 change the independent workspace-scoped domain, CAS boundary, soft-delete rule,
 view-state separation or asset metadata boundary decided by this ADR.
 
+The following cloud repository checkpoint is production-neutral: it injects the
+typed authenticated Supabase client, keeps workspace and user boundaries explicit,
+and uses `rename_canvas` as the only title mutation path. It does not connect the
+repository to the main UI, implement Storage/binary lifecycle, or alter the local
+IndexedDB repository contract.
+
 ## References
 
 - [`ARCHITECTURE.md`](../../ARCHITECTURE.md)

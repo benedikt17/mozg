@@ -660,3 +660,24 @@ The cloud persistence boundary is V2-only after the forward migration
   rewritten;
 - viewport, asset metadata, Storage, binary lifecycle and the main MOZG UI remain outside
   this checkpoint.
+
+## 21. Cloud repository and adapter checkpoint
+
+The production-neutral cloud repository is an injected typed Supabase adapter. Its
+public contract exposes workspace-scoped list/create/load/rename/delete operations,
+strict V2 document CAS, and a separate authenticated viewport stream. It maps rows
+into domain objects, never returns raw Supabase rows, and treats workspace or user
+identity mismatches as server-contract failures.
+
+- create uses `create_canvas` and refetches the canonical V2 row;
+- load rejects V1 or malformed cloud documents without normalization;
+- save uses `save_canvas_document` and returns the server's `saved` or `conflict`
+  revision without retrying or guessing a next revision;
+- rename uses only the narrow `rename_canvas` RPC and does not change document
+  revision;
+- delete uses only the existing soft-delete RPC;
+- viewport state is upserted separately for the authenticated user;
+- image `assetId` references remain supported in document JSON, while binary asset
+  upload, download and Storage lifecycle remain outside this checkpoint;
+- the main MOZG UI, local IndexedDB repository and local Canvas shell are not
+  connected to cloud mode in this pass.

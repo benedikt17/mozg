@@ -23,6 +23,12 @@ select has_function(
   array['uuid'],
   'Canvas soft-delete function exists'
 );
+select has_function(
+  'public',
+  'rename_canvas',
+  array['uuid', 'text'],
+  'Canvas rename function exists'
+);
 select is(
   (select relrowsecurity from pg_class where oid = 'public.canvases'::regclass),
   true,
@@ -57,6 +63,26 @@ select is(
   has_function_privilege('authenticated', 'public.save_canvas_document(uuid,bigint,text,jsonb)', 'EXECUTE'),
   true,
   'authenticated clients can execute Canvas CAS'
+);
+select is(
+  has_function_privilege('anon', 'public.rename_canvas(uuid,text)', 'EXECUTE'),
+  false,
+  'anonymous clients cannot execute Canvas rename'
+);
+select is(
+  has_function_privilege('authenticated', 'public.rename_canvas(uuid,text)', 'EXECUTE'),
+  true,
+  'authenticated clients can execute Canvas rename'
+);
+select is(
+  (select prosecdef from pg_proc where oid = 'public.rename_canvas(uuid,text)'::regprocedure),
+  true,
+  'Canvas rename uses SECURITY DEFINER'
+);
+select is(
+  (select array_to_string(proconfig, ',') from pg_proc where oid = 'public.rename_canvas(uuid,text)'::regprocedure),
+  'search_path=pg_catalog, public, private'::text,
+  'Canvas rename pins a safe search_path'
 );
 
 insert into auth.users (
@@ -290,6 +316,17 @@ select results_eq(
   'authorized editor can save the Canvas'
 );
 select results_eq(
+  $$ select title || ':' || revision::text from public.rename_canvas(current_setting('test.canvas_id')::uuid, 'Renamed Canvas') $$,
+  array['Renamed Canvas:3'::text],
+  'authorized editor can rename the Canvas without changing document revision'
+);
+select throws_ok(
+  $$ select * from public.rename_canvas(current_setting('test.canvas_id')::uuid, '   ') $$,
+  '22023',
+  'invalid Canvas title',
+  'invalid Canvas rename titles are rejected'
+);
+select results_eq(
   $$ select count(*)::bigint from public.canvas_view_states $$,
   array[0::bigint],
   'editor has no unrelated view state rows'
@@ -303,6 +340,12 @@ select results_eq(
   $$ select count(*)::bigint from public.canvases where id = current_setting('test.canvas_id')::uuid $$,
   array[0::bigint],
   'soft-deleted Canvas is excluded from the active policy'
+);
+select throws_ok(
+  $$ select * from public.rename_canvas(current_setting('test.canvas_id')::uuid, 'After delete') $$,
+  '42501',
+  'Canvas access denied',
+  'soft-deleted Canvas cannot be renamed'
 );
 select throws_ok(
   $$ select * from public.save_canvas_document(current_setting('test.canvas_id')::uuid, 3, 'After delete', '{"schemaVersion":2,"nodes":[],"edges":[]}'::jsonb) $$,
@@ -330,6 +373,21 @@ select set_config(
 );
 
 set local role authenticated;
+select set_config('request.jwt.claim.sub', '12000000-0000-0000-0000-000000000001', true);
+select set_config('request.jwt.claim.sub', '12000000-0000-0000-0000-000000000003', true);
+select throws_ok(
+  $$ select * from public.rename_canvas(current_setting('test.active_canvas_id')::uuid, 'Viewer Rename') $$,
+  '42501',
+  'Canvas access denied',
+  'viewer cannot rename a Canvas'
+);
+select set_config('request.jwt.claim.sub', '12000000-0000-0000-0000-000000000004', true);
+select throws_ok(
+  $$ select * from public.rename_canvas(current_setting('test.active_canvas_id')::uuid, 'Outsider Rename') $$,
+  '42501',
+  'Canvas access denied',
+  'non-member cannot rename a Canvas'
+);
 select set_config('request.jwt.claim.sub', '12000000-0000-0000-0000-000000000001', true);
 select lives_ok(
   $$ insert into public.canvas_view_states (canvas_id, user_id, viewport_x, viewport_y, zoom) values (current_setting('test.active_canvas_id')::uuid, (select auth.uid()), 10, 20, 1.5) $$,

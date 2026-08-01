@@ -338,6 +338,12 @@ snapshot. Текущий mock Canvas не является production persistenc
 cloud canonical document — `CanvasDocumentV2`; V1 остаётся только входом для
 local/client migration boundary и не принимается cloud write boundary.
 
+The production-neutral cloud repository is an injected Supabase adapter over this
+contract. It uses the existing create/save/delete RPCs, the narrow `rename_canvas`
+RPC, workspace-scoped reads, server-owned revisions and authenticated RLS. Viewport
+state remains a separate user-scoped stream; binary assets and Storage resolution
+remain outside this repository checkpoint.
+
 ### 4.8 Legacy attachments
 
 Ранее описанная таблица `attachments` и её Canvas-specific FK больше не являются

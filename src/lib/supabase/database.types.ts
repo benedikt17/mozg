@@ -365,6 +365,45 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      assert_canvas_title: {
+        Args: { target_title: string }
+        Returns: undefined
+      }
+      assert_desktop_snapshot_v1_keys: {
+        Args: {
+          allowed_keys: string[]
+          record_value: Json
+          required_keys: string[]
+        }
+        Returns: undefined
+      }
+      assert_desktop_snapshot_v1_order: {
+        Args: {
+          field_name: string
+          record_value: Json
+          required_value?: boolean
+        }
+        Returns: undefined
+      }
+      assert_desktop_snapshot_v1_string: {
+        Args: {
+          field_name: string
+          non_empty?: boolean
+          record_value: Json
+          required_value?: boolean
+        }
+        Returns: undefined
+      }
+      assert_desktop_snapshot_v1_string_array: {
+        Args: {
+          field_name: string
+          non_empty_array?: boolean
+          non_empty_items?: boolean
+          record_value: Json
+          required_value?: boolean
+        }
+        Returns: undefined
+      }
       create_canvas: {
         Args: { target_title: string; target_workspace_id: string }
         Returns: {
@@ -376,6 +415,27 @@ export type Database = {
         Args: { target_canvas_id: string }
         Returns: {
           deleted: boolean
+        }[]
+      }
+      has_workspace_role: {
+        Args: { roles: string[]; target_workspace_id: string }
+        Returns: boolean
+      }
+      is_workspace_member: {
+        Args: { target_workspace_id: string }
+        Returns: boolean
+      }
+      rename_canvas: {
+        Args: { target_canvas_id: string; target_title: string }
+        Returns: {
+          created_at: string
+          deleted_at: string
+          id: string
+          revision: number
+          schema_version: number
+          title: string
+          updated_at: string
+          workspace_id: string
         }[]
       }
       save_canvas_document: {
@@ -390,14 +450,6 @@ export type Database = {
           status: string
         }[]
       }
-      has_workspace_role: {
-        Args: { roles: string[]; target_workspace_id: string }
-        Returns: boolean
-      }
-      is_workspace_member: {
-        Args: { target_workspace_id: string }
-        Returns: boolean
-      }
       save_workspace_snapshot: {
         Args: {
           target_expected_revision: number
@@ -406,9 +458,25 @@ export type Database = {
           target_workspace_id: string
         }
         Returns: {
-          status: string
           revision: number
+          status: string
         }[]
+      }
+      validate_canvas_document_v1: {
+        Args: { target_document: Json; target_schema_version: number }
+        Returns: undefined
+      }
+      validate_canvas_document_v2: {
+        Args: { target_document: Json; target_schema_version: number }
+        Returns: undefined
+      }
+      validate_desktop_snapshot_v1: {
+        Args: { target_schema_version: number; target_snapshot: Json }
+        Returns: undefined
+      }
+      validate_desktop_snapshot_v2: {
+        Args: { target_schema_version: number; target_snapshot: Json }
+        Returns: undefined
       }
     }
     Enums: {
