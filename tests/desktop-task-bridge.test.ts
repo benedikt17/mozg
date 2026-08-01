@@ -135,4 +135,33 @@ describe("desktop task bridge", () => {
       ),
     ).toBe(false);
   });
+
+  it("opens the existing task-details lifecycle", () => {
+    const harness = createHarness();
+    const task = harness.getState().tasks[0]!;
+    const otherTask = harness
+      .getState()
+      .tasks.find((candidate) => candidate.id !== task.id)!;
+    const bridge = createDesktopTaskBridge({
+      getState: harness.getState,
+      dispatch: harness.dispatch,
+      onStateChange: harness.onStateChange,
+    });
+
+    bridge.openTask(task.id);
+
+    expect(harness.getState().contextPanel).toEqual({
+      kind: "task",
+      taskId: task.id,
+    });
+    expect(harness.getState().taskDetailViewTaskId).toBe(task.id);
+
+    bridge.openTask(otherTask.id);
+
+    expect(harness.getState().contextPanel).toEqual({
+      kind: "task",
+      taskId: otherTask.id,
+    });
+    expect(harness.getState().taskDetailViewTaskId).toBe(otherTask.id);
+  });
 });

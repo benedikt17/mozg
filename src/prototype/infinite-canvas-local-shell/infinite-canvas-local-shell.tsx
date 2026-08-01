@@ -32,15 +32,20 @@ import {
 } from "@/lib/canvas/canvas-image-ingestion";
 import {
   CANVAS_IMAGE_NODE_TYPE,
+  CANVAS_TASK_NODE_TYPE,
   CANVAS_TEXT_NODE_TYPE,
   canvasDocumentToImageNodes,
+  canvasDocumentToTaskNodes,
   canvasDocumentToTextNodes,
+  createCanvasTaskFlowNode,
+  createCanvasTaskId,
   createCanvasTextFlowNode,
   ingestCanvasImageTransferToNodes,
   restoreCanvasImageNodes,
   type CanvasImageAdapterDependencies,
   type CanvasFlowNode,
   type CanvasImageFlowNode,
+  type CanvasTaskFlowNode,
   type CanvasTextFlowNode,
   type FlowPosition,
 } from "@/lib/canvas/react-flow-canvas-adapter";
@@ -51,7 +56,10 @@ import {
   commitTextMarkdown,
 } from "@/lib/canvas/text-canvas-interactions";
 import { MarkdownStringPreview } from "@/prototype/knowledge/markdown-document-preview";
-import type { CanvasTaskBridge } from "@/lib/canvas/canvas-task-bridge";
+import type {
+  CanvasTaskBridge,
+  CanvasTaskProjection,
+} from "@/lib/canvas/canvas-task-bridge";
 import {
   IndexedDbCanvasRepository,
   type CanvasSummary,
@@ -211,8 +219,125 @@ function CanvasTextNodeView({
   );
 }
 
+function TaskNodeBody({
+  data,
+  selected,
+}: NodeProps<CanvasTaskFlowNode>): React.JSX.Element {
+  const runtimeKey = `${data.taskWorkspaceId ?? "none"}:${data.taskId}:${data.taskBridge ? "ready" : "waiting"}`;
+  const [projectionState, setProjectionState] = useState<{
+    key: string;
+    projection: CanvasTaskProjection | null;
+  }>({ key: "", projection: null });
+  const [mutationState, setMutationState] = useState({
+    key: "",
+    hasError: false,
+  });
+  const projection =
+    projectionState.key === runtimeKey ? projectionState.projection : undefined;
+  const mutationError =
+    mutationState.key === runtimeKey && mutationState.hasError;
+
+  useEffect(() => {
+    if (!data.taskBridge || !data.taskWorkspaceId) {
+      return;
+    }
+    let active = true;
+    const unsubscribe = data.taskBridge.subscribeToTask(
+      data.taskWorkspaceId,
+      data.taskId,
+      (nextProjection) => {
+        if (active)
+          setProjectionState({ key: runtimeKey, projection: nextProjection });
+      },
+    );
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [data.taskBridge, data.taskId, data.taskWorkspaceId, runtimeKey]);
+
+  const resolved = projection !== undefined && projection !== null;
+  const title = projection?.title ?? data.lastKnownTitle ?? "Задача";
+  const missingLabel = data.taskBridge
+    ? "Задача недоступна"
+    : "Подключение задач…";
+
+  const toggleCompleted = (): void => {
+    if (!data.taskBridge || !data.taskWorkspaceId || !resolved) return;
+    setMutationState({ key: runtimeKey, hasError: false });
+    void Promise.resolve(
+      data.taskBridge.toggleTaskCompleted(data.taskWorkspaceId, data.taskId),
+    ).catch(() => setMutationState({ key: runtimeKey, hasError: true }));
+  };
+
+  const openDetails = (): void => {
+    if (data.taskBridge) data.taskBridge.openTask(data.taskId);
+  };
+
+  return (
+    <div
+      className={`${styles.taskNode} ${selected ? styles.selectedNode : ""}`}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        openDetails();
+      }}
+    >
+      <NodeResizer color="#0f766e" minWidth={220} minHeight={120} />
+      <div className={styles.taskNodeHeader}>
+        <span className={styles.taskNodeType}>Задача</span>
+        <span className={styles.taskNodeReference} title={data.taskId}>
+          {data.taskId}
+        </span>
+      </div>
+      <div className={styles.taskNodeBody}>
+        <input
+          type="checkbox"
+          checked={projection?.completed ?? false}
+          disabled={!resolved}
+          aria-label={`Завершить задачу «${title}»`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onChange={(event) => {
+            event.stopPropagation();
+            toggleCompleted();
+          }}
+        />
+        <strong className={resolved ? undefined : styles.taskNodeMissingTitle}>
+          {title}
+        </strong>
+      </div>
+      {resolved ? (
+        <span className={styles.taskNodeStatus}>
+          {projection.completed ? "Выполнено" : "В работе"}
+        </span>
+      ) : (
+        <span className={styles.taskNodeMissing} role="status">
+          {missingLabel}
+        </span>
+      )}
+      {mutationError ? (
+        <span className={styles.taskNodeError} role="alert">
+          Не удалось изменить задачу
+        </span>
+      ) : null}
+      <button
+        type="button"
+        className={styles.taskNodeDetails}
+        disabled={!data.taskBridge || !resolved}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          openDetails();
+        }}
+      >
+        Открыть details
+      </button>
+    </div>
+  );
+}
+
 const nodeTypes = {
   [CANVAS_IMAGE_NODE_TYPE]: CanvasImageNodeView,
+  [CANVAS_TASK_NODE_TYPE]: TaskNodeBody,
   [CANVAS_TEXT_NODE_TYPE]: CanvasTextNodeView,
 };
 
@@ -248,6 +373,12 @@ function InfiniteCanvasLocalShellSurface({
   const [dropActive, setDropActive] = useState(false);
   const [newTitle, setNewTitle] = useState("First Canvas");
   const [renameTitle, setRenameTitle] = useState("");
+  const [taskPickerOpen, setTaskPickerOpen] = useState(false);
+  const [taskQuery, setTaskQuery] = useState("");
+  const [taskResults, setTaskResults] = useState<CanvasTaskProjection[]>([]);
+  const [taskSearchStatus, setTaskSearchStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
   const [repository] = useState(
     () =>
       new IndexedDbCanvasRepository({
@@ -281,6 +412,61 @@ function InfiniteCanvasLocalShellSurface({
     screenToFlowRef.current = reactFlow.screenToFlowPosition;
   }, [reactFlow.screenToFlowPosition]);
 
+  useEffect(() => {
+    setNodes((current) =>
+      current.map((node) =>
+        node.type === CANVAS_TASK_NODE_TYPE
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                taskBridge,
+                taskWorkspaceId,
+              },
+            }
+          : node,
+      ),
+    );
+  }, [setNodes, taskBridge, taskWorkspaceId]);
+
+  useEffect(() => {
+    if (!taskPickerOpen || !taskBridge || !taskWorkspaceId) {
+      setTaskResults([]);
+      setTaskSearchStatus("idle");
+      return;
+    }
+    let active = true;
+    setTaskSearchStatus("loading");
+    void Promise.resolve(
+      taskBridge.searchTasks(taskWorkspaceId, taskQuery),
+    ).then(
+      (results) => {
+        if (!active) return;
+        setTaskResults(results);
+        setTaskSearchStatus("ready");
+      },
+      () => {
+        if (!active) return;
+        setTaskResults([]);
+        setTaskSearchStatus("error");
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [taskBridge, taskPickerOpen, taskQuery, taskWorkspaceId]);
+
+  useEffect(() => {
+    if (!taskPickerOpen) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setTaskPickerOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [taskPickerOpen]);
+
   const syncState = useCallback(
     () => setShellState(controller.state),
     [controller],
@@ -304,6 +490,10 @@ function InfiniteCanvasLocalShellSurface({
       const signal = restoreControllerRef.current.signal;
       const placeholders: CanvasFlowNode[] = [
         ...canvasDocumentToImageNodes(nextState.document),
+        ...canvasDocumentToTaskNodes(nextState.document, {
+          taskBridge: taskBridgeRef.current,
+          taskWorkspaceId: taskWorkspaceIdRef.current,
+        }),
         ...canvasDocumentToTextNodes(nextState.document),
       ];
       setNodes(placeholders);
@@ -478,6 +668,47 @@ function InfiniteCanvasLocalShellSurface({
       setNodes,
       shellState.canvasId,
       syncState,
+    ],
+  );
+
+  const createTaskNode = useCallback(
+    (task: CanvasTaskProjection) => {
+      if (!shellState.canvasId || !taskBridge || !taskWorkspaceId) return;
+      const position = centerPosition();
+      const nextZIndex =
+        shellState.document.nodes.reduce(
+          (maximum, current) => Math.max(maximum, current.zIndex),
+          0,
+        ) + 1;
+      const node = createCanvasTaskFlowNode({
+        id: createCanvasTaskId(),
+        taskId: task.id,
+        lastKnownTitle: task.title,
+        position,
+        taskBridge,
+        taskWorkspaceId,
+        zIndex: nextZIndex,
+      });
+      setNodes((current) => [
+        ...current.map((item) => ({ ...item, selected: false })),
+        { ...node, selected: true },
+      ]);
+      controller.insertTaskNode(node);
+      syncState();
+      scheduleSave();
+      setTaskPickerOpen(false);
+      setTaskQuery("");
+    },
+    [
+      centerPosition,
+      controller,
+      scheduleSave,
+      setNodes,
+      shellState.canvasId,
+      shellState.document.nodes,
+      syncState,
+      taskBridge,
+      taskWorkspaceId,
     ],
   );
 
@@ -847,6 +1078,72 @@ function InfiniteCanvasLocalShellSurface({
           >
             Text
           </button>
+          <div className={styles.taskPicker}>
+            <button
+              className={`${styles.button} ${styles.primary}`}
+              type="button"
+              disabled={!taskBridge || !taskWorkspaceId}
+              aria-expanded={taskPickerOpen}
+              onClick={() => setTaskPickerOpen((current) => !current)}
+            >
+              Задача
+            </button>
+            {taskPickerOpen ? (
+              <div
+                className={styles.taskPickerPanel}
+                role="dialog"
+                aria-label="Добавить задачу"
+              >
+                <div className={styles.taskPickerHeader}>
+                  <strong>Добавить задачу</strong>
+                  <button
+                    type="button"
+                    className={styles.taskPickerClose}
+                    aria-label="Закрыть выбор задачи"
+                    onClick={() => setTaskPickerOpen(false)}
+                  >
+                    ×
+                  </button>
+                </div>
+                <input
+                  className={styles.input}
+                  type="search"
+                  value={taskQuery}
+                  autoFocus
+                  placeholder="Поиск по названию"
+                  aria-label="Поиск задач"
+                  onChange={(event) => setTaskQuery(event.target.value)}
+                />
+                <div className={styles.taskPickerResults}>
+                  {taskSearchStatus === "loading" ? (
+                    <p className={styles.taskPickerEmpty}>Загрузка задач…</p>
+                  ) : taskSearchStatus === "error" ? (
+                    <p className={styles.taskPickerError} role="alert">
+                      Не удалось загрузить задачи
+                    </p>
+                  ) : taskResults.length === 0 ? (
+                    <p className={styles.taskPickerEmpty}>
+                      {taskQuery.trim()
+                        ? "Совпадений нет"
+                        : "В этом проекте нет задач"}
+                    </p>
+                  ) : (
+                    taskResults.map((task) => (
+                      <button
+                        type="button"
+                        className={styles.taskPickerResult}
+                        key={task.id}
+                        onClick={() => createTaskNode(task)}
+                      >
+                        <strong>{task.title}</strong>
+                        <span>{task.completed ? "Выполнено" : "В работе"}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
       </header>
       <div className={styles.canvasWrap}>

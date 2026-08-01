@@ -65,7 +65,7 @@ export function createDesktopTaskBridge(
     },
     openTask: (taskId) => {
       if (options.getState().tasks.some((task) => task.id === taskId)) {
-        options.dispatch({ type: "select-task", taskId, section: "tasks" });
+        options.dispatch({ type: "open-task-detail-view", taskId });
       }
     },
     subscribeToTask: (workspaceId, taskId, listener) => {

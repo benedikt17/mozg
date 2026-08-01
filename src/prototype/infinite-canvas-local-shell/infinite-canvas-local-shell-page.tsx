@@ -2,10 +2,14 @@
 
 import { InfiniteCanvasLocalShell } from "@/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell";
 import type { CanvasTaskBridge } from "@/lib/canvas/canvas-task-bridge";
+import { ContextPanelSlot } from "@/prototype/context-panels/context-panel-slot";
 import {
   DesktopTaskRuntimeProvider,
   useDesktopTaskRuntime,
 } from "@/prototype/tasks/desktop-task-runtime";
+import styles from "./infinite-canvas-local-shell.module.css";
+import "@/prototype/desktop-shell.css";
+import "@/prototype/desktop-workspaces.css";
 
 export function getCanvasTaskBridgeProps({
   taskBridge,
@@ -25,16 +29,42 @@ export function getCanvasTaskBridgeProps({
 }
 
 function InfiniteCanvasLocalShellComposition(): React.JSX.Element {
-  const { taskBridge, taskWorkspaceId, workspaceAvailable } =
+  const { dispatch, state, taskBridge, taskWorkspaceId, workspaceAvailable } =
     useDesktopTaskRuntime();
+  const hasTaskContextPanel =
+    workspaceAvailable && state.contextPanel?.kind === "task";
+  const canvasSectionClasses = [
+    styles.canvasSectionWorkspace,
+    "section-workspace",
+    "section-tasks",
+    ...(hasTaskContextPanel
+      ? ["has-context-panel", "has-full-height-drawer"]
+      : []),
+  ].join(" ");
+
   return (
-    <InfiniteCanvasLocalShell
-      {...getCanvasTaskBridgeProps({
-        taskBridge,
-        taskWorkspaceId,
-        workspaceAvailable,
-      })}
-    />
+    <div className={styles.canvasDesktopHost}>
+      <div className={`${styles.canvasDesktopPrototype} desktop-prototype`}>
+        <div className={canvasSectionClasses}>
+          <section className={`main-workspace ${styles.canvasMainWorkspace}`}>
+            <InfiniteCanvasLocalShell
+              {...getCanvasTaskBridgeProps({
+                taskBridge,
+                taskWorkspaceId,
+                workspaceAvailable,
+              })}
+            />
+          </section>
+          {hasTaskContextPanel ? (
+            <ContextPanelSlot
+              contextPanel={state.contextPanel}
+              dispatch={dispatch}
+              state={state}
+            />
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }
 

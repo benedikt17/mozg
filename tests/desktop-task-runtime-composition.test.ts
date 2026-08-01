@@ -78,6 +78,10 @@ describe("desktop task runtime composition", () => {
     const canvasShell = source(
       "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
     );
+    const canvasAdapter = source("src/lib/canvas/react-flow-canvas-adapter.ts");
+    const canvasController = source(
+      "src/lib/canvas/local-canvas-shell-controller.ts",
+    );
     const runtime = source("src/prototype/tasks/desktop-task-runtime.tsx");
 
     expect(desktopRoute).toContain("DesktopPrototypeShell");
@@ -92,7 +96,23 @@ describe("desktop task runtime composition", () => {
       /<DesktopTaskRuntimeProvider[\s\S]*<InfiniteCanvasLocalShellComposition \/>/u,
     );
     expect(canvasComposition).toContain("getCanvasTaskBridgeProps");
+    expect(canvasComposition).toContain('"section-workspace"');
+    expect(canvasComposition).toContain('"section-tasks"');
+    expect(canvasComposition).toContain("main-workspace");
+    expect(canvasComposition).toContain("canvasMainWorkspace");
+    expect(canvasComposition).toMatch(
+      /canvasMainWorkspace[\s\S]*<InfiniteCanvasLocalShell[\s\S]*ContextPanelSlot/u,
+    );
     expect(canvasShell).toContain("taskBridge?: CanvasTaskBridge");
+    expect(canvasShell).toContain("CANVAS_TASK_NODE_TYPE");
+    expect(canvasShell).toContain("function TaskNodeBody");
+    expect(canvasShell).toContain("subscribeToTask");
+    expect(canvasShell).toContain("toggleTaskCompleted");
+    expect(canvasShell).not.toContain("useReducer");
+    expect(canvasComposition).toContain("ContextPanelSlot");
+    expect(canvasAdapter).toContain('kind: "task"');
+    expect(canvasAdapter).toContain("runtime.type === CANVAS_TASK_NODE_TYPE");
+    expect(canvasController).toContain("insertTaskNode");
     expect(runtime).toContain("desktopPrototypeReducer");
     expect(runtime).toContain("useDesktopPersistence(state, dispatch");
     expect(runtime).toContain("stateChangeListeners.clear");
@@ -100,5 +120,36 @@ describe("desktop task runtime composition", () => {
     expect(canvasComposition).not.toContain("useReducer");
     expect(canvasComposition).not.toContain("useDesktopPersistence");
     expect(canvasShell).not.toContain("PrototypeTask");
+    expect(canvasShell).not.toContain("initialDesktopPrototypeState");
+    expect(canvasShell).not.toContain("completed:");
+  });
+
+  it("keeps the Canvas in the desktop workspace beside the task panel", () => {
+    const composition = source(
+      "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell-page.tsx",
+    );
+    const contextPanelSlot = source(
+      "src/prototype/context-panels/context-panel-slot.tsx",
+    );
+    const canvasShell = source(
+      "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
+    );
+
+    expect(composition.match(/<ContextPanelSlot/g)).toHaveLength(1);
+    expect(composition).not.toContain("TaskDetailsPanel");
+    expect(composition).not.toContain("ReactFlow");
+    expect(contextPanelSlot).toContain("<TaskDetailsPanel");
+    expect(contextPanelSlot).toContain('type: "close-context-panel"');
+    expect(composition).toContain('state.contextPanel?.kind === "task"');
+    expect(composition).toContain("desktop-prototype");
+    expect(composition).toContain("canvasDesktopHost");
+    expect(composition).toContain("canvasSectionWorkspace");
+    expect(composition).toContain('"has-context-panel"');
+    expect(composition).toContain('"has-full-height-drawer"');
+    expect(composition).not.toContain("taskDetailsLayer");
+    expect(composition).not.toContain("taskDetailsHost");
+    expect(canvasShell).toContain("<ReactFlow");
+    expect(canvasShell).toContain("onNodesChange={handleNodesChange}");
+    expect(canvasShell).toContain("onMoveEnd={onMoveEnd}");
   });
 });

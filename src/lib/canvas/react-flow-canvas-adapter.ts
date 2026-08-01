@@ -21,9 +21,11 @@ import type {
   CanvasAssetRepository,
 } from "@/lib/canvas/local-canvas-repository";
 import type { ObjectUrlRegistry } from "@/lib/canvas/canvas-image-ingestion";
+import type { CanvasTaskBridge } from "@/lib/canvas/canvas-task-bridge";
 
 export const CANVAS_IMAGE_NODE_TYPE = "canvasImage";
 export const CANVAS_TEXT_NODE_TYPE = "canvasText";
+export const CANVAS_TASK_NODE_TYPE = "canvasTask";
 const MAX_INITIAL_WIDTH = 640;
 const MAX_INITIAL_HEIGHT = 480;
 const MIN_INITIAL_WIDTH = 160;
@@ -56,7 +58,20 @@ export type CanvasTextFlowNode = Node<
   typeof CANVAS_TEXT_NODE_TYPE
 >;
 
-export type CanvasFlowNode = CanvasImageFlowNode | CanvasTextFlowNode;
+export type CanvasTaskNodeData = {
+  taskId: string;
+  lastKnownTitle?: string;
+  taskBridge?: CanvasTaskBridge;
+  taskWorkspaceId?: string;
+};
+
+export type CanvasTaskFlowNode = Node<
+  CanvasTaskNodeData,
+  typeof CANVAS_TASK_NODE_TYPE
+>;
+
+export type CanvasFlowNode =
+  CanvasImageFlowNode | CanvasTextFlowNode | CanvasTaskFlowNode;
 
 export type CanvasImageAdapterDependencies = {
   assetRepository: CanvasAssetRepository;
@@ -203,6 +218,44 @@ export function createCanvasTextFlowNode(input: {
   };
 }
 
+export function createCanvasTaskId(
+  idGenerator: () => string = () =>
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+): string {
+  return `task-node-${idGenerator()}`;
+}
+
+export function createCanvasTaskFlowNode(input: {
+  id: string;
+  taskId: string;
+  lastKnownTitle?: string;
+  position: FlowPosition;
+  size?: CanvasSize;
+  zIndex?: number;
+  taskBridge?: CanvasTaskBridge;
+  taskWorkspaceId?: string;
+}): CanvasTaskFlowNode {
+  return {
+    id: input.id,
+    type: CANVAS_TASK_NODE_TYPE,
+    position: { ...input.position },
+    style: {
+      width: input.size?.width ?? 300,
+      height: input.size?.height ?? 150,
+    },
+    zIndex: input.zIndex,
+    data: {
+      taskId: input.taskId,
+      ...(input.lastKnownTitle === undefined
+        ? {}
+        : { lastKnownTitle: input.lastKnownTitle }),
+      taskBridge: input.taskBridge,
+      taskWorkspaceId: input.taskWorkspaceId,
+    },
+  };
+}
+
 export function canvasDocumentToTextNodes(
   document: CanvasDocumentV1,
 ): CanvasTextFlowNode[] {
@@ -215,6 +268,32 @@ export function canvasDocumentToTextNodes(
         position: node.position,
         size: node.size,
         zIndex: node.zIndex,
+      }),
+    );
+}
+
+export function canvasDocumentToTaskNodes(
+  document: CanvasDocumentV1,
+  options: {
+    taskBridge?: CanvasTaskBridge;
+    taskWorkspaceId?: string;
+  } = {},
+): CanvasTaskFlowNode[] {
+  return document.nodes
+    .filter(
+      (node): node is Extract<CanvasNode, { kind: "task" }> =>
+        node.kind === "task",
+    )
+    .map((node) =>
+      createCanvasTaskFlowNode({
+        id: node.id,
+        taskId: node.taskId,
+        lastKnownTitle: node.lastKnownTitle,
+        position: node.position,
+        size: node.size,
+        zIndex: node.zIndex,
+        taskBridge: options.taskBridge,
+        taskWorkspaceId: options.taskWorkspaceId,
       }),
     );
 }
@@ -275,6 +354,13 @@ export function runtimeNodesToCanvasDocument(
       return {
         ...canonical,
         markdown: runtime.data.markdown,
+        position: { ...runtime.position },
+        size: runtimeNodeSize(runtime),
+      };
+    }
+    if (canonical.kind === "task" && runtime.type === CANVAS_TASK_NODE_TYPE) {
+      return {
+        ...canonical,
         position: { ...runtime.position },
         size: runtimeNodeSize(runtime),
       };

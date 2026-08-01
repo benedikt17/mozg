@@ -10,6 +10,7 @@ import {
   runtimeNodesToCanvasDocument,
   type CanvasFlowNode,
   type CanvasImageFlowNode,
+  type CanvasTaskFlowNode,
   type CanvasTextFlowNode,
 } from "@/lib/canvas/react-flow-canvas-adapter";
 import type {
@@ -219,6 +220,46 @@ export class LocalCanvasShellController {
       document: parseCanvasDocumentV1({
         ...this.stateValue.document,
         nodes: [...this.stateValue.document.nodes, textNode],
+      }),
+      status: "saving",
+      error: null,
+    };
+    return this.state;
+  }
+
+  insertTaskNode(node: CanvasTaskFlowNode): LocalCanvasShellState {
+    if (!this.stateValue.canvasId) return this.state;
+    if (
+      this.stateValue.document.nodes.some((existing) => existing.id === node.id)
+    ) {
+      return this.state;
+    }
+    const taskNode = {
+      id: node.id,
+      kind: "task" as const,
+      taskId: node.data.taskId,
+      ...(node.data.lastKnownTitle === undefined
+        ? {}
+        : { lastKnownTitle: node.data.lastKnownTitle }),
+      position: { ...node.position },
+      size: {
+        width: typeof node.style?.width === "number" ? node.style.width : 300,
+        height:
+          typeof node.style?.height === "number" ? node.style.height : 150,
+      },
+      zIndex:
+        typeof node.zIndex === "number"
+          ? node.zIndex
+          : this.stateValue.document.nodes.reduce(
+              (maximum, current) => Math.max(maximum, current.zIndex),
+              0,
+            ) + 1,
+    };
+    this.stateValue = {
+      ...this.stateValue,
+      document: parseCanvasDocumentV1({
+        ...this.stateValue.document,
+        nodes: [...this.stateValue.document.nodes, taskNode],
       }),
       status: "saving",
       error: null,

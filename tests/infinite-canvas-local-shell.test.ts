@@ -3,6 +3,7 @@ import {
   parseCanvasDocumentV1,
   type CanvasDocumentV1,
 } from "@/lib/canvas/canvas-document";
+import type { CanvasTaskBridge } from "@/lib/canvas/canvas-task-bridge";
 import {
   createObjectUrlRegistry,
   eventTouchesEditingSurface,
@@ -10,10 +11,13 @@ import {
   type CanvasImageTransferPayload,
 } from "@/lib/canvas/canvas-image-ingestion";
 import {
+  canvasDocumentToTaskNodes,
   canvasDocumentToImageNodes,
+  createCanvasTaskFlowNode,
   imageNodesToCanvasDocument,
   ingestCanvasImageTransferToNodes,
   restoreCanvasImageNodes,
+  runtimeNodesToCanvasDocument,
   type CanvasImageFlowNode,
 } from "@/lib/canvas/react-flow-canvas-adapter";
 import {
@@ -887,5 +891,106 @@ describe("production-shaped local Canvas shell", () => {
         composedPath: () => [canvas],
       } as unknown as Event),
     ).toBe(false);
+  });
+
+  it("round-trips task references while excluding runtime task state", () => {
+    const source = parseCanvasDocumentV1({
+      schemaVersion: 1,
+      nodes: [
+        {
+          id: "task-node-1",
+          kind: "task",
+          taskId: "task-1",
+          lastKnownTitle: "Fallback title",
+          position: { x: 20, y: 30 },
+          size: { width: 300, height: 150 },
+          zIndex: 4,
+        },
+      ],
+      edges: [],
+    });
+    const runtime = canvasDocumentToTaskNodes(source)[0]!;
+    runtime.position = { x: 80, y: 90 };
+    runtime.style = { width: 360, height: 180 };
+    runtime.data.lastKnownTitle = "A newer display fallback";
+    const serialized = runtimeNodesToCanvasDocument(source, [runtime]);
+
+    expect(serialized.nodes[0]).toEqual({
+      id: "task-node-1",
+      kind: "task",
+      taskId: "task-1",
+      lastKnownTitle: "Fallback title",
+      position: { x: 80, y: 90 },
+      size: { width: 360, height: 180 },
+      zIndex: 4,
+    });
+    expect(JSON.stringify(serialized)).not.toContain("completed");
+    expect(JSON.stringify(serialized)).not.toContain("taskBridge");
+  });
+
+  it("persists and reloads only the task reference and layout through Canvas CAS", async () => {
+    const repository = new MemoryCanvasRepository();
+    const controller = new LocalCanvasShellController(
+      controllerOptions(repository),
+    );
+    const created = await controller.createCanvas("Tasks");
+    const node = createCanvasTaskFlowNode({
+      id: "task-node-1",
+      taskId: "task-1",
+      lastKnownTitle: "Task title",
+      position: { x: 44, y: 55 },
+      size: { width: 320, height: 160 },
+      zIndex: 2,
+    });
+
+    controller.insertTaskNode(node);
+    await controller.save();
+    const reloaded = new LocalCanvasShellController(
+      controllerOptions(repository),
+    );
+    const reopened = await reloaded.openCanvas(created.canvasId!);
+
+    expect(reopened.document.nodes).toEqual([
+      {
+        id: "task-node-1",
+        kind: "task",
+        taskId: "task-1",
+        lastKnownTitle: "Task title",
+        position: { x: 44, y: 55 },
+        size: { width: 320, height: 160 },
+        zIndex: 2,
+      },
+    ]);
+    expect(JSON.stringify(reopened.document)).not.toContain("completed");
+  });
+
+  it("restores task nodes with the current bridge context after reload", () => {
+    const source = parseCanvasDocumentV1({
+      schemaVersion: 1,
+      nodes: [
+        {
+          id: "task-node-1",
+          kind: "task",
+          taskId: "task-1",
+          lastKnownTitle: "Task title",
+          position: { x: 1, y: 2 },
+          size: { width: 300, height: 150 },
+          zIndex: 1,
+        },
+      ],
+      edges: [],
+    });
+    const bridge = {} as CanvasTaskBridge;
+    const restored = canvasDocumentToTaskNodes(source, {
+      taskBridge: bridge,
+      taskWorkspaceId: "project-1",
+    });
+
+    expect(restored[0]?.data).toEqual({
+      taskId: "task-1",
+      lastKnownTitle: "Task title",
+      taskBridge: bridge,
+      taskWorkspaceId: "project-1",
+    });
   });
 });

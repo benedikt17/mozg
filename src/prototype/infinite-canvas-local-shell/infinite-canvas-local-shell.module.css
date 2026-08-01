@@ -210,6 +210,195 @@
   justify-content: flex-end;
   gap: 6px;
 }
+.taskNode {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(15, 118, 110, 0.32);
+  border-radius: 12px;
+  background: linear-gradient(145deg, #ffffff, #f0fdfa);
+  box-shadow: 0 8px 24px rgba(28, 25, 23, 0.12);
+}
+.taskNodeHeader,
+.taskNodeBody {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.taskNodeHeader {
+  justify-content: space-between;
+}
+.taskNodeType {
+  color: #0f766e;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.taskNodeReference {
+  max-width: 150px;
+  overflow: hidden;
+  color: #a8a29e;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.taskNodeBody {
+  align-items: flex-start;
+  font-size: 15px;
+  line-height: 1.35;
+}
+.taskNodeBody input {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  accent-color: #0f766e;
+}
+.taskNodeBody strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.taskNodeMissingTitle {
+  color: #78716c;
+}
+.taskNodeStatus,
+.taskNodeMissing,
+.taskNodeError {
+  font-size: 11px;
+}
+.taskNodeStatus {
+  color: #0f766e;
+}
+.taskNodeMissing {
+  color: #b45309;
+}
+.taskNodeError {
+  color: #b91c1c;
+}
+.taskNodeDetails {
+  align-self: flex-start;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #0f766e;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.taskNodeDetails:hover:not(:disabled),
+.taskNodeDetails:focus-visible {
+  text-decoration: underline;
+}
+.taskNodeDetails:disabled {
+  color: #a8a29e;
+  cursor: not-allowed;
+}
+.taskPicker {
+  position: relative;
+}
+.taskPickerPanel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  width: min(340px, calc(100vw - 32px));
+  padding: 12px;
+  border: 1px solid #d6d3d1;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 16px 40px rgba(28, 25, 23, 0.16);
+}
+.taskPickerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.taskPickerClose {
+  border: 0;
+  background: transparent;
+  color: #78716c;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.taskPickerResults {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 280px;
+  overflow: auto;
+  margin-top: 10px;
+}
+.taskPickerResult {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid #e7e5e4;
+  border-radius: 8px;
+  background: #fafaf9;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.taskPickerResult:hover,
+.taskPickerResult:focus-visible {
+  border-color: #0f766e;
+  background: #f0fdfa;
+}
+.taskPickerResult strong {
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.taskPickerResult span,
+.taskPickerEmpty,
+.taskPickerError {
+  margin: 0;
+  color: #78716c;
+  font-size: 11px;
+}
+.taskPickerError {
+  color: #b91c1c;
+}
+.canvasDesktopHost {
+  width: 100%;
+  height: 100dvh;
+  min-width: 0;
+  min-height: 0;
+}
+.canvasDesktopPrototype:global(.desktop-prototype) {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: transparent;
+}
+.canvasSectionWorkspace {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+.canvasMainWorkspace {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
+  background: transparent;
+  padding: 0;
+}
 .canvasHint {
   position: absolute;
   left: 18px;
