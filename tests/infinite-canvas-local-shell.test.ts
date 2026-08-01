@@ -14,12 +14,14 @@ import {
   canvasDocumentToTaskNodes,
   canvasDocumentToImageNodes,
   createCanvasTaskFlowNode,
+  createCanvasTextFlowNode,
   imageNodesToCanvasDocument,
   ingestCanvasImageTransferToNodes,
   restoreCanvasImageNodes,
   runtimeNodesToCanvasDocument,
   type CanvasImageFlowNode,
 } from "@/lib/canvas/react-flow-canvas-adapter";
+import { shouldCloseCanvasTaskDetails } from "@/lib/canvas/canvas-task-selection";
 import {
   LocalCanvasShellController,
   type LocalCanvasShellControllerOptions,
@@ -291,6 +293,50 @@ function urlRegistry() {
 }
 
 describe("production-shaped local Canvas shell", () => {
+  it("closes task details only when every matching reference leaves selection", () => {
+    const selectedTask = {
+      ...createCanvasTaskFlowNode({
+        id: "task-node-a",
+        taskId: "task-a",
+        position: { x: 0, y: 0 },
+      }),
+      selected: true,
+    };
+    const duplicateTask = {
+      ...createCanvasTaskFlowNode({
+        id: "task-node-a-copy",
+        taskId: "task-a",
+        position: { x: 320, y: 0 },
+      }),
+      selected: false,
+    };
+    const otherTask = {
+      ...createCanvasTaskFlowNode({
+        id: "task-node-b",
+        taskId: "task-b",
+        position: { x: 0, y: 220 },
+      }),
+      selected: true,
+    };
+    const textNode = createCanvasTextFlowNode({
+      id: "text-node",
+      markdown: "text",
+      position: { x: 320, y: 220 },
+    });
+
+    expect(shouldCloseCanvasTaskDetails("task-a", [selectedTask])).toBe(false);
+    expect(
+      shouldCloseCanvasTaskDetails("task-a", [selectedTask, duplicateTask]),
+    ).toBe(false);
+    expect(
+      shouldCloseCanvasTaskDetails("task-a", [duplicateTask, otherTask]),
+    ).toBe(true);
+    expect(shouldCloseCanvasTaskDetails("task-a", [otherTask, textNode])).toBe(
+      true,
+    );
+    expect(shouldCloseCanvasTaskDetails(undefined, [otherTask])).toBe(false);
+  });
+
   it("loads strict CanvasDocumentV1 image nodes with canonical position and size", async () => {
     const repository = new MemoryCanvasRepository();
     await repository.storeImage({
@@ -981,7 +1027,9 @@ describe("production-shaped local Canvas shell", () => {
       edges: [],
     });
     const bridge = {} as CanvasTaskBridge;
+    const onContentHeightChange = vi.fn();
     const restored = canvasDocumentToTaskNodes(source, {
+      onContentHeightChange,
       taskBridge: bridge,
       taskWorkspaceId: "project-1",
     });
@@ -991,6 +1039,10 @@ describe("production-shaped local Canvas shell", () => {
       lastKnownTitle: "Task title",
       taskBridge: bridge,
       taskWorkspaceId: "project-1",
+      onContentHeightChange,
     });
+    expect(
+      JSON.stringify(runtimeNodesToCanvasDocument(source, restored)),
+    ).not.toContain("onContentHeightChange");
   });
 });

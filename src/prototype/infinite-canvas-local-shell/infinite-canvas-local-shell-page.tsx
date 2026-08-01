@@ -31,8 +31,11 @@ export function getCanvasTaskBridgeProps({
 function InfiniteCanvasLocalShellComposition(): React.JSX.Element {
   const { dispatch, state, taskBridge, taskWorkspaceId, workspaceAvailable } =
     useDesktopTaskRuntime();
-  const hasTaskContextPanel =
-    workspaceAvailable && state.contextPanel?.kind === "task";
+  const activeTaskDetailsTaskId =
+    workspaceAvailable && state.contextPanel?.kind === "task"
+      ? state.contextPanel.taskId
+      : undefined;
+  const hasTaskContextPanel = activeTaskDetailsTaskId !== undefined;
   const canvasSectionClasses = [
     styles.canvasSectionWorkspace,
     "section-workspace",
@@ -53,6 +56,7 @@ function InfiniteCanvasLocalShellComposition(): React.JSX.Element {
                 taskWorkspaceId,
                 workspaceAvailable,
               })}
+              activeTaskDetailsTaskId={activeTaskDetailsTaskId}
             />
           </section>
           {hasTaskContextPanel ? (

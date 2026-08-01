@@ -1,9 +1,17 @@
+export type CanvasSubtaskProjection = {
+  id: string;
+  title: string;
+  completed: boolean;
+};
+
 export type CanvasTaskProjection = {
   id: string;
   title: string;
   completed: boolean;
   signal: "none" | "green" | "yellow" | "red";
   dueDate?: string | null;
+  subtasks: CanvasSubtaskProjection[];
+  detailsOpen: boolean;
 };
 
 export type CanvasTaskResolveResult =
@@ -31,7 +39,15 @@ export type CanvasTaskBridge = {
     taskId: string,
   ): void | Promise<void>;
 
+  toggleSubtaskCompleted(
+    workspaceId: string,
+    taskId: string,
+    subtaskId: string,
+  ): void | Promise<void>;
+
   openTask(taskId: string): void;
+
+  closeTaskDetails(taskId: string): void;
 
   subscribeToTask(
     workspaceId: string,

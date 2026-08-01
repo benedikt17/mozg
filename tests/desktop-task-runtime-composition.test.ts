@@ -96,6 +96,7 @@ describe("desktop task runtime composition", () => {
       /<DesktopTaskRuntimeProvider[\s\S]*<InfiniteCanvasLocalShellComposition \/>/u,
     );
     expect(canvasComposition).toContain("getCanvasTaskBridgeProps");
+    expect(canvasComposition).toContain("activeTaskDetailsTaskId");
     expect(canvasComposition).toContain('"section-workspace"');
     expect(canvasComposition).toContain('"section-tasks"');
     expect(canvasComposition).toContain("main-workspace");
@@ -108,6 +109,8 @@ describe("desktop task runtime composition", () => {
     expect(canvasShell).toContain("function TaskNodeBody");
     expect(canvasShell).toContain("subscribeToTask");
     expect(canvasShell).toContain("toggleTaskCompleted");
+    expect(canvasShell).toContain("shouldCloseCanvasTaskDetails");
+    expect(canvasShell).toContain("taskBridge.closeTaskDetails");
     expect(canvasShell).not.toContain("useReducer");
     expect(canvasComposition).toContain("ContextPanelSlot");
     expect(canvasAdapter).toContain('kind: "task"');
@@ -122,6 +125,8 @@ describe("desktop task runtime composition", () => {
     expect(canvasShell).not.toContain("PrototypeTask");
     expect(canvasShell).not.toContain("initialDesktopPrototypeState");
     expect(canvasShell).not.toContain("completed:");
+    expect(canvasShell).not.toContain("isDetailsOpen");
+    expect(canvasShell).not.toContain("isActive");
   });
 
   it("keeps the Canvas in the desktop workspace beside the task panel", () => {

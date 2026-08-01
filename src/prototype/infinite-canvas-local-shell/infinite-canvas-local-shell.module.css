@@ -129,25 +129,68 @@
   position: absolute;
   inset: 0;
 }
-.imageNode {
+.nodeFrame {
+  position: relative;
   width: 100%;
   height: 100%;
-  overflow: hidden;
-  border: 1px solid rgba(15, 118, 110, 0.32);
-  border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 8px 24px rgba(28, 25, 23, 0.12);
+  overflow: visible;
 }
-.selectedNode {
-  outline: 2px solid #0f766e;
-  outline-offset: 2px;
+.nodeBody {
+  position: absolute;
+  inset: 8px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.selectionLayer {
+  position: absolute;
+  inset: -2px;
+  z-index: 4;
+  border: 2px solid #0f766e;
+  border-radius: 12px;
+  opacity: 0;
+  pointer-events: none;
+}
+.selectionLayer[data-selected="true"] {
+  opacity: 1;
+}
+.connectionHandleLayer,
+.nodeToolbarSlot,
+.nodeContextMenuSlot {
+  position: absolute;
+  z-index: 5;
+  pointer-events: auto;
+}
+.connectionHandleLayer {
+  inset: 0;
+  pointer-events: none;
+}
+.nodeToolbarSlot {
+  top: -34px;
+  left: 0;
+}
+.nodeContextMenuSlot {
+  top: 4px;
+  right: 4px;
+}
+.imageNodeFrame {
+  --node-visual-border: 0;
+  --node-visual-radius: 10px;
+  --node-visual-background: transparent;
+  --node-visual-shadow: none;
+}
+.imageNodeFrame .nodeBody {
+  inset: 0;
+  border-radius: var(--node-visual-radius);
+  background: transparent;
+  box-shadow: none;
 }
 .image {
   display: block;
   width: 100%;
   height: calc(100% - 24px);
   object-fit: contain;
-  background: #fafaf9;
+  background: transparent;
 }
 .caption {
   display: flex;
@@ -159,14 +202,24 @@
   color: #78716c;
   font-size: 10px;
 }
-.textNode {
+.textNodeFrame {
+  --node-visual-border: 1px solid rgba(68, 64, 60, 0.25);
+  --node-visual-radius: 10px;
+  --node-visual-background: #fffdf8;
+  --node-visual-shadow: 0 8px 24px rgba(28, 25, 23, 0.1);
+}
+.imageNodeFrame .nodeBody,
+.textNodeFrame .nodeBody,
+.taskNodeFrame .nodeBody {
+  border: var(--node-visual-border);
+  border-radius: var(--node-visual-radius);
+  background: var(--node-visual-background);
+  box-shadow: var(--node-visual-shadow);
+}
+.textNodeContent {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  border: 1px solid rgba(68, 64, 60, 0.25);
-  border-radius: 10px;
-  background: #fffdf8;
-  box-shadow: 0 8px 24px rgba(28, 25, 23, 0.1);
 }
 .textPreview {
   width: 100%;
@@ -210,18 +263,20 @@
   justify-content: flex-end;
   gap: 6px;
 }
-.taskNode {
+.taskNodeFrame {
+  --node-visual-border: 1px solid rgba(15, 118, 110, 0.32);
+  --node-visual-radius: 12px;
+  --node-visual-background: linear-gradient(145deg, #ffffff, #f0fdfa);
+  --node-visual-shadow: 0 8px 24px rgba(28, 25, 23, 0.12);
+}
+.taskNodeContent {
   width: 100%;
-  height: 100%;
-  overflow: hidden;
+  height: auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 14px;
-  border: 1px solid rgba(15, 118, 110, 0.32);
-  border-radius: 12px;
-  background: linear-gradient(145deg, #ffffff, #f0fdfa);
-  box-shadow: 0 8px 24px rgba(28, 25, 23, 0.12);
 }
 .taskNodeHeader,
 .taskNodeBody {
@@ -252,14 +307,47 @@
   font-size: 15px;
   line-height: 1.35;
 }
+.taskNodeBody strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .taskNodeBody input {
   flex: 0 0 auto;
   margin-top: 2px;
   accent-color: #0f766e;
 }
-.taskNodeBody strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
+.taskNodeSubtasks {
+  min-width: 0;
+  min-height: auto;
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.taskNodeSubtask {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+  color: #57534e;
+  font-size: 11px;
+  line-height: 15px;
+  overflow-wrap: anywhere;
+}
+.taskNodeSubtask span {
+  min-width: 0;
+}
+.taskNodeSubtask input {
+  width: 13px;
+  height: 13px;
+  margin: 1px 0 0;
+  accent-color: #0f766e;
+}
+.taskNodeSubtaskComplete {
+  color: #a8a29e;
+  text-decoration: line-through;
 }
 .taskNodeMissingTitle {
   color: #78716c;

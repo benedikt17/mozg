@@ -1,0 +1,78 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+function source(relativePath: string): string {
+  return readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
+}
+
+describe("CanvasNodeFrame composition", () => {
+  it("owns the shared interaction layers and future connection slot", () => {
+    const frame = source(
+      "src/prototype/infinite-canvas-local-shell/canvas-node-frame.tsx",
+    );
+
+    expect(frame).toContain("function SelectionLayer");
+    expect(frame).toContain("function ResizeLayer");
+    expect(frame).toContain("function ConnectionHandleLayer");
+    expect(frame).toContain("function NodeToolbarSlot");
+    expect(frame).toContain("function NodeContextMenuSlot");
+    expect(frame).toContain('data-canvas-node-frame="true"');
+    expect(frame).toContain('data-slot="connections"');
+    expect(frame).toContain('data-slot="toolbar"');
+    expect(frame).toContain('data-slot="context-menu"');
+    expect(frame).toContain("isVisible={selected}");
+  });
+
+  it("is the only interaction frame used by task, text, and image bodies", () => {
+    const shell = source(
+      "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
+    );
+
+    expect(shell).toContain("function ImageNodeBody");
+    expect(shell).toContain("function TextNodeBody");
+    expect(shell).toContain("function TaskNodeBody");
+    expect(shell.match(/<CanvasNodeFrame/g)).toHaveLength(3);
+    expect(shell).not.toContain("NodeResizer");
+    expect(shell).toContain("CANVAS_IMAGE_NODE_TYPE]: ImageNodeBody");
+    expect(shell).toContain("CANVAS_TEXT_NODE_TYPE]: TextNodeBody");
+    expect(shell).toContain("CANVAS_TASK_NODE_TYPE]: TaskNodeBody");
+    expect(shell).toContain("toggleSubtaskCompleted");
+    expect(shell).toContain("closeTaskDetails");
+    expect(shell).toContain("activateNode");
+    expect(shell).toContain("reactFlow.setNodes");
+    expect(shell).toContain("contentMinHeight");
+    expect(shell).toContain("scrollHeight");
+    expect(shell).toContain("onContentHeightChange");
+    expect(shell).toContain("Открыть детали");
+    expect(shell).toContain("Закрыть детали");
+    expect(shell).toContain("nodrag nopan");
+    expect(shell).toContain("nodrag nopan nowheel");
+  });
+
+  it("keeps domain body styles separate from frame layout styles", () => {
+    const styles = source(
+      "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css",
+    );
+
+    expect(styles).toContain(".nodeFrame");
+    expect(styles).toContain(".nodeBody");
+    expect(styles).toContain("inset: 8px");
+    expect(styles).toContain("inset: -2px");
+    expect(styles).toContain("--node-visual-border");
+    expect(styles).toContain(".imageNodeFrame .nodeBody");
+    expect(styles).toMatch(
+      /\.imageNodeFrame\s*\{\s*--node-visual-border:\s*0;/u,
+    );
+    expect(styles).toContain("inset: 0;");
+    expect(styles).toContain("object-fit: contain;");
+    expect(styles).toContain("background: transparent;");
+    expect(styles).toContain(".imageNodeFrame");
+    expect(styles).toContain(".textNodeFrame");
+    expect(styles).toContain(".taskNodeFrame");
+    expect(styles).toContain(".taskNodeContent");
+    expect(styles).toContain(".textNodeContent");
+    expect(styles).not.toContain("overflow-y: auto");
+    expect(styles).not.toContain("overflow-y: scroll");
+    expect(styles).not.toContain("overflow: scroll");
+  });
+});

@@ -3,7 +3,6 @@
 import {
   Background,
   Controls,
-  NodeResizer,
   ReactFlow,
   ReactFlowProvider,
   useNodesState,
@@ -69,6 +68,8 @@ import {
   LocalCanvasShellController,
   type LocalCanvasShellState,
 } from "@/lib/canvas/local-canvas-shell-controller";
+import { shouldCloseCanvasTaskDetails } from "@/lib/canvas/canvas-task-selection";
+import { CanvasNodeFrame } from "./canvas-node-frame";
 import styles from "./infinite-canvas-local-shell.module.css";
 
 export const INFINITE_CANVAS_LOCAL_SHELL_WORKSPACE_ID =
@@ -102,20 +103,18 @@ function transferPayload(
   };
 }
 
-function CanvasImageNodeView({
+function ImageNodeBody({
   data,
   selected,
 }: NodeProps<CanvasImageFlowNode>): React.JSX.Element {
   return (
-    <div
-      className={`${styles.imageNode} ${selected ? styles.selectedNode : ""}`}
+    <CanvasNodeFrame
+      selected={selected}
+      minWidth={120}
+      minHeight={80}
+      keepAspectRatio
+      className={styles.imageNodeFrame}
     >
-      <NodeResizer
-        color="#0f766e"
-        keepAspectRatio
-        minWidth={120}
-        minHeight={80}
-      />
       {data.objectUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -133,11 +132,11 @@ function CanvasImageNodeView({
           {data.intrinsicWidth} × {data.intrinsicHeight}
         </span>
       </div>
-    </div>
+    </CanvasNodeFrame>
   );
 }
 
-function CanvasTextNodeView({
+function TextNodeBody({
   data,
   selected,
   id,
@@ -165,62 +164,70 @@ function CanvasTextNodeView({
     );
   };
   return (
-    <div
-      className={`${styles.textNode} ${selected ? styles.selectedNode : ""}`}
-      onDoubleClick={(event) => {
-        event.stopPropagation();
-        window.dispatchEvent(
-          new CustomEvent("mozg:canvas-text-edit", { detail: { id } }),
-        );
-      }}
+    <CanvasNodeFrame
+      selected={selected}
+      minWidth={180}
+      minHeight={100}
+      className={styles.textNodeFrame}
     >
-      <NodeResizer color="#0f766e" minWidth={180} minHeight={100} />
-      {data.isEditing ? (
-        <div className={styles.textEditor}>
-          <textarea
-            autoFocus
-            value={draft}
-            aria-label="Markdown text"
-            onChange={(event) => update(event.target.value)}
-            onKeyDown={(event) => {
-              event.stopPropagation();
-              if (event.key === "Escape") {
-                event.preventDefault();
-                cancel();
-              } else if (
-                event.key === "Enter" &&
-                (event.ctrlKey || event.metaKey)
-              ) {
-                event.preventDefault();
-                commit();
-              }
-            }}
-            onPaste={(event) => event.stopPropagation()}
-          />
-          <div className={styles.textEditorActions}>
-            <button type="button" className={styles.button} onClick={cancel}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              className={`${styles.button} ${styles.primary}`}
-              onClick={commit}
-            >
-              Save
-            </button>
+      <div
+        className={styles.textNodeContent}
+        onDoubleClick={(event) => {
+          event.stopPropagation();
+          window.dispatchEvent(
+            new CustomEvent("mozg:canvas-text-edit", { detail: { id } }),
+          );
+        }}
+      >
+        {data.isEditing ? (
+          <div className={styles.textEditor}>
+            <textarea
+              autoFocus
+              value={draft}
+              aria-label="Markdown text"
+              className="nodrag nopan nowheel"
+              onChange={(event) => update(event.target.value)}
+              onKeyDown={(event) => {
+                event.stopPropagation();
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  cancel();
+                } else if (
+                  event.key === "Enter" &&
+                  (event.ctrlKey || event.metaKey)
+                ) {
+                  event.preventDefault();
+                  commit();
+                }
+              }}
+              onPaste={(event) => event.stopPropagation()}
+            />
+            <div className={styles.textEditorActions}>
+              <button type="button" className={styles.button} onClick={cancel}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={`${styles.button} ${styles.primary}`}
+                onClick={commit}
+              >
+                Save
+              </button>
+            </div>
           </div>
-        </div>
-      ) : (
-        <div className={styles.textPreview}>
-          <MarkdownStringPreview contentId={id} markdown={data.markdown} />
-        </div>
-      )}
-    </div>
+        ) : (
+          <div className={styles.textPreview}>
+            <MarkdownStringPreview contentId={id} markdown={data.markdown} />
+          </div>
+        )}
+      </div>
+    </CanvasNodeFrame>
   );
 }
 
 function TaskNodeBody({
   data,
+  id,
   selected,
 }: NodeProps<CanvasTaskFlowNode>): React.JSX.Element {
   const runtimeKey = `${data.taskWorkspaceId ?? "none"}:${data.taskId}:${data.taskBridge ? "ready" : "waiting"}`;
@@ -232,6 +239,9 @@ function TaskNodeBody({
     key: "",
     hasError: false,
   });
+  const [contentMinHeight, setContentMinHeight] = useState(120);
+  const taskContentRef = useRef<HTMLDivElement | null>(null);
+  const reactFlow = useReactFlow<CanvasFlowNode>();
   const projection =
     projectionState.key === runtimeKey ? projectionState.projection : undefined;
   const mutationError =
@@ -270,81 +280,177 @@ function TaskNodeBody({
     ).catch(() => setMutationState({ key: runtimeKey, hasError: true }));
   };
 
-  const openDetails = (): void => {
-    if (data.taskBridge) data.taskBridge.openTask(data.taskId);
+  const toggleSubtaskCompleted = (subtaskId: string): void => {
+    if (!data.taskBridge || !data.taskWorkspaceId || !resolved) return;
+    void Promise.resolve(
+      data.taskBridge.toggleSubtaskCompleted(
+        data.taskWorkspaceId,
+        data.taskId,
+        subtaskId,
+      ),
+    ).catch(() => undefined);
   };
 
+  const activateNode = (): void => {
+    reactFlow.setNodes((current) =>
+      current.map((node) => {
+        const nextSelected = node.id === id;
+        return node.selected === nextSelected
+          ? node
+          : { ...node, selected: nextSelected };
+      }),
+    );
+  };
+
+  const openDetails = (): void => {
+    if (!data.taskBridge) return;
+    activateNode();
+    data.taskBridge.openTask(data.taskId);
+  };
+
+  const toggleDetails = (): void => {
+    if (!data.taskBridge || !resolved) return;
+    if (projection?.detailsOpen) data.taskBridge.closeTaskDetails(data.taskId);
+    else openDetails();
+  };
+
+  const subtasks = projection?.subtasks ?? [];
+  const onContentHeightChange = data.onContentHeightChange;
+
+  const measureContentHeight = useCallback((): void => {
+    const content = taskContentRef.current;
+    if (!content || !onContentHeightChange) return;
+    const requiredHeight = Math.max(120, Math.ceil(content.scrollHeight + 18));
+    setContentMinHeight((current) =>
+      current === requiredHeight ? current : requiredHeight,
+    );
+    onContentHeightChange(id, requiredHeight);
+  }, [id, onContentHeightChange]);
+
+  useEffect(() => {
+    measureContentHeight();
+    const content = taskContentRef.current;
+    if (!content || !onContentHeightChange) return;
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measureContentHeight);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [
+    measureContentHeight,
+    mutationError,
+    onContentHeightChange,
+    projection,
+    title,
+  ]);
+
   return (
-    <div
-      className={`${styles.taskNode} ${selected ? styles.selectedNode : ""}`}
-      onDoubleClick={(event) => {
-        event.stopPropagation();
-        openDetails();
-      }}
+    <CanvasNodeFrame
+      selected={selected}
+      minWidth={220}
+      minHeight={contentMinHeight}
+      className={styles.taskNodeFrame}
     >
-      <NodeResizer color="#0f766e" minWidth={220} minHeight={120} />
-      <div className={styles.taskNodeHeader}>
-        <span className={styles.taskNodeType}>Задача</span>
-        <span className={styles.taskNodeReference} title={data.taskId}>
-          {data.taskId}
-        </span>
-      </div>
-      <div className={styles.taskNodeBody}>
-        <input
-          type="checkbox"
-          checked={projection?.completed ?? false}
-          disabled={!resolved}
-          aria-label={`Завершить задачу «${title}»`}
-          onPointerDown={(event) => event.stopPropagation()}
-          onChange={(event) => {
-            event.stopPropagation();
-            toggleCompleted();
-          }}
-        />
-        <strong className={resolved ? undefined : styles.taskNodeMissingTitle}>
-          {title}
-        </strong>
-      </div>
-      {resolved ? (
-        <span className={styles.taskNodeStatus}>
-          {projection.completed ? "Выполнено" : "В работе"}
-        </span>
-      ) : (
-        <span className={styles.taskNodeMissing} role="status">
-          {missingLabel}
-        </span>
-      )}
-      {mutationError ? (
-        <span className={styles.taskNodeError} role="alert">
-          Не удалось изменить задачу
-        </span>
-      ) : null}
-      <button
-        type="button"
-        className={styles.taskNodeDetails}
-        disabled={!data.taskBridge || !resolved}
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={(event) => {
+      <div
+        ref={taskContentRef}
+        className={styles.taskNodeContent}
+        onDoubleClick={(event) => {
           event.stopPropagation();
           openDetails();
         }}
       >
-        Открыть details
-      </button>
-    </div>
+        <div className={styles.taskNodeHeader}>
+          <span className={styles.taskNodeType}>Задача</span>
+          <span className={styles.taskNodeReference} title={data.taskId}>
+            {data.taskId}
+          </span>
+        </div>
+        <div className={styles.taskNodeBody}>
+          <input
+            type="checkbox"
+            className="nodrag nopan"
+            checked={projection?.completed ?? false}
+            disabled={!resolved}
+            aria-label={`Завершить задачу «${title}»`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onChange={(event) => {
+              event.stopPropagation();
+              toggleCompleted();
+            }}
+          />
+          <strong
+            className={resolved ? undefined : styles.taskNodeMissingTitle}
+          >
+            {title}
+          </strong>
+        </div>
+        {resolved ? (
+          <span className={styles.taskNodeStatus}>
+            {projection.completed ? "Выполнено" : "В работе"}
+          </span>
+        ) : (
+          <span className={styles.taskNodeMissing} role="status">
+            {missingLabel}
+          </span>
+        )}
+        {subtasks.length > 0 ? (
+          <ul className={styles.taskNodeSubtasks} aria-label="Подзадачи">
+            {subtasks.map((subtask) => (
+              <li
+                className={`${styles.taskNodeSubtask} ${subtask.completed ? styles.taskNodeSubtaskComplete : ""}`}
+                key={subtask.id}
+              >
+                <input
+                  aria-label={`${subtask.completed ? "Отметить невыполненной" : "Отметить выполненной"}: ${subtask.title}`}
+                  checked={subtask.completed}
+                  className="nodrag nopan"
+                  disabled={!resolved}
+                  onClick={(event) => event.stopPropagation()}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onChange={(event) => {
+                    event.stopPropagation();
+                    toggleSubtaskCompleted(subtask.id);
+                  }}
+                  type="checkbox"
+                />
+                <span title={subtask.title}>{subtask.title}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {mutationError ? (
+          <span className={styles.taskNodeError} role="alert">
+            Не удалось изменить задачу
+          </span>
+        ) : null}
+        <button
+          type="button"
+          className={`${styles.taskNodeDetails} nodrag nopan`}
+          disabled={!data.taskBridge || !resolved}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            toggleDetails();
+          }}
+        >
+          {projection?.detailsOpen ? "Закрыть детали" : "Открыть детали"}
+        </button>
+      </div>
+    </CanvasNodeFrame>
   );
 }
 
 const nodeTypes = {
-  [CANVAS_IMAGE_NODE_TYPE]: CanvasImageNodeView,
+  [CANVAS_IMAGE_NODE_TYPE]: ImageNodeBody,
   [CANVAS_TASK_NODE_TYPE]: TaskNodeBody,
-  [CANVAS_TEXT_NODE_TYPE]: CanvasTextNodeView,
+  [CANVAS_TEXT_NODE_TYPE]: TextNodeBody,
 };
 
 function InfiniteCanvasLocalShellSurface({
+  activeTaskDetailsTaskId,
   taskBridge,
   taskWorkspaceId,
 }: {
+  activeTaskDetailsTaskId?: string;
   taskBridge?: CanvasTaskBridge;
   taskWorkspaceId?: string;
 }): React.JSX.Element {
@@ -358,6 +464,7 @@ function InfiniteCanvasLocalShellSurface({
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const viewportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const restoreControllerRef = useRef<AbortController | null>(null);
+  const pendingContentHeightSaveRef = useRef(false);
   const hydratingRef = useRef(true);
   const viewportApplyRef = useRef<string | null>(null);
   const suppressViewportSaveRef = useRef(false);
@@ -395,6 +502,17 @@ function InfiniteCanvasLocalShellSurface({
       }),
   );
   const reactFlow = useReactFlow<CanvasFlowNode>();
+
+  useEffect(() => {
+    const activeTaskId = activeTaskDetailsTaskId;
+    if (
+      !activeTaskId ||
+      !taskBridge ||
+      !shouldCloseCanvasTaskDetails(activeTaskId, nodes)
+    )
+      return;
+    taskBridge.closeTaskDetails(activeTaskId);
+  }, [activeTaskDetailsTaskId, nodes, taskBridge]);
   const adapterDependencies = useMemo<CanvasImageAdapterDependencies>(
     () => ({
       assetRepository: repository,
@@ -482,15 +600,47 @@ function InfiniteCanvasLocalShellSurface({
     }, 260);
   }, [controller, syncState]);
 
+  const handleTaskNodeContentHeightChange = useCallback(
+    (nodeId: string, requiredHeight: number): void => {
+      const node = reactFlow
+        .getNodes()
+        .find(
+          (current) =>
+            current.id === nodeId && current.type === CANVAS_TASK_NODE_TYPE,
+        );
+      if (!node) return;
+      const currentHeight = node.height ?? node.style?.height;
+      if (typeof currentHeight !== "number") return;
+      const nextHeight = Math.ceil(requiredHeight);
+      if (nextHeight <= currentHeight) return;
+      pendingContentHeightSaveRef.current = hydratingRef.current;
+      setNodes((current) =>
+        current.map((item) =>
+          item.id === nodeId
+            ? {
+                ...item,
+                height: nextHeight,
+                style: { ...item.style, height: nextHeight },
+              }
+            : item,
+        ),
+      );
+      if (!hydratingRef.current) scheduleSave();
+    },
+    [reactFlow, scheduleSave, setNodes],
+  );
+
   const restoreForCanvas = useCallback(
     async (nextState: LocalCanvasShellState) => {
       restoreControllerRef.current?.abort();
+      pendingContentHeightSaveRef.current = false;
       restoreControllerRef.current = new AbortController();
       objectUrls.revokeAll();
       const signal = restoreControllerRef.current.signal;
       const placeholders: CanvasFlowNode[] = [
         ...canvasDocumentToImageNodes(nextState.document),
         ...canvasDocumentToTaskNodes(nextState.document, {
+          onContentHeightChange: handleTaskNodeContentHeightChange,
           taskBridge: taskBridgeRef.current,
           taskWorkspaceId: taskWorkspaceIdRef.current,
         }),
@@ -528,8 +678,18 @@ function InfiniteCanvasLocalShellSurface({
         missing: result.missingAssetIds.length,
       });
       hydratingRef.current = false;
+      if (pendingContentHeightSaveRef.current) {
+        pendingContentHeightSaveRef.current = false;
+        scheduleSave();
+      }
     },
-    [adapterDependencies, objectUrls, setNodes],
+    [
+      adapterDependencies,
+      handleTaskNodeContentHeightChange,
+      objectUrls,
+      scheduleSave,
+      setNodes,
+    ],
   );
 
   const openCanvas = useCallback(
@@ -687,6 +847,7 @@ function InfiniteCanvasLocalShellSurface({
         position,
         taskBridge,
         taskWorkspaceId,
+        onContentHeightChange: handleTaskNodeContentHeightChange,
         zIndex: nextZIndex,
       });
       setNodes((current) => [
@@ -702,6 +863,7 @@ function InfiniteCanvasLocalShellSurface({
     [
       centerPosition,
       controller,
+      handleTaskNodeContentHeightChange,
       scheduleSave,
       setNodes,
       shellState.canvasId,
@@ -1222,15 +1384,18 @@ function InfiniteCanvasLocalShellSurface({
 }
 
 export function InfiniteCanvasLocalShell({
+  activeTaskDetailsTaskId,
   taskBridge,
   taskWorkspaceId,
 }: {
+  activeTaskDetailsTaskId?: string;
   taskBridge?: CanvasTaskBridge;
   taskWorkspaceId?: string;
 } = {}): React.JSX.Element {
   return (
     <ReactFlowProvider>
       <InfiniteCanvasLocalShellSurface
+        activeTaskDetailsTaskId={activeTaskDetailsTaskId}
         taskBridge={taskBridge}
         taskWorkspaceId={taskWorkspaceId}
       />

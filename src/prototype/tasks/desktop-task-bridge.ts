@@ -15,13 +15,24 @@ export type DesktopTaskBridgeOptions = {
   onStateChange: (listener: () => void) => () => void;
 };
 
-function projectTask(task: PrototypeTask): CanvasTaskProjection {
+function projectTask(
+  state: DesktopPrototypeState,
+  task: PrototypeTask,
+): CanvasTaskProjection {
   return {
     id: task.id,
     title: task.title,
     completed: task.completedAt !== null,
     signal: task.signal,
     dueDate: task.dueDate ?? null,
+    subtasks: task.subtasks.map((subtask) => ({
+      id: subtask.id,
+      title: subtask.title,
+      completed: subtask.done,
+    })),
+    detailsOpen:
+      state.contextPanel?.kind === "task" &&
+      state.contextPanel.taskId === task.id,
   };
 }
 
@@ -33,7 +44,7 @@ export function resolveDesktopTask(
   const task = state.tasks.find((item) => item.id === taskId);
   if (!task) return { status: "missing" };
   if (task.projectId !== workspaceId) return { status: "workspace-mismatch" };
-  return { status: "resolved", task: projectTask(task) };
+  return { status: "resolved", task: projectTask(state, task) };
 }
 
 export function createDesktopTaskBridge(
@@ -44,15 +55,15 @@ export function createDesktopTaskBridge(
       resolveDesktopTask(options.getState(), workspaceId, taskId),
     searchTasks: (workspaceId, query) => {
       const normalizedQuery = query.trim().toLocaleLowerCase("ru");
-      return options
-        .getState()
-        .tasks.filter(
+      const state = options.getState();
+      return state.tasks
+        .filter(
           (task) =>
             task.projectId === workspaceId &&
             (normalizedQuery.length === 0 ||
               task.title.toLocaleLowerCase("ru").includes(normalizedQuery)),
         )
-        .map(projectTask);
+        .map((task) => projectTask(state, task));
     },
     toggleTaskCompleted: (workspaceId, taskId) => {
       if (
@@ -63,9 +74,32 @@ export function createDesktopTaskBridge(
       }
       options.dispatch({ type: "toggle-task-completed", taskId });
     },
+    toggleSubtaskCompleted: (workspaceId, taskId, subtaskId) => {
+      const state = options.getState();
+      const result = resolveDesktopTask(state, workspaceId, taskId);
+      const task = state.tasks.find((item) => item.id === taskId);
+      if (
+        result.status !== "resolved" ||
+        !task?.subtasks.some((subtask) => subtask.id === subtaskId)
+      ) {
+        return;
+      }
+      options.dispatch({ type: "toggle-subtask", taskId, subtaskId });
+    },
     openTask: (taskId) => {
       if (options.getState().tasks.some((task) => task.id === taskId)) {
         options.dispatch({ type: "open-task-detail-view", taskId });
+      }
+    },
+    closeTaskDetails: (taskId) => {
+      const state = options.getState();
+      if (
+        state.contextPanel?.kind === "task" &&
+        state.contextPanel.taskId === taskId
+      ) {
+        options.dispatch({ type: "close-context-panel" });
+      } else if (state.taskDetailViewTaskId === taskId) {
+        options.dispatch({ type: "close-task-detail-view" });
       }
     },
     subscribeToTask: (workspaceId, taskId, listener) => {

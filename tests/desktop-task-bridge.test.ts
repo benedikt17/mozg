@@ -47,6 +47,12 @@ describe("desktop task bridge", () => {
         completed: false,
         signal: task.signal,
         dueDate: task.dueDate ?? null,
+        subtasks: task.subtasks.map((subtask) => ({
+          id: subtask.id,
+          title: subtask.title,
+          completed: subtask.done,
+        })),
+        detailsOpen: false,
       },
     });
     expect(await bridge.resolveTask("another-project", task.id)).toEqual({
@@ -164,4 +170,138 @@ describe("desktop task bridge", () => {
     });
     expect(harness.getState().taskDetailViewTaskId).toBe(otherTask.id);
   });
+
+  it("projects and mutates only the direct canonical subtasks", () => {
+    const harness = createHarness();
+    const task = harness.getState().tasks.find((item) => item.subtasks.length)!;
+    const subtask = task.subtasks[0]!;
+    const otherTask = harness
+      .getState()
+      .tasks.find((item) => item.projectId !== task.projectId)!;
+    const bridge = createDesktopTaskBridge({
+      getState: harness.getState,
+      dispatch: harness.dispatch,
+      onStateChange: harness.onStateChange,
+    });
+
+    const updates: Array<CanvasTaskProjectionLike | null> = [];
+    const unsubscribe = bridge.subscribeToTask(
+      task.projectId,
+      task.id,
+      (projection) => updates.push(projection),
+    );
+
+    expect(updates[0]?.subtasks).toEqual(
+      task.subtasks.map((item) => ({
+        id: item.id,
+        title: item.title,
+        completed: item.done,
+      })),
+    );
+    bridge.toggleSubtaskCompleted(task.projectId, task.id, subtask.id);
+    expect(
+      harness
+        .getState()
+        .tasks.find((item) => item.id === task.id)
+        ?.subtasks.find((item) => item.id === subtask.id)?.done,
+    ).toBe(!subtask.done);
+    expect(updates.at(-1)?.subtasks[0]?.completed).toBe(!subtask.done);
+
+    bridge.toggleSubtaskCompleted(otherTask.projectId, task.id, subtask.id);
+    expect(
+      harness
+        .getState()
+        .tasks.find((item) => item.id === task.id)
+        ?.subtasks.find((item) => item.id === subtask.id)?.done,
+    ).toBe(!subtask.done);
+    unsubscribe();
+  });
+
+  it("updates subtask title, additions, and deletions through the live bridge", () => {
+    const harness = createHarness();
+    const task = harness.getState().tasks.find((item) => item.subtasks.length)!;
+    const subtask = task.subtasks[0]!;
+    const bridge = createDesktopTaskBridge({
+      getState: harness.getState,
+      dispatch: harness.dispatch,
+      onStateChange: harness.onStateChange,
+    });
+    const updates: Array<CanvasTaskProjectionLike | null> = [];
+    const unsubscribe = bridge.subscribeToTask(
+      task.projectId,
+      task.id,
+      (projection) => updates.push(projection),
+    );
+
+    harness.dispatch({
+      type: "rename-subtask",
+      taskId: task.id,
+      subtaskId: subtask.id,
+      title: "Renamed directly",
+    });
+    expect(updates.at(-1)?.subtasks[0]?.title).toBe("Renamed directly");
+
+    harness.dispatch({
+      type: "add-subtask",
+      taskId: task.id,
+      title: "Added directly",
+    });
+    const added = updates
+      .at(-1)
+      ?.subtasks.find((item) => item.title === "Added directly");
+    expect(added).toBeDefined();
+
+    harness.dispatch({
+      type: "delete-subtask",
+      taskId: task.id,
+      subtaskId: added!.id,
+    });
+    expect(updates.at(-1)?.subtasks.some((item) => item.id === added!.id)).toBe(
+      false,
+    );
+    unsubscribe();
+  });
+
+  it("projects canonical details-open state and closes through the existing action", () => {
+    const harness = createHarness();
+    const task = harness.getState().tasks[0]!;
+    const otherTask = harness
+      .getState()
+      .tasks.find((item) => item.id !== task.id)!;
+    const bridge = createDesktopTaskBridge({
+      getState: harness.getState,
+      dispatch: harness.dispatch,
+      onStateChange: harness.onStateChange,
+    });
+    const taskUpdates: Array<CanvasTaskProjectionLike | null> = [];
+    const otherUpdates: Array<CanvasTaskProjectionLike | null> = [];
+    const stopTask = bridge.subscribeToTask(
+      task.projectId,
+      task.id,
+      (projection) => taskUpdates.push(projection),
+    );
+    const stopOther = bridge.subscribeToTask(
+      otherTask.projectId,
+      otherTask.id,
+      (projection) => otherUpdates.push(projection),
+    );
+
+    expect(taskUpdates.at(-1)?.detailsOpen).toBe(false);
+    bridge.openTask(task.id);
+    expect(taskUpdates.at(-1)?.detailsOpen).toBe(true);
+    bridge.closeTaskDetails(task.id);
+    expect(taskUpdates.at(-1)?.detailsOpen).toBe(false);
+    bridge.openTask(otherTask.id);
+    expect(taskUpdates.at(-1)?.detailsOpen).toBe(false);
+    expect(otherUpdates.at(-1)?.detailsOpen).toBe(true);
+    harness.dispatch({ type: "close-context-panel" });
+    expect(otherUpdates.at(-1)?.detailsOpen).toBe(false);
+    stopTask();
+    stopOther();
+  });
 });
+
+type CanvasTaskProjectionLike = {
+  subtasks: Array<{ id: string; title: string; completed: boolean }>;
+  detailsOpen: boolean;
+};

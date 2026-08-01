@@ -63,6 +63,7 @@ export type CanvasTaskNodeData = {
   lastKnownTitle?: string;
   taskBridge?: CanvasTaskBridge;
   taskWorkspaceId?: string;
+  onContentHeightChange?: (nodeId: string, height: number) => void;
 };
 
 export type CanvasTaskFlowNode = Node<
@@ -235,6 +236,7 @@ export function createCanvasTaskFlowNode(input: {
   zIndex?: number;
   taskBridge?: CanvasTaskBridge;
   taskWorkspaceId?: string;
+  onContentHeightChange?: (nodeId: string, height: number) => void;
 }): CanvasTaskFlowNode {
   return {
     id: input.id,
@@ -252,6 +254,9 @@ export function createCanvasTaskFlowNode(input: {
         : { lastKnownTitle: input.lastKnownTitle }),
       taskBridge: input.taskBridge,
       taskWorkspaceId: input.taskWorkspaceId,
+      ...(input.onContentHeightChange === undefined
+        ? {}
+        : { onContentHeightChange: input.onContentHeightChange }),
     },
   };
 }
@@ -277,6 +282,7 @@ export function canvasDocumentToTaskNodes(
   options: {
     taskBridge?: CanvasTaskBridge;
     taskWorkspaceId?: string;
+    onContentHeightChange?: (nodeId: string, height: number) => void;
   } = {},
 ): CanvasTaskFlowNode[] {
   return document.nodes
@@ -294,6 +300,7 @@ export function canvasDocumentToTaskNodes(
         zIndex: node.zIndex,
         taskBridge: options.taskBridge,
         taskWorkspaceId: options.taskWorkspaceId,
+        onContentHeightChange: options.onContentHeightChange,
       }),
     );
 }
