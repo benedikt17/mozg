@@ -117,6 +117,7 @@ export function CloudCanvasWorkspace({
       embedded
       key={workspaceId}
       repository={dependencies.repository}
+      groupRepository={dependencies.repository}
       runtimeCache={cloudCanvasRuntimeCache}
       showDiagnostics={false}
       taskBridge={taskBridge}

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
   parseCanvasDocumentV2,
@@ -1084,4 +1085,39 @@ describe("production-shaped local Canvas shell", () => {
     ).toEqual(document.nodes);
   });
 
+});
+
+describe("C6 Canvas groups sidebar composition", () => {
+  const source = (path: string): string =>
+    readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+
+  it("projects nested groups and Canvas rows through the shared shell", () => {
+    const sidebar = source("src/prototype/canvases/canvas-groups-sidebar.tsx");
+    const shell = source(
+      "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
+    );
+    expect(sidebar).toContain("buildTree");
+    expect(sidebar).toContain("group.children.map");
+    expect(sidebar).toContain("group.canvases.map");
+    expect(shell).toContain("groupRepository?: CanvasGroupRepository");
+    expect(shell).toContain("listCanvasGroups");
+    expect(shell).toContain("onSelectCanvas");
+  });
+
+  it("wires group CRUD, move, nesting, menu dismissal, and collapse controls", () => {
+    const sidebar = source("src/prototype/canvases/canvas-groups-sidebar.tsx");
+    const shell = source(
+      "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
+    );
+    expect(sidebar).toContain("onCreateGroup");
+    expect(sidebar).toContain("onRenameGroup");
+    expect(sidebar).toContain("onDeleteGroup");
+    expect(sidebar).toContain("onMoveGroup");
+    expect(sidebar).toContain('event.key === "Escape"');
+    expect(sidebar).toContain("document.addEventListener(\"pointerdown\"");
+    expect(sidebar).toContain("toggleAll");
+    expect(shell).toContain("createCanvasGroup");
+    expect(shell).toContain("renameCanvasGroup");
+    expect(shell).toContain("moveCanvasToGroup");
+  });
 });

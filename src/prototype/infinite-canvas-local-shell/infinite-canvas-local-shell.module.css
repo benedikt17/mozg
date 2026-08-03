@@ -508,13 +508,16 @@
   color: #b91c1c;
 }
 .canvasDesktopHost {
+  display: flex;
+  flex: 1 1 auto;
   width: 100%;
-  height: 100dvh;
+  height: 100%;
   min-width: 0;
   min-height: 0;
 }
 .canvasDesktopPrototype:global(.desktop-prototype) {
-  display: block;
+  display: flex;
+  flex: 1 1 auto;
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -523,13 +526,18 @@
   background: transparent;
 }
 .canvasSectionWorkspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  flex: 1 1 auto;
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
 }
 .canvasMainWorkspace {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   overflow: visible;
@@ -820,4 +828,439 @@
 }
 .pageEmbedded .canvasWrap {
   min-height: 0;
+}
+
+@media (max-width: 900px) {
+  .desktopCanvasPage {
+    grid-template-columns: minmax(190px, 34vw) minmax(0, 1fr);
+  }
+  .desktopCanvasToolbarStatus {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 680px) {
+  .desktopCanvasPage {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(170px, 30vh) minmax(0, 1fr);
+  }
+  .desktopCanvasSidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--border, #deddd8);
+  }
+  .desktopCanvasToolbar {
+    height: auto;
+    min-height: 38px;
+  }
+  .desktopCanvasToolbarStatus {
+    flex: 1 1 180px;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 767px) {
+  .desktopCanvasPage .desktopCanvasSidebar {
+    position: static;
+    inset: auto;
+    width: auto;
+    max-width: none;
+    height: auto;
+    max-height: none;
+    transform: none;
+  }
+}
+
+.desktopCanvasPage {
+  display: grid;
+  grid-template-columns: var(--sidebar-width, 232px) minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface, #fbfbfa);
+}
+.desktopCanvasPageSidebarCollapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+.desktopCanvasPageSidebarCollapsed .desktopCanvasSidebar {
+  display: none;
+}
+.desktopCanvasSidebar {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid var(--border, #deddd8);
+  background: var(--surface-2, #f1f1ef);
+  color: var(--text, #20201d);
+}
+.desktopCanvasSidebarHeader {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 8px 6px;
+}
+.canvasTreeToolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.canvasTreeToolbar :global(.ui-button) {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  justify-content: center;
+  padding: 0;
+}
+.canvasTreeToolbar :global(.ui-icon) {
+  width: 16px;
+  height: 16px;
+}
+.desktopCanvasSidebarBody {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.desktopCanvasSidebarSearch {
+  min-width: 0;
+  flex: 0 0 auto;
+  padding: 0 8px 6px;
+}
+.desktopCanvasSidebarSearch input {
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  box-sizing: border-box;
+  border: 1px solid var(--border, #deddd8);
+  border-radius: var(--radius-md, 6px);
+  background: var(--surface, #fbfbfa);
+  color: var(--text, #20201d);
+  padding: 0 8px;
+}
+.desktopCanvasSidebarHeader h1 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+}
+.desktopCanvasSidebarEyebrow {
+  margin: 0 0 2px;
+  color: var(--text-3, #7a7a72);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 14px;
+  text-transform: uppercase;
+}
+.desktopCanvasCreateForm {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 6px;
+  border-bottom: 1px solid var(--border, #deddd8);
+  padding: 0 10px 10px;
+  color: var(--text-3, #7a7a72);
+  font-size: 11px;
+  line-height: 16px;
+}
+.canvasTreeBranch,
+.canvasTreeChildren {
+  display: grid;
+  min-width: 0;
+}
+.canvasTreeChildren {
+  gap: 2px;
+  padding-left: 12px;
+}
+.canvasTreeRow {
+  min-width: 0;
+  min-height: var(--sidebar-row-compact-height, 32px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  position: relative;
+  border-radius: var(--radius-md, 6px);
+  color: var(--text-2, #52524c);
+}
+.canvasTreeRow:hover,
+.canvasTreeRow:focus-within,
+.canvasTreeRowActive {
+  background: var(--sidebar-hover-surface, #eeeeeb);
+  color: var(--text, #20201d);
+}
+.canvasTreeRowDropTarget {
+  background: color-mix(in srgb, var(--accent, #8a6d3b) 10%, transparent);
+  box-shadow: inset 0 0 0 1px var(--accent, #8a6d3b);
+}
+.canvasTreeSelect {
+  min-width: 0;
+  width: 100%;
+  min-height: var(--sidebar-row-compact-height, 32px);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-md, 6px);
+  background: transparent;
+  color: inherit;
+  padding: 0 8px;
+  text-align: left;
+}
+.canvasTreeSelect:hover,
+.canvasTreeSelect:focus-visible {
+  background: transparent;
+  color: inherit;
+}
+.canvasTreeSelect :global(.ui-icon) {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+}
+.canvasTreeGroupSelect :global(.ui-icon) {
+  flex: 0 0 15px;
+}
+.canvasTreeSelect span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.canvasTreeMenuTrigger {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  justify-content: center;
+  font-size: 0;
+  line-height: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.canvasTreeMenuTrigger :global(.ui-icon) {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+.canvasTreeMenuTrigger:global(.ui-button-ghost) {
+  justify-content: center;
+}
+.canvasTreeRow:hover .canvasTreeMenuTrigger,
+.canvasTreeMenuTrigger:focus-visible,
+.canvasTreeRowActive .canvasTreeMenuTrigger,
+.canvasTreeRowDropTarget .canvasTreeMenuTrigger {
+  opacity: 1;
+  pointer-events: auto;
+}
+.canvasTreeMenu {
+  position: absolute;
+  top: calc(100% - 2px);
+  right: 0;
+  z-index: 20;
+  display: grid;
+  min-width: 160px;
+  gap: 2px;
+  border: 1px solid var(--border, #deddd8);
+  border-radius: var(--radius-md, 6px);
+  background: var(--surface, #fbfbfa);
+  box-shadow: var(--shadow-overlay, 0 24px 64px rgb(32 32 29 / 18%));
+  padding: 4px;
+}
+.canvasTreeMenu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  color: var(--text-2, #52524c);
+  padding: 7px 8px;
+  text-align: left;
+}
+.canvasTreeMenu button:hover,
+.canvasTreeMenu button:focus-visible {
+  background: var(--surface-hover, #eeeeeb);
+  color: var(--text, #20201d);
+}
+.canvasTreeMenu :global(.ui-icon) {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+.canvasTreeRenameInput {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  grid-column: 1 / -1;
+  box-sizing: border-box;
+  border: 1px solid #8cc3f6;
+  border-radius: var(--radius-sm, 4px);
+  background: var(--surface, #fbfbfa);
+  color: var(--text, #20201d);
+  padding: 0 6px;
+  font: inherit;
+  outline: 2px solid color-mix(in srgb, #8cc3f6 35%, transparent);
+  outline-offset: 0;
+}
+.desktopCanvasCreateForm input,
+.desktopCanvasTaskPickerPanel input {
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  border: 1px solid var(--border, #deddd8);
+  border-radius: var(--radius-md, 6px);
+  background: var(--surface, #fbfbfa);
+  color: var(--text, #20201d);
+  padding: 0 8px;
+}
+.desktopCanvasCreateActions {
+  display: flex;
+  gap: 4px;
+}
+.desktopCanvasSidebarList {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  overflow: auto;
+  padding: 6px 8px 12px;
+}
+.desktopCanvasSidebarMessage {
+  margin: 8px 4px;
+  color: var(--text-3, #7a7a72);
+  font-size: 12px;
+  line-height: 17px;
+}
+.desktopCanvasSidebarMessage p {
+  margin: 0 0 8px;
+}
+.desktopCanvasDropTarget {
+  border: 1px dashed var(--accent, #8a6d3b);
+  border-radius: var(--radius-md, 6px);
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--accent, #8a6d3b) 8%, transparent);
+}
+.desktopCanvasSidebarRow {
+  min-width: 0;
+  min-height: var(--sidebar-row-compact-height, 32px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  position: relative;
+  border-radius: var(--radius-md, 6px);
+  color: var(--text-2, #52524c);
+}
+.desktopCanvasSidebarRow:hover,
+.desktopCanvasSidebarRow:focus-within {
+  background: var(--sidebar-hover-surface, var(--surface-hover, #eeeeeb));
+  color: var(--text, #20201d);
+}
+.desktopCanvasSidebarRowActive {
+  background: var(--sidebar-selected-surface, var(--surface-selected, #e7e7e3));
+  color: var(--text, #20201d);
+}
+.desktopCanvasSidebarSelect {
+  min-width: 0;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-md, 6px);
+  background: transparent;
+  color: inherit;
+  padding: 0 8px;
+  text-align: left;
+}
+.desktopCanvasSidebarSelect:hover,
+.desktopCanvasSidebarSelect:focus-visible {
+  background: transparent;
+  color: inherit;
+}
+.desktopCanvasSidebarSelect span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.desktopCanvasSidebarSelect :global(.ui-icon) {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+}
+.desktopCanvasSidebarMenuWrap {
+  position: relative;
+}
+.desktopCanvasSidebarMenuTrigger {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  justify-content: center;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.desktopCanvasSidebarRow:hover .desktopCanvasSidebarMenuTrigger,
+.desktopCanvasSidebarMenuTrigger:focus-visible,
+.desktopCanvasSidebarRowActive .desktopCanvasSidebarMenuTrigger {
+  opacity: 1;
+  pointer-events: auto;
+}
+.desktopCanvasSidebarMenu {
+  position: fixed;
+  z-index: 30;
+  display: grid;
+  min-width: 170px;
+  gap: 2px;
+  border: 1px solid var(--border, #deddd8);
+  border-radius: var(--radius-md, 6px);
+  background: var(--surface, #fbfbfa);
+  box-shadow: var(--shadow-overlay, 0 24px 64px rgb(32 32 29 / 18%));
+  padding: 4px;
+}
+.desktopCanvasSidebarMenu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  color: var(--text-2, #52524c);
+  padding: 7px 8px;
+  text-align: left;
+}
+.desktopCanvasSidebarMenu button:hover,
+.desktopCanvasSidebarMenu button:focus-visible {
+  background: var(--surface-hover, #eeeeeb);
+  color: var(--text, #20201d);
+}
+.desktopCanvasSidebarMenu :global(.ui-icon) {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+.desktopCanvasSidebarRename {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  grid-column: 1 / -1;
+  border: 2px solid #8cc3f6;
+  border-radius: var(--radius-sm, 4px);
+  background: var(--surface, #fbfbfa);
+  color: var(--text, #20201d);
+  padding: 0 6px;
+  outline: none;
 }

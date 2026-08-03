@@ -91,6 +91,7 @@ function InfiniteCanvasLocalShellComposition(): React.JSX.Element {
               activeTaskDetailsTaskId={activeTaskDetailsTaskId}
               assetRepository={repository}
               copy={localCanvasShellCopy}
+              groupRepository={repository}
               repository={repository}
               showDiagnostics
               userId={INFINITE_CANVAS_LOCAL_SHELL_USER_ID}

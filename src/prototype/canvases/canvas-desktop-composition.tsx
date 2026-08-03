@@ -1,11 +1,307 @@
 import { createPortal } from "react-dom";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CanvasTaskProjection } from "@/lib/canvas/canvas-task-bridge";
 import type { LocalCanvasShellStatus } from "@/lib/canvas/local-canvas-shell-controller";
+import type { CanvasSummary } from "@/lib/canvas/local-canvas-repository";
+import {
+  CanvasGroupsSidebar,
+  type CanvasGroupsSidebarProps,
+} from "@/prototype/canvases/canvas-groups-sidebar";
 import { UiIcon } from "@/prototype/desktop-icons";
 import { IconButton, PrototypeButton } from "@/prototype/desktop-ui";
 import type { CanvasShellCopy } from "@/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell";
 import styles from "@/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css";
+
+type CanvasListState = "loading" | "ready" | "empty" | "error";
+
+export function LegacyCanvasDesktopSidebar({
+  activeCanvasId,
+  copy,
+  error,
+  listState,
+  onCreateCanvas,
+  onDeleteCanvas,
+  onRenameCanvas,
+  onRetry,
+  onSelectCanvas,
+  summaries,
+}: {
+  activeCanvasId: string | null;
+  copy: CanvasShellCopy;
+  error: string | null;
+  listState: CanvasListState;
+  onCreateCanvas: (title: string) => void;
+  onDeleteCanvas: () => void;
+  onRenameCanvas: (canvasId: string, title: string) => void;
+  onRetry: () => void;
+  onSelectCanvas: (canvasId: string) => void;
+  summaries: readonly CanvasSummary[];
+}): React.JSX.Element {
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createTitle, setCreateTitle] = useState(copy.defaultTitle);
+  const [searchQuery, setSearchQuery] = useState("");
+  const visibleSummaries = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLocaleLowerCase("ru");
+    if (!normalizedQuery) return summaries;
+    return summaries.filter((summary) =>
+      summary.title.toLocaleLowerCase("ru").includes(normalizedQuery),
+    );
+  }, [searchQuery, summaries]);
+
+  return (
+    <aside
+      aria-label="Управление холстами"
+      className={`${styles.desktopCanvasSidebar} tool-sidebar knowledge-sidebar`}
+    >
+      <header
+        className={`${styles.desktopCanvasSidebarHeader} knowledge-sidebar-header`}
+      >
+        <div>
+          <p className={styles.desktopCanvasSidebarEyebrow}>{copy.eyebrow}</p>
+          <h1>Холсты</h1>
+        </div>
+        <div className="knowledge-toolbar">
+          <IconButton
+            icon={<UiIcon name="plus" />}
+            label="Создать холст"
+            onClick={() => {
+              setCreateTitle(copy.defaultTitle);
+              setCreateOpen(true);
+            }}
+            title="Создать холст"
+            variant="ghost"
+          />
+        </div>
+      </header>
+
+      <div className={`${styles.desktopCanvasSidebarSearch} knowledge-search`}>
+        <input
+          aria-label="Поиск по холстам"
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder="Поиск по холстам"
+          type="search"
+          value={searchQuery}
+        />
+      </div>
+
+      <div className={styles.desktopCanvasSidebarBody}>
+        {createOpen ? (
+          <form
+            className={styles.desktopCanvasCreateForm}
+            onSubmit={(event) => {
+              event.preventDefault();
+              const title = createTitle.trim();
+              if (!title) return;
+              onCreateCanvas(title);
+              setCreateOpen(false);
+            }}
+          >
+            <label htmlFor="desktop-canvas-create-title">Новый холст</label>
+            <input
+              autoFocus
+              id="desktop-canvas-create-title"
+              onChange={(event) => setCreateTitle(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setCreateOpen(false);
+                }
+              }}
+              placeholder={copy.defaultTitle}
+              value={createTitle}
+            />
+            <div className={styles.desktopCanvasCreateActions}>
+              <PrototypeButton size="compact" type="submit" variant="primary">
+                Создать
+              </PrototypeButton>
+              <PrototypeButton
+                onClick={() => setCreateOpen(false)}
+                size="compact"
+                type="button"
+                variant="quiet"
+              >
+                Отмена
+              </PrototypeButton>
+            </div>
+          </form>
+        ) : null}
+
+        <nav
+          aria-label="Список холстов"
+          className={`${styles.desktopCanvasSidebarList} knowledge-tree`}
+        >
+          {listState === "loading" ? (
+            <p className={styles.desktopCanvasSidebarMessage} role="status">
+              Загружаем холсты…
+            </p>
+          ) : listState === "error" ? (
+            <div className={styles.desktopCanvasSidebarMessage} role="alert">
+              <p>{error ?? copy.error}</p>
+              <PrototypeButton onClick={onRetry} size="compact" variant="quiet">
+                Повторить
+              </PrototypeButton>
+            </div>
+          ) : listState === "empty" ? (
+            <p className={styles.desktopCanvasSidebarMessage}>
+              Пока нет холстов. Создайте первый сверху.
+            </p>
+          ) : visibleSummaries.length === 0 ? (
+            <p className={styles.desktopCanvasSidebarMessage}>
+              Совпадений нет.
+            </p>
+          ) : (
+            visibleSummaries.map((summary) => (
+              <LegacyCanvasDesktopSidebarRow
+                active={summary.id === activeCanvasId}
+                key={summary.id}
+                onDelete={
+                  summary.id === activeCanvasId ? onDeleteCanvas : undefined
+                }
+                onRename={onRenameCanvas}
+                onSelect={() => onSelectCanvas(summary.id)}
+                summary={summary}
+              />
+            ))
+          )}
+        </nav>
+      </div>
+    </aside>
+  );
+}
+
+function LegacyCanvasDesktopSidebarRow({
+  active,
+  onDelete,
+  onRename,
+  onSelect,
+  summary,
+}: {
+  active: boolean;
+  onDelete?: () => void;
+  onRename: (canvasId: string, title: string) => void;
+  onSelect: () => void;
+  summary: CanvasSummary;
+}): React.JSX.Element {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{
+    top: number;
+    right: number;
+  } | null>(null);
+  const menuTriggerRef = useRef<HTMLDivElement>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(summary.title);
+
+  const commitRename = (): void => {
+    const title = draft.trim();
+    if (title) onRename(summary.id, title);
+    setEditing(false);
+  };
+
+  return (
+    <div
+      className={`${styles.desktopCanvasSidebarRow} ${active ? styles.desktopCanvasSidebarRowActive : ""}`}
+    >
+      {editing ? (
+        <input
+          aria-label={`Название холста ${summary.title}`}
+          autoFocus
+          className={styles.desktopCanvasSidebarRename}
+          onBlur={commitRename}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setDraft(summary.title);
+              setEditing(false);
+            }
+          }}
+          value={draft}
+        />
+      ) : (
+        <button
+          aria-current={active ? "page" : undefined}
+          className={styles.desktopCanvasSidebarSelect}
+          onClick={onSelect}
+          title={summary.title}
+          type="button"
+        >
+          <UiIcon name="layout" />
+          <span>{summary.title}</span>
+        </button>
+      )}
+      {!editing ? (
+        <div
+          className={styles.desktopCanvasSidebarMenuWrap}
+          ref={menuTriggerRef}
+        >
+          <IconButton
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            className={styles.desktopCanvasSidebarMenuTrigger}
+            icon={<UiIcon name="more" />}
+            label={`Действия холста ${summary.title}`}
+            onClick={() => {
+              const nextOpen = !menuOpen;
+              if (nextOpen && menuTriggerRef.current) {
+                const rect = menuTriggerRef.current.getBoundingClientRect();
+                setMenuPosition({
+                  top: rect.bottom - 2,
+                  right: window.innerWidth - rect.right,
+                });
+              }
+              setMenuOpen(nextOpen);
+            }}
+            title={`Действия холста ${summary.title}`}
+            variant="ghost"
+          />
+          {menuOpen && menuPosition
+            ? createPortal(
+                <div
+                  className={styles.desktopCanvasSidebarMenu}
+                  role="menu"
+                  style={{ top: menuPosition.top, right: menuPosition.right }}
+                >
+                  <button
+                    onClick={() => {
+                      setDraft(summary.title);
+                      setEditing(true);
+                      setMenuOpen(false);
+                    }}
+                    role="menuitem"
+                    type="button"
+                  >
+                    <UiIcon name="pencil" />
+                    <span>Переименовать</span>
+                  </button>
+                  {onDelete ? (
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false);
+                        onDelete();
+                      }}
+                      role="menuitem"
+                      type="button"
+                    >
+                      <UiIcon name="trash" />
+                      <span>Удалить</span>
+                    </button>
+                  ) : null}
+                </div>,
+                document.body,
+              )
+            : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function CanvasDesktopSidebar(
+  props: CanvasGroupsSidebarProps,
+): React.JSX.Element {
+  return <CanvasGroupsSidebar {...props} />;
+}
 
 export function CanvasDesktopToolbar({
   copy,

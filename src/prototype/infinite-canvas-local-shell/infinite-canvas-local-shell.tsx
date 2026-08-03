@@ -23,7 +23,10 @@ import {
   type NodeChange,
   type NodeProps,
 } from "@xyflow/react";
-import { CanvasDesktopToolbar } from "@/prototype/canvases/canvas-desktop-composition";
+import {
+  CanvasDesktopSidebar,
+  CanvasDesktopToolbar,
+} from "@/prototype/canvases/canvas-desktop-composition";
 import {
   useCallback,
   useEffect,
@@ -106,6 +109,10 @@ import type {
   CanvasTaskBridge,
   CanvasTaskProjection,
 } from "@/lib/canvas/canvas-task-bridge";
+import type {
+  CanvasGroup,
+  CanvasGroupRepository,
+} from "@/lib/canvas/canvas-group-repository";
 import {
   type CanvasAssetRepository,
   type CanvasRepository,
@@ -851,6 +858,7 @@ function InfiniteCanvasLocalShellSurface({
   assetRepository,
   embedded = false,
   copy,
+  groupRepository,
   repository: providedRepository,
   runtimeCache,
   showDiagnostics,
@@ -863,6 +871,7 @@ function InfiniteCanvasLocalShellSurface({
   assetRepository: CanvasAssetRepository;
   embedded?: boolean;
   copy: CanvasShellCopy;
+  groupRepository?: CanvasGroupRepository;
   repository: CanvasShellRepository;
   runtimeCache?: CloudCanvasRuntimeCache;
   showDiagnostics: boolean;
@@ -912,6 +921,8 @@ function InfiniteCanvasLocalShellSurface({
   const [summaries, setSummaries] = useState<CanvasSummary[]>(
     initialRuntime?.summaries ?? [],
   );
+  const [groups, setGroups] = useState<CanvasGroup[]>([]);
+  const [groupsError, setGroupsError] = useState<string | null>(null);
   const [shellState, setShellState] = useState<LocalCanvasShellState>(
     initialRuntime?.shellState ?? emptyShellState,
   );
@@ -924,6 +935,7 @@ function InfiniteCanvasLocalShellSurface({
   const [dropActive, setDropActive] = useState(false);
   const [newTitle, setNewTitle] = useState(copy.defaultTitle);
   const [renameTitle, setRenameTitle] = useState("");
+  const renameInFlightRef = useRef(new Set<string>());
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [taskQuery, setTaskQuery] = useState("");
@@ -938,6 +950,7 @@ function InfiniteCanvasLocalShellSurface({
     Boolean(initialRuntime?.shellState.canvasId),
   );
   const repository = providedRepository;
+  const groupsRepository = groupRepository;
   const imageRepository = assetRepository;
   const shellWorkspaceId = workspaceId;
   const shellUserId = userId;
@@ -1055,6 +1068,21 @@ function InfiniteCanvasLocalShellSurface({
     () => setShellState(controller.state),
     [controller],
   );
+
+  const refreshCatalog = useCallback(async (): Promise<{
+    summaries: CanvasSummary[];
+    groups: CanvasGroup[];
+  }> => {
+    const [nextSummaries, nextGroups] = await Promise.all([
+      controller.listCanvases(),
+      groupsRepository?.listCanvasGroups(shellWorkspaceId) ??
+        Promise.resolve([] as CanvasGroup[]),
+    ]);
+    setSummaries(nextSummaries);
+    setGroups(nextGroups);
+    setGroupsError(null);
+    return { summaries: nextSummaries, groups: nextGroups };
+  }, [controller, groupsRepository, shellWorkspaceId]);
 
   const scheduleSave = useCallback(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -1310,11 +1338,23 @@ function InfiniteCanvasLocalShellSurface({
     let active = true;
     const assetPayloads = assetPayloadsRef.current;
     if (initialRuntime) restoreCachedScene(initialRuntime);
-    void controller
-      .listCanvases()
-      .then(async (items) => {
+    const groupLoad = groupsRepository
+      ? groupsRepository.listCanvasGroups(shellWorkspaceId).catch((error: unknown) => {
+          if (active) {
+            setGroupsError(
+              error instanceof Error
+                ? error.message
+                : "Canvas groups failed to load.",
+            );
+          }
+          return [] as CanvasGroup[];
+        })
+      : Promise.resolve([] as CanvasGroup[]);
+    void Promise.all([controller.listCanvases(), groupLoad]).then(
+      async ([items, nextGroups]) => {
         if (!active) return;
         setSummaries(items);
+        setGroups(nextGroups);
         const cachedCanvasId = initialRuntime?.shellState.canvasId;
         const cachedSummary = cachedCanvasId
           ? items.find((item) => item.id === cachedCanvasId)
@@ -1343,7 +1383,8 @@ function InfiniteCanvasLocalShellSurface({
           setShellState(emptyShellState());
           setLoadingLifecycle("empty-confirmed");
         }
-      })
+      },
+    )
       .catch((error: unknown) => {
         if (active) {
           setLoadingLifecycle("error");
@@ -1382,13 +1423,14 @@ function InfiniteCanvasLocalShellSurface({
     };
   }, [
     controller,
+    groupsRepository,
+    shellWorkspaceId,
     initialRuntime,
     objectUrls,
     repository,
     restoreCachedScene,
     runtimeCache,
     shellUserId,
-    shellWorkspaceId,
   ]);
 
   useEffect(() => {
@@ -1723,16 +1765,17 @@ function InfiniteCanvasLocalShellSurface({
     [ingest],
   );
 
-  const createCanvas = useCallback(async () => {
-    const title = newTitle.trim();
+  const createCanvas = useCallback(
+    async (requestedTitle?: string, groupId: string | null = null) => {
+    const title = (requestedTitle ?? newTitle).trim();
     if (!title) return;
     const generation = ++canvasGenerationRef.current;
-    const created = await controller.createCanvas(title);
+    const created = await controller.createCanvas(title, groupId);
     if (!created.canvasId) return;
     repository.setActiveCanvas?.(created.canvasId);
     programmaticViewportRef.current = null;
     setViewportVisible(false);
-    setSummaries(await controller.listCanvases());
+    await refreshCatalog();
     setShellState(created);
     setRenameTitle(created.title);
     setNodes([]);
@@ -1743,7 +1786,7 @@ function InfiniteCanvasLocalShellSurface({
       generation,
       viewport: { ...created.viewport },
     });
-  }, [controller, newTitle, repository, setEdges, setNodes]);
+    }, [controller, newTitle, refreshCatalog, repository, setEdges, setNodes]);
 
   const renameCanvas = useCallback(() => {
     if (!renameTitle.trim() || !shellState.canvasId) return;
@@ -1752,39 +1795,189 @@ function InfiniteCanvasLocalShellSurface({
     scheduleSave();
   }, [controller, renameTitle, scheduleSave, shellState.canvasId, syncState]);
 
+  const createCanvasGroup = useCallback(
+    async (title: string, parentGroupId: string | null = null) => {
+      if (!groupsRepository) return;
+      await groupsRepository.createCanvasGroup({
+        workspaceId: shellWorkspaceId,
+        title,
+        parentGroupId,
+      });
+      await refreshCatalog();
+    },
+    [groupsRepository, refreshCatalog, shellWorkspaceId],
+  );
+
+  const renameCanvasGroup = useCallback(
+    async (groupId: string, title: string) => {
+      if (!groupsRepository) return;
+      const previousTitle = groups.find((group) => group.id === groupId)?.title;
+      setGroups((current) =>
+        current.map((group) =>
+          group.id === groupId ? { ...group, title } : group,
+        ),
+      );
+      try {
+        await groupsRepository.renameCanvasGroup({
+          workspaceId: shellWorkspaceId,
+          groupId,
+          title,
+        });
+        await refreshCatalog();
+      } catch (error: unknown) {
+        if (previousTitle !== undefined) {
+          setGroups((current) =>
+            current.map((group) =>
+              group.id === groupId ? { ...group, title: previousTitle } : group,
+            ),
+          );
+        }
+        setGroupsError(
+          error instanceof Error
+            ? error.message
+            : "Не удалось переименовать группу.",
+        );
+      }
+    },
+    [groups, groupsRepository, refreshCatalog, shellWorkspaceId],
+  );
+
+  const deleteCanvasGroup = useCallback(
+    async (groupId: string) => {
+      if (!groupsRepository) return;
+      await groupsRepository.softDeleteCanvasGroup({
+        workspaceId: shellWorkspaceId,
+        groupId,
+      });
+      await refreshCatalog();
+    },
+    [groupsRepository, refreshCatalog, shellWorkspaceId],
+  );
+
+  const moveCanvasGroup = useCallback(
+    async (groupId: string, parentGroupId: string | null) => {
+      if (!groupsRepository) return;
+      await groupsRepository.moveCanvasGroup({
+        workspaceId: shellWorkspaceId,
+        groupId,
+        parentGroupId,
+      });
+      await refreshCatalog();
+    },
+    [groupsRepository, refreshCatalog, shellWorkspaceId],
+  );
+
+  const moveCanvasToGroup = useCallback(
+    async (canvasId: string, groupId: string | null) => {
+      if (!groupsRepository) return;
+      await groupsRepository.moveCanvasToGroup({
+        workspaceId: shellWorkspaceId,
+        canvasId,
+        groupId,
+      });
+      await refreshCatalog();
+    },
+    [groupsRepository, refreshCatalog, shellWorkspaceId],
+  );
+
+  const deleteCanvasById = useCallback(
+    async (canvasId: string) => {
+      const summary = summariesRef.current.find((item) => item.id === canvasId);
+      if (!summary || !window.confirm(`Удалить «${summary.title}»?`)) return;
+      const wasActive = shellStateRef.current.canvasId === canvasId;
+      if (wasActive) {
+        restoreControllerRef.current?.abort();
+        objectUrls.revokeAll();
+      }
+      await repository.softDeleteCanvas({
+        workspaceId: shellWorkspaceId,
+        canvasId,
+      });
+      const next = await refreshCatalog();
+      if (!wasActive) return;
+      repository.setActiveCanvas?.(null);
+      setNodes([]);
+      setEdges([]);
+      if (next.summaries[0]) await openCanvas(next.summaries[0].id);
+      else {
+        hydratingRef.current = false;
+        setShellState(emptyShellState());
+      }
+    },
+    [
+      objectUrls,
+      openCanvas,
+      refreshCatalog,
+      repository,
+      setEdges,
+      setNodes,
+      shellWorkspaceId,
+    ],
+  );
+
   const deleteCanvas = useCallback(async () => {
-    if (
-      !shellState.canvasId ||
-      !window.confirm(`Delete “${shellState.title}”?`)
-    )
-      return;
-    restoreControllerRef.current?.abort();
-    objectUrls.revokeAll();
-    await repository.softDeleteCanvas({
-      workspaceId: shellWorkspaceId,
-      canvasId: shellState.canvasId,
-    });
-    repository.setActiveCanvas?.(null);
-    const next = await controller.listCanvases();
-    setSummaries(next);
-    setNodes([]);
-    setEdges([]);
-    if (next[0]) await openCanvas(next[0].id);
-    else {
-      hydratingRef.current = false;
-      setShellState(emptyShellState());
-    }
-  }, [
-    controller,
-    objectUrls,
-    openCanvas,
-    repository,
-    setEdges,
-    setNodes,
-    shellWorkspaceId,
-    shellState.canvasId,
-    shellState.title,
-  ]);
+    if (!shellState.canvasId) return;
+    await deleteCanvasById(shellState.canvasId);
+  }, [deleteCanvasById, shellState.canvasId]);
+
+  const renameCanvasById = useCallback(
+    (canvasId: string, title: string): void => {
+      const nextTitle = title.trim();
+      if (!nextTitle || renameInFlightRef.current.has(canvasId)) return;
+      const previousTitle =
+        summariesRef.current.find((item) => item.id === canvasId)?.title ??
+        shellStateRef.current.title;
+      renameInFlightRef.current.add(canvasId);
+      setSummaries((current) =>
+        current.map((summary) =>
+          summary.id === canvasId ? { ...summary, title: nextTitle } : summary,
+        ),
+      );
+      void (async () => {
+        try {
+          if (canvasId !== shellStateRef.current.canvasId)
+            await openCanvas(canvasId);
+          controller.setTitle(nextTitle);
+          if (saveTimerRef.current) {
+            clearTimeout(saveTimerRef.current);
+            saveTimerRef.current = null;
+          }
+          const result = await controller.save();
+          if (result?.status === "conflict")
+            throw new Error("Canvas changed elsewhere. Reload to continue.");
+          const saved = controller.state;
+          setSummaries((current) =>
+            current.map((summary) =>
+              summary.id === canvasId
+                ? { ...summary, title: nextTitle, revision: saved.revision }
+                : summary,
+            ),
+          );
+          syncState();
+        } catch (error: unknown) {
+          controller.setTitle(previousTitle);
+          setSummaries((current) =>
+            current.map((summary) =>
+              summary.id === canvasId
+                ? { ...summary, title: previousTitle }
+                : summary,
+            ),
+          );
+          setShellState({
+            ...controller.state,
+            status: "error",
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to rename Canvas.",
+          });
+        } finally {
+          renameInFlightRef.current.delete(canvasId);
+        }
+      })().catch(syncState);
+    },
+    [controller, openCanvas, syncState],
+  );
 
   const onMoveEnd = useCallback(
     (_: unknown, viewport: { x: number; y: number; zoom: number }) => {
@@ -1816,6 +2009,42 @@ function InfiniteCanvasLocalShellSurface({
     },
     [controller, shellState.canvasId, viewportVisible],
   );
+
+  const desktopListState =
+    loadingLifecycle === "list-loading"
+      ? "loading"
+      : loadingLifecycle === "empty-confirmed"
+        ? "empty"
+        : loadingLifecycle === "error" && summaries.length === 0
+          ? "error"
+          : "ready";
+  const desktopSidebar = embedded ? (
+    <CanvasDesktopSidebar
+      activeCanvasId={shellState.canvasId}
+      copy={copy}
+      error={shellState.error}
+      groups={groups}
+      groupsError={groupsError}
+      listState={desktopListState}
+      onCreateCanvas={(title, groupId) => void createCanvas(title, groupId)}
+      onCreateGroup={(title, parentGroupId) =>
+        void createCanvasGroup(title, parentGroupId)
+      }
+      onDeleteCanvas={(canvasId) => void deleteCanvasById(canvasId)}
+      onDeleteGroup={(groupId) => void deleteCanvasGroup(groupId)}
+      onMoveCanvas={(canvasId, groupId) =>
+        void moveCanvasToGroup(canvasId, groupId)
+      }
+      onMoveGroup={(groupId, parentGroupId) =>
+        void moveCanvasGroup(groupId, parentGroupId)
+      }
+      onRenameCanvas={renameCanvasById}
+      onRenameGroup={(groupId, title) => void renameCanvasGroup(groupId, title)}
+      onRetry={() => window.location.reload()}
+      onSelectCanvas={(canvasId) => void openCanvas(canvasId)}
+      summaries={summaries}
+    />
+  ) : null;
 
   const desktopToolbar = embedded ? (
     <CanvasDesktopToolbar
@@ -1851,16 +2080,43 @@ function InfiniteCanvasLocalShellSurface({
     />
   ) : null;
 
+  const desktopLayout = (content: React.ReactNode): React.JSX.Element => (
+    <main
+      className={`${styles.page} ${styles.pageEmbedded} ${styles.desktopCanvasPage} ${desktopSidebarOpen ? "" : styles.desktopCanvasPageSidebarCollapsed}`}
+    >
+      {desktopSidebar}
+      <section className={styles.desktopCanvasMain} aria-label="Холст">
+        {desktopToolbar}
+        {content}
+      </section>
+    </main>
+  );
+
   if (!shellState.canvasId && loadingLifecycle !== "empty-confirmed") {
     const isError = loadingLifecycle === "error";
+    if (embedded) {
+      return desktopLayout(
+        <div className={styles.canvasWrap}>
+          <div className={styles.canvas}>
+            <section className={styles.canvasLoading} aria-busy={!isError}>
+              {isError ? (
+                <button
+                  className={styles.button}
+                  onClick={() => window.location.reload()}
+                  type="button"
+                >
+                  Повторить
+                </button>
+              ) : (
+                <div aria-label="Loading Canvas" role="status" />
+              )}
+            </section>
+          </div>
+        </div>,
+      );
+    }
     return (
-      <main className={`${styles.page} ${embedded ? styles.pageEmbedded : ""}`}>
-      {embedded ? <section className={styles.desktopCanvasMain} aria-label="?????">{desktopToolbar}</section> : null}
-        {embedded ? (
-          <section className={styles.desktopCanvasMain} aria-label="?????">
-            {desktopToolbar}
-          </section>
-        ) : null}
+      <main className={styles.page}>
         <header className={styles.header}>
           <div className={styles.titleGroup}>
             <p className={styles.eyebrow}>{copy.eyebrow}</p>
@@ -1896,13 +2152,21 @@ function InfiniteCanvasLocalShellSurface({
   }
 
   if (!shellState.canvasId) {
+    if (embedded) {
+      return desktopLayout(
+        <section className={styles.empty}>
+          <div className={styles.emptyCard}>
+            <h2>{copy.emptyTitle}</h2>
+            <p>{copy.emptyDescription}</p>
+            {shellState.error ? (
+              <p className={styles.statusError}>{shellState.error}</p>
+            ) : null}
+          </div>
+        </section>,
+      );
+    }
     return (
-      <main className={`${styles.page} ${embedded ? styles.pageEmbedded : ""}`}>
-        {embedded ? (
-          <section className={styles.desktopCanvasMain} aria-label="?????">
-            {desktopToolbar}
-          </section>
-        ) : null}
+      <main className={styles.page}>
         <header className={styles.header}>
           <div className={styles.titleGroup}>
             <p className={styles.eyebrow}>{copy.eyebrow}</p>
@@ -1948,6 +2212,60 @@ function InfiniteCanvasLocalShellSurface({
           : shellState.status === "loading"
             ? copy.loading
             : copy.error;
+  if (embedded) {
+    return desktopLayout(
+      <div className={styles.canvasWrap}>
+        <div
+          ref={wrapperRef}
+          className={`${styles.canvas} ${dropActive ? styles.dropActive : ""}`}
+          onDragEnter={() => setDropActive(true)}
+          onDragLeave={() => setDropActive(false)}
+          onDragOver={(event) => {
+            if (transferHasFiles(transferPayload(event.nativeEvent)))
+              event.preventDefault();
+          }}
+          onDrop={onDrop}
+        >
+          <ReactFlow
+            className={`${styles.canvasViewport} ${viewportVisible ? "" : styles.canvasViewportHidden}`}
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            onNodesChange={handleNodesChange}
+            onEdgesChange={handleEdgesChange}
+            onConnect={handleConnect}
+            connectionMode={ConnectionMode.Loose}
+            connectionLineComponent={CanvasConnectionLine}
+            onMoveEnd={onMoveEnd}
+            onInit={() => setFlowInstanceEpoch((current) => current + 1)}
+            onPaneClick={(event) => {
+              if (event.detail !== 2) return;
+              createTextNode({ x: event.clientX, y: event.clientY }, "", true);
+            }}
+            onPaneMouseMove={(event) => {
+              pointerRef.current = { x: event.clientX, y: event.clientY };
+            }}
+            deleteKeyCode={["Backspace", "Delete"]}
+          >
+            <Background gap={24} color="#d6d3d1" />
+            <Controls showInteractive={false} />
+            <CanvasEdgeMarkerDefinitions />
+          </ReactFlow>
+          {!viewportVisible ? (
+            <div className={styles.canvasLoading} role="status">
+              Preparing canvas…
+            </div>
+          ) : null}
+          <div className={styles.canvasHint}>
+            {dropActive
+              ? "Drop PNG, JPEG or WebP here"
+              : "Paste, drop or choose an image · drag and resize are saved"}
+          </div>
+        </div>
+      </div>,
+    );
+  }
   return (
     <main className={`${styles.page} ${embedded ? styles.pageEmbedded : ""}`}>
       <header className={styles.header}>
@@ -2202,6 +2520,7 @@ export function InfiniteCanvasLocalShell({
   assetRepository,
   copy,
   embedded,
+  groupRepository,
   repository,
   runtimeCache,
   showDiagnostics,
@@ -2214,6 +2533,7 @@ export function InfiniteCanvasLocalShell({
   assetRepository: CanvasAssetRepository;
   copy: CanvasShellCopy;
   embedded?: boolean;
+  groupRepository?: CanvasGroupRepository;
   repository: CanvasShellRepository;
   runtimeCache?: CloudCanvasRuntimeCache;
   showDiagnostics: boolean;
@@ -2229,6 +2549,7 @@ export function InfiniteCanvasLocalShell({
         assetRepository={assetRepository}
         copy={copy}
         embedded={embedded}
+        groupRepository={groupRepository}
         repository={repository}
         runtimeCache={runtimeCache}
         showDiagnostics={showDiagnostics}
