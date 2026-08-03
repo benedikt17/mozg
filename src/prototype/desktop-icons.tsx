@@ -31,6 +31,7 @@ export type UiIconName =
   | "share"
   | "sort"
   | "split"
+  | "text"
   | "trash";
 
 export function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
@@ -221,6 +222,13 @@ export function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
       <>
         <rect x="4" y="5" width="16" height="14" rx="1.5" />
         <path d="M12 5v14" />
+      </>
+    ),
+    text: (
+      <>
+        <path d="M5 5h14" />
+        <path d="M12 5v14" />
+        <path d="M8 19h8" />
       </>
     ),
     trash: (

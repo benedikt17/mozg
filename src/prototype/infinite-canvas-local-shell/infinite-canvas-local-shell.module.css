@@ -709,3 +709,115 @@
   font-size: 13px;
   pointer-events: auto;
 }
+
+.desktopCanvasMain {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.desktopCanvasToolbar {
+  min-width: 0;
+  min-height: 38px;
+  height: 38px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0;
+  border-bottom: 1px solid var(--border, #deddd8);
+  background: var(--surface-2, #f1f1ef);
+  color: var(--text-2, #52524c);
+  padding: 0;
+}
+.desktopCanvasToolbarGroup,
+.desktopCanvasToolbarStatus {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.desktopCanvasToolbarGroup {
+  order: 2;
+  justify-content: flex-end;
+  padding: 4px 8px 4px 4px;
+}
+.desktopCanvasToolbarStatus {
+  order: 1;
+  padding: 0 4px 0 8px;
+}
+.desktopCanvasToolbarStatus {
+  overflow: hidden;
+  color: var(--text-3, #7a7a72);
+  font-size: 11px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.desktopCanvasToolbarStatusConflict {
+  color: #a15c00;
+}
+.desktopCanvasToolbarStatusError {
+  color: var(--danger, #b42318);
+}
+.desktopCanvasToolbarStatus > .ui-button {
+  flex: 0 0 auto;
+}
+.desktopCanvasTaskPicker {
+  position: relative;
+}
+.desktopCanvasTaskPickerPanel {
+  position: fixed;
+  z-index: 40;
+  width: min(340px, calc(100vw - 32px));
+  padding: 12px;
+  border: 1px solid var(--border, #deddd8);
+  border-radius: var(--radius-lg, 8px);
+  background: var(--surface, #fbfbfa);
+  box-shadow: var(--shadow-overlay, 0 24px 64px rgb(32 32 29 / 18%));
+}
+.desktopCanvasTaskPickerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.desktopCanvasTaskPickerResults {
+  max-height: 280px;
+  display: grid;
+  gap: 4px;
+  overflow: auto;
+  margin-top: 8px;
+}
+.desktopCanvasTaskPickerResults p {
+  margin: 0;
+  color: var(--text-3, #7a7a72);
+  font-size: 11px;
+}
+.desktopCanvasTaskPickerResults button {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--border, #deddd8);
+  border-radius: var(--radius-md, 6px);
+  background: var(--surface-2, #f1f1ef);
+  color: var(--text, #20201d);
+  padding: 8px;
+  text-align: left;
+}
+.desktopCanvasTaskPickerResults button:hover,
+.desktopCanvasTaskPickerResults button:focus-visible {
+  border-color: var(--accent, #5046e5);
+  background: var(--accent-soft, #eeedff);
+}
+.desktopCanvasTaskPickerResults button span {
+  color: var(--text-3, #7a7a72);
+  font-size: 11px;
+}
+.pageEmbedded .header {
+  padding: 12px 16px;
+  background: color-mix(in srgb, var(--surface, #ffffff) 94%, transparent);
+}
+.pageEmbedded .canvasWrap {
+  min-height: 0;
+}

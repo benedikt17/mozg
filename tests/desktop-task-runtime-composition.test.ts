@@ -10,3 +10,15 @@ it("keeps Canvas bootstrap one-shot when active Canvas callbacks change", () => 
   expect(canvasShell).toContain("await openCanvasRef.current(cachedSummary.id);");
   expect(canvasShell).toContain("if (items[0]) await openCanvasRef.current(items[0].id);");
 });
+
+
+describe("C4 desktop Canvas toolbar", () => {
+  it("keeps toolbar and task picker composition on the embedded shell", () => {
+    const shell = source("src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx");
+    const toolbar = source("src/prototype/canvases/canvas-desktop-composition.tsx");
+    expect(shell).toContain("CanvasDesktopToolbar");
+    expect(shell).toContain("desktopCanvasMain");
+    expect(toolbar).toContain("onSelectTask");
+    expect(toolbar).toContain("onAddImage");
+  });
+});

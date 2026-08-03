@@ -23,6 +23,7 @@ import {
   type NodeChange,
   type NodeProps,
 } from "@xyflow/react";
+import { CanvasDesktopToolbar } from "@/prototype/canvases/canvas-desktop-composition";
 import {
   useCallback,
   useEffect,
@@ -924,6 +925,7 @@ function InfiniteCanvasLocalShellSurface({
   const [newTitle, setNewTitle] = useState(copy.defaultTitle);
   const [renameTitle, setRenameTitle] = useState("");
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [taskQuery, setTaskQuery] = useState("");
   const [taskResults, setTaskResults] = useState<CanvasTaskProjection[]>([]);
   const [taskSearchStatus, setTaskSearchStatus] = useState<
@@ -1815,10 +1817,50 @@ function InfiniteCanvasLocalShellSurface({
     [controller, shellState.canvasId, viewportVisible],
   );
 
+  const desktopToolbar = embedded ? (
+    <CanvasDesktopToolbar
+      copy={copy}
+      error={shellState.error}
+      onAddImage={(files) =>
+        void ingest(
+          { files, items: [], types: files.map((file) => file.type) },
+          "file-picker",
+          null,
+        )
+      }
+      onAddText={() => createTextNode(null, "", true)}
+      onCloseTaskPicker={() => setTaskPickerOpen(false)}
+      onReloadWinner={() => {
+        if (shellState.canvasId) void openCanvas(shellState.canvasId);
+      }}
+      onRetry={() => {
+        if (shellState.canvasId) void openCanvas(shellState.canvasId);
+        else window.location.reload();
+      }}
+      onSelectTask={createTaskNode}
+      onTaskQueryChange={setTaskQuery}
+      onToggleSidebar={() => setDesktopSidebarOpen((current) => !current)}
+      onToggleTaskPicker={() => setTaskPickerOpen((current) => !current)}
+      sidebarOpen={desktopSidebarOpen}
+      status={shellState.status}
+      taskPickerOpen={taskPickerOpen}
+      taskQuery={taskQuery}
+      taskResults={taskResults}
+      taskSearchStatus={taskSearchStatus}
+      taskToolsReady={Boolean(taskBridge && taskWorkspaceId)}
+    />
+  ) : null;
+
   if (!shellState.canvasId && loadingLifecycle !== "empty-confirmed") {
     const isError = loadingLifecycle === "error";
     return (
       <main className={`${styles.page} ${embedded ? styles.pageEmbedded : ""}`}>
+      {embedded ? <section className={styles.desktopCanvasMain} aria-label="?????">{desktopToolbar}</section> : null}
+        {embedded ? (
+          <section className={styles.desktopCanvasMain} aria-label="?????">
+            {desktopToolbar}
+          </section>
+        ) : null}
         <header className={styles.header}>
           <div className={styles.titleGroup}>
             <p className={styles.eyebrow}>{copy.eyebrow}</p>
@@ -1856,6 +1898,11 @@ function InfiniteCanvasLocalShellSurface({
   if (!shellState.canvasId) {
     return (
       <main className={`${styles.page} ${embedded ? styles.pageEmbedded : ""}`}>
+        {embedded ? (
+          <section className={styles.desktopCanvasMain} aria-label="?????">
+            {desktopToolbar}
+          </section>
+        ) : null}
         <header className={styles.header}>
           <div className={styles.titleGroup}>
             <p className={styles.eyebrow}>{copy.eyebrow}</p>
