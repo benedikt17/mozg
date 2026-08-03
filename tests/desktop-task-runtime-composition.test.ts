@@ -22,3 +22,12 @@ describe("C4 desktop Canvas toolbar", () => {
     expect(toolbar).toContain("onAddImage");
   });
 });
+it("keeps transient Canvas projection and MiniMap composition in the shell", () => {
+  const canvasShell = source(
+    "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
+  );
+  expect(canvasShell).toContain("const transientNodes = applyNodeChanges(");
+  expect(canvasShell).toContain("canonical.filter((edge) => !known.has(edge.id))");
+  expect(canvasShell).toContain("<MiniMap");
+  expect(canvasShell).toContain("nodeColor={canvasMiniMapNodeColor}");
+});

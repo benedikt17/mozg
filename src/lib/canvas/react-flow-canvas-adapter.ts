@@ -156,8 +156,8 @@ function staggeredPosition(base: FlowPosition, index: number): FlowPosition {
 
 function nodeSize(node: CanvasImageFlowNode): CanvasSize {
   const style = node.style ?? {};
-  const width = node.width ?? style.width;
-  const height = node.height ?? style.height;
+  const width = style.width ?? node.width;
+  const height = style.height ?? node.height;
   if (typeof width !== "number" || typeof height !== "number") {
     throw new Error(`Canvas image node ${node.id} has no numeric dimensions.`);
   }
@@ -176,6 +176,8 @@ export function createCanvasImageFlowNode(input: {
     id: input.record.id,
     type: CANVAS_IMAGE_NODE_TYPE,
     position: staggeredPosition(input.position, input.index ?? 0),
+    width: size.width,
+    height: size.height,
     style: { width: size.width, height: size.height },
     data: {
       assetId: input.record.id,
@@ -197,6 +199,8 @@ function imageNodeForCanonical(
     id: node.id,
     type: CANVAS_IMAGE_NODE_TYPE,
     position: { ...node.position },
+    width: node.size.width,
+    height: node.size.height,
     style: { width: node.size.width, height: node.size.height },
     data: {
       assetId: record.id,
@@ -218,6 +222,8 @@ export function canvasDocumentToImageNodes(
       id: node.id,
       type: CANVAS_IMAGE_NODE_TYPE,
       position: { ...node.position },
+      width: node.size.width,
+      height: node.size.height,
       style: { width: node.size.width, height: node.size.height },
       data: {
         assetId: node.assetId,
@@ -367,8 +373,8 @@ export function imageNodesToCanvasDocument(
 
 function runtimeNodeSize(node: CanvasFlowNode): CanvasSize {
   const style = node.style ?? {};
-  const width = node.width ?? style.width;
-  const height = node.height ?? style.height;
+  const width = style.width ?? node.width;
+  const height = style.height ?? node.height;
   if (typeof width !== "number" || typeof height !== "number") {
     throw new Error(`Canvas node ${node.id} has no numeric dimensions.`);
   }
@@ -588,6 +594,8 @@ export async function restoreCanvasImageNodes(
       if (cachedPayload) {
         const node: CanvasImageFlowNode = {
           id: canonical.id, type: CANVAS_IMAGE_NODE_TYPE, position: { ...canonical.position },
+           width: canonical.size.width,
+           height: canonical.size.height,
           style: { width: canonical.size.width, height: canonical.size.height },
           data: { assetId: canonical.assetId, ...cachedPayload },
         };

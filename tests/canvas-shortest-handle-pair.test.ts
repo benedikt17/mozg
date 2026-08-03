@@ -132,4 +132,35 @@ describe("shortest Canvas handle pair", () => {
       arrows: "both",
     });
   });
-});
+
+  it("keeps every edge valid across a sequence of transient drag positions", () => {
+    const initialEdges = [
+      { id: "edge-1", source: "source", target: "middle", sourceHandle: "top", targetHandle: "top", routing: "curved", arrows: "none" },
+      { id: "edge-2", source: "middle", target: "target", sourceHandle: "top", targetHandle: "top", routing: "orthogonal", arrows: "target" },
+    ] as const;
+    const transientPositions = [
+      { x: 180, y: 40 },
+      { x: 320, y: 120 },
+      { x: 80, y: 240 },
+      { x: 260, y: 300 },
+      { x: 420, y: 180 },
+    ];
+
+    let edges = [...initialEdges];
+    for (const position of transientPositions) {
+      edges = recomputeCanvasRuntimeEdgeHandles(edges, [
+        { id: "source", x: 0, y: 0, width: 100, height: 100 },
+        { id: "middle", ...position, width: 100, height: 100 },
+        { id: "target", x: 620, y: 120, width: 100, height: 100 },
+      ]);
+      expect(edges).toHaveLength(2);
+      expect(edges.map((edge) => edge.id)).toEqual(["edge-1", "edge-2"]);
+      expect(edges).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ source: "source", target: "middle" }),
+          expect.objectContaining({ source: "middle", target: "target" }),
+        ]),
+      );
+      expect(edges.every((edge) => edge.sourceHandle && edge.targetHandle)).toBe(true);
+    }
+  });});

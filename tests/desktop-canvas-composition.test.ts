@@ -77,7 +77,9 @@ describe("desktop Canvas composition", () => {
     expect(toolbar).toContain("createPortal(");
     expect(toolbar).toContain("taskPickerPanelRef");
     expect(toolbar).toContain('window.addEventListener("pointerdown"');
+    expect(shell).toContain("const transientNodes = applyNodeChanges(");
     expect(shell).toContain("canvasDocumentToEdges(");
+    expect(shell).toContain("canonical.filter((edge) => !known.has(edge.id))");
   });
 
   it("uses one centered fixed-size trigger primitive for Canvas and group rows", () => {

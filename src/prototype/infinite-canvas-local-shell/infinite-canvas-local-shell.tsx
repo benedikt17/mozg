@@ -5,9 +5,11 @@ import {
   ConnectionMode,
   Controls,
   EdgeToolbar,
+  MiniMap,
   ReactFlow,
   ReactFlowProvider,
   applyEdgeChanges,
+  applyNodeChanges,
   getBezierPath,
   getSmoothStepPath,
   getStraightPath,
@@ -52,6 +54,8 @@ import {
   scheduleViewportReveal,
   type CanvasViewportInitialization,
 } from "@/lib/canvas/canvas-viewport-initialization";
+import { isExplicitCanvasResize } from "@/lib/canvas/canvas-runtime-projection";
+import { canvasMiniMapNodeColor } from "@/lib/canvas/canvas-minimap";
 import {
   CANVAS_IMAGE_NODE_TYPE,
   CANVAS_TASK_NODE_TYPE,
@@ -561,46 +565,77 @@ export function CanvasEdgeBody({
   markerEnd,
 }: EdgeProps<CanvasEdgeFlow>): React.JSX.Element | null {
   const [lineTypeOpen, setLineTypeOpen] = useState(false);
+  const [lastPath, setLastPath] = useState("M0,0 L0,0");
   const sourceNode = useInternalNode<CanvasFlowNode>(source);
   const targetNode = useInternalNode<CanvasFlowNode>(target);
   const sourcePositionSide = sourcePosition as CanvasHandleSide;
   const targetPositionSide = targetPosition as CanvasHandleSide;
   const sourceBounds = canvasInternalNodeBounds(sourceNode);
   const targetBounds = canvasInternalNodeBounds(targetNode);
-  if (!sourceBounds || !targetBounds) return null;
-  const sourceAnchor = canvasNodePerimeterAnchor(
-    sourceBounds,
-    sourcePositionSide,
-  );
-  const targetAnchor = canvasNodePerimeterAnchor(
-    targetBounds,
-    targetPositionSide,
-  );
-  const [path, labelX, labelY] =
-    data?.routing === "orthogonal"
+  const geometry =
+    sourceBounds && targetBounds
+      ? {
+          sourceAnchor: canvasNodePerimeterAnchor(
+            sourceBounds,
+            sourcePositionSide,
+          ),
+          targetAnchor: canvasNodePerimeterAnchor(
+            targetBounds,
+            targetPositionSide,
+          ),
+        }
+      : null;
+  const computedPath = geometry
+    ? data?.routing === "orthogonal"
       ? getSmoothStepPath({
-          sourceX: sourceAnchor.x,
-          sourceY: sourceAnchor.y,
+          sourceX: geometry.sourceAnchor.x,
+          sourceY: geometry.sourceAnchor.y,
           sourcePosition,
-          targetX: targetAnchor.x,
-          targetY: targetAnchor.y,
+          targetX: geometry.targetAnchor.x,
+          targetY: geometry.targetAnchor.y,
           targetPosition,
         })
       : data?.routing === "straight"
         ? getStraightPath({
-            sourceX: sourceAnchor.x,
-            sourceY: sourceAnchor.y,
-            targetX: targetAnchor.x,
-            targetY: targetAnchor.y,
+            sourceX: geometry.sourceAnchor.x,
+            sourceY: geometry.sourceAnchor.y,
+            targetX: geometry.targetAnchor.x,
+            targetY: geometry.targetAnchor.y,
           })
         : getBezierPath({
-            sourceX: sourceAnchor.x,
-            sourceY: sourceAnchor.y,
+            sourceX: geometry.sourceAnchor.x,
+            sourceY: geometry.sourceAnchor.y,
             sourcePosition,
-            targetX: targetAnchor.x,
-            targetY: targetAnchor.y,
+            targetX: geometry.targetAnchor.x,
+            targetY: geometry.targetAnchor.y,
             targetPosition,
-          });
+          })
+    : null;
+  const computedPathValue = computedPath?.[0] ?? null;
+  useEffect(() => {
+    if (!computedPathValue || computedPathValue === lastPath) return;
+    const timer = window.setTimeout(() => setLastPath(computedPathValue), 0);
+    return () => window.clearTimeout(timer);
+  }, [computedPathValue, lastPath]);
+  if (!computedPath) {
+    return (
+      <g
+        data-canvas-edge-id={id}
+        data-source-node-id={source}
+        data-target-node-id={target}
+      >
+        <CanvasVisibleEdge
+          id={id}
+          path={lastPath}
+          className={selected ? styles.selectedEdge : styles.canvasEdge}
+          markerStart={markerStart}
+          markerEnd={markerEnd}
+          interactionWidth={24}
+        />
+      </g>
+    );
+  }
+  const [path, labelX, labelY] = computedPath;
   const arrows = data?.arrows ?? "none";
   const endpointArrows = canvasArrowsToEndpointArrows(arrows);
   const routing = data?.routing ?? "curved";
@@ -609,14 +644,20 @@ export function CanvasEdgeBody({
   };
   return (
     <>
-      <CanvasVisibleEdge
-        id={id}
-        path={path}
-        className={selected ? styles.selectedEdge : styles.canvasEdge}
-        markerStart={markerStart}
-        markerEnd={markerEnd}
-        interactionWidth={24}
-      />
+      <g
+        data-canvas-edge-id={id}
+        data-source-node-id={source}
+        data-target-node-id={target}
+      >
+        <CanvasVisibleEdge
+          id={id}
+          path={path}
+          className={selected ? styles.selectedEdge : styles.canvasEdge}
+          markerStart={markerStart}
+          markerEnd={markerEnd}
+          interactionWidth={24}
+        />
+      </g>
       {selected ? (
         <EdgeToolbar
           edgeId={id}
@@ -904,6 +945,8 @@ function InfiniteCanvasLocalShellSurface({
   const restoreControllerRef = useRef<AbortController | null>(null);
   const pendingContentHeightSaveRef = useRef(false);
   const nodeGeometrySignatureRef = useRef("");
+  const nodeDragActiveRef = useRef(false);
+  const edgeRemovalSuppressionUntilRef = useRef(0);
   const hydratingRef = useRef(true);
   const canvasGenerationRef = useRef(0);
   const programmaticViewportRef = useRef<CanvasViewportInitialization | null>(
@@ -1089,8 +1132,6 @@ function InfiniteCanvasLocalShellSurface({
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null;
       if (hydratingRef.current) return;
-      controller.setRuntimeNodes(nodesRef.current);
-      controller.setRuntimeEdges(edgesRef.current);
       void controller.save().then(syncState).catch(syncState);
     }, 260);
   }, [controller, syncState]);
@@ -1156,53 +1197,58 @@ function InfiniteCanvasLocalShellSurface({
 
   const handleEdgesChange = useCallback(
     (changes: EdgeChange<CanvasEdgeFlow>[]) => {
+      const suppressRemoval =
+        nodeDragActiveRef.current ||
+        edgeRemovalSuppressionUntilRef.current > Date.now();
+      const safeChanges = suppressRemoval
+        ? changes.filter((change) => change.type !== "remove")
+        : changes;
       const removed = changes.filter(
         (
           change,
         ): change is Extract<EdgeChange<CanvasEdgeFlow>, { type: "remove" }> =>
           change.type === "remove",
       );
-      if (removed.length > 0) {
+      if (removed.length > 0 && !suppressRemoval) {
         const nextState = controller.removeCanvasEdges(
           removed.map((change) => change.id),
         );
         setShellState(nextState);
         scheduleSave();
       }
-      setEdges((current) => applyEdgeChanges(changes, current));
+      setEdges((current) => {
+        const next = applyEdgeChanges(safeChanges, current);
+        if (!suppressRemoval) return next;
+        const canonical = canvasDocumentToEdges(
+          controller.state.document,
+          handleEdgeUpdate,
+        );
+        const known = new Set(next.map((edge) => edge.id));
+        return [...next, ...canonical.filter((edge) => !known.has(edge.id))];
+      });
     },
-    [controller, scheduleSave, setEdges],
+    [controller, handleEdgeUpdate, scheduleSave, setEdges],
   );
 
-  const handleTaskNodeContentHeightChange = useCallback(
-    (nodeId: string, requiredHeight: number): void => {
-      const node = reactFlow
-        .getNodes()
-        .find(
-          (current) =>
-            current.id === nodeId && current.type === CANVAS_TASK_NODE_TYPE,
-        );
-      if (!node) return;
-      const currentHeight = node.height ?? node.style?.height;
-      if (typeof currentHeight !== "number") return;
-      const nextHeight = Math.ceil(requiredHeight);
-      if (nextHeight <= currentHeight) return;
-      pendingContentHeightSaveRef.current = hydratingRef.current;
-      setNodes((current) =>
-        current.map((item) =>
-          item.id === nodeId
-            ? {
-                ...item,
-                height: nextHeight,
-                style: { ...item.style, height: nextHeight },
-              }
-            : item,
-        ),
-      );
-      if (!hydratingRef.current) scheduleSave();
-    },
-    [reactFlow, scheduleSave, setNodes],
-  );
+  const handleNodeDragStart = useCallback((): void => {
+    nodeDragActiveRef.current = true;
+    edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
+  }, []);
+
+  const handleNodeDragStop = useCallback((): void => {
+    nodeDragActiveRef.current = false;
+    edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
+    window.setTimeout(() => {
+      if (!shellStateRef.current.canvasId) return;
+      controller.setRuntimeEdges(edgesRef.current);
+      syncState();
+      scheduleSave();
+    }, 0);
+  }, [controller, scheduleSave, syncState]);
+
+  const handleTaskNodeContentHeightChange = useCallback((): void => {
+    // Task projection is runtime-only; it must never resize canonical bounds.
+  }, []);
 
   const restoreForCanvas = useCallback(
     async (nextState: LocalCanvasShellState) => {
@@ -1243,11 +1289,9 @@ function InfiniteCanvasLocalShellSurface({
               const index = current.findIndex((item) => item.id === node.id);
               if (index < 0) return [...current, node];
               const copy = [...current];
-              copy[index] = {
-                ...node,
-                position: { ...copy[index].position },
-                style: copy[index].style,
-              };
+              const existing = copy[index];
+              if (existing?.type !== CANVAS_IMAGE_NODE_TYPE) return current;
+              copy[index] = { ...existing, data: { ...node.data } };
               return copy;
             });
           },
@@ -1703,6 +1747,22 @@ function InfiniteCanvasLocalShellSurface({
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<CanvasFlowNode>[]) => {
+      if (
+        changes.some(
+          (change) => change.type === "position" && change.dragging === true,
+        )
+      ) {
+        nodeDragActiveRef.current = true;
+        edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
+      }
+      if (
+        changes.some(
+          (change) => change.type === "position" && change.dragging === false,
+        )
+      ) {
+        nodeDragActiveRef.current = false;
+        edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
+      }
       const removed = changes.filter(
         (
           change,
@@ -1725,16 +1785,63 @@ function InfiniteCanvasLocalShellSurface({
         );
         syncState();
       }
+      const renderChanges = changes.filter(
+        (change) =>
+          change.type !== "dimensions" || change.setAttributes === true,
+      );
+      if (changes.some((change) => change.type === "position")) {
+        const transientNodes = applyNodeChanges(
+          renderChanges,
+          nodesRef.current,
+        );
+        const transientBounds = canvasFlowNodeBoundsRecords(transientNodes);
+        setEdges((current) => {
+          const canonical = canvasDocumentToEdges(
+            controller.state.document,
+            handleEdgeUpdate,
+          );
+          const source = current.length > 0 ? current : canonical;
+          const known = new Set(source.map((edge) => edge.id));
+          return recomputeCanvasRuntimeEdgeHandles(
+            [...source, ...canonical.filter((edge) => !known.has(edge.id))],
+            transientBounds,
+          );
+        });
+      }
+      // React Flow must receive dimensions changes as well as positions. Filtering
+      // them here leaves nodes uninitialized during a drag and causes connected
+      // edges to be removed by the library's connection lifecycle.
       onNodesChange(changes);
       const shouldPersist = changes.some(
         (change) =>
           change.type === "remove" ||
           (change.type === "position" && change.dragging === false) ||
-          (change.type === "dimensions" && change.resizing === false),
+          isExplicitCanvasResize(change),
       );
-      if (shouldPersist) scheduleSave();
+      if (shouldPersist) {
+        controller.setRuntimeNodes(
+          applyNodeChanges(renderChanges, nodesRef.current),
+        );
+        if (
+          changes.some(
+            (change) => change.type === "position" && change.dragging === false,
+          )
+        ) {
+          controller.setRuntimeEdges(edgesRef.current);
+        }
+        syncState();
+        scheduleSave();
+      }
     },
-    [controller, objectUrls, onNodesChange, scheduleSave, setEdges, syncState],
+    [
+      controller,
+      handleEdgeUpdate,
+      objectUrls,
+      onNodesChange,
+      scheduleSave,
+      setEdges,
+      syncState,
+    ],
   );
 
   const onDrop = useCallback(
@@ -2234,6 +2341,8 @@ function InfiniteCanvasLocalShellSurface({
             edgeTypes={edgeTypes}
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
+            onNodeDragStart={handleNodeDragStart}
+            onNodeDragStop={handleNodeDragStop}
             onConnect={handleConnect}
             connectionMode={ConnectionMode.Loose}
             connectionLineComponent={CanvasConnectionLine}
@@ -2250,6 +2359,16 @@ function InfiniteCanvasLocalShellSurface({
           >
             <Background gap={24} color="#d6d3d1" />
             <Controls showInteractive={false} />
+            <MiniMap
+              className={styles.minimap}
+              position="bottom-right"
+              maskColor="rgba(28, 25, 23, 0.08)"
+              nodeColor={canvasMiniMapNodeColor}
+              nodeStrokeColor="#78716c"
+              nodeStrokeWidth={1}
+              pannable
+              zoomable
+            />
             <CanvasEdgeMarkerDefinitions />
           </ReactFlow>
           {!viewportVisible ? (
@@ -2442,6 +2561,8 @@ function InfiniteCanvasLocalShellSurface({
             edgeTypes={edgeTypes}
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
+            onNodeDragStart={handleNodeDragStart}
+            onNodeDragStop={handleNodeDragStop}
             onConnect={handleConnect}
             connectionMode={ConnectionMode.Loose}
             connectionLineComponent={CanvasConnectionLine}
@@ -2458,6 +2579,16 @@ function InfiniteCanvasLocalShellSurface({
           >
             <Background gap={24} color="#d6d3d1" />
             <Controls showInteractive={false} />
+            <MiniMap
+              className={styles.minimap}
+              position="bottom-right"
+              maskColor="rgba(28, 25, 23, 0.08)"
+              nodeColor={canvasMiniMapNodeColor}
+              nodeStrokeColor="#78716c"
+              nodeStrokeWidth={1}
+              pannable
+              zoomable
+            />
             <CanvasEdgeMarkerDefinitions />
           </ReactFlow>
           {!viewportVisible ? (

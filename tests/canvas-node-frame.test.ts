@@ -103,12 +103,16 @@ describe("CanvasNodeFrame composition", () => {
     expect(shell).toContain("connectionLineComponent={CanvasConnectionLine}");
     expect(shell).toContain("markerStart={markerStart}");
     expect(shell).toContain("markerEnd={markerEnd}");
+    expect(shell).toContain("data-source-node-id={source}");
+    expect(shell).toContain("data-target-node-id={target}");
+    expect(shell).toContain("path={lastPath}");
     expect(shell).toContain("canvasNodePerimeterAnchor");
     expect(shell).not.toContain("canvasEdgePerimeterAnchors");
     expect(shell).not.toContain("CANVAS_CONNECTION_HANDLE_EDGE_OFFSET");
     expect(shell).toContain("findShortestCanvasHandlePair");
     expect(shell).toContain("recomputeCanvasRuntimeEdgeHandles");
-    expect(shell).toContain("controller.setRuntimeEdges");
+    expect(shell).toContain("controller.setRuntimeNodes");
+    expect(shell).toContain("controller.setRuntimeEdges(edgesRef.current)");
     expect(styles).toContain("--connection-handle-center-offset");
     expect(styles).toContain(".taskNodeContent");
     expect(styles).toContain(".textNodeContent");
@@ -116,4 +120,13 @@ describe("CanvasNodeFrame composition", () => {
     expect(styles).not.toContain("overflow-y: scroll");
     expect(styles).not.toContain("overflow: scroll");
   });
-});
+
+  it("keeps edge-handle projection live during transient node drags", () => {
+    const shell = source(
+      "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
+    );
+
+    expect(shell).toContain("recomputeCanvasRuntimeEdgeHandles(");
+    expect(shell).toContain("controller.setRuntimeNodes(");
+    expect(shell).toContain("controller.setRuntimeEdges(edgesRef.current)");
+  });});

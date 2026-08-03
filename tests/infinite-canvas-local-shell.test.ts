@@ -357,6 +357,8 @@ describe("production-shaped local Canvas shell", () => {
       workspaceId: WORKSPACE_A,
     });
     expect(result.nodes[0]?.position).toEqual({ x: 120, y: 240 });
+    expect(result.nodes[0]?.width).toBe(320);
+    expect(result.nodes[0]?.height).toBe(180);
     expect(result.nodes[0]?.style).toEqual({ width: 320, height: 180 });
     expect(parseCanvasDocumentV1(documentWithImage())).toEqual(
       documentWithImage(),
@@ -1077,6 +1079,8 @@ describe("production-shaped local Canvas shell", () => {
     expect(repository.assetLoadCalls).toBe(0);
     expect(restored.nodes[0]).toMatchObject({
       position: { x: 120, y: 240 },
+      width: 320,
+      height: 180,
       style: { width: 320, height: 180 },
       data: { objectUrl: "blob:cached-image" },
     });
