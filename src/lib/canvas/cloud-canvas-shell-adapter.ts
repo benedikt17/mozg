@@ -30,6 +30,13 @@ import {
   CANVAS_DOCUMENT_SCHEMA_VERSION,
   parseCanvasDocumentV2,
 } from "@/lib/canvas/canvas-document";
+import type {
+  CanvasAssetVariantKind,
+  CanvasAssetVariantMetadata,
+  CanvasAssetVariantRecord,
+  StoreCanvasAssetVariantInput,
+} from "@/lib/canvas/canvas-image-variants";
+
 export type CanvasShellRepository = CanvasRepository &
   CanvasViewStateRepository &
   CanvasGroupRepository;
@@ -237,6 +244,37 @@ export class CloudCanvasShellRepository
       canvasId: this.canvasIdForAssetLookup(),
       assetId: input.assetId,
     });
+  }
+
+  listVariants(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetId: string;
+  }): Promise<CanvasAssetVariantMetadata[]> {
+    return this.assetRepository.listVariants(input);
+  }
+
+  loadVariant(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetId: string;
+    kind: CanvasAssetVariantKind;
+  }): Promise<CanvasAssetVariantRecord | null> {
+    return this.assetRepository.loadVariant(input);
+  }
+
+  storeVariant(
+    input: StoreCanvasAssetVariantInput,
+  ): Promise<CanvasAssetVariantMetadata> {
+    return this.assetRepository.storeVariant(input);
+  }
+
+  deleteVariants(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetId: string;
+  }): Promise<void> {
+    return this.assetRepository.deleteVariants(input);
   }
 
   close(): void {

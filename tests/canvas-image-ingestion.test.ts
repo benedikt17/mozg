@@ -92,6 +92,17 @@ class MemoryAssetRepository implements CanvasAssetRepository {
   }
 }
 
+class CapturingAssetRepository extends MemoryAssetRepository {
+  lastStoreInput: StoreLocalCanvasImageInput | null = null;
+
+  override async storeImage(
+    input: StoreLocalCanvasImageInput,
+  ): Promise<CanvasAssetRecord> {
+    this.lastStoreInput = input;
+    return super.storeImage(input);
+  }
+}
+
 function memoryStorage(): Storage {
   let value: string | null = null;
   return {
@@ -327,6 +338,17 @@ describe("standalone Canvas image ingestion boundary", () => {
       height: 180,
       source: "file-picker",
     });
+  });
+
+  it("leaves the default canonical asset ID to the repository", async () => {
+    const repository = new CapturingAssetRepository();
+    const result = await ingestCanvasImageCandidates(
+      candidates([makeFile("cloud.png", "image/png")]),
+      { repository, decodeImageDimensions: dimensions() },
+    );
+
+    expect(repository.lastStoreInput?.id).toBeUndefined();
+    expect(result.accepted[0]?.assetId).toBe("asset-1");
   });
 
   it("rejects an oversized Blob", async () => {

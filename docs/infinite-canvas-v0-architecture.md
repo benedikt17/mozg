@@ -733,3 +733,16 @@ silently merged. Image/task hydration can only update runtime payload; it cannot
 node IDs, positions or persisted bounds. React Flow mount measurement is ignored for
 canonical persistence; only an explicit user resize may update saved geometry. This is a
 runtime presentation policy, not a persistence or data-model change.
+
+## 24. Deferred smooth multiresolution transitions
+
+The current multiresolution pipeline selects a functionally correct variant and
+preserves sufficient image sharpness, but a source swap can still be visible
+and occasionally spend noticeable time decoding. This is accepted technical
+debt and does not block the current production baseline.
+
+Future work may add a crossfade, threshold-based prefetch of the next variant,
+decode warming, latency profiling, and, if measurements justify it, an
+intermediate resolution. No delivery date is promised; the current selection,
+hysteresis, stale-request protection, and cloud/local parity remain the
+accepted release behavior.

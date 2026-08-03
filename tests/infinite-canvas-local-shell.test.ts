@@ -24,6 +24,7 @@ import {
   type CanvasImageFlowNode,
 } from "@/lib/canvas/react-flow-canvas-adapter";
 import { shouldCloseCanvasTaskDetails } from "@/lib/canvas/canvas-task-selection";
+import type { CanvasAssetVariantRepository } from "@/lib/canvas/canvas-image-variants";
 import {
   LocalCanvasShellController,
   type LocalCanvasShellControllerOptions,
@@ -363,6 +364,139 @@ describe("production-shaped local Canvas shell", () => {
     expect(parseCanvasDocumentV1(documentWithImage())).toEqual(
       documentWithImage(),
     );
+  });
+
+  it("uses real variant dimensions instead of a nominal thumbnail threshold", async () => {
+    const repository = new MemoryCanvasRepository();
+    const { registry } = urlRegistry();
+    const variantRepository = {
+      listVariants: vi.fn(async () => [
+        {
+          workspaceId: WORKSPACE_A,
+          canvasId: "canvas-1",
+          assetId: "asset-1",
+          kind: "thumbnail" as const,
+          storagePath: "thumbnail.webp",
+          mimeType: "image/webp" as const,
+          byteSize: 10,
+          pixelWidth: 512,
+          pixelHeight: 288,
+          createdAt: "2026-08-03T10:00:00.000Z",
+        },
+        {
+          workspaceId: WORKSPACE_A,
+          canvasId: "canvas-1",
+          assetId: "asset-1",
+          kind: "preview" as const,
+          storagePath: "preview.webp",
+          mimeType: "image/webp" as const,
+          byteSize: 20,
+          pixelWidth: 2048,
+          pixelHeight: 1152,
+          createdAt: "2026-08-03T10:00:00.000Z",
+        },
+      ]),
+      loadVariant: vi.fn(async (input) =>
+        input.kind === "preview"
+          ? {
+              workspaceId: WORKSPACE_A,
+              canvasId: "canvas-1",
+              assetId: "asset-1",
+              kind: "preview" as const,
+              storagePath: "preview.webp",
+              mimeType: "image/webp" as const,
+              byteSize: 20,
+              pixelWidth: 2048,
+              pixelHeight: 1152,
+              createdAt: "2026-08-03T10:00:00.000Z",
+              blob: new Blob(["preview"], { type: "image/webp" }),
+            }
+          : null,
+      ),
+      storeVariant: vi.fn(),
+      deleteVariants: vi.fn(),
+    } satisfies CanvasAssetVariantRepository;
+    const restored = await restoreCanvasImageNodes(
+      documentWithImage({ size: { width: 1100, height: 620 } }),
+      {
+        assetRepository: repository,
+        variantRepository,
+        objectUrls: registry,
+        workspaceId: WORKSPACE_A,
+        canvasId: "canvas-1",
+      },
+      { viewportZoom: 1, devicePixelRatio: 1.25 },
+    );
+
+    expect(variantRepository.loadVariant).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "preview" }),
+    );
+    expect(restored.nodes[0]?.data.variantKind).toBe("preview");
+  });
+
+  it("does not emit a stale lower-resolution completion after abort", async () => {
+    const repository = new MemoryCanvasRepository();
+    const { registry } = urlRegistry();
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const variantRepository = {
+      listVariants: vi.fn(async () => [
+        {
+          workspaceId: WORKSPACE_A,
+          canvasId: "canvas-1",
+          assetId: "asset-1",
+          kind: "thumbnail" as const,
+          storagePath: "thumbnail.webp",
+          mimeType: "image/webp" as const,
+          byteSize: 10,
+          pixelWidth: 512,
+          pixelHeight: 288,
+          createdAt: "2026-08-03T10:00:00.000Z",
+        },
+      ]),
+      loadVariant: vi.fn(async () => {
+        await gate;
+        return {
+          workspaceId: WORKSPACE_A,
+          canvasId: "canvas-1",
+          assetId: "asset-1",
+          kind: "thumbnail" as const,
+          storagePath: "thumbnail.webp",
+          mimeType: "image/webp" as const,
+          byteSize: 10,
+          pixelWidth: 512,
+          pixelHeight: 288,
+          createdAt: "2026-08-03T10:00:00.000Z",
+          blob: new Blob(["thumbnail"], { type: "image/webp" }),
+        };
+      }),
+      storeVariant: vi.fn(),
+      deleteVariants: vi.fn(),
+    } satisfies CanvasAssetVariantRepository;
+    const abort = new AbortController();
+    const onNode = vi.fn();
+    const pending = restoreCanvasImageNodes(
+      documentWithImage(),
+      {
+        assetRepository: repository,
+        variantRepository,
+        objectUrls: registry,
+        workspaceId: WORKSPACE_A,
+        canvasId: "canvas-1",
+      },
+      { signal: abort.signal, onNode },
+    );
+    await vi.waitFor(() =>
+      expect(variantRepository.loadVariant).toHaveBeenCalledOnce(),
+    );
+    abort.abort();
+    release?.();
+
+    await expect(pending).resolves.toMatchObject({ staleIgnored: true });
+    expect(onNode).not.toHaveBeenCalled();
+    expect(registry.count()).toBe(0);
   });
 
   it("serializes runtime nodes back to strict canonical data without Blob or Object URL fields", () => {

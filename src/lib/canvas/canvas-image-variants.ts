@@ -1,0 +1,416 @@
+import type { CanvasAssetRepository } from "@/lib/canvas/local-canvas-repository";
+
+export const CANVAS_IMAGE_THUMBNAIL_MAX_EDGE = 512;
+export const CANVAS_IMAGE_PREVIEW_MAX_EDGE = 2560;
+export const CANVAS_IMAGE_VARIANT_MIME_TYPE = "image/webp" as const;
+export const CANVAS_IMAGE_VARIANT_QUALITY = 0.82;
+export const CANVAS_IMAGE_VARIANT_HYSTERESIS = 0.15;
+/**
+ * Keeps a decoded source slightly ahead of the physical screen requirement.
+ * 1.2 absorbs fractional transforms and browser resampling without making
+ * preview/original selection unnecessarily eager.
+ */
+export const CANVAS_IMAGE_VARIANT_QUALITY_SAFETY_FACTOR = 1.2;
+export const CANVAS_IMAGE_VARIANT_ALPHA_POLICY = "preserve" as const;
+export const CANVAS_IMAGE_VARIANT_ORIENTATION_POLICY =
+  "respect-image-metadata" as const;
+
+export type CanvasAssetVariantKind = "thumbnail" | "preview";
+export type CanvasImageSourceKind = CanvasAssetVariantKind | "original";
+
+export type CanvasImageVariantCandidate = {
+  kind: CanvasAssetVariantKind;
+  pixelWidth: number;
+  pixelHeight: number;
+};
+
+export type CanvasImageRequiredPixels = {
+  width: number;
+  height: number;
+  renderedWidthCssPx: number;
+  renderedHeightCssPx: number;
+  devicePixelRatio: number;
+};
+
+export function isCanvasImageVariantDimensionContractValid(input: {
+  kind: CanvasAssetVariantKind;
+  pixelWidth: number;
+  pixelHeight: number;
+  originalWidth: number;
+  originalHeight: number;
+}): boolean {
+  if (
+    input.pixelWidth <= 0 ||
+    input.pixelHeight <= 0 ||
+    input.pixelWidth > input.originalWidth ||
+    input.pixelHeight > input.originalHeight
+  )
+    return false;
+  const maxEdge = maxEdgeFor(input.kind);
+  if (Math.max(input.pixelWidth, input.pixelHeight) > maxEdge) return false;
+  // Equivalent to the former ratio check, but avoids rejecting valid rounded
+  // dimensions at the exact one-pixel tolerance boundary due to IEEE-754
+  // division rounding (for example, 1200×400 -> 512×171).
+  return (
+    Math.abs(
+      input.pixelWidth * input.originalHeight -
+        input.originalWidth * input.pixelHeight,
+    ) <= input.originalHeight
+  );
+}
+
+export type CanvasAssetVariantMetadata = {
+  workspaceId: string;
+  canvasId: string;
+  assetId: string;
+  kind: CanvasAssetVariantKind;
+  storagePath: string;
+  mimeType: typeof CANVAS_IMAGE_VARIANT_MIME_TYPE;
+  byteSize: number;
+  pixelWidth: number;
+  pixelHeight: number;
+  createdAt: string;
+};
+
+export type CanvasAssetVariantRecord = CanvasAssetVariantMetadata & {
+  blob: Blob;
+};
+
+export type StoreCanvasAssetVariantInput = CanvasAssetVariantMetadata & {
+  blob: Blob;
+};
+
+export interface CanvasAssetVariantRepository {
+  listVariants(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetId: string;
+  }): Promise<CanvasAssetVariantMetadata[]>;
+  loadVariant(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetId: string;
+    kind: CanvasAssetVariantKind;
+  }): Promise<CanvasAssetVariantRecord | null>;
+  storeVariant(
+    input: StoreCanvasAssetVariantInput,
+  ): Promise<CanvasAssetVariantMetadata>;
+  deleteVariants(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetId: string;
+  }): Promise<void>;
+}
+
+export type GeneratedCanvasImageVariant = {
+  kind: CanvasAssetVariantKind;
+  blob: Blob;
+  pixelWidth: number;
+  pixelHeight: number;
+};
+
+export type CanvasImageVariantGenerator = (
+  blob: Blob,
+  dimensions: { width: number; height: number },
+  signal?: AbortSignal,
+) => Promise<GeneratedCanvasImageVariant[]>;
+
+export function canvasImageVariantCacheKey(input: {
+  workspaceId: string;
+  canvasId: string;
+  assetId: string;
+  kind: CanvasImageSourceKind;
+}): string {
+  return [input.workspaceId, input.canvasId, input.assetId, input.kind].join(
+    "/",
+  );
+}
+
+function maxEdgeFor(kind: CanvasAssetVariantKind): number {
+  return kind === "thumbnail"
+    ? CANVAS_IMAGE_THUMBNAIL_MAX_EDGE
+    : CANVAS_IMAGE_PREVIEW_MAX_EDGE;
+}
+
+function scaledDimensions(
+  width: number,
+  height: number,
+  maxEdge: number,
+): { width: number; height: number } {
+  const scale = Math.min(1, maxEdge / Math.max(width, height));
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
+
+function canvasToBlob(
+  canvas: OffscreenCanvas | HTMLCanvasElement,
+): Promise<Blob | null> {
+  if ("convertToBlob" in canvas) {
+    return canvas.convertToBlob({
+      type: CANVAS_IMAGE_VARIANT_MIME_TYPE,
+      quality: CANVAS_IMAGE_VARIANT_QUALITY,
+    });
+  }
+  return new Promise((resolve) => {
+    canvas.toBlob(
+      (blob) => resolve(blob),
+      CANVAS_IMAGE_VARIANT_MIME_TYPE,
+      CANVAS_IMAGE_VARIANT_QUALITY,
+    );
+  });
+}
+
+async function decodeVariantSource(blob: Blob): Promise<{
+  source: CanvasImageSource;
+  close?: () => void;
+}> {
+  if (typeof createImageBitmap === "function") {
+    const bitmap = await createImageBitmap(blob, {
+      imageOrientation: "from-image",
+    });
+    return { source: bitmap, close: () => bitmap.close() };
+  }
+  if (
+    typeof Image === "undefined" ||
+    typeof URL?.createObjectURL !== "function"
+  ) {
+    throw new Error("Canvas image variant generation is unavailable.");
+  }
+  const url = URL.createObjectURL(blob);
+  try {
+    const image = new Image();
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () =>
+        reject(new Error("Canvas image variant decode failed."));
+      image.src = url;
+    });
+    return { source: image };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+export const generateCanvasImageVariants: CanvasImageVariantGenerator = async (
+  blob,
+  dimensions,
+  signal,
+) => {
+  if (
+    typeof OffscreenCanvas === "undefined" &&
+    typeof document === "undefined"
+  ) {
+    return [];
+  }
+  const decoded = await decodeVariantSource(blob);
+  try {
+    const variants: GeneratedCanvasImageVariant[] = [];
+    for (const kind of ["thumbnail", "preview"] as const) {
+      if (signal?.aborted) {
+        const error = new Error("Aborted");
+        error.name = "AbortError";
+        throw error;
+      }
+      const target = scaledDimensions(
+        dimensions.width,
+        dimensions.height,
+        maxEdgeFor(kind),
+      );
+      const canvas =
+        typeof OffscreenCanvas === "undefined"
+          ? Object.assign(document.createElement("canvas"), {
+              width: target.width,
+              height: target.height,
+            })
+          : new OffscreenCanvas(target.width, target.height);
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Canvas 2D context is unavailable.");
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(decoded.source, 0, 0, target.width, target.height);
+      const generated = await canvasToBlob(canvas);
+      if (!generated || generated.type !== CANVAS_IMAGE_VARIANT_MIME_TYPE) {
+        throw new Error("WebP encoding is unavailable.");
+      }
+      variants.push({
+        kind,
+        blob: generated,
+        pixelWidth: target.width,
+        pixelHeight: target.height,
+      });
+    }
+    return variants;
+  } finally {
+    decoded.close?.();
+  }
+};
+
+export function calculateCanvasImageRequiredPixels(input: {
+  nodeWidth: number;
+  nodeHeight: number;
+  viewportZoom: number;
+  devicePixelRatio?: number;
+  renderedWidthCssPx?: number;
+  renderedHeightCssPx?: number;
+}): CanvasImageRequiredPixels {
+  const renderedWidthCssPx =
+    input.renderedWidthCssPx ??
+    input.nodeWidth * Math.max(input.viewportZoom, 0.01);
+  const renderedHeightCssPx =
+    input.renderedHeightCssPx ??
+    input.nodeHeight * Math.max(input.viewportZoom, 0.01);
+  const devicePixelRatio = Math.max(input.devicePixelRatio ?? 1, 1);
+  return {
+    width: Math.ceil(
+      Math.max(renderedWidthCssPx, 1) *
+        devicePixelRatio *
+        CANVAS_IMAGE_VARIANT_QUALITY_SAFETY_FACTOR,
+    ),
+    height: Math.ceil(
+      Math.max(renderedHeightCssPx, 1) *
+        devicePixelRatio *
+        CANVAS_IMAGE_VARIANT_QUALITY_SAFETY_FACTOR,
+    ),
+    renderedWidthCssPx,
+    renderedHeightCssPx,
+    devicePixelRatio,
+  };
+}
+
+function sourceRank(kind: CanvasImageSourceKind): number {
+  return kind === "thumbnail" ? 0 : kind === "preview" ? 1 : 2;
+}
+
+function defaultCandidates(): CanvasImageVariantCandidate[] {
+  return [
+    {
+      kind: "thumbnail",
+      pixelWidth: CANVAS_IMAGE_THUMBNAIL_MAX_EDGE,
+      pixelHeight: CANVAS_IMAGE_THUMBNAIL_MAX_EDGE,
+    },
+    {
+      kind: "preview",
+      pixelWidth: CANVAS_IMAGE_PREVIEW_MAX_EDGE,
+      pixelHeight: CANVAS_IMAGE_PREVIEW_MAX_EDGE,
+    },
+  ];
+}
+
+function coversRequiredPixels(
+  candidate: CanvasImageVariantCandidate,
+  required: Pick<CanvasImageRequiredPixels, "width" | "height">,
+  multiplier = 1,
+): boolean {
+  return (
+    candidate.pixelWidth >= required.width * multiplier &&
+    candidate.pixelHeight >= required.height * multiplier
+  );
+}
+
+export function chooseCanvasImageVariant(input: {
+  nodeWidth: number;
+  nodeHeight: number;
+  viewportZoom: number;
+  devicePixelRatio?: number;
+  renderedWidthCssPx?: number;
+  renderedHeightCssPx?: number;
+  currentKind?: CanvasImageSourceKind;
+  availableVariants?: readonly CanvasImageVariantCandidate[];
+}): CanvasAssetVariantKind | "original" {
+  const required = calculateCanvasImageRequiredPixels(input);
+  const candidates = [...(input.availableVariants ?? defaultCandidates())].sort(
+    (left, right) => sourceRank(left.kind) - sourceRank(right.kind),
+  );
+  const selected = candidates.find((candidate) =>
+    coversRequiredPixels(candidate, required),
+  );
+  const desired = selected?.kind ?? "original";
+  if (
+    !input.currentKind ||
+    sourceRank(desired) >= sourceRank(input.currentKind)
+  )
+    return desired;
+  const downgradeCandidate = candidates.find(
+    (candidate) => candidate.kind === desired,
+  );
+  return downgradeCandidate &&
+    coversRequiredPixels(
+      downgradeCandidate,
+      required,
+      1 + CANVAS_IMAGE_VARIANT_HYSTERESIS,
+    )
+    ? desired
+    : input.currentKind;
+}
+
+const backfillInflight = new Map<
+  string,
+  Promise<CanvasAssetVariantMetadata | null>
+>();
+
+async function performBackfill(input: {
+  assetRepository: CanvasAssetRepository;
+  variantRepository: CanvasAssetVariantRepository;
+  workspaceId: string;
+  canvasId: string;
+  assetId: string;
+  kind: CanvasAssetVariantKind;
+  generate?: CanvasImageVariantGenerator;
+  signal?: AbortSignal;
+}): Promise<CanvasAssetVariantMetadata | null> {
+  const existing = await input.variantRepository.loadVariant(input);
+  if (existing) return existing;
+  const asset = await input.assetRepository.loadAsset({
+    workspaceId: input.workspaceId,
+    assetId: input.assetId,
+  });
+  if (!asset) return null;
+  const generated = await (input.generate ?? generateCanvasImageVariants)(
+    asset.blob,
+    { width: asset.width, height: asset.height },
+    input.signal,
+  );
+  const variant = generated.find((item) => item.kind === input.kind);
+  if (!variant) return null;
+  return input.variantRepository.storeVariant({
+    workspaceId: input.workspaceId,
+    canvasId: input.canvasId,
+    assetId: input.assetId,
+    kind: variant.kind,
+    storagePath: `${input.workspaceId}/${input.canvasId}/${input.assetId}/${variant.kind}.webp`,
+    mimeType: CANVAS_IMAGE_VARIANT_MIME_TYPE,
+    byteSize: variant.blob.size,
+    pixelWidth: variant.pixelWidth,
+    pixelHeight: variant.pixelHeight,
+    createdAt: new Date().toISOString(),
+    blob: variant.blob,
+  });
+}
+
+export async function backfillCanvasImageVariant(input: {
+  assetRepository: CanvasAssetRepository;
+  variantRepository: CanvasAssetVariantRepository;
+  workspaceId: string;
+  canvasId: string;
+  assetId: string;
+  kind: CanvasAssetVariantKind;
+  generate?: CanvasImageVariantGenerator;
+  signal?: AbortSignal;
+}): Promise<CanvasAssetVariantMetadata | null> {
+  const key = canvasImageVariantCacheKey(input);
+  const inflight = backfillInflight.get(key);
+  if (inflight) return inflight;
+  const promise = performBackfill(input).catch(async (error: unknown) => {
+    const existing = await input.variantRepository.loadVariant(input);
+    if (existing) return existing;
+    throw error;
+  });
+  backfillInflight.set(key, promise);
+  try {
+    return await promise;
+  } finally {
+    if (backfillInflight.get(key) === promise) backfillInflight.delete(key);
+  }
+}

@@ -11,6 +11,7 @@ import {
 } from "@/lib/canvas/canvas-document";
 import {
   MOZG_CANVAS_ASSET_STORE,
+  MOZG_CANVAS_ASSET_VARIANT_STORE,
   MOZG_CANVAS_GROUP_STORE,
   MOZG_CANVAS_STORE,
   MOZG_CANVAS_VIEW_STATE_STORE,
@@ -27,6 +28,19 @@ import type {
   MoveCanvasToGroupInput,
   RenameCanvasGroupInput,
 } from "@/lib/canvas/canvas-group-repository";
+import {
+  CANVAS_IMAGE_PREVIEW_MAX_EDGE,
+  CANVAS_IMAGE_THUMBNAIL_MAX_EDGE,
+  isCanvasImageVariantDimensionContractValid,
+} from "@/lib/canvas/canvas-image-variants";
+import type {
+  CanvasAssetVariantKind,
+  CanvasAssetVariantMetadata,
+  CanvasAssetVariantRecord,
+  CanvasAssetVariantRepository,
+  StoreCanvasAssetVariantInput,
+} from "@/lib/canvas/canvas-image-variants";
+
 const MAX_BYTES = 20 * 1024 * 1024;
 const MAX_PIXELS = 40_000_000;
 const MAX_IMAGE_DIMENSION = 10_000;
@@ -250,6 +264,144 @@ function now(clock: () => Date | string): string {
 }
 function key(canvasId: string, userId: string): string {
   return `${canvasId}\u0000${userId}`;
+}
+function assetVariantKey(
+  workspaceId: string,
+  canvasId: string,
+  assetId: string,
+  kind: CanvasAssetVariantKind,
+): string {
+  return `${workspaceId}\u0000${canvasId}\u0000${assetId}\u0000${kind}`;
+}
+function inputAssetVariant(
+  input: StoreCanvasAssetVariantInput,
+  clock: () => Date | string,
+): CanvasAssetVariantRecord & { key: string } {
+  const workspaceId = identifier(input.workspaceId, "workspaceId");
+  const canvasId = identifier(input.canvasId, "canvasId");
+  const assetId = identifier(input.assetId, "assetId");
+  if (input.kind !== "thumbnail" && input.kind !== "preview")
+    throw new CanvasRepositoryError(
+      "invalid-input",
+      "Variant kind is invalid.",
+    );
+  if (!(input.blob instanceof Blob) || input.blob.type !== "image/webp")
+    throw new CanvasRepositoryError(
+      "invalid-input",
+      "Canvas asset variants must be WebP Blobs.",
+    );
+  if (
+    !Number.isSafeInteger(input.byteSize) ||
+    input.byteSize <= 0 ||
+    input.byteSize !== input.blob.size ||
+    !Number.isSafeInteger(input.pixelWidth) ||
+    !Number.isSafeInteger(input.pixelHeight) ||
+    input.pixelWidth <= 0 ||
+    input.pixelHeight <= 0 ||
+    input.pixelWidth > CANVAS_IMAGE_PREVIEW_MAX_EDGE ||
+    input.pixelHeight > CANVAS_IMAGE_PREVIEW_MAX_EDGE ||
+    (input.kind === "thumbnail" &&
+      (input.pixelWidth > CANVAS_IMAGE_THUMBNAIL_MAX_EDGE ||
+        input.pixelHeight > CANVAS_IMAGE_THUMBNAIL_MAX_EDGE))
+  )
+    throw new CanvasRepositoryError(
+      "invalid-input",
+      "Canvas asset variant metadata is invalid.",
+    );
+  const storagePath = `${workspaceId}/${canvasId}/${assetId}/${input.kind}.webp`;
+  if (input.storagePath !== storagePath)
+    throw new CanvasRepositoryError(
+      "invalid-input",
+      "Canvas asset variant storage path is invalid.",
+    );
+  const createdAt = input.createdAt || now(clock);
+  if (!Number.isFinite(Date.parse(createdAt)))
+    throw new CanvasRepositoryError(
+      "invalid-input",
+      "Canvas asset variant timestamp is invalid.",
+    );
+  return {
+    key: assetVariantKey(workspaceId, canvasId, assetId, input.kind),
+    workspaceId,
+    canvasId,
+    assetId,
+    kind: input.kind,
+    storagePath,
+    mimeType: "image/webp",
+    byteSize: input.byteSize,
+    pixelWidth: input.pixelWidth,
+    pixelHeight: input.pixelHeight,
+    createdAt,
+    blob: copy(input.blob),
+  };
+}
+function storedAssetVariant(value: unknown): CanvasAssetVariantRecord & {
+  key: string;
+} {
+  if (!isRecord(value))
+    throw new CanvasRepositoryError(
+      "invalid-stored-record",
+      "Stored Canvas asset variant is invalid.",
+    );
+  const input = value as Partial<CanvasAssetVariantRecord & { key: string }>;
+  const byteSize = input.byteSize;
+  const pixelWidth = input.pixelWidth;
+  const pixelHeight = input.pixelHeight;
+  if (
+    typeof byteSize !== "number" ||
+    typeof pixelWidth !== "number" ||
+    typeof pixelHeight !== "number"
+  )
+    throw new CanvasRepositoryError(
+      "invalid-stored-record",
+      "Stored Canvas asset variant metadata is invalid.",
+    );
+  if (
+    typeof input.key !== "string" ||
+    typeof input.workspaceId !== "string" ||
+    typeof input.canvasId !== "string" ||
+    typeof input.assetId !== "string" ||
+    (input.kind !== "thumbnail" && input.kind !== "preview") ||
+    input.storagePath !==
+      `${input.workspaceId}/${input.canvasId}/${input.assetId}/${input.kind}.webp` ||
+    input.mimeType !== "image/webp" ||
+    !(input.blob instanceof Blob) ||
+    !Number.isSafeInteger(byteSize) ||
+    byteSize <= 0 ||
+    input.blob.size !== byteSize ||
+    !Number.isSafeInteger(pixelWidth) ||
+    pixelWidth <= 0 ||
+    !Number.isSafeInteger(pixelHeight) ||
+    pixelHeight <= 0 ||
+    pixelWidth > CANVAS_IMAGE_PREVIEW_MAX_EDGE ||
+    pixelHeight > CANVAS_IMAGE_PREVIEW_MAX_EDGE ||
+    (input.kind === "thumbnail" &&
+      (pixelWidth > CANVAS_IMAGE_THUMBNAIL_MAX_EDGE ||
+        pixelHeight > CANVAS_IMAGE_THUMBNAIL_MAX_EDGE)) ||
+    typeof input.createdAt !== "string" ||
+    !Number.isFinite(Date.parse(input.createdAt))
+  )
+    throw new CanvasRepositoryError(
+      "invalid-stored-record",
+      "Stored Canvas asset variant metadata is invalid.",
+    );
+  return copy(input as CanvasAssetVariantRecord & { key: string });
+}
+function variantMetadata(
+  row: CanvasAssetVariantRecord,
+): CanvasAssetVariantMetadata {
+  return {
+    workspaceId: row.workspaceId,
+    canvasId: row.canvasId,
+    assetId: row.assetId,
+    kind: row.kind,
+    storagePath: row.storagePath,
+    mimeType: row.mimeType,
+    byteSize: row.byteSize,
+    pixelWidth: row.pixelWidth,
+    pixelHeight: row.pixelHeight,
+    createdAt: row.createdAt,
+  };
 }
 function viewport(value: Pick<CanvasViewport, "x" | "y" | "zoom">): void {
   if (
@@ -665,6 +817,7 @@ export class IndexedDbCanvasRepository
     CanvasRepository,
     CanvasViewStateRepository,
     CanvasAssetRepository,
+    CanvasAssetVariantRepository,
     CanvasGroupRepository
 {
   private readonly factory?: IDBFactory;
@@ -1315,6 +1468,131 @@ export class IndexedDbCanvasRepository
       throw failed(cause);
     }
   }
+  async listVariants(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetId: string;
+  }): Promise<CanvasAssetVariantMetadata[]> {
+    const workspaceId = identifier(input.workspaceId, "workspaceId");
+    const canvasId = identifier(input.canvasId, "canvasId");
+    const assetId = identifier(input.assetId, "assetId");
+    const db = await this.open();
+    const tx = db.transaction(MOZG_CANVAS_ASSET_VARIANT_STORE, "readonly");
+    const done = completion(tx);
+    try {
+      const rows = await requestResult(
+        tx.objectStore(MOZG_CANVAS_ASSET_VARIANT_STORE).getAll(),
+      );
+      await done;
+      return rows
+        .map(storedAssetVariant)
+        .filter(
+          (row) =>
+            row.workspaceId === workspaceId &&
+            row.canvasId === canvasId &&
+            row.assetId === assetId,
+        )
+        .map(variantMetadata);
+    } catch (cause) {
+      void done.catch(() => undefined);
+      throw failed(cause);
+    }
+  }
+  async loadVariant(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetId: string;
+    kind: CanvasAssetVariantKind;
+  }): Promise<CanvasAssetVariantRecord | null> {
+    const workspaceId = identifier(input.workspaceId, "workspaceId");
+    const canvasId = identifier(input.canvasId, "canvasId");
+    const assetId = identifier(input.assetId, "assetId");
+    const db = await this.open();
+    const tx = db.transaction(MOZG_CANVAS_ASSET_VARIANT_STORE, "readonly");
+    const done = completion(tx);
+    try {
+      const raw = await requestResult(
+        tx
+          .objectStore(MOZG_CANVAS_ASSET_VARIANT_STORE)
+          .get(assetVariantKey(workspaceId, canvasId, assetId, input.kind)),
+      );
+      await done;
+      if (raw === undefined) return null;
+      const row = storedAssetVariant(raw);
+      return row.workspaceId === workspaceId &&
+        row.canvasId === canvasId &&
+        row.assetId === assetId
+        ? copy(row)
+        : null;
+    } catch (cause) {
+      void done.catch(() => undefined);
+      throw failed(cause);
+    }
+  }
+  async storeVariant(
+    input: StoreCanvasAssetVariantInput,
+  ): Promise<CanvasAssetVariantMetadata> {
+    const row = inputAssetVariant(input, this.clock);
+    const original = await this.loadAsset({
+      workspaceId: row.workspaceId,
+      assetId: row.assetId,
+    });
+    if (
+      !original ||
+      !isCanvasImageVariantDimensionContractValid({
+        kind: row.kind,
+        pixelWidth: row.pixelWidth,
+        pixelHeight: row.pixelHeight,
+        originalWidth: original.width,
+        originalHeight: original.height,
+      })
+    )
+      throw new CanvasRepositoryError(
+        "invalid-input",
+        "Canvas asset variant dimensions do not match the original asset.",
+      );
+    const db = await this.open();
+    const tx = db.transaction(MOZG_CANVAS_ASSET_VARIANT_STORE, "readwrite");
+    const done = completion(tx);
+    try {
+      await requestResult(
+        tx.objectStore(MOZG_CANVAS_ASSET_VARIANT_STORE).put(copy(row)),
+      );
+      await done;
+      return copy(variantMetadata(row));
+    } catch (cause) {
+      void done.catch(() => undefined);
+      throw failed(cause);
+    }
+  }
+  async deleteVariants(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetId: string;
+  }): Promise<void> {
+    const variants = await this.listVariants(input);
+    const db = await this.open();
+    const tx = db.transaction(MOZG_CANVAS_ASSET_VARIANT_STORE, "readwrite");
+    const done = completion(tx);
+    try {
+      const store = tx.objectStore(MOZG_CANVAS_ASSET_VARIANT_STORE);
+      for (const variant of variants)
+        await requestResult(
+          store.delete(
+            assetVariantKey(
+              variant.workspaceId,
+              variant.canvasId,
+              variant.assetId,
+              variant.kind,
+            ),
+          ),
+        );
+      await done;
+    } catch (cause) {
+      void done.catch(() => undefined);
+      throw failed(cause);
+    }
+  }
   close(): void {
     this.connection?.close();
     this.connection = undefined;
@@ -1364,6 +1642,10 @@ export class IndexedDbCanvasRepository
           });
         if (!db.objectStoreNames.contains(MOZG_CANVAS_ASSET_STORE))
           db.createObjectStore(MOZG_CANVAS_ASSET_STORE, { keyPath: "id" });
+        if (!db.objectStoreNames.contains(MOZG_CANVAS_ASSET_VARIANT_STORE))
+          db.createObjectStore(MOZG_CANVAS_ASSET_VARIANT_STORE, {
+            keyPath: "key",
+          });
       };
       request.onerror = () =>
         reject(

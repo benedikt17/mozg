@@ -176,10 +176,6 @@ export function extractCanvasImageTransfer(
   };
 }
 
-function defaultIdGenerator(): string {
-  return `lab-image-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
-}
-
 function defaultDecodeImageDimensions(): DecodeImageDimensions {
   return async (file) => {
     if (typeof createImageBitmap === "function") {
@@ -235,7 +231,7 @@ function inputForRepository(
   const mimeType = candidate.file.type;
   if (!isSupportedMime(mimeType)) throw new Error("Unsupported MIME type.");
   return {
-    id: (options.idGenerator ?? defaultIdGenerator)(),
+    ...(options.idGenerator === undefined ? {} : { id: options.idGenerator() }),
     workspaceId: options.workspaceId ?? CANVAS_IMAGE_LAB_WORKSPACE_ID,
     blob: candidate.file,
     mimeType,

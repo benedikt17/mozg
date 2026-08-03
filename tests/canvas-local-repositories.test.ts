@@ -264,6 +264,7 @@ describe("IndexedDbCanvasRepository", () => {
       title: "Board",
     });
     expect(factory.storeNames("local-canvas-tests")).toEqual([
+      "canvas-asset-variants",
       "canvas-assets",
       "canvas-groups",
       "canvas-view-states",
@@ -413,6 +414,66 @@ describe("IndexedDbCanvasRepository", () => {
       await repository.loadAsset({ workspaceId: "w1", assetId: asset.id }),
     ).toBeNull();
   });
+  it("stores Canvas-scoped WebP variants independently from the original", async () => {
+    const canvas = await repository.createCanvas({
+      workspaceId: "w1",
+      title: "Variants",
+    });
+    const original = new Blob(["original"], { type: "image/png" });
+    const asset = await repository.storeImage({
+      workspaceId: "w1",
+      blob: original,
+      mimeType: "image/png",
+      byteSize: original.size,
+      width: 4000,
+      height: 2000,
+    });
+    const variant = new Blob(["preview"], { type: "image/webp" });
+    await repository.storeVariant({
+      workspaceId: "w1",
+      canvasId: canvas.id,
+      assetId: asset.id,
+      kind: "preview",
+      storagePath: `w1/${canvas.id}/${asset.id}/preview.webp`,
+      mimeType: "image/webp",
+      byteSize: variant.size,
+      pixelWidth: 2560,
+      pixelHeight: 1280,
+      createdAt: time,
+      blob: variant,
+    });
+    await expect(
+      repository.loadVariant({
+        workspaceId: "w1",
+        canvasId: canvas.id,
+        assetId: asset.id,
+        kind: "preview",
+      }),
+    ).resolves.toMatchObject({ pixelWidth: 2560, mimeType: "image/webp" });
+    expect(
+      await repository.listVariants({
+        workspaceId: "w1",
+        canvasId: canvas.id,
+        assetId: asset.id,
+      }),
+    ).toHaveLength(1);
+    await repository.deleteVariants({
+      workspaceId: "w1",
+      canvasId: canvas.id,
+      assetId: asset.id,
+    });
+    await expect(
+      repository.loadVariant({
+        workspaceId: "w1",
+        canvasId: canvas.id,
+        assetId: asset.id,
+        kind: "preview",
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      repository.loadAsset({ workspaceId: "w1", assetId: asset.id }),
+    ).resolves.toMatchObject({ byteSize: original.size });
+  });
   it("preserves the existing workspace snapshot when Canvas stores are added", async () => {
     const desktop = new IndexedDbDesktopPersistenceAdapter({
       indexedDb: factory as unknown as IDBFactory,
@@ -470,6 +531,7 @@ describe("IndexedDbCanvasRepository", () => {
     });
     await upgraded.createCanvas({ workspaceId: "w1", title: "Board" });
     expect(factory.storeNames("upgrade-tests")).toEqual([
+      "canvas-asset-variants",
       "canvas-assets",
       "canvas-groups",
       "canvas-view-states",
@@ -488,6 +550,7 @@ describe("IndexedDbCanvasRepository", () => {
     });
     expect(await reopened.listCanvases("w1")).toHaveLength(1);
     expect(factory.storeNames("upgrade-tests")).toEqual([
+      "canvas-asset-variants",
       "canvas-assets",
       "canvas-groups",
       "canvas-view-states",
@@ -518,7 +581,7 @@ describe("IndexedDbCanvasRepository", () => {
       idGenerator: () => "retry",
     });
     await retry.createCanvas({ workspaceId: "w1", title: "Retry" });
-    expect(factory.storeNames("interrupted-upgrade")).toHaveLength(5);
+    expect(factory.storeNames("interrupted-upgrade")).toHaveLength(6);
     expect(
       factory.read("interrupted-upgrade", MOZG_DESKTOP_DOMAIN_STORE, "legacy"),
     ).toEqual({ value: "preserve" });

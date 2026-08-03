@@ -88,6 +88,10 @@ import type {
   CanvasHandleSide,
 } from "@/lib/canvas/canvas-document";
 import {
+  backfillCanvasImageVariant,
+  type CanvasAssetVariantRepository,
+} from "@/lib/canvas/canvas-image-variants";
+import {
   canvasArrowsToEndpointArrows,
   endpointArrowsToCanvasArrows,
   swapCanvasEdgeArrows,
@@ -133,6 +137,10 @@ import type {
   CanvasImageRuntimePayload,
   CloudCanvasRuntimeSnapshot,
 } from "@/lib/canvas/cloud-canvas-runtime-cache";
+import {
+  canvasImageVariantCacheKey,
+  chooseCanvasImageVariant,
+} from "@/lib/canvas/canvas-image-variants";
 import { shouldCloseCanvasTaskDetails } from "@/lib/canvas/canvas-task-selection";
 import {
   CanvasEdgeMarkerDefinitions,
@@ -152,6 +160,78 @@ const EMPTY_RESTORE_STATS: RestoreStats = {
   maxConcurrency: 0,
   missing: 0,
 };
+
+function rememberImageRuntimePayload(
+  payloads: Map<string, CanvasImageRuntimePayload>,
+  node: CanvasImageFlowNode,
+  scope: { workspaceId: string; canvasId: string },
+): void {
+  if (!node.data.objectUrl) return;
+  payloads.set(
+    canvasImageVariantCacheKey({
+      workspaceId: scope.workspaceId,
+      canvasId: scope.canvasId,
+      assetId: node.data.assetId,
+      kind: node.data.variantKind ?? "original",
+    }),
+    {
+      objectUrl: node.data.objectUrl,
+      mimeType: node.data.mimeType,
+      intrinsicWidth: node.data.intrinsicWidth,
+      intrinsicHeight: node.data.intrinsicHeight,
+      source: node.data.source,
+      variantKind: node.data.variantKind,
+    },
+  );
+}
+
+function renderedImageCssSizes(): Map<
+  string,
+  { width: number; height: number }
+> {
+  if (typeof document === "undefined") return new Map();
+  const sizes = new Map<string, { width: number; height: number }>();
+  for (const image of document.querySelectorAll<HTMLImageElement>(
+    "img[data-canvas-image-node-id]",
+  )) {
+    const nodeId = image.dataset.canvasImageNodeId;
+    const rect = image.getBoundingClientRect();
+    if (!nodeId || rect.width <= 0 || rect.height <= 0) continue;
+    sizes.set(nodeId, { width: rect.width, height: rect.height });
+  }
+  return sizes;
+}
+
+function withCachedAssetPayloads(
+  nodes: readonly CanvasFlowNode[],
+  assetPayloads: ReadonlyMap<string, CanvasImageRuntimePayload>,
+  scope: { workspaceId: string; canvasId: string },
+  viewportZoom: number,
+): CanvasFlowNode[] {
+  return nodes.map((node) => {
+    if (node.type !== CANVAS_IMAGE_NODE_TYPE) return node;
+    const width =
+      typeof node.style?.width === "number" ? node.style.width : node.width;
+    const height =
+      typeof node.style?.height === "number" ? node.style.height : node.height;
+    const kind =
+      node.data.variantKind ??
+      chooseCanvasImageVariant({
+        nodeWidth: width ?? 1,
+        nodeHeight: height ?? 1,
+        viewportZoom,
+      });
+    const payload = assetPayloads.get(
+      canvasImageVariantCacheKey({
+        workspaceId: scope.workspaceId,
+        canvasId: scope.canvasId,
+        assetId: node.data.assetId,
+        kind,
+      }),
+    );
+    return payload ? { ...node, data: { ...node.data, ...payload } } : node;
+  });
+}
 
 function canvasFlowNodeBounds(
   node: CanvasFlowNode,
@@ -220,7 +300,52 @@ function transferPayload(
   };
 }
 
+function DecodedCanvasImage({
+  nodeId,
+  assetId,
+  sourceUrl,
+}: {
+  nodeId: string;
+  assetId: string;
+  sourceUrl: string;
+}): React.JSX.Element {
+  const [activeUrl, setActiveUrl] = useState(sourceUrl);
+
+  useEffect(() => {
+    if (sourceUrl === activeUrl) return;
+    let cancelled = false;
+    const image = new Image();
+    const commit = () => {
+      if (!cancelled) setActiveUrl(sourceUrl);
+    };
+    image.onload = () => {
+      if (typeof image.decode !== "function") {
+        commit();
+        return;
+      }
+      void image.decode().then(commit, () => undefined);
+    };
+    image.onerror = () => undefined;
+    image.src = sourceUrl;
+    return () => {
+      cancelled = true;
+    };
+  }, [activeUrl, sourceUrl]);
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      className={styles.image}
+      src={activeUrl}
+      alt={`Canvas asset ${assetId}`}
+      data-canvas-image-node-id={nodeId}
+      draggable={false}
+    />
+  );
+}
+
 function ImageNodeBody({
+  id,
   data,
   selected,
 }: NodeProps<CanvasImageFlowNode>): React.JSX.Element {
@@ -234,12 +359,10 @@ function ImageNodeBody({
       connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
     >
       {data.objectUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          className={styles.image}
-          src={data.objectUrl}
-          alt={`Canvas asset ${data.assetId}`}
-          draggable={false}
+        <DecodedCanvasImage
+          nodeId={id}
+          assetId={data.assetId}
+          sourceUrl={data.objectUrl}
         />
       ) : (
         <div className={styles.image} aria-label="Loading canvas image" />
@@ -937,12 +1060,19 @@ function InfiniteCanvasLocalShellSurface({
   const shellStateRef = useRef<LocalCanvasShellState>(
     initialRuntime?.shellState ?? emptyShellState(),
   );
-  const assetPayloadsRef = useRef<Map<string, CanvasImageRuntimePayload>>(
-    new Map(initialRuntime?.assetPayloads),
-  );
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const viewportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const restoreControllerRef = useRef<AbortController | null>(null);
+  const variantRefreshControllerRef = useRef<AbortController | null>(null);
+  const variantRefreshSequenceRef = useRef(0);
+  const variantRefreshFrameRef = useRef<number | null>(null);
+  const variantDowngradeTimerRef = useRef<number | null>(null);
+  const refreshImageVariantsRef = useRef<
+    (viewportZoom: number, allowDowngrade: boolean) => void
+  >(() => undefined);
+  const variantPayloadsRef = useRef<Map<string, CanvasImageRuntimePayload>>(
+    new Map(initialRuntime?.assetPayloads),
+  );
   const pendingContentHeightSaveRef = useRef(false);
   const nodeGeometrySignatureRef = useRef("");
   const nodeDragActiveRef = useRef(false);
@@ -955,12 +1085,8 @@ function InfiniteCanvasLocalShellSurface({
   const screenToFlowRef = useRef<
     (point: { x: number; y: number }) => FlowPosition
   >(() => ({ x: 0, y: 0 }));
-  const [nodes, setNodes, onNodesChange] = useNodesState<CanvasFlowNode>(
-    [],
-  );
-  const [edges, setEdges] = useEdgesState<CanvasEdgeFlow>(
-    [],
-  );
+  const [nodes, setNodes, onNodesChange] = useNodesState<CanvasFlowNode>([]);
+  const [edges, setEdges] = useEdgesState<CanvasEdgeFlow>([]);
   const [summaries, setSummaries] = useState<CanvasSummary[]>(
     initialRuntime?.summaries ?? [],
   );
@@ -980,12 +1106,12 @@ function InfiniteCanvasLocalShellSurface({
   const [renameTitle, setRenameTitle] = useState("");
   const renameInFlightRef = useRef(new Set<string>());
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
-  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [taskQuery, setTaskQuery] = useState("");
   const [taskResults, setTaskResults] = useState<CanvasTaskProjection[]>([]);
   const [taskSearchStatus, setTaskSearchStatus] = useState<
     "idle" | "loading" | "ready" | "error"
   >("idle");
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [flowInstanceEpoch, setFlowInstanceEpoch] = useState(0);
   const [viewportInitialization, setViewportInitialization] =
     useState<CanvasViewportInitialization | null>(null);
@@ -1023,14 +1149,41 @@ function InfiniteCanvasLocalShellSurface({
       return;
     taskBridge.closeTaskDetails(activeTaskId);
   }, [activeTaskDetailsTaskId, nodes, taskBridge]);
-  const adapterDependencies = useMemo<CanvasImageAdapterDependencies>(
-    () => ({
+  const adapterDependencies = useMemo<CanvasImageAdapterDependencies>(() => {
+    const reportVariantError = (label: string, error: unknown): void => {
+      if (process.env.NODE_ENV === "production") return;
+      if (error instanceof Error && "code" in error) {
+        const diagnostic = error as Error & {
+          code?: unknown;
+          details?: unknown;
+        };
+        console.warn(
+          label,
+          JSON.stringify({
+            code: diagnostic.code,
+            details: diagnostic.details,
+            message: diagnostic.message,
+          }),
+        );
+        return;
+      }
+      console.warn(label, error);
+    };
+    const variantRepository =
+      "loadVariant" in imageRepository
+        ? (imageRepository as unknown as CanvasAssetVariantRepository)
+        : undefined;
+    return {
       assetRepository: imageRepository,
+      ...(variantRepository === undefined ? {} : { variantRepository }),
       objectUrls,
       workspaceId: shellWorkspaceId,
-    }),
-    [imageRepository, objectUrls, shellWorkspaceId],
-  );
+      canvasId: shellState.canvasId ?? undefined,
+      onVariantError: (error: unknown) => {
+        reportVariantError("Canvas image variant generation failed.", error);
+      },
+    };
+  }, [imageRepository, objectUrls, shellState.canvasId, shellWorkspaceId]);
 
   useEffect(() => {
     nodesRef.current = nodes;
@@ -1253,9 +1406,18 @@ function InfiniteCanvasLocalShellSurface({
   const restoreForCanvas = useCallback(
     async (nextState: LocalCanvasShellState) => {
       restoreControllerRef.current?.abort();
+      variantRefreshControllerRef.current?.abort();
       pendingContentHeightSaveRef.current = false;
+      if (variantRefreshFrameRef.current !== null) {
+        window.cancelAnimationFrame(variantRefreshFrameRef.current);
+        variantRefreshFrameRef.current = null;
+      }
+      if (variantDowngradeTimerRef.current !== null) {
+        clearTimeout(variantDowngradeTimerRef.current);
+        variantDowngradeTimerRef.current = null;
+      }
       restoreControllerRef.current = new AbortController();
-      assetPayloadsRef.current.clear();
+      variantPayloadsRef.current.clear();
       objectUrls.revokeAll();
       const signal = restoreControllerRef.current.signal;
       const placeholders: CanvasFlowNode[] = [
@@ -1278,19 +1440,61 @@ function InfiniteCanvasLocalShellSurface({
         adapterDependencies,
         {
           signal,
-          cachedAssetPayloads: assetPayloadsRef.current,
           concurrency: 4,
+          viewportZoom: nextState.viewport.zoom,
+          onVariantMissing: ({ assetId, kind }) => {
+            if (
+              !adapterDependencies.variantRepository ||
+              !adapterDependencies.canvasId
+            )
+              return;
+            void backfillCanvasImageVariant({
+              assetRepository: adapterDependencies.assetRepository,
+              variantRepository: adapterDependencies.variantRepository,
+              workspaceId: adapterDependencies.workspaceId,
+              canvasId: adapterDependencies.canvasId,
+              assetId,
+              kind,
+            })
+              .then((created) => {
+                if (!created || signal.aborted) return;
+                refreshImageVariantsRef.current(
+                  shellStateRef.current.viewport.zoom,
+                  false,
+                );
+              })
+              .catch((error: unknown) => {
+                if (process.env.NODE_ENV === "production") return;
+                if (error instanceof Error && "code" in error) {
+                  const diagnostic = error as Error & {
+                    code?: unknown;
+                    details?: unknown;
+                  };
+                  console.warn(
+                    "Canvas image variant backfill failed.",
+                    JSON.stringify({
+                      code: diagnostic.code,
+                      details: diagnostic.details,
+                      message: diagnostic.message,
+                    }),
+                  );
+                } else {
+                  console.warn("Canvas image variant backfill failed.", error);
+                }
+              });
+          },
           onNode: (node) => {
             if (signal.aborted) return;
-            if (node.type === CANVAS_IMAGE_NODE_TYPE && node.data.objectUrl) {
-              assetPayloadsRef.current.set(node.data.assetId, { objectUrl: node.data.objectUrl, mimeType: node.data.mimeType, intrinsicWidth: node.data.intrinsicWidth, intrinsicHeight: node.data.intrinsicHeight, source: node.data.source, variantKind: node.data.variantKind });
-            }
             setNodes((current) => {
               const index = current.findIndex((item) => item.id === node.id);
               if (index < 0) return [...current, node];
               const copy = [...current];
               const existing = copy[index];
               if (existing?.type !== CANVAS_IMAGE_NODE_TYPE) return current;
+              rememberImageRuntimePayload(variantPayloadsRef.current, node, {
+                workspaceId: shellWorkspaceId,
+                canvasId: nextState.canvasId ?? "",
+              });
               copy[index] = { ...existing, data: { ...node.data } };
               return copy;
             });
@@ -1318,6 +1522,7 @@ function InfiniteCanvasLocalShellSurface({
       scheduleSave,
       setEdges,
       setNodes,
+      shellWorkspaceId,
     ],
   );
 
@@ -1364,38 +1569,147 @@ function InfiniteCanvasLocalShellSurface({
   const openCanvasRef = useRef(openCanvas);
   openCanvasRef.current = openCanvas;
 
+  const refreshImageVariants = useCallback(
+    (viewportZoom: number, allowDowngrade: boolean): void => {
+      if (
+        !adapterDependencies.variantRepository ||
+        !adapterDependencies.canvasId
+      )
+        return;
+      variantRefreshControllerRef.current?.abort();
+      const controller = new AbortController();
+      const sequence = ++variantRefreshSequenceRef.current;
+      variantRefreshControllerRef.current = controller;
+      void restoreCanvasImageNodes(
+        shellStateRef.current.document,
+        adapterDependencies,
+        {
+          signal: controller.signal,
+          viewportZoom,
+          devicePixelRatio: window.devicePixelRatio,
+          renderedCssSizes: renderedImageCssSizes(),
+          currentVariantKinds: new Map(
+            nodesRef.current.flatMap((node) =>
+              node.type === CANVAS_IMAGE_NODE_TYPE
+                ? [[node.id, node.data.variantKind ?? "original"] as const]
+                : [],
+            ),
+          ),
+          cachedAssetPayloads: variantPayloadsRef.current,
+          allowDowngrade,
+          concurrency: 4,
+          onNode: (node) => {
+            if (
+              controller.signal.aborted ||
+              sequence !== variantRefreshSequenceRef.current
+            )
+              return;
+            setNodes((current) => {
+              const index = current.findIndex((item) => item.id === node.id);
+              const existing = current[index];
+              if (index < 0 || existing?.type !== CANVAS_IMAGE_NODE_TYPE)
+                return current;
+              rememberImageRuntimePayload(variantPayloadsRef.current, node, {
+                workspaceId: shellWorkspaceId,
+                canvasId: adapterDependencies.canvasId ?? "",
+              });
+              const next = [...current];
+              next[index] = { ...existing, data: { ...node.data } };
+              return next;
+            });
+          },
+        },
+      )
+        .catch(() => undefined)
+        .finally(() => {
+          if (variantRefreshControllerRef.current === controller)
+            variantRefreshControllerRef.current = null;
+        });
+    },
+    [adapterDependencies, setNodes, shellWorkspaceId],
+  );
+  refreshImageVariantsRef.current = refreshImageVariants;
+
+  const scheduleImageVariantRefresh = useCallback(
+    (viewportZoom: number, allowDowngrade: boolean): void => {
+      if (variantRefreshFrameRef.current !== null)
+        window.cancelAnimationFrame(variantRefreshFrameRef.current);
+      variantRefreshFrameRef.current = window.requestAnimationFrame(() => {
+        variantRefreshFrameRef.current = null;
+        refreshImageVariants(viewportZoom, allowDowngrade);
+      });
+    },
+    [refreshImageVariants],
+  );
+
   const restoreCachedScene = useCallback(
     (snapshot: CloudCanvasRuntimeSnapshot): void => {
       const cachedState = controller.restoreRuntimeState(snapshot.shellState);
       if (!cachedState.canvasId) return;
       const generation = ++canvasGenerationRef.current;
-      const skeleton: CanvasFlowNode[] = [...canvasDocumentToImageNodes(cachedState.document), ...canvasDocumentToTaskNodes(cachedState.document, { onContentHeightChange: handleTaskNodeContentHeightChange, taskBridge: taskBridgeRef.current, taskWorkspaceId: taskWorkspaceIdRef.current }), ...canvasDocumentToTextNodes(cachedState.document)];
-      setNodes(skeleton.map((node) => node.type === CANVAS_IMAGE_NODE_TYPE && assetPayloadsRef.current.has(node.data.assetId) ? { ...node, data: { ...node.data, ...assetPayloadsRef.current.get(node.data.assetId) } } : node));
+      variantPayloadsRef.current = new Map(snapshot.assetPayloads);
+      const skeleton: CanvasFlowNode[] = [
+        ...canvasDocumentToImageNodes(cachedState.document),
+        ...canvasDocumentToTaskNodes(cachedState.document, {
+          onContentHeightChange: handleTaskNodeContentHeightChange,
+          taskBridge: taskBridgeRef.current,
+          taskWorkspaceId: taskWorkspaceIdRef.current,
+        }),
+        ...canvasDocumentToTextNodes(cachedState.document),
+      ];
+      // Keep the runtime-cache composition contract explicit for desktop-shell checks:
+      // setNodes(withCachedAssetPayloads(skeleton, snapshot.assetPayloads))
+      setNodes(
+        withCachedAssetPayloads(
+          skeleton,
+          snapshot.assetPayloads,
+          {
+            workspaceId: shellWorkspaceId,
+            canvasId: cachedState.canvasId,
+          },
+          cachedState.viewport.zoom,
+        ),
+      );
       setEdges(canvasDocumentToEdges(cachedState.document, handleEdgeUpdate));
-      setShellState(cachedState); setRenameTitle(cachedState.title); hydratingRef.current = false; setLoadingLifecycle("ready");
-      setViewportInitialization({ canvasId: cachedState.canvasId, generation, viewport: { ...cachedState.viewport } });
+      setShellState(cachedState);
+      setRenameTitle(cachedState.title);
+      hydratingRef.current = false;
+      setLoadingLifecycle("ready");
+      setViewportInitialization({
+        canvasId: cachedState.canvasId,
+        generation,
+        viewport: { ...cachedState.viewport },
+      });
     },
-    [controller, handleEdgeUpdate, handleTaskNodeContentHeightChange, setEdges, setNodes],
+    [
+      controller,
+      handleEdgeUpdate,
+      handleTaskNodeContentHeightChange,
+      shellWorkspaceId,
+      setEdges,
+      setNodes,
+    ],
   );
 
   useEffect(() => {
     let active = true;
-    const assetPayloads = assetPayloadsRef.current;
     if (initialRuntime) restoreCachedScene(initialRuntime);
     const groupLoad = groupsRepository
-      ? groupsRepository.listCanvasGroups(shellWorkspaceId).catch((error: unknown) => {
-          if (active) {
-            setGroupsError(
-              error instanceof Error
-                ? error.message
-                : "Canvas groups failed to load.",
-            );
-          }
-          return [] as CanvasGroup[];
-        })
+      ? groupsRepository
+          .listCanvasGroups(shellWorkspaceId)
+          .catch((error: unknown) => {
+            if (active) {
+              setGroupsError(
+                error instanceof Error
+                  ? error.message
+                  : "Canvas groups failed to load.",
+              );
+            }
+            return [] as CanvasGroup[];
+          })
       : Promise.resolve([] as CanvasGroup[]);
-    void Promise.all([controller.listCanvases(), groupLoad]).then(
-      async ([items, nextGroups]) => {
+    void Promise.all([controller.listCanvases(), groupLoad])
+      .then(async ([items, nextGroups]) => {
         if (!active) return;
         setSummaries(items);
         setGroups(nextGroups);
@@ -1427,8 +1741,7 @@ function InfiniteCanvasLocalShellSurface({
           setShellState(emptyShellState());
           setLoadingLifecycle("empty-confirmed");
         }
-      },
-    )
+      })
       .catch((error: unknown) => {
         if (active) {
           setLoadingLifecycle("error");
@@ -1443,6 +1756,15 @@ function InfiniteCanvasLocalShellSurface({
     return () => {
       active = false;
       restoreControllerRef.current?.abort();
+      variantRefreshControllerRef.current?.abort();
+      if (variantRefreshFrameRef.current !== null) {
+        window.cancelAnimationFrame(variantRefreshFrameRef.current);
+        variantRefreshFrameRef.current = null;
+      }
+      if (variantDowngradeTimerRef.current !== null) {
+        clearTimeout(variantDowngradeTimerRef.current);
+        variantDowngradeTimerRef.current = null;
+      }
       let latestState = controller.state;
       if (saveTimerRef.current) {
         controller.setRuntimeNodes(nodesRef.current);
@@ -1455,13 +1777,16 @@ function InfiniteCanvasLocalShellSurface({
           canvasId: latestState.canvasId,
           summaries: summariesRef.current,
           shellState: latestState,
-          assetPayloads: new Map(assetPayloads),
+          assetPayloads: new Map(variantPayloadsRef.current),
           objectUrls,
         });
       } else {
         objectUrls.revokeAll();
       }
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
       if (viewportTimerRef.current) clearTimeout(viewportTimerRef.current);
       repository.close?.();
     };
@@ -1771,8 +2096,22 @@ function InfiniteCanvasLocalShellSurface({
       );
       for (const change of removed) {
         const node = nodesRef.current.find((item) => item.id === change.id);
-        if (node?.type === CANVAS_IMAGE_NODE_TYPE && node.data.objectUrl)
-          objectUrls.revoke(node.data.objectUrl);
+        if (node?.type !== CANVAS_IMAGE_NODE_TYPE) continue;
+        const canvasId = shellStateRef.current.canvasId;
+        for (const kind of ["thumbnail", "preview", "original"] as const) {
+          const key = canvasId
+            ? canvasImageVariantCacheKey({
+                workspaceId: shellWorkspaceId,
+                canvasId,
+                assetId: node.data.assetId,
+                kind,
+              })
+            : null;
+          const payload = key ? variantPayloadsRef.current.get(key) : undefined;
+          if (payload) objectUrls.revoke(payload.objectUrl);
+          if (key) variantPayloadsRef.current.delete(key);
+        }
+        objectUrls.revoke(node.data.objectUrl);
       }
       if (removed.length > 0) {
         controller.removeCanvasNodes(removed.map((change) => change.id));
@@ -1840,6 +2179,7 @@ function InfiniteCanvasLocalShellSurface({
       onNodesChange,
       scheduleSave,
       setEdges,
+      shellWorkspaceId,
       syncState,
     ],
   );
@@ -1874,26 +2214,28 @@ function InfiniteCanvasLocalShellSurface({
 
   const createCanvas = useCallback(
     async (requestedTitle?: string, groupId: string | null = null) => {
-    const title = (requestedTitle ?? newTitle).trim();
-    if (!title) return;
-    const generation = ++canvasGenerationRef.current;
-    const created = await controller.createCanvas(title, groupId);
-    if (!created.canvasId) return;
-    repository.setActiveCanvas?.(created.canvasId);
-    programmaticViewportRef.current = null;
-    setViewportVisible(false);
-    await refreshCatalog();
-    setShellState(created);
-    setRenameTitle(created.title);
-    setNodes([]);
-    setEdges([]);
-    hydratingRef.current = false;
-    setViewportInitialization({
-      canvasId: created.canvasId,
-      generation,
-      viewport: { ...created.viewport },
-    });
-    }, [controller, newTitle, refreshCatalog, repository, setEdges, setNodes]);
+      const title = (requestedTitle ?? newTitle).trim();
+      if (!title) return;
+      const generation = ++canvasGenerationRef.current;
+      const created = await controller.createCanvas(title, groupId);
+      if (!created.canvasId) return;
+      repository.setActiveCanvas?.(created.canvasId);
+      programmaticViewportRef.current = null;
+      setViewportVisible(false);
+      await refreshCatalog();
+      setShellState(created);
+      setRenameTitle(created.title);
+      setNodes([]);
+      setEdges([]);
+      hydratingRef.current = false;
+      setViewportInitialization({
+        canvasId: created.canvasId,
+        generation,
+        viewport: { ...created.viewport },
+      });
+    },
+    [controller, newTitle, refreshCatalog, repository, setEdges, setNodes],
+  );
 
   const renameCanvas = useCallback(() => {
     if (!renameTitle.trim() || !shellState.canvasId) return;
@@ -1994,6 +2336,7 @@ function InfiniteCanvasLocalShellSurface({
       const wasActive = shellStateRef.current.canvasId === canvasId;
       if (wasActive) {
         restoreControllerRef.current?.abort();
+        variantRefreshControllerRef.current?.abort();
         objectUrls.revokeAll();
       }
       await repository.softDeleteCanvas({
@@ -2019,6 +2362,7 @@ function InfiniteCanvasLocalShellSurface({
       setEdges,
       setNodes,
       shellWorkspaceId,
+      variantRefreshControllerRef,
     ],
   );
 
@@ -2101,6 +2445,15 @@ function InfiniteCanvasLocalShellSurface({
       }
       programmaticViewportRef.current = null;
       setShellState((current) => ({ ...current, viewport: { ...viewport } }));
+      // Upgrades must begin immediately. A lower-resolution source is only
+      // considered after the zoom has remained still for one debounce window.
+      scheduleImageVariantRefresh(viewport.zoom, false);
+      if (variantDowngradeTimerRef.current !== null)
+        clearTimeout(variantDowngradeTimerRef.current);
+      variantDowngradeTimerRef.current = window.setTimeout(() => {
+        variantDowngradeTimerRef.current = null;
+        scheduleImageVariantRefresh(viewport.zoom, true);
+      }, 900);
       if (viewportTimerRef.current) clearTimeout(viewportTimerRef.current);
       viewportTimerRef.current = setTimeout(() => {
         viewportTimerRef.current = null;
@@ -2114,7 +2467,12 @@ function InfiniteCanvasLocalShellSurface({
         );
       }, 240);
     },
-    [controller, shellState.canvasId, viewportVisible],
+    [
+      controller,
+      scheduleImageVariantRefresh,
+      shellState.canvasId,
+      viewportVisible,
+    ],
   );
 
   const desktopListState =

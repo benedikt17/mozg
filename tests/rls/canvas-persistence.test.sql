@@ -5,6 +5,7 @@ select no_plan();
 select has_table('public', 'canvases', 'canvases table exists');
 select has_table('public', 'canvas_view_states', 'canvas_view_states table exists');
 select has_table('public', 'canvas_assets', 'canvas_assets table exists');
+select has_table('public', 'canvas_asset_variants', 'canvas_asset_variants table exists');
 select has_function(
   'public',
   'create_canvas',
@@ -47,6 +48,18 @@ select has_function(
   array['uuid', 'uuid', 'uuid'],
   'Canvas asset delete function exists'
 );
+select has_function(
+  'public',
+  'reserve_canvas_asset_variant',
+  array['uuid', 'uuid', 'uuid', 'text', 'bigint', 'integer', 'integer'],
+  'Canvas asset variant reserve function exists'
+);
+select has_function(
+  'public',
+  'finalize_canvas_asset_variant',
+  array['uuid', 'uuid', 'uuid', 'text'],
+  'Canvas asset variant finalize function exists'
+);
 select is(
   (select count(*)::bigint from information_schema.columns where table_schema = 'public' and table_name = 'canvas_assets' and column_name = 'canvas_id'),
   1::bigint,
@@ -73,6 +86,11 @@ select is(
   'canvas_assets has RLS enabled'
 );
 select is(
+  (select relrowsecurity from pg_class where oid = 'public.canvas_asset_variants'::regclass),
+  true,
+  'canvas_asset_variants has RLS enabled'
+);
+select is(
   has_table_privilege('authenticated', 'public.canvases', 'UPDATE'),
   false,
   'authenticated clients cannot bypass Canvas CAS with direct update'
@@ -96,6 +114,11 @@ select is(
   has_table_privilege('authenticated', 'public.canvas_assets', 'DELETE'),
   false,
   'authenticated clients cannot bypass asset lifecycle with direct delete'
+);
+select is(
+  has_table_privilege('authenticated', 'public.canvas_asset_variants', 'INSERT'),
+  false,
+  'authenticated clients cannot bypass variant reserve RPC with direct insert'
 );
 select is(
   has_function_privilege('anon', 'public.save_canvas_document(uuid,bigint,text,jsonb)', 'EXECUTE'),
@@ -232,6 +255,103 @@ select results_eq(
   ) $$,
   array['62000000-0000-0000-0000-000000000001:true'::text],
   'owner can finalize an uploaded Canvas asset'
+);
+
+select results_eq(
+  $$ select kind || ':' || (ready_at is null)::text from public.reserve_canvas_asset_variant(
+    '22000000-0000-0000-0000-000000000001'::uuid,
+    current_setting('test.canvas_id')::uuid,
+    current_setting('test.asset_id')::uuid,
+    'thumbnail',
+    128,
+    100,
+    100
+  ) $$,
+  array['thumbnail:true'::text],
+  'owner can reserve a thumbnail variant'
+);
+select lives_ok(
+  $$ insert into storage.objects (id, bucket_id, name, owner, metadata, version, owner_id, user_metadata)
+     values (
+       gen_random_uuid(),
+       'canvas-assets',
+       '22000000-0000-0000-0000-000000000001/' || current_setting('test.canvas_id') || '/' || current_setting('test.asset_id') || '/thumbnail.webp',
+       (select auth.uid()),
+       '{"mimetype":"image/webp","size":128}'::jsonb,
+       'variant-test-version',
+       (select auth.uid())::text,
+       '{}'::jsonb
+     ) $$,
+  'write-capable member can upload only a reserved variant object'
+);
+select results_eq(
+  $$ select kind || ':' || (ready_at is not null)::text from public.finalize_canvas_asset_variant(
+    '22000000-0000-0000-0000-000000000001'::uuid,
+    current_setting('test.canvas_id')::uuid,
+    current_setting('test.asset_id')::uuid,
+    'thumbnail'
+  ) $$,
+  array['thumbnail:true'::text],
+  'owner can finalize a variant after upload'
+);
+select results_eq(
+  $$ select count(*)::bigint from public.canvas_asset_variants $$,
+  array[1::bigint],
+  'variant metadata count is exact after one finalized variant'
+);
+select set_config('request.jwt.claim.sub', '12000000-0000-0000-0000-000000000003', true);
+select results_eq(
+  $$ select count(*)::bigint from public.canvas_asset_variants $$,
+  array[1::bigint],
+  'workspace viewer can read a ready variant'
+);
+select results_eq(
+  $$ select count(*)::bigint from storage.objects where bucket_id = 'canvas-assets' and name like '%/thumbnail.webp' $$,
+  array[1::bigint],
+  'workspace viewer can read the ready variant object'
+);
+select set_config('request.jwt.claim.sub', '12000000-0000-0000-0000-000000000004', true);
+select results_eq(
+  $$ select count(*)::bigint from public.canvas_asset_variants $$,
+  array[0::bigint],
+  'outsider cannot read another workspace variant'
+);
+select results_eq(
+  $$ select count(*)::bigint from storage.objects where bucket_id = 'canvas-assets' and name like '%/thumbnail.webp' $$,
+  array[0::bigint],
+  'outsider cannot read another workspace variant object'
+);
+select throws_ok(
+  $$ insert into public.canvas_asset_variants (workspace_id, canvas_id, asset_id, kind, storage_path, mime_type, byte_size, pixel_width, pixel_height)
+     values ('22000000-0000-0000-0000-000000000001'::uuid, current_setting('test.canvas_id')::uuid, current_setting('test.asset_id')::uuid, 'preview', 'invalid', 'image/webp', 128, 100, 100) $$,
+  '42501',
+  null,
+  'authenticated clients cannot directly insert variant metadata'
+);
+select set_config('request.jwt.claim.sub', '12000000-0000-0000-0000-000000000001', true);
+select results_eq(
+  $$ select count(*)::bigint from public.reserve_canvas_asset_variant(
+    '22000000-0000-0000-0000-000000000001'::uuid,
+    current_setting('test.canvas_id')::uuid,
+    current_setting('test.asset_id')::uuid,
+    'thumbnail',
+    128,
+    100,
+    100
+  ) $$,
+  array[1::bigint],
+  'repeated variant reserve is idempotent'
+);
+select throws_ok(
+  $$ select * from public.reserve_canvas_asset_variant(
+    '22000000-0000-0000-0000-000000000001'::uuid,
+    current_setting('test.canvas_id')::uuid,
+    current_setting('test.asset_id')::uuid,
+    'preview', 128, 101, 100
+  ) $$,
+  '22023',
+  'Canvas asset variant dimensions do not match the original asset',
+  'variant reserve rejects an upscale beyond the original asset'
 );
 
 select set_config(
@@ -768,6 +888,63 @@ select results_eq(
   $$ select status || ':' || revision::text from public.save_canvas_document(current_setting('test.active_canvas_id')::uuid, 2, 'Text Only', '{"schemaVersion":2,"nodes":[],"edges":[]}'::jsonb) $$,
   array['saved:3'::text],
   'non-image Canvas documents remain saveable without assets'
+);
+
+select set_config('test.cleanup_asset_id', '62000000-0000-0000-0000-000000000006', true);
+select lives_ok(
+  $$ select * from public.reserve_canvas_asset(
+    '22000000-0000-0000-0000-000000000001'::uuid,
+    current_setting('test.active_canvas_id')::uuid,
+    current_setting('test.cleanup_asset_id')::uuid,
+    'image/png', 1024, 100, 100
+  ) $$,
+  'owner can reserve an asset for variant cleanup'
+);
+select lives_ok(
+  $$ insert into storage.objects (id, bucket_id, name, owner, metadata, version, owner_id, user_metadata)
+     values (gen_random_uuid(), 'canvas-assets',
+       '22000000-0000-0000-0000-000000000001/' || current_setting('test.active_canvas_id') || '/' || current_setting('test.cleanup_asset_id') || '/original',
+       (select auth.uid()), '{"mimetype":"image/png","size":1024}'::jsonb, 'cleanup-original-version', (select auth.uid())::text, '{}'::jsonb) $$,
+  'owner can upload the cleanup asset object'
+);
+select lives_ok(
+  $$ select * from public.finalize_canvas_asset('22000000-0000-0000-0000-000000000001'::uuid, current_setting('test.active_canvas_id')::uuid, current_setting('test.cleanup_asset_id')::uuid) $$,
+  'owner can finalize the cleanup asset'
+);
+select lives_ok(
+  $$ select * from public.reserve_canvas_asset_variant(
+    '22000000-0000-0000-0000-000000000001'::uuid,
+    current_setting('test.active_canvas_id')::uuid,
+    current_setting('test.cleanup_asset_id')::uuid,
+    'thumbnail', 128, 100, 100
+  ) $$,
+  'owner can reserve a cleanup variant'
+);
+select lives_ok(
+  $$ insert into storage.objects (id, bucket_id, name, owner, metadata, version, owner_id, user_metadata)
+     values (gen_random_uuid(), 'canvas-assets',
+       '22000000-0000-0000-0000-000000000001/' || current_setting('test.active_canvas_id') || '/' || current_setting('test.cleanup_asset_id') || '/thumbnail.webp',
+       (select auth.uid()), '{"mimetype":"image/webp","size":128}'::jsonb, 'cleanup-variant-version', (select auth.uid())::text, '{}'::jsonb) $$,
+  'owner can upload the cleanup variant object'
+);
+select lives_ok(
+  $$ select * from public.finalize_canvas_asset_variant('22000000-0000-0000-0000-000000000001'::uuid, current_setting('test.active_canvas_id')::uuid, current_setting('test.cleanup_asset_id')::uuid, 'thumbnail') $$,
+  'owner can finalize the cleanup variant'
+);
+select results_eq(
+  $$ select deleted::text from public.delete_canvas_asset('22000000-0000-0000-0000-000000000001'::uuid, current_setting('test.active_canvas_id')::uuid, current_setting('test.cleanup_asset_id')::uuid) $$,
+  array['true'::text],
+  'asset deletion succeeds with a ready variant'
+);
+select results_eq(
+  $$ select count(*)::bigint from public.canvas_asset_variants where asset_id = current_setting('test.cleanup_asset_id')::uuid $$,
+  array[0::bigint],
+  'asset deletion removes variant metadata'
+);
+select results_eq(
+  $$ select count(*)::bigint from storage.objects where bucket_id = 'canvas-assets' and name like '%' || current_setting('test.cleanup_asset_id') || '/thumbnail.webp' $$,
+  array[0::bigint],
+  'asset deletion hides the orphaned variant object from the storage policy'
 );
 
 set local role anon;

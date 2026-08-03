@@ -11,12 +11,13 @@ import {
 } from "@/prototype/persistence/persistence-adapter";
 
 export const MOZG_DESKTOP_DATABASE_NAME = "mozg-desktop-prototype";
-export const MOZG_DESKTOP_DATABASE_VERSION = 3;
+export const MOZG_DESKTOP_DATABASE_VERSION = 4;
 export const MOZG_DESKTOP_DOMAIN_STORE = "domain-snapshots";
 export const MOZG_CANVAS_STORE = "canvases";
 export const MOZG_CANVAS_GROUP_STORE = "canvas-groups";
 export const MOZG_CANVAS_VIEW_STATE_STORE = "canvas-view-states";
 export const MOZG_CANVAS_ASSET_STORE = "canvas-assets";
+export const MOZG_CANVAS_ASSET_VARIANT_STORE = "canvas-asset-variants";
 export const MOZG_DESKTOP_STORAGE_VERSION = 1 as const;
 
 export type IndexedDbDesktopDomainEnvelope = {
@@ -379,6 +380,13 @@ export class IndexedDbDesktopPersistenceAdapter implements DesktopPersistenceAda
         if (!database.objectStoreNames.contains(MOZG_CANVAS_ASSET_STORE)) {
           database.createObjectStore(MOZG_CANVAS_ASSET_STORE, {
             keyPath: "id",
+          });
+        }
+        if (
+          !database.objectStoreNames.contains(MOZG_CANVAS_ASSET_VARIANT_STORE)
+        ) {
+          database.createObjectStore(MOZG_CANVAS_ASSET_VARIANT_STORE, {
+            keyPath: "key",
           });
         }
       };

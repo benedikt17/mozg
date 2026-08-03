@@ -104,6 +104,21 @@ function cloudAssetRepository(blob: Blob): CloudCanvasAssetRepository {
     getAssetMetadata: async () => metadata(),
     downloadAsset: async () => ({ ...metadata(), blob }),
     deleteAsset: async () => undefined,
+    listVariants: async () => [],
+    loadVariant: async () => null,
+    storeVariant: async (input) => ({
+      workspaceId: input.workspaceId,
+      canvasId: input.canvasId,
+      assetId: input.assetId,
+      kind: input.kind,
+      storagePath: input.storagePath,
+      mimeType: "image/webp",
+      byteSize: input.byteSize,
+      pixelWidth: input.pixelWidth,
+      pixelHeight: input.pixelHeight,
+      createdAt: input.createdAt,
+    }),
+    deleteVariants: async () => undefined,
   };
 }
 

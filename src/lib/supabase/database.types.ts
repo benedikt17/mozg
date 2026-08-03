@@ -100,6 +100,56 @@ export type Database = {
           },
         ]
       }
+      canvas_asset_variants: {
+        Row: {
+          asset_id: string
+          byte_size: number
+          canvas_id: string
+          created_at: string
+          kind: string
+          mime_type: string
+          pixel_height: number
+          pixel_width: number
+          ready_at: string | null
+          storage_path: string
+          workspace_id: string
+        }
+        Insert: {
+          asset_id: string
+          byte_size: number
+          canvas_id: string
+          created_at?: string
+          kind: string
+          mime_type: string
+          pixel_height: number
+          pixel_width: number
+          ready_at?: string | null
+          storage_path: string
+          workspace_id: string
+        }
+        Update: {
+          asset_id?: string
+          byte_size?: number
+          canvas_id?: string
+          created_at?: string
+          kind?: string
+          mime_type?: string
+          pixel_height?: number
+          pixel_width?: number
+          ready_at?: string | null
+          storage_path?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canvas_asset_variants_parent_fkey"
+            columns: ["workspace_id", "canvas_id", "asset_id"]
+            isOneToOne: false
+            referencedRelation: "canvas_assets"
+            referencedColumns: ["workspace_id", "canvas_id", "id"]
+          },
+        ]
+      }
       canvas_groups: {
         Row: {
           created_at: string
@@ -523,6 +573,23 @@ export type Database = {
           deleted: boolean
         }[]
       }
+      delete_canvas_asset_variant: {
+        Args: {
+          target_asset_id: string
+          target_canvas_id: string
+          target_kind: string
+          target_workspace_id: string
+        }
+        Returns: { deleted: boolean }[]
+      }
+      delete_canvas_asset_variants: {
+        Args: {
+          target_asset_id: string
+          target_canvas_id: string
+          target_workspace_id: string
+        }
+        Returns: undefined
+      }
       finalize_canvas_asset: {
         Args: {
           target_asset_id: string
@@ -555,6 +622,27 @@ export type Database = {
         Returns: {
           deleted: boolean
           id: string
+          workspace_id: string
+        }[]
+      }
+      finalize_canvas_asset_variant: {
+        Args: {
+          target_asset_id: string
+          target_canvas_id: string
+          target_kind: string
+          target_workspace_id: string
+        }
+        Returns: {
+          asset_id: string
+          byte_size: number
+          canvas_id: string
+          created_at: string
+          kind: string
+          mime_type: string
+          pixel_height: number
+          pixel_width: number
+          ready_at: string
+          storage_path: string
           workspace_id: string
         }[]
       }
@@ -640,6 +728,30 @@ export type Database = {
           ready_at: string
           storage_key: string
           width: number
+          workspace_id: string
+        }[]
+      }
+      reserve_canvas_asset_variant: {
+        Args: {
+          target_asset_id: string
+          target_byte_size: number
+          target_canvas_id: string
+          target_kind: string
+          target_pixel_height: number
+          target_pixel_width: number
+          target_workspace_id: string
+        }
+        Returns: {
+          asset_id: string
+          byte_size: number
+          canvas_id: string
+          created_at: string
+          kind: string
+          mime_type: string
+          pixel_height: number
+          pixel_width: number
+          ready_at: string | null
+          storage_path: string
           workspace_id: string
         }[]
       }

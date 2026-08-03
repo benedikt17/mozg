@@ -6,6 +6,15 @@ import {
   type CanvasImageMimeType,
 } from "@/lib/canvas/canvas-image-ingestion";
 import type { Database } from "@/lib/supabase/database.types";
+import {
+  CANVAS_IMAGE_VARIANT_MIME_TYPE,
+  isCanvasImageVariantDimensionContractValid,
+  type CanvasAssetVariantKind,
+  type CanvasAssetVariantMetadata,
+  type CanvasAssetVariantRecord,
+  type CanvasAssetVariantRepository,
+  type StoreCanvasAssetVariantInput,
+} from "@/lib/canvas/canvas-image-variants";
 
 export const CANVAS_ASSET_BUCKET = "canvas-assets";
 export const CANVAS_ASSET_MAX_DIMENSION = 10_000;
@@ -73,7 +82,7 @@ export type UploadCloudCanvasAssetInput = {
   checksum?: string | null;
 };
 
-export interface CloudCanvasAssetRepository {
+export interface CloudCanvasAssetRepository extends CanvasAssetVariantRepository {
   uploadAsset(
     input: UploadCloudCanvasAssetInput,
   ): Promise<CloudCanvasAssetMetadata>;
@@ -103,6 +112,8 @@ type RecordValue = Record<string, unknown>;
 
 const ASSET_SELECT =
   "id,workspace_id,canvas_id,storage_key,preview_storage_key,mime_type,byte_size,width,height,checksum,created_by,created_at,ready_at,deleted_at";
+const VARIANT_SELECT =
+  "workspace_id,canvas_id,asset_id,kind,storage_path,mime_type,byte_size,pixel_width,pixel_height,created_at";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
@@ -381,6 +392,117 @@ function rpcRow(data: unknown, operation: string): RecordValue {
   return data[0];
 }
 
+function variantMetadata(
+  value: unknown,
+  expected: {
+    workspaceId: string;
+    canvasId: string;
+    assetId: string;
+    kind: CanvasAssetVariantKind;
+  },
+): CanvasAssetVariantMetadata {
+  if (!isRecord(value))
+    throw new CloudCanvasAssetRepositoryError(
+      "invalid-server-metadata",
+      "Canvas asset variant metadata is not an object.",
+    );
+  const workspaceId = serverUuid(value.workspace_id, "workspace_id");
+  const canvasId = serverUuid(value.canvas_id, "canvas_id");
+  const assetId = serverUuid(value.asset_id, "asset_id");
+  const kind = value.kind;
+  if (
+    workspaceId !== expected.workspaceId ||
+    canvasId !== expected.canvasId ||
+    assetId !== expected.assetId ||
+    kind !== expected.kind
+  )
+    throw new CloudCanvasAssetRepositoryError(
+      "invalid-server-metadata",
+      "Canvas asset variant belongs to another scope.",
+    );
+  const storagePath = serverString(value.storage_path, "storage_path");
+  const expectedPath = `${workspaceId}/${canvasId}/${assetId}/${kind}.webp`;
+  if (
+    storagePath !== expectedPath ||
+    value.mime_type !== CANVAS_IMAGE_VARIANT_MIME_TYPE
+  )
+    throw new CloudCanvasAssetRepositoryError(
+      "invalid-server-metadata",
+      "Canvas asset variant metadata is invalid.",
+    );
+  const byteSize = serverPositiveInteger(value.byte_size, "byte_size");
+  const pixelWidth = serverPositiveInteger(value.pixel_width, "pixel_width");
+  const pixelHeight = serverPositiveInteger(value.pixel_height, "pixel_height");
+  if (
+    byteSize > CANVAS_IMAGE_INPUT_MAX_BYTES ||
+    pixelWidth > 2560 ||
+    pixelHeight > 2560 ||
+    (kind === "thumbnail" && (pixelWidth > 512 || pixelHeight > 512))
+  )
+    throw new CloudCanvasAssetRepositoryError(
+      "invalid-server-metadata",
+      "Canvas asset variant metadata exceeds the supported limits.",
+    );
+  return {
+    workspaceId,
+    canvasId,
+    assetId,
+    kind: kind as CanvasAssetVariantKind,
+    storagePath,
+    mimeType: CANVAS_IMAGE_VARIANT_MIME_TYPE,
+    byteSize,
+    pixelWidth,
+    pixelHeight,
+    createdAt: serverTimestamp(value.created_at, "created_at"),
+  };
+}
+
+function validateVariantInput(
+  input: StoreCanvasAssetVariantInput,
+): StoreCanvasAssetVariantInput {
+  const workspaceId = inputUuid(input.workspaceId, "workspaceId");
+  const canvasId = inputUuid(input.canvasId, "canvasId");
+  const assetId = inputUuid(input.assetId, "assetId");
+  if (input.kind !== "thumbnail" && input.kind !== "preview")
+    throw new CloudCanvasAssetRepositoryError(
+      "invalid-input",
+      "Variant kind is invalid.",
+    );
+  if (
+    !(input.blob instanceof Blob) ||
+    input.blob.type !== CANVAS_IMAGE_VARIANT_MIME_TYPE
+  )
+    throw new CloudCanvasAssetRepositoryError(
+      "invalid-input",
+      "Canvas asset variants must be WebP Blobs.",
+    );
+  if (
+    !Number.isSafeInteger(input.byteSize) ||
+    input.byteSize <= 0 ||
+    input.byteSize > CANVAS_IMAGE_INPUT_MAX_BYTES ||
+    input.byteSize !== input.blob.size ||
+    !Number.isSafeInteger(input.pixelWidth) ||
+    !Number.isSafeInteger(input.pixelHeight) ||
+    input.pixelWidth <= 0 ||
+    input.pixelHeight <= 0 ||
+    input.pixelWidth > 2560 ||
+    input.pixelHeight > 2560 ||
+    (input.kind === "thumbnail" &&
+      (input.pixelWidth > 512 || input.pixelHeight > 512))
+  )
+    throw new CloudCanvasAssetRepositoryError(
+      "invalid-input",
+      "Canvas asset variant metadata is invalid.",
+    );
+  const storagePath = `${workspaceId}/${canvasId}/${assetId}/${input.kind}.webp`;
+  if (input.storagePath !== storagePath)
+    throw new CloudCanvasAssetRepositoryError(
+      "invalid-input",
+      "Canvas asset variant storage path is invalid.",
+    );
+  return { ...input, workspaceId, canvasId, assetId, storagePath };
+}
+
 function errorCode(cause: unknown): string | undefined {
   return isRecord(cause) && typeof cause.code === "string"
     ? cause.code
@@ -405,6 +527,10 @@ function projectError(
   if (cause instanceof CloudCanvasAssetRepositoryError) return cause;
   const code = errorCode(cause);
   const status = statusCode(cause);
+  const causeMessage =
+    isRecord(cause) && typeof cause.message === "string"
+      ? cause.message
+      : undefined;
   if (code === "PGRST301" || code === "401") {
     return new CloudCanvasAssetRepositoryError(
       "unauthenticated",
@@ -464,7 +590,7 @@ function projectError(
           ? "delete-failure"
           : "unexpected",
     "Canvas asset operation failed.",
-    { operation, code, status },
+    { operation, code, status, causeMessage },
   );
 }
 
@@ -618,6 +744,196 @@ export class SupabaseCloudCanvasAssetRepository implements CloudCanvasAssetRepos
     }
   }
 
+  async listVariants(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetId: string;
+  }): Promise<CanvasAssetVariantMetadata[]> {
+    try {
+      await assertAuthenticated(this.supabase);
+      const workspaceId = inputUuid(input.workspaceId, "workspaceId");
+      const canvasId = inputUuid(input.canvasId, "canvasId");
+      const assetId = inputUuid(input.assetId, "assetId");
+      const { data, error } = await this.supabase
+        .from("canvas_asset_variants")
+        .select(VARIANT_SELECT)
+        .eq("workspace_id", workspaceId)
+        .eq("canvas_id", canvasId)
+        .eq("asset_id", assetId)
+        .not("ready_at", "is", null);
+      if (error) throw error;
+      return (data ?? []).map((row) =>
+        variantMetadata(row, {
+          workspaceId,
+          canvasId,
+          assetId,
+          kind: row.kind as CanvasAssetVariantKind,
+        }),
+      );
+    } catch (cause) {
+      throw projectError(cause, "metadata");
+    }
+  }
+
+  async loadVariant(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetId: string;
+    kind: CanvasAssetVariantKind;
+  }): Promise<CanvasAssetVariantRecord | null> {
+    try {
+      await assertAuthenticated(this.supabase);
+      const workspaceId = inputUuid(input.workspaceId, "workspaceId");
+      const canvasId = inputUuid(input.canvasId, "canvasId");
+      const assetId = inputUuid(input.assetId, "assetId");
+      if (input.kind !== "thumbnail" && input.kind !== "preview")
+        throw new CloudCanvasAssetRepositoryError(
+          "invalid-input",
+          "Variant kind is invalid.",
+        );
+      const { data, error } = await this.supabase
+        .from("canvas_asset_variants")
+        .select(VARIANT_SELECT)
+        .eq("workspace_id", workspaceId)
+        .eq("canvas_id", canvasId)
+        .eq("asset_id", assetId)
+        .eq("kind", input.kind)
+        .not("ready_at", "is", null)
+        .maybeSingle();
+      if (error) throw error;
+      if (data === null) return null;
+      const metadata = variantMetadata(data, {
+        workspaceId,
+        canvasId,
+        assetId,
+        kind: input.kind,
+      });
+      const { data: blob, error: downloadError } = await this.supabase.storage
+        .from(CANVAS_ASSET_BUCKET)
+        .download(metadata.storagePath);
+      if (downloadError) throw downloadError;
+      if (!(blob instanceof Blob))
+        throw new CloudCanvasAssetRepositoryError(
+          "invalid-server-metadata",
+          "Canvas asset variant download did not return binary content.",
+        );
+      return { ...metadata, blob };
+    } catch (cause) {
+      throw projectError(cause, "download");
+    }
+  }
+
+  async storeVariant(
+    input: StoreCanvasAssetVariantInput,
+  ): Promise<CanvasAssetVariantMetadata> {
+    let reserved: CanvasAssetVariantMetadata | undefined;
+    const validated = validateVariantInput(input);
+    try {
+      await assertAuthenticated(this.supabase);
+      const workspaceId = inputUuid(validated.workspaceId, "workspaceId");
+      const canvasId = inputUuid(validated.canvasId, "canvasId");
+      const assetId = inputUuid(validated.assetId, "assetId");
+      const kind = validated.kind;
+      const original = await this.getAssetMetadata({
+        workspaceId,
+        canvasId,
+        assetId,
+      });
+      if (
+        !original ||
+        !isCanvasImageVariantDimensionContractValid({
+          kind,
+          pixelWidth: validated.pixelWidth,
+          pixelHeight: validated.pixelHeight,
+          originalWidth: original.width,
+          originalHeight: original.height,
+        })
+      )
+        throw new CloudCanvasAssetRepositoryError(
+          "invalid-input",
+          "Canvas asset variant dimensions do not match the original asset.",
+        );
+      const { data, error } = await this.supabase.rpc(
+        "reserve_canvas_asset_variant",
+        {
+          target_workspace_id: workspaceId,
+          target_canvas_id: canvasId,
+          target_asset_id: assetId,
+          target_kind: kind,
+          target_byte_size: validated.byteSize,
+          target_pixel_width: validated.pixelWidth,
+          target_pixel_height: validated.pixelHeight,
+        },
+      );
+      if (error) throw error;
+      reserved = variantMetadata(rpcRow(data, "variant reserve"), {
+        workspaceId,
+        canvasId,
+        assetId,
+        kind,
+      });
+      const { error: uploadError } = await this.supabase.storage
+        .from(CANVAS_ASSET_BUCKET)
+        .upload(reserved.storagePath, validated.blob, {
+          cacheControl: "31536000",
+          contentType: CANVAS_IMAGE_VARIANT_MIME_TYPE,
+          upsert: true,
+        });
+      if (uploadError && statusCode(uploadError) !== "409") throw uploadError;
+      const { data: finalizedData, error: finalizeError } =
+        await this.supabase.rpc("finalize_canvas_asset_variant", {
+          target_workspace_id: workspaceId,
+          target_canvas_id: canvasId,
+          target_asset_id: assetId,
+          target_kind: kind,
+        });
+      if (finalizeError) throw finalizeError;
+      return variantMetadata(rpcRow(finalizedData, "variant finalize"), {
+        workspaceId,
+        canvasId,
+        assetId,
+        kind,
+      });
+    } catch (cause) {
+      if (reserved) {
+        await this.supabase.storage
+          .from(CANVAS_ASSET_BUCKET)
+          .remove([reserved.storagePath]);
+        await this.supabase.rpc("delete_canvas_asset_variant", {
+          target_workspace_id: reserved.workspaceId,
+          target_canvas_id: reserved.canvasId,
+          target_asset_id: reserved.assetId,
+          target_kind: reserved.kind,
+        });
+      }
+      throw projectError(cause, "upload");
+    }
+  }
+
+  async deleteVariants(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetId: string;
+  }): Promise<void> {
+    const variants = await this.listVariants(input);
+    const paths = variants.map((variant) => variant.storagePath);
+    if (paths.length > 0) {
+      const { error } = await this.supabase.storage
+        .from(CANVAS_ASSET_BUCKET)
+        .remove(paths);
+      if (error && !isNotFound(error)) throw projectError(error, "delete");
+      const { error: metadataError } = await this.supabase.rpc(
+        "delete_canvas_asset_variants",
+        {
+          target_workspace_id: input.workspaceId,
+          target_canvas_id: input.canvasId,
+          target_asset_id: input.assetId,
+        },
+      );
+      if (metadataError) throw projectError(metadataError, "delete");
+    }
+  }
+
   async deleteAsset(input: {
     workspaceId: string;
     canvasId: string;
@@ -629,6 +945,14 @@ export class SupabaseCloudCanvasAssetRepository implements CloudCanvasAssetRepos
     } catch (cause) {
       throw projectError(cause, "delete");
     }
+
+    let variantsError: CloudCanvasAssetRepositoryError | undefined;
+    try {
+      await this.deleteVariants(input);
+    } catch (cause) {
+      variantsError = projectError(cause, "delete");
+    }
+    if (variantsError) throw variantsError;
 
     let storageError: CloudCanvasAssetRepositoryError | undefined;
     try {
