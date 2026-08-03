@@ -248,6 +248,8 @@ export function createCanvasTextFlowNode(input: {
     id: input.id,
     type: CANVAS_TEXT_NODE_TYPE,
     position: { ...(input.position ?? { x: 0, y: 0 }) },
+    width: input.size?.width ?? 320,
+    height: input.size?.height ?? 220,
     style: {
       width: input.size?.width ?? 320,
       height: input.size?.height ?? 220,
@@ -280,6 +282,8 @@ export function createCanvasTaskFlowNode(input: {
     id: input.id,
     type: CANVAS_TASK_NODE_TYPE,
     position: { ...input.position },
+    width: input.size?.width ?? 300,
+    height: input.size?.height ?? 150,
     style: {
       width: input.size?.width ?? 300,
       height: input.size?.height ?? 150,
