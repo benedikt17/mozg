@@ -5,6 +5,11 @@
   display: flex;
   flex-direction: column;
 }
+.pageEmbedded {
+  min-height: 0;
+  height: 100%;
+  background: var(--surface, #f7f7f5);
+}
 .header {
   display: flex;
   align-items: center;

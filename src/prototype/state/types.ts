@@ -174,6 +174,7 @@ export type DesktopPrototypeAction =
   | { type: "switch-section"; section: ProjectSection }
   | { type: "select-task"; taskId: string; section?: "overview" | "tasks" }
   | { type: "open-task-detail-view"; taskId: string }
+  | { type: "open-canvas-task-details"; taskId: string }
   | { type: "close-task-detail-view" }
   | { type: "close-context-panel" }
   | { type: "toggle-task-star"; taskId: string }

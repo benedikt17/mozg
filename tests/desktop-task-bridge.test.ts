@@ -171,6 +171,26 @@ describe("desktop task bridge", () => {
     expect(harness.getState().taskDetailViewTaskId).toBe(otherTask.id);
   });
 
+  it("opens Canvas task details without changing the top-level section", () => {
+    const harness = createHarness();
+    const task = harness.getState().tasks[0]!;
+    const bridge = createDesktopTaskBridge({
+      getState: harness.getState,
+      dispatch: harness.dispatch,
+      onStateChange: harness.onStateChange,
+    });
+
+    harness.dispatch({ type: "switch-section", section: "canvases" });
+    bridge.openTask(task.id);
+
+    expect(harness.getState().activeSection).toBe("canvases");
+    expect(harness.getState().contextPanel).toEqual({
+      kind: "task",
+      taskId: task.id,
+    });
+    expect(harness.getState().taskDetailViewTaskId).toBeNull();
+  });
+
   it("projects and mutates only the direct canonical subtasks", () => {
     const harness = createHarness();
     const task = harness.getState().tasks.find((item) => item.subtasks.length)!;

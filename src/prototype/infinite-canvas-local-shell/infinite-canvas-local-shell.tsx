@@ -99,9 +99,11 @@ import type {
   CanvasTaskBridge,
   CanvasTaskProjection,
 } from "@/lib/canvas/canvas-task-bridge";
-import {
-  IndexedDbCanvasRepository,
-  type CanvasSummary,
+import type {
+  CanvasAssetRepository,
+  CanvasRepository,
+  CanvasSummary,
+  CanvasViewStateRepository,
 } from "@/lib/canvas/local-canvas-repository";
 import {
   emptyShellState,
@@ -115,13 +117,6 @@ import {
 } from "@/lib/canvas/canvas-visible-edge";
 import { CanvasNodeFrame, ConnectionHandleLayer } from "./canvas-node-frame";
 import styles from "./infinite-canvas-local-shell.module.css";
-
-export const INFINITE_CANVAS_LOCAL_SHELL_WORKSPACE_ID =
-  "__mozg_infinite_canvas_local_shell__";
-export const INFINITE_CANVAS_LOCAL_SHELL_USER_ID =
-  "__mozg_infinite_canvas_local_shell_user__";
-export const INFINITE_CANVAS_LOCAL_SHELL_DATABASE_NAME =
-  "mozg-infinite-canvas-local-shell";
 
 type RestoreStats = {
   reads: number;
@@ -802,14 +797,31 @@ const edgeTypes = {
   [CANVAS_EDGE_TYPE]: CanvasEdgeBody,
 };
 
+export type CanvasShellCopy = { defaultTitle: string; [key: string]: string };
+type CanvasShellRepository = CanvasRepository & CanvasViewStateRepository & { close?: () => void; setActiveCanvas?: (canvasId: string | null) => void; };
+
 function InfiniteCanvasLocalShellSurface({
   activeTaskDetailsTaskId,
+  assetRepository,
+  copy,
+  embedded = false,
+  repository: providedRepository,
+  showDiagnostics,
   taskBridge,
   taskWorkspaceId,
+  userId,
+  workspaceId,
 }: {
   activeTaskDetailsTaskId?: string;
+  assetRepository: CanvasAssetRepository;
+  copy: CanvasShellCopy;
+  embedded?: boolean;
+  repository: CanvasShellRepository;
+  showDiagnostics: boolean;
   taskBridge?: CanvasTaskBridge;
   taskWorkspaceId?: string;
+  userId: string;
+  workspaceId: string;
 }): React.JSX.Element {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const taskBridgeRef = useRef<CanvasTaskBridge | undefined>(taskBridge);
@@ -838,7 +850,7 @@ function InfiniteCanvasLocalShellSurface({
   const [restoreStats, setRestoreStats] =
     useState<RestoreStats>(EMPTY_RESTORE_STATS);
   const [dropActive, setDropActive] = useState(false);
-  const [newTitle, setNewTitle] = useState("First Canvas");
+  const [newTitle, setNewTitle] = useState(copy.defaultTitle);
   const [renameTitle, setRenameTitle] = useState("");
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [taskQuery, setTaskQuery] = useState("");
@@ -846,19 +858,17 @@ function InfiniteCanvasLocalShellSurface({
   const [taskSearchStatus, setTaskSearchStatus] = useState<
     "idle" | "loading" | "ready" | "error"
   >("idle");
-  const [repository] = useState(
-    () =>
-      new IndexedDbCanvasRepository({
-        databaseName: INFINITE_CANVAS_LOCAL_SHELL_DATABASE_NAME,
-      }),
-  );
+  const repository = providedRepository;
+  const imageRepository = assetRepository;
+  const shellWorkspaceId = workspaceId;
+  const shellUserId = userId;
   const [objectUrls] = useState(() => createObjectUrlRegistry());
   const [controller] = useState(
     () =>
       new LocalCanvasShellController({
         repository,
-        workspaceId: INFINITE_CANVAS_LOCAL_SHELL_WORKSPACE_ID,
-        userId: INFINITE_CANVAS_LOCAL_SHELL_USER_ID,
+        workspaceId: shellWorkspaceId,
+        userId: shellUserId,
       }),
   );
   const reactFlow = useReactFlow<CanvasFlowNode>();
@@ -875,11 +885,11 @@ function InfiniteCanvasLocalShellSurface({
   }, [activeTaskDetailsTaskId, nodes, taskBridge]);
   const adapterDependencies = useMemo<CanvasImageAdapterDependencies>(
     () => ({
-      assetRepository: repository,
+      assetRepository: imageRepository,
       objectUrls,
-      workspaceId: INFINITE_CANVAS_LOCAL_SHELL_WORKSPACE_ID,
+      workspaceId: shellWorkspaceId,
     }),
-    [objectUrls, repository],
+    [imageRepository, objectUrls, shellWorkspaceId],
   );
 
   useEffect(() => {
@@ -1148,12 +1158,13 @@ function InfiniteCanvasLocalShellSurface({
         error: null,
       }));
       const nextState = await controller.openCanvas(canvasId);
+      repository.setActiveCanvas?.(canvasId);
       setShellState(nextState);
       setRenameTitle(nextState.title);
       viewportApplyRef.current = null;
       await restoreForCanvas(nextState);
     },
-    [controller, restoreForCanvas],
+    [controller, repository, restoreForCanvas],
   );
 
   useEffect(() => {
@@ -1184,7 +1195,7 @@ function InfiniteCanvasLocalShellSurface({
       objectUrls.revokeAll();
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       if (viewportTimerRef.current) clearTimeout(viewportTimerRef.current);
-      repository.close();
+      repository.close?.();
     };
   }, [controller, objectUrls, openCanvas, repository]);
 
@@ -1522,7 +1533,7 @@ function InfiniteCanvasLocalShellSurface({
     restoreControllerRef.current?.abort();
     objectUrls.revokeAll();
     await repository.softDeleteCanvas({
-      workspaceId: INFINITE_CANVAS_LOCAL_SHELL_WORKSPACE_ID,
+      workspaceId: shellWorkspaceId,
       canvasId: shellState.canvasId,
     });
     const next = await controller.listCanvases();
@@ -1541,6 +1552,7 @@ function InfiniteCanvasLocalShellSurface({
     repository,
     setEdges,
     setNodes,
+    shellWorkspaceId,
     shellState.canvasId,
     shellState.title,
   ]);
@@ -1567,7 +1579,7 @@ function InfiniteCanvasLocalShellSurface({
 
   if (!shellState.canvasId) {
     return (
-      <main className={styles.page}>
+      <main className={embedded ? `${styles.page} ${styles.pageEmbedded}` : styles.page}>
         <header className={styles.header}>
           <div className={styles.titleGroup}>
             <p className={styles.eyebrow}>Local Canvas</p>
@@ -1619,7 +1631,7 @@ function InfiniteCanvasLocalShellSurface({
             ? "Loading"
             : "Error";
   return (
-    <main className={styles.page}>
+    <main className={embedded ? `${styles.page} ${styles.pageEmbedded}` : styles.page}>
       <header className={styles.header}>
         <div className={styles.titleGroup}>
           <p className={styles.eyebrow}>Local Canvas</p>
@@ -1806,9 +1818,10 @@ function InfiniteCanvasLocalShellSurface({
               ? "Drop PNG, JPEG or WebP here"
               : "Paste, drop or choose an image · drag and resize are saved"}
           </div>
-          <details className={styles.details}>
-            <summary>Details</summary>
-            <div className={styles.diagnostics}>
+          {showDiagnostics ? (
+            <details className={styles.details}>
+              <summary>Details</summary>
+              <div className={styles.diagnostics}>
               <span>
                 nodes <strong>{nodes.length}</strong>
               </span>
@@ -1833,34 +1846,34 @@ function InfiniteCanvasLocalShellSurface({
               <span>
                 viewport <strong>{shellState.viewport.zoom.toFixed(2)}×</strong>
               </span>
-            </div>
-          </details>
+              </div>
+            </details>
+          ) : null}
         </div>
       </div>
       <footer className={styles.footer}>
         <span>Workspace isolated</span>
-        <span>{INFINITE_CANVAS_LOCAL_SHELL_WORKSPACE_ID}</span>
+        <span>{shellWorkspaceId}</span>
         <span>Canvas revision {shellState.revision}</span>
       </footer>
     </main>
   );
 }
 
-export function InfiniteCanvasLocalShell({
-  activeTaskDetailsTaskId,
-  taskBridge,
-  taskWorkspaceId,
-}: {
-  activeTaskDetailsTaskId?: string;
-  taskBridge?: CanvasTaskBridge;
-  taskWorkspaceId?: string;
-} = {}): React.JSX.Element {
+export function InfiniteCanvasLocalShell({ activeTaskDetailsTaskId, assetRepository, copy, embedded, repository, showDiagnostics, taskBridge, taskWorkspaceId, userId, workspaceId }: { activeTaskDetailsTaskId?: string; assetRepository: CanvasAssetRepository; copy: CanvasShellCopy; embedded?: boolean; repository: CanvasShellRepository; showDiagnostics: boolean; taskBridge?: CanvasTaskBridge; taskWorkspaceId?: string; userId: string; workspaceId: string }): React.JSX.Element {
   return (
     <ReactFlowProvider>
       <InfiniteCanvasLocalShellSurface
         activeTaskDetailsTaskId={activeTaskDetailsTaskId}
+        assetRepository={assetRepository}
+        copy={copy}
+        embedded={embedded}
+        repository={repository}
+        showDiagnostics={showDiagnostics}
         taskBridge={taskBridge}
         taskWorkspaceId={taskWorkspaceId}
+        userId={userId}
+        workspaceId={workspaceId}
       />
     </ReactFlowProvider>
   );

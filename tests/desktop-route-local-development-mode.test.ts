@@ -33,13 +33,17 @@ describe("desktop routes in local development mode", () => {
 
   afterEach(() => vi.unstubAllEnvs());
 
-  it("skips cloud loading and renders the local desktop boundary", async () => {
+  it("keeps the main Desktop route cloud-backed even when the legacy local flag is true", async () => {
     vi.stubEnv("MOZG_LOCAL_DEV_MODE", "true");
+    loadDesktopCloudSnapshot.mockResolvedValue({ kind: "ready", bootstrap });
 
     const page = await DesktopPrototypePage();
 
-    expect(loadDesktopCloudSnapshot).not.toHaveBeenCalled();
-    expect(page.props).toMatchObject({ runtimeMode: "local" });
+    expect(loadDesktopCloudSnapshot).toHaveBeenCalledOnce();
+    expect(page.props).toMatchObject({
+      runtimeMode: "cloud",
+      cloudBootstrap: bootstrap,
+    });
   });
 
   it("retains cloud loading outside explicit local mode", async () => {
@@ -54,11 +58,12 @@ describe("desktop routes in local development mode", () => {
     });
   });
 
-  it("redirects sign-in to the desktop only in local mode", async () => {
-    vi.stubEnv("MOZG_LOCAL_DEV_MODE", "true");
+  it("keeps the sign-in redirect path contract", async () => {
+    const page = await SignInPage({
+      searchParams: Promise.resolve({ next: "/prototype/desktop" }),
+    });
 
-    await SignInPage({ searchParams: Promise.resolve({}) });
-
-    expect(redirect).toHaveBeenCalledWith("/prototype/desktop");
+    expect(redirect).not.toHaveBeenCalled();
+    expect(page.props).toMatchObject({ redirectPath: "/prototype/desktop" });
   });
 });

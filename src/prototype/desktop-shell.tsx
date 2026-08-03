@@ -21,10 +21,9 @@ import { ContextPanelSlot } from "@/prototype/context-panels/context-panel-slot"
 import { TasksSidebar } from "@/prototype/tasks/tasks-sidebar";
 import { TasksWorkspace } from "@/prototype/tasks/tasks-workspace";
 import { TasksDndProvider } from "@/prototype/tasks/tasks-dnd-context";
-import { CanvasesSidebar } from "@/prototype/canvases/canvases-sidebar";
-import { CanvasesWorkspace } from "@/prototype/canvases/canvases-workspace";
 import { InboxSidebar } from "@/prototype/inbox/inbox-sidebar";
 import { InboxWorkspace } from "@/prototype/inbox/inbox-workspace";
+import { DesktopCanvasWorkspace } from "@/prototype/canvases/desktop-canvas-workspace";
 import { ApplicationHeader } from "@/prototype/shell/application-header";
 import { CommandPalette } from "@/prototype/shell/command-palette";
 import { SectionRail } from "@/prototype/shell/section-rail";
@@ -64,7 +63,7 @@ function DesktopPrototypeShellContent({
 }: {
   runtimeMode: DesktopRuntimeMode;
 }): React.JSX.Element {
-  const { dispatch, persistence, state, workspaceAvailable } =
+  const { dispatch, persistence, state, workspaceAvailable, workspaceId } =
     useDesktopTaskRuntime();
   const [commandQuery, setCommandQuery] = useState(getInitialCommandQuery);
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
@@ -194,7 +193,11 @@ function DesktopPrototypeShellContent({
           runtimeMode={runtimeMode}
           state={state}
         />
-        <SectionWorkspace state={state} dispatch={dispatch} />
+        <SectionWorkspace
+          dispatch={dispatch}
+          state={state}
+          workspaceId={workspaceId}
+        />
       </div>
       <DesktopPersistenceStatus
         avoidRightPanel={
@@ -310,9 +313,11 @@ export function getDesktopPersistenceStatusMessage(
 function SectionWorkspace({
   state,
   dispatch,
+  workspaceId,
 }: {
   state: DesktopPrototypeState;
   dispatch: Dispatch;
+  workspaceId?: string;
 }): React.JSX.Element {
   const [knowledgeTreeOverlayOpen, setKnowledgeTreeOverlayOpen] =
     useState(false);
@@ -351,7 +356,8 @@ function SectionWorkspace({
     state.contextPanel?.kind === "knowledge-tasks" ||
     state.contextPanel?.kind === "knowledge-task-reference" ||
     state.contextPanel?.kind === "knowledge-task-attach" ||
-    (state.activeSection === "tasks" && state.contextPanel?.kind === "task");
+    (state.activeSection === "tasks" && state.contextPanel?.kind === "task") ||
+    (state.activeSection === "canvases" && state.contextPanel?.kind === "task");
   return (
     <div
       className={[
@@ -409,6 +415,7 @@ function SectionWorkspace({
               setKnowledgeSidebarCollapsed((collapsed) => !collapsed);
             },
             treeOpen: knowledgeTreeOverlayOpen || !knowledgeSidebarCollapsed,
+            workspaceId,
           })}
         </section>
       </TasksDndBoundary>
@@ -479,9 +486,6 @@ function renderToolSidebar(
   if (state.activeSection === "tasks") {
     return <TasksSidebar state={state} dispatch={dispatch} />;
   }
-  if (state.activeSection === "canvases") {
-    return <CanvasesSidebar state={state} dispatch={dispatch} />;
-  }
   if (state.activeSection === "inbox") {
     return <InboxSidebar state={state} dispatch={dispatch} />;
   }
@@ -496,6 +500,7 @@ function renderMainWorkspace(
     onOpenKnowledgeTree?: () => void;
     onToggleKnowledgeTree?: () => void;
     treeOpen?: boolean;
+    workspaceId?: string;
   },
 ): React.JSX.Element {
   if (state.activeSection === "knowledge") {
@@ -524,7 +529,16 @@ function renderMainWorkspace(
     );
   }
   if (state.activeSection === "canvases") {
-    return <CanvasesWorkspace state={state} dispatch={dispatch} />;
+    return (
+      <DesktopCanvasWorkspace
+        activeTaskDetailsTaskId={
+          state.contextPanel?.kind === "task"
+            ? state.contextPanel.taskId
+            : undefined
+        }
+        workspaceId={options?.workspaceId}
+      />
+    );
   }
   if (state.activeSection === "inbox") {
     return <InboxWorkspace state={state} dispatch={dispatch} />;

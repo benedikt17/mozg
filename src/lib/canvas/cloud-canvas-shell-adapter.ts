@@ -1,0 +1,243 @@
+﻿import type {
+  CanvasAssetRecord,
+  CanvasAssetRepository,
+  CanvasRepository,
+  CanvasSummary,
+  CanvasViewState,
+  CanvasViewStateRepository,
+  LoadedCanvas,
+  StoreLocalCanvasImageInput,
+} from "@/lib/canvas/local-canvas-repository";
+import type {
+  CloudCanvasAssetRepository,
+  CloudCanvasAssetMetadata,
+} from "@/lib/canvas/cloud-canvas-asset-repository";
+import type {
+  CloudCanvasRepository,
+  CloudCanvasSummary,
+  CloudLoadedCanvas,
+} from "@/lib/canvas/cloud-canvas-repository";
+import {
+  CANVAS_DOCUMENT_SCHEMA_VERSION,
+  parseCanvasDocumentV2,
+} from "@/lib/canvas/canvas-document";
+
+export type CanvasShellRepository = CanvasRepository &
+  CanvasViewStateRepository;
+
+function summary(canvas: CloudCanvasSummary): CanvasSummary {
+  return {
+    id: canvas.id,
+    workspaceId: canvas.workspaceId,
+    title: canvas.title,
+    revision: canvas.revision,
+    createdAt: canvas.createdAt,
+    updatedAt: canvas.updatedAt,
+    deletedAt: null,
+  };
+}
+
+function loadedCanvas(canvas: CloudLoadedCanvas): LoadedCanvas {
+  return {
+    ...summary(canvas),
+    schemaVersion: CANVAS_DOCUMENT_SCHEMA_VERSION,
+    document: canvas.document,
+  };
+}
+
+function assetRecord(
+  metadata: CloudCanvasAssetMetadata,
+  blob: Blob,
+): CanvasAssetRecord {
+  return {
+    id: metadata.id,
+    workspaceId: metadata.workspaceId,
+    blob,
+    preview: null,
+    mimeType: metadata.mimeType,
+    byteSize: metadata.byteSize,
+    width: metadata.width,
+    height: metadata.height,
+    checksum: metadata.checksum,
+    createdAt: metadata.createdAt,
+    readyAt: metadata.readyAt,
+    deletedAt: metadata.deletedAt,
+  };
+}
+
+export class CloudCanvasShellRepository
+  implements CanvasShellRepository, CanvasAssetRepository
+{
+  constructor(
+    private readonly workspaceId: string,
+    private readonly canvasRepository: CloudCanvasRepository,
+    private readonly assetRepository: CloudCanvasAssetRepository,
+  ) {}
+
+  async listCanvases(workspaceId: string): Promise<CanvasSummary[]> {
+    return (await this.canvasRepository.listCanvases(workspaceId)).map(summary);
+  }
+
+  async createCanvas(input: {
+    workspaceId: string;
+    title: string;
+  }): Promise<LoadedCanvas> {
+    return loadedCanvas(
+      await this.canvasRepository.createCanvas(
+        input.workspaceId,
+        input.title,
+      ),
+    );
+  }
+
+  async loadCanvas(input: {
+    workspaceId: string;
+    canvasId: string;
+  }): Promise<LoadedCanvas | null> {
+    try {
+      return loadedCanvas(
+        await this.canvasRepository.loadCanvas(
+          input.workspaceId,
+          input.canvasId,
+        ),
+      );
+    } catch (error) {
+      if (isNotFound(error)) return null;
+      throw error;
+    }
+  }
+
+  async saveCanvas(input: {
+    workspaceId: string;
+    canvasId: string;
+    expectedRevision: number;
+    title: string;
+    document: LoadedCanvas["document"];
+  }): Promise<{ status: "saved" | "conflict"; revision: number }> {
+    return this.canvasRepository.saveCanvasDocument({
+      ...input,
+      document: parseCanvasDocumentV2(input.document),
+    });
+  }
+
+  async softDeleteCanvas(input: {
+    workspaceId: string;
+    canvasId: string;
+  }): Promise<{ status: "deleted" | "already-deleted" }> {
+    await this.canvasRepository.deleteCanvas(input.workspaceId, input.canvasId);
+    return { status: "deleted" };
+  }
+
+  async loadViewState(input: {
+    canvasId: string;
+    userId: string;
+  }): Promise<CanvasViewState | null> {
+    const view = await this.canvasRepository.loadCanvasViewState(
+      this.workspaceId,
+      input.canvasId,
+    );
+    if (!view || view.userId !== input.userId) return null;
+    return {
+      canvasId: view.canvasId,
+      userId: view.userId,
+      viewportX: view.viewportX,
+      viewportY: view.viewportY,
+      zoom: view.zoom,
+      updatedAt: view.updatedAt,
+    };
+  }
+
+  async saveViewState(input: CanvasViewState): Promise<void> {
+    await this.canvasRepository.saveCanvasViewState({
+      workspaceId: this.workspaceId,
+      canvasId: input.canvasId,
+      viewportX: input.viewportX,
+      viewportY: input.viewportY,
+      zoom: input.zoom,
+    });
+  }
+
+  async deleteViewState(): Promise<void> {
+    // Cloud view state is intentionally user-scoped and has no delete RPC in V2.
+  }
+
+  async storeImage(
+    input: StoreLocalCanvasImageInput,
+  ): Promise<CanvasAssetRecord> {
+    const metadata = await this.assetRepository.uploadAsset({
+      workspaceId: input.workspaceId,
+      canvasId: this.canvasIdForAssetUpload(input.workspaceId),
+      ...(input.id === undefined ? {} : { assetId: input.id }),
+      blob: input.blob,
+      mimeType: input.mimeType,
+      byteSize: input.byteSize,
+      width: input.width,
+      height: input.height,
+      checksum: input.checksum,
+    });
+    return assetRecord(metadata, input.blob);
+  }
+
+  async loadAsset(input: {
+    workspaceId: string;
+    assetId: string;
+  }): Promise<CanvasAssetRecord | null> {
+    const canvasId = this.canvasIdForAssetLookup();
+    try {
+      const asset = await this.assetRepository.downloadAsset({
+        workspaceId: input.workspaceId,
+        canvasId,
+        assetId: input.assetId,
+      });
+      return assetRecord(asset, asset.blob);
+    } catch (error) {
+      if (isNotFound(error)) return null;
+      throw error;
+    }
+  }
+
+  async markAssetDeleted(input: {
+    workspaceId: string;
+    assetId: string;
+  }): Promise<void> {
+    await this.assetRepository.deleteAsset({
+      workspaceId: input.workspaceId,
+      canvasId: this.canvasIdForAssetLookup(),
+      assetId: input.assetId,
+    });
+  }
+
+  close(): void {
+    // The browser Supabase client owns its lifecycle; no local connection to close.
+  }
+
+  private activeCanvasId: string | null = null;
+
+  setActiveCanvas(canvasId: string | null): void {
+    this.activeCanvasId = canvasId;
+  }
+
+  private canvasIdForAssetUpload(workspaceId: string): string {
+    if (workspaceId !== this.workspaceId || !this.activeCanvasId) {
+      throw new Error("Cloud Canvas asset upload requires an active Canvas.");
+    }
+    return this.activeCanvasId;
+  }
+
+  private canvasIdForAssetLookup(): string {
+    if (!this.activeCanvasId) {
+      throw new Error("Cloud Canvas asset lookup requires an active Canvas.");
+    }
+    return this.activeCanvasId;
+  }
+}
+
+function isNotFound(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    ((error as { code?: unknown }).code === "not-found" ||
+      (error as { code?: unknown }).code === "forbidden")
+  );
+}

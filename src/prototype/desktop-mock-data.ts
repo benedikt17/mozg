@@ -168,7 +168,7 @@ export const projectSections: {
 ];
 
 export const publicProjectSections = projectSections.filter(({ id }) =>
-  ["overview", "knowledge", "tasks"].includes(id),
+  ["overview", "knowledge", "tasks", "canvases"].includes(id),
 );
 
 export function isPublicProjectSection(section: ProjectSection): boolean {

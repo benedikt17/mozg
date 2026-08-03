@@ -860,6 +860,23 @@ export function desktopPrototypeReducer(
         commandPaletteOpen: false,
       };
     }
+    case "open-canvas-task-details": {
+      const task = getTaskById(state, action.taskId);
+      if (!task) return state;
+      const nextState =
+        task.projectId === state.activeProjectId
+          ? state
+          : switchToProject(state, task.projectId);
+      return {
+        ...nextState,
+        editingTaskTitleId: null,
+        selectedTaskId: task.id,
+        taskDetailViewTaskId: null,
+        contextPanel: { kind: "task", taskId: task.id },
+        contextPanelBeforeAi: null,
+        commandPaletteOpen: false,
+      };
+    }
     case "close-task-detail-view":
       return {
         ...state,

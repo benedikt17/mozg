@@ -365,6 +365,11 @@
     min-height: 0;
   }
 
+  .section-canvases .main-workspace {
+    overflow: hidden;
+    padding: 0;
+  }
+
   .overview-workspace {
     width: 100%;
     max-width: none;

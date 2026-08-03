@@ -1,6 +1,15 @@
 "use client";
 
-import { InfiniteCanvasLocalShell } from "@/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell";
+import { useMemo } from "react";
+import {
+  InfiniteCanvasLocalShell,
+  type CanvasShellCopy,
+} from "@/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell";
+import {
+  createLocalInfiniteCanvasRepository,
+  INFINITE_CANVAS_LOCAL_SHELL_USER_ID,
+  INFINITE_CANVAS_LOCAL_SHELL_WORKSPACE_ID,
+} from "@/prototype/infinite-canvas-local-shell/local-canvas-composition";
 import type { CanvasTaskBridge } from "@/lib/canvas/canvas-task-bridge";
 import { ContextPanelSlot } from "@/prototype/context-panels/context-panel-slot";
 import {
@@ -10,6 +19,28 @@ import {
 import styles from "./infinite-canvas-local-shell.module.css";
 import "@/prototype/desktop-shell.css";
 import "@/prototype/desktop-workspaces.css";
+
+const localCanvasShellCopy: CanvasShellCopy = {
+  eyebrow: "Local Canvas",
+  defaultTitle: "First Canvas",
+  emptyTitle: "Create your first Canvas",
+  emptyDescription:
+    "Canvas documents, image assets and your personal viewport stay in this isolated local shell.",
+  create: "Create Canvas",
+  rename: "Rename",
+  newCanvas: "New",
+  delete: "Delete",
+  addImage: "Add image",
+  text: "Text",
+  saved: "Saved",
+  saving: "Saving…",
+  conflict: "Conflict",
+  loading: "Loading",
+  error: "Error",
+  reloadWinner: "Reload winner",
+  isolated: "Workspace isolated",
+  status: "Private local workspace · no production data",
+};
 
 export function getCanvasTaskBridgeProps({
   taskBridge,
@@ -31,6 +62,7 @@ export function getCanvasTaskBridgeProps({
 function InfiniteCanvasLocalShellComposition(): React.JSX.Element {
   const { dispatch, state, taskBridge, taskWorkspaceId, workspaceAvailable } =
     useDesktopTaskRuntime();
+  const repository = useMemo(() => createLocalInfiniteCanvasRepository(), []);
   const activeTaskDetailsTaskId =
     workspaceAvailable && state.contextPanel?.kind === "task"
       ? state.contextPanel.taskId
@@ -57,6 +89,12 @@ function InfiniteCanvasLocalShellComposition(): React.JSX.Element {
                 workspaceAvailable,
               })}
               activeTaskDetailsTaskId={activeTaskDetailsTaskId}
+              assetRepository={repository}
+              copy={localCanvasShellCopy}
+              repository={repository}
+              showDiagnostics
+              userId={INFINITE_CANVAS_LOCAL_SHELL_USER_ID}
+              workspaceId={INFINITE_CANVAS_LOCAL_SHELL_WORKSPACE_ID}
             />
           </section>
           {hasTaskContextPanel ? (

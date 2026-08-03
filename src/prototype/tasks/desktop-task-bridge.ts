@@ -87,9 +87,15 @@ export function createDesktopTaskBridge(
       options.dispatch({ type: "toggle-subtask", taskId, subtaskId });
     },
     openTask: (taskId) => {
-      if (options.getState().tasks.some((task) => task.id === taskId)) {
-        options.dispatch({ type: "open-task-detail-view", taskId });
-      }
+      const state = options.getState();
+      if (!state.tasks.some((task) => task.id === taskId)) return;
+      options.dispatch({
+        type:
+          state.activeSection === "canvases"
+            ? "open-canvas-task-details"
+            : "open-task-detail-view",
+        taskId,
+      });
     },
     closeTaskDetails: (taskId) => {
       const state = options.getState();

@@ -158,8 +158,8 @@ describe("desktop domain hydration", () => {
     expect(fallback.activeProjectId).toBe("ammonit");
   });
 
-  it("falls back from frozen sections and preserves public sections", () => {
-    const frozenSection = hydrate(
+  it("preserves Canvas as a public section alongside the existing sections", () => {
+    const canvasSection = hydrate(
       { ...freshState(), activeSection: "canvases" },
       validSnapshot(),
     );
@@ -168,7 +168,7 @@ describe("desktop domain hydration", () => {
       validSnapshot(),
     );
 
-    expect(frozenSection.activeSection).toBe("overview");
+    expect(canvasSection.activeSection).toBe("canvases");
     expect(publicSection.activeSection).toBe("tasks");
   });
 

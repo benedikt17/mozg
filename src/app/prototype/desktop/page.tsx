@@ -1,15 +1,10 @@
 import type { DesktopCloudSnapshotLoadResult } from "@/lib/supabase/desktop-snapshot-loader";
-import { getDesktopRuntimeMode } from "@/lib/local-development-mode";
 import { DesktopPrototypeShell } from "@/prototype/desktop-shell";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default async function DesktopPrototypePage() {
-  if (getDesktopRuntimeMode() === "local") {
-    return <DesktopPrototypeShell runtimeMode="local" />;
-  }
-
   const { loadDesktopCloudSnapshot } =
     await import("@/lib/supabase/desktop-snapshot-loader");
   const result = await loadDesktopCloudSnapshot();
