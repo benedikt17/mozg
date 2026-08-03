@@ -93,6 +93,11 @@ export class LocalCanvasShellController {
     return clone(this.stateValue);
   }
 
+  restoreRuntimeState(state: LocalCanvasShellState): LocalCanvasShellState {
+    this.stateValue = clone(state);
+    return this.state;
+  }
+
   async listCanvases(): Promise<CanvasSummary[]> {
     return this.repository.listCanvases(this.workspaceId);
   }

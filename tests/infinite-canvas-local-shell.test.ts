@@ -1046,4 +1046,42 @@ describe("production-shaped local Canvas shell", () => {
       JSON.stringify(runtimeNodesToCanvasDocument(source, restored)),
     ).not.toContain("onContentHeightChange");
   });
+  it("reuses a cached Object URL without changing canonical image geometry", async () => {
+    const repository = new MemoryCanvasRepository();
+    const { registry } = urlRegistry();
+    const document = documentWithImage();
+    const restored = await restoreCanvasImageNodes(
+      document,
+      {
+        assetRepository: repository,
+        objectUrls: registry,
+        workspaceId: WORKSPACE_A,
+      },
+      {
+        cachedAssetPayloads: new Map([
+          [
+            "asset-1",
+            {
+              objectUrl: "blob:cached-image",
+              mimeType: "image/png",
+              intrinsicWidth: 4000,
+              intrinsicHeight: 3000,
+              source: "restored",
+            },
+          ],
+        ]),
+      },
+    );
+
+    expect(repository.assetLoadCalls).toBe(0);
+    expect(restored.nodes[0]).toMatchObject({
+      position: { x: 120, y: 240 },
+      style: { width: 320, height: 180 },
+      data: { objectUrl: "blob:cached-image" },
+    });
+    expect(
+      runtimeNodesToCanvasDocument(document, restored.nodes).nodes,
+    ).toEqual(document.nodes);
+  });
+
 });

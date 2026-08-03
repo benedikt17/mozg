@@ -48,6 +48,7 @@ export type CanvasImageNodeData = {
   intrinsicHeight: number;
   objectUrl: string;
   source: CanvasImageInputSource | "restored";
+  variantKind?: "original";
 };
 
 export type CanvasImageFlowNode = Node<
@@ -113,6 +114,7 @@ export type CanvasImageAdapterDependencies = {
 };
 
 export type RestoreCanvasImageOptions = {
+  cachedAssetPayloads?: ReadonlyMap<string, Pick<CanvasImageNodeData, "objectUrl" | "mimeType" | "intrinsicWidth" | "intrinsicHeight" | "source" | "variantKind">>;
   concurrency?: number;
   signal?: AbortSignal;
   onNode?: (node: CanvasImageFlowNode, index: number, total: number) => void;
@@ -582,6 +584,17 @@ export async function restoreCanvasImageNodes(
         return;
       }
       const canonical = imageNodes[index];
+      const cachedPayload = options.cachedAssetPayloads?.get(canonical.assetId);
+      if (cachedPayload) {
+        const node: CanvasImageFlowNode = {
+          id: canonical.id, type: CANVAS_IMAGE_NODE_TYPE, position: { ...canonical.position },
+          style: { width: canonical.size.width, height: canonical.size.height },
+          data: { assetId: canonical.assetId, ...cachedPayload },
+        };
+        nodes[index] = node;
+        options.onNode?.(node, index, imageNodes.length);
+        continue;
+      }
       activeReads += 1;
       maxConcurrentAssetReads = Math.max(maxConcurrentAssetReads, activeReads);
       let record: CanvasAssetRecord | null;

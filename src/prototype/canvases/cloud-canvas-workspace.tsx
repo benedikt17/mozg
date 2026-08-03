@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createCloudCanvasAssetRepository } from "@/lib/canvas/cloud-canvas-asset-repository";
 import { createCloudCanvasRepository } from "@/lib/canvas/cloud-canvas-repository";
 import { CloudCanvasShellRepository } from "@/lib/canvas/cloud-canvas-shell-adapter";
+import { cloudCanvasRuntimeCache } from "@/lib/canvas/cloud-canvas-runtime-cache";
 import { createClient } from "@/lib/supabase/browser";
 import {
   InfiniteCanvasLocalShell,
@@ -43,12 +44,21 @@ export function CloudCanvasWorkspace({
   const { taskBridge, taskWorkspaceId } = useDesktopTaskRuntime();
   const supabase = useMemo(() => createClient(), []);
   const [userId, setUserId] = useState<string | null>(null);
+  const previousWorkspaceId = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = previousWorkspaceId.current;
+    if (previous && previous !== workspaceId && userId) {
+      cloudCanvasRuntimeCache.clearScope({ workspaceId: previous, userId });
+    }
+    previousWorkspaceId.current = workspaceId;
+  }, [userId, workspaceId]);
   useEffect(() => {
     let active = true;
     void supabase.auth.getUser().then(({ data }) => {
       if (active) setUserId(data.user?.id ?? null);
     });
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      cloudCanvasRuntimeCache.clearAllExcept(session?.user.id ?? null);
       if (active) setUserId(session?.user.id ?? null);
     });
     return () => {
@@ -107,6 +117,7 @@ export function CloudCanvasWorkspace({
       embedded
       key={workspaceId}
       repository={dependencies.repository}
+      runtimeCache={cloudCanvasRuntimeCache}
       showDiagnostics={false}
       taskBridge={taskBridge}
       taskWorkspaceId={taskWorkspaceId}

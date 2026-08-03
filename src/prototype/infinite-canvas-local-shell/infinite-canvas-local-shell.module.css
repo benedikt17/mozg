@@ -693,3 +693,19 @@
     gap: 2px;
   }
 }
+
+.canvasViewportHidden {
+  visibility: hidden;
+}
+
+.canvasLoading {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: #f7f7f5;
+  color: #78716c;
+  font-size: 13px;
+  pointer-events: auto;
+}

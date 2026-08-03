@@ -703,3 +703,33 @@ belongs to the same workspace and Canvas. Missing, pending, deleted, cross-Canva
 and cross-workspace references fail atomically. Storage URLs, Blobs and upload
 state remain runtime-only and never enter `CanvasDocumentV2`; the local IndexedDB
 Blob repository and the main UI remain unchanged.
+
+## 23. Cloud Canvas runtime loading lifecycle
+
+The desktop Cloud Canvas uses a client-only, bounded in-memory runtime cache for the
+last active Canvas in a workspace. Its scope is the authenticated user and workspace;
+it is never written to CanvasDocumentV2, desktop snapshots, localStorage, IndexedDB or
+Supabase. Cache entries hold list summaries, loaded canonical document state and revision,
+viewport, and bounded image render payloads/Object URLs. React Flow nodes and edges are
+always reprojected from the cached canonical document; an engine snapshot is never a
+cache or persistence format. The cache is cleared on an auth-user transition, workspace
+eviction, explicit deletion of an asset projection and least-recently-used capacity
+eviction; each clear revokes its object URLs.
+
+The visible lifecycle is `list-loading`, `empty-confirmed`, `canvas-selected`,
+`document-loading`, `skeleton-ready`, `content-hydrating`, `ready` or `error`.
+The empty Canvas CTA is rendered only after a successful list request proves that the
+workspace contains no Canvas. A cold open keeps the Canvas shell mounted, projects
+canonical node geometry and edges immediately, and hydrates image binaries with bounded
+parallel reads. Before canonical document and viewport are known, it shows only a neutral
+Canvas surface, never invented placeholder nodes. Task projections continue to resolve
+independently. The cloud desktop does not show a full-screen "Preparing canvas" overlay.
+
+On return to Canvas, the last cached scene is restored without resetting its viewport or
+object URLs while the list is revalidated in the background. An unchanged revision keeps
+the runtime projection. A changed revision reloads the document only when the cached
+state is saved; pending local changes enter the existing CAS conflict path and are never
+silently merged. Image/task hydration can only update runtime payload; it cannot change
+node IDs, positions or persisted bounds. React Flow mount measurement is ignored for
+canonical persistence; only an explicit user resize may update saved geometry. This is a
+runtime presentation policy, not a persistence or data-model change.
