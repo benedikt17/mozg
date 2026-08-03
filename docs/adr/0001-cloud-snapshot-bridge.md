@@ -85,6 +85,33 @@ prototype.
 Browser не получает service-role key. Обычный snapshot flow выполняется от
 имени authenticated session и проходит через RLS.
 
+### Local development access invariant
+
+При `MOZG_LOCAL_DEV_MODE=true` локальный `/prototype/desktop` открывается без
+интерактивного SignIn UI. Server-only boundary
+`src/app/auth/local-development/route.ts` создаёт или переиспользует
+детерминированного local development user и устанавливает обычную Supabase
+session cookie. Это только способ подготовить authenticated identity для
+локального cloud flow; это не local persistence bypass.
+
+Для local development поддерживаются оба browser origin:
+`http://127.0.0.1:3000` и `http://localhost:3000`. Bootstrap возвращает на
+исходный origin, чтобы host-scoped session cookie оставалась доступна следующему
+Desktop request; dev server отдельно разрешает `127.0.0.1` для client resources.
+
+Если workspace ещё не имеет snapshot, owner создаёт его только через
+валидационный `initialize_workspace_snapshot` RPC. Прямой `INSERT` для клиента
+остаётся запрещён, а повторная инициализация не перезаписывает существующий
+snapshot.
+
+После bootstrap Desktop использует cloud Canvas repository, cloud asset
+repository, фактический development workspace, локальные PostgreSQL/Storage и
+RLS. Service-role key допускается только внутри этого server-only local
+bootstrap, не попадает в browser и не используется application repositories.
+В production local mode выключен, поэтому обычная Auth guard и redirect на
+`/sign-in` сохраняются. Isolated local Canvas route остаётся отдельным
+regression route, а silent local fallback для Desktop запрещён.
+
 ### Workspace ownership
 
 `workspace_id` остаётся явным в server contract. Используются существующие

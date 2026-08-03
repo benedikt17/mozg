@@ -59,6 +59,12 @@ select has_function(
   array['uuid', 'bigint', 'smallint', 'jsonb'],
   'CAS snapshot function exists'
 );
+select has_function(
+  'public',
+  'initialize_workspace_snapshot',
+  array['uuid', 'smallint', 'jsonb'],
+  'owner-only snapshot initializer exists'
+);
 select has_trigger(
   'public',
   'workspace_snapshots',
@@ -95,6 +101,16 @@ select ok(
    from pg_proc where oid = 'public.save_workspace_snapshot(uuid,bigint,smallint,jsonb)'::regprocedure),
   'CAS function has an explicit safe search_path'
 );
+select is(
+  (select prosecdef from pg_proc where oid = 'public.initialize_workspace_snapshot(uuid,smallint,jsonb)'::regprocedure),
+  true,
+  'snapshot initializer is SECURITY DEFINER with explicit membership authorization'
+);
+select ok(
+  (select array_to_string(proconfig, ',') = 'search_path=pg_catalog, public'
+   from pg_proc where oid = 'public.initialize_workspace_snapshot(uuid,smallint,jsonb)'::regprocedure),
+  'snapshot initializer has an explicit safe search_path'
+);
 
 insert into auth.users (
   id,
@@ -120,14 +136,16 @@ delete from public.workspaces;
 insert into public.workspaces (id, name)
 values
   ('22000000-0000-0000-0000-000000000001', 'Snapshot workspace'),
-  ('22000000-0000-0000-0000-000000000002', 'Disposable workspace');
+  ('22000000-0000-0000-0000-000000000002', 'Disposable workspace'),
+  ('22000000-0000-0000-0000-000000000003', 'Initializer workspace');
 
 insert into public.workspace_members (workspace_id, user_id, role)
 values
   ('22000000-0000-0000-0000-000000000001', '12000000-0000-0000-0000-000000000001', 'owner'),
   ('22000000-0000-0000-0000-000000000001', '12000000-0000-0000-0000-000000000002', 'editor'),
   ('22000000-0000-0000-0000-000000000001', '12000000-0000-0000-0000-000000000003', 'viewer'),
-  ('22000000-0000-0000-0000-000000000002', '12000000-0000-0000-0000-000000000001', 'owner');
+  ('22000000-0000-0000-0000-000000000002', '12000000-0000-0000-0000-000000000001', 'owner'),
+  ('22000000-0000-0000-0000-000000000003', '12000000-0000-0000-0000-000000000001', 'owner');
 
 insert into public.workspace_snapshots (workspace_id, snapshot)
 values
@@ -187,6 +205,29 @@ select throws_ok(
   '42501',
   null,
   'owner cannot directly insert an invalid v1 snapshot'
+);
+select lives_ok(
+  $$ select public.initialize_workspace_snapshot('22000000-0000-0000-0000-000000000003'::uuid, 2::smallint, public.test_valid_desktop_snapshot_v2()) $$,
+  'owner initializes a validated v2 snapshot through the RPC'
+);
+select is(
+  (select revision from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000003'),
+  1::bigint,
+  'initializer creates revision one'
+);
+select is(
+  (select schema_version from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000003'),
+  2::smallint,
+  'initializer stores the requested supported schema version'
+);
+select lives_ok(
+  $$ select public.initialize_workspace_snapshot('22000000-0000-0000-0000-000000000003'::uuid, 2::smallint, public.test_valid_desktop_snapshot_v2()) $$,
+  'initializer is idempotent when a concurrent snapshot already exists'
+);
+select is(
+  (select revision from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000003'),
+  1::bigint,
+  'idempotent initializer does not overwrite the existing snapshot'
 );
 select is(
   (select revision from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'),
@@ -346,6 +387,12 @@ select throws_ok(
   '42501',
   'workspace access denied',
   'editor cannot execute owner-only CAS save'
+);
+select throws_ok(
+  $$ select public.initialize_workspace_snapshot('22000000-0000-0000-0000-000000000001'::uuid, 2::smallint, public.test_valid_desktop_snapshot_v2()) $$,
+  '42501',
+  'workspace access denied',
+  'editor cannot execute owner-only snapshot initialization'
 );
 reset role;
 

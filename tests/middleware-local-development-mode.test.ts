@@ -6,21 +6,22 @@ const getUser = vi.hoisted(() => vi.fn());
 
 vi.mock("@supabase/ssr", () => ({ createServerClient }));
 
-import { middleware } from "@/middleware";
+import { config, middleware } from "@/middleware";
 
 function configureSupabaseEnvironment(): void {
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "test-anon-key");
 }
 
-function request(): NextRequest {
-  return new NextRequest("http://127.0.0.1:3000/prototype/desktop");
+function request(origin = "http://127.0.0.1:3000"): NextRequest {
+  return new NextRequest(`${origin}/prototype/desktop`);
 }
 
 describe("middleware local development mode", () => {
   beforeEach(() => {
     vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("MOZG_LOCAL_DEV_MODE", "false");
+    configureSupabaseEnvironment();
     createServerClient.mockReset();
     getUser.mockReset();
     createServerClient.mockReturnValue({ auth: { getUser } });
@@ -29,14 +30,33 @@ describe("middleware local development mode", () => {
 
   afterEach(() => vi.unstubAllEnvs());
 
-  it("allows desktop without Supabase configuration in explicit local mode", async () => {
+  it("routes unauthenticated local Desktop through the server bootstrap", async () => {
     vi.stubEnv("MOZG_LOCAL_DEV_MODE", "true");
-    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", undefined);
-    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", undefined);
 
-    await expect(middleware(request())).resolves.toMatchObject({ status: 200 });
-    expect(createServerClient).not.toHaveBeenCalled();
-    expect(getUser).not.toHaveBeenCalled();
+    const response = await middleware(request());
+
+    expect(response.status).toBe(307);
+    expect(new URL(response.headers.get("location") ?? "").pathname).toBe(
+      "/auth/local-development",
+    );
+  });
+
+  it("excludes the web manifest from the local Auth bootstrap matcher", () => {
+    expect(config.matcher).toContain(
+      "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    );
+  });
+
+  it("allows local routes with an existing authenticated session", async () => {
+    vi.stubEnv("MOZG_LOCAL_DEV_MODE", "true");
+    getUser.mockResolvedValue({
+      data: { user: { id: "local-user" } },
+      error: null,
+    });
+
+    const response = await middleware(request());
+
+    expect(response.status).toBe(200);
   });
 
   it("keeps normal development authenticated when the flag is absent", async () => {

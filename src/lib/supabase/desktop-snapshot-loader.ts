@@ -1,10 +1,13 @@
 import type { Database } from "@/lib/supabase/database.types";
+import { getDesktopRuntimeMode } from "@/lib/local-development-mode";
 import { createClient } from "@/lib/supabase/server";
 import {
   parseDesktopCloudSnapshotRow,
   type DesktopCloudBootstrap,
   type DesktopCloudSnapshotRow,
 } from "@/prototype/persistence/cloud-snapshot-bridge";
+import { createDesktopDomainSnapshot } from "@/prototype/persistence/domain-snapshot";
+import { initialDesktopPrototypeState } from "@/prototype/desktop-state";
 
 export type DesktopCloudSnapshotLoadResult =
   | { kind: "ready"; bootstrap: DesktopCloudBootstrap }
@@ -26,7 +29,11 @@ export async function loadDesktopCloudSnapshot(): Promise<DesktopCloudSnapshotLo
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
-  if (userError || !user) return { kind: "unauthenticated" };
+  if (userError || !user) {
+    return getDesktopRuntimeMode() === "local"
+      ? { kind: "unavailable" }
+      : { kind: "unauthenticated" };
+  }
 
   const { data: memberships, error: membershipError } = await supabase
     .from("workspace_members")
@@ -45,12 +52,33 @@ export async function loadDesktopCloudSnapshot(): Promise<DesktopCloudSnapshotLo
     .maybeSingle();
   if (workspaceError || !workspace) return { kind: "workspace-unavailable" };
 
-  const { data: row, error: snapshotError } = await supabase
+  const { data: initialRow, error: snapshotError } = await supabase
     .from("workspace_snapshots")
     .select("workspace_id, schema_version, snapshot, revision, updated_at")
     .eq("workspace_id", workspace.id)
     .maybeSingle();
   if (snapshotError) return { kind: "unavailable" };
+  let row = initialRow;
+  if (!row && getDesktopRuntimeMode() === "local") {
+    const { error: initializeError } = await supabase.rpc(
+      "initialize_workspace_snapshot",
+      {
+        target_workspace_id: workspace.id,
+        target_schema_version: 2,
+        target_snapshot: createLocalDevelopmentSnapshot(),
+      },
+    );
+    if (initializeError) {
+      return { kind: "unavailable" };
+    }
+    const retry = await supabase
+      .from("workspace_snapshots")
+      .select("workspace_id, schema_version, snapshot, revision, updated_at")
+      .eq("workspace_id", workspace.id)
+      .maybeSingle();
+    if (retry.error) return { kind: "unavailable" };
+    row = retry.data;
+  }
   if (!row) return { kind: "snapshot-missing" };
 
   const parsed = parseDesktopCloudSnapshotRow(
@@ -60,4 +88,8 @@ export async function loadDesktopCloudSnapshot(): Promise<DesktopCloudSnapshotLo
   if (parsed.kind === "ready") return parsed;
   if (parsed.kind === "unsupported-schema") return parsed;
   return { kind: "invalid-snapshot" };
+}
+
+function createLocalDevelopmentSnapshot(): Database["public"]["Tables"]["workspace_snapshots"]["Insert"]["snapshot"] {
+  return createDesktopDomainSnapshot(initialDesktopPrototypeState);
 }

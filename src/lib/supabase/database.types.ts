@@ -464,6 +464,14 @@ export type Database = {
         Args: { roles: string[]; target_workspace_id: string }
         Returns: boolean
       }
+      initialize_workspace_snapshot: {
+        Args: {
+          target_schema_version: number
+          target_snapshot: Json
+          target_workspace_id: string
+        }
+        Returns: undefined
+      }
       is_workspace_member: {
         Args: { target_workspace_id: string }
         Returns: boolean

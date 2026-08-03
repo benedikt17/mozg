@@ -78,6 +78,11 @@ select results_eq(
   array[1::bigint],
   'repeated bootstrap does not create duplicates'
 );
+select set_config(
+  'test.workspace_count_before_failed_bootstrap',
+  (select count(*)::text from public.workspaces),
+  true
+);
 
 create function public.test_fail_bootstrap_membership()
 returns trigger
@@ -120,7 +125,7 @@ select results_eq(
 );
 select results_eq(
   $$ select count(*)::bigint from public.workspaces $$,
-  array[4::bigint],
+  array[current_setting('test.workspace_count_before_failed_bootstrap')::bigint],
   'failed bootstrap leaves no partial workspace'
 );
 

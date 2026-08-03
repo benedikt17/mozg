@@ -80,6 +80,32 @@
 
 ---
 
+### Local development access invariant
+
+`MOZG_LOCAL_DEV_MODE`, read by `src/lib/local-development-mode.ts`, is the
+explicit entry point for local direct access. When it is enabled, the local
+Desktop opens without interactive Auth UI. The server-only
+`src/app/auth/local-development/route.ts` prepares an ordinary local Supabase
+user session before the cloud Desktop flow runs.
+
+Both `http://127.0.0.1:3000` and `http://localhost:3000` are supported local
+browser origins. Bootstrap returns to the incoming origin, so each
+host-scoped session cookie remains available to the following Desktop request;
+the development server explicitly allows `127.0.0.1` for its client resources.
+
+Local direct access does not mean local persistence. The main Desktop continues
+to use the cloud Canvas repository, cloud asset repository, the actual
+development workspace, local Supabase PostgreSQL/Storage, and RLS. The
+service-role credential is allowed only inside that server-only local bootstrap
+boundary and never reaches the browser or application repositories. Production
+keeps the normal Auth guard because local mode is disabled there.
+
+The isolated local Canvas route remains a separate regression route. The main
+Desktop must never silently fall back to IndexedDB, a local Blob repository, or
+an isolated workspace.
+
+---
+
 ## 4. Модель данных
 
 ### 4.1 Общие правила

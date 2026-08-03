@@ -9,8 +9,13 @@ import {
 } from "@/lib/supabase/desktop-snapshot-loader";
 import { createClient } from "@/lib/supabase/server";
 
+const getDesktopRuntimeMode = vi.hoisted(() => vi.fn());
+
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(),
+}));
+vi.mock("@/lib/local-development-mode", () => ({
+  getDesktopRuntimeMode,
 }));
 
 type QueryResult = {
@@ -55,6 +60,8 @@ function configureClient(options: {
   membershipError?: { message: string } | null;
   workspaceError?: { message: string } | null;
   snapshotError?: { message: string } | null;
+  snapshotRows?: QueryResult[];
+  initializeError?: { message: string } | null;
 }): LoaderClient {
   const results: Record<string, QueryResult> = {
     workspace_members: {
@@ -73,6 +80,7 @@ function configureClient(options: {
       error: options.snapshotError ?? null,
     },
   };
+  let snapshotReadCount = 0;
   const client: LoaderClient = {
     auth: {
       getUser: vi.fn(async () => ({
@@ -84,7 +92,12 @@ function configureClient(options: {
       })),
     },
     from: vi.fn((table: string) => {
-      const result = results[table];
+      const result =
+        table === "workspace_snapshots" && options.snapshotRows
+          ? options.snapshotRows[
+              Math.min(snapshotReadCount++, options.snapshotRows.length - 1)
+            ]
+          : results[table];
       const builder: QueryBuilder = {
         select: () => builder,
         eq: () => builder,
@@ -93,7 +106,10 @@ function configureClient(options: {
       };
       return builder;
     }),
-    rpc: vi.fn(),
+    rpc: vi.fn().mockResolvedValue({
+      data: null,
+      error: options.initializeError ?? null,
+    }),
   };
   vi.mocked(createClient).mockResolvedValue(
     client as unknown as Awaited<ReturnType<typeof createClient>>,
@@ -103,6 +119,7 @@ function configureClient(options: {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  getDesktopRuntimeMode.mockReturnValue("cloud");
 });
 
 describe("loadDesktopCloudSnapshot", () => {
@@ -175,6 +192,39 @@ describe("loadDesktopCloudSnapshot", () => {
     const result = await loadDesktopCloudSnapshot();
 
     expect(result).toEqual({ kind: "snapshot-missing" });
+  });
+
+  it("initializes the missing local snapshot through the owner-checked RPC", async () => {
+    getDesktopRuntimeMode.mockReturnValue("local");
+    const row = createRow({ revision: 1 });
+    const client = configureClient({
+      snapshotRows: [
+        { data: null, error: null },
+        { data: row, error: null },
+      ],
+    });
+
+    await expect(loadDesktopCloudSnapshot()).resolves.toMatchObject({
+      kind: "ready",
+      bootstrap: { revision: 1, workspaceId: "workspace-local" },
+    });
+    expect(client.rpc).toHaveBeenCalledWith("initialize_workspace_snapshot", {
+      target_workspace_id: "workspace-local",
+      target_schema_version: 2,
+      target_snapshot: snapshot,
+    });
+  });
+
+  it("fails visibly when local snapshot initialization is rejected", async () => {
+    getDesktopRuntimeMode.mockReturnValue("local");
+    configureClient({
+      snapshotRows: [{ data: null, error: null }],
+      initializeError: { message: "access denied" },
+    });
+
+    await expect(loadDesktopCloudSnapshot()).resolves.toEqual({
+      kind: "unavailable",
+    });
   });
 
   it("returns unsupported-schema for a future schema version", async () => {
