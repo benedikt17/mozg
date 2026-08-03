@@ -116,9 +116,14 @@ describe("CanvasNodeFrame composition", () => {
     expect(styles).toContain("--connection-handle-center-offset");
     expect(styles).toContain(".taskNodeContent");
     expect(styles).toContain(".textNodeContent");
-    expect(styles).not.toContain("overflow-y: auto");
-    expect(styles).not.toContain("overflow-y: scroll");
-    expect(styles).not.toContain("overflow: scroll");
+    const sidebarListRule =
+      styles.match(/\.desktopCanvasSidebarList\s*\{([^}]*)\}/u)?.[1] ?? "";
+    expect(sidebarListRule).toContain("overflow-x: hidden");
+    expect(sidebarListRule).toContain("overflow-y: auto");
+    const canvasRule = styles.match(/\.canvas\s*\{([^}]*)\}/u)?.[1] ?? "";
+    expect(canvasRule).not.toContain("overflow-y");
+    expect(canvasRule).not.toContain("overflow: scroll");
+    expect(styles).toContain(":global(.cloud-canvas-session-shell)");
   });
 
   it("keeps edge-handle projection live during transient node drags", () => {

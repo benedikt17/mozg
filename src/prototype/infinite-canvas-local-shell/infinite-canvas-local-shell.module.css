@@ -121,6 +121,15 @@
   line-height: 1.5;
   font-size: 14px;
 }
+:global(.cloud-canvas-session-shell) {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: #78716c;
+  background-image: radial-gradient(#d6d3d1 0.75px, transparent 0.75px);
+  background-size: 18px 18px;
+}
 .createRow {
   display: flex;
   gap: 8px;
@@ -1133,7 +1142,8 @@
   display: grid;
   align-content: start;
   gap: 2px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 6px 8px 12px;
 }
 .desktopCanvasSidebarMessage {
