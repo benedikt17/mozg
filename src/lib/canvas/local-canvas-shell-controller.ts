@@ -102,10 +102,14 @@ export class LocalCanvasShellController {
     return this.repository.listCanvases(this.workspaceId);
   }
 
-  async createCanvas(title: string): Promise<LocalCanvasShellState> {
+  async createCanvas(
+    title: string,
+    groupId: string | null = null,
+  ): Promise<LocalCanvasShellState> {
     const canvas = await this.repository.createCanvas({
       workspaceId: this.workspaceId,
       title,
+      groupId,
     });
     return this.hydrate(canvas, null);
   }

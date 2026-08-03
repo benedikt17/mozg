@@ -7,6 +7,15 @@ import {
   type CanvasDocumentV2,
 } from "@/lib/canvas/canvas-document";
 import type { Database, Json } from "@/lib/supabase/database.types";
+import type {
+  CanvasGroup,
+  CanvasGroupRepository,
+  CreateCanvasGroupInput,
+  DeleteCanvasGroupInput,
+  MoveCanvasGroupInput,
+  MoveCanvasToGroupInput,
+  RenameCanvasGroupInput,
+} from "@/lib/canvas/canvas-group-repository";
 
 type CreateCanvasRpcRow =
   Database["public"]["Functions"]["create_canvas"]["Returns"][number];
@@ -18,11 +27,13 @@ type SaveCanvasRpcRow =
   Database["public"]["Functions"]["save_canvas_document"]["Returns"][number];
 
 const CANVAS_SUMMARY_SELECT =
-  "id,workspace_id,title,schema_version,revision,created_at,updated_at,deleted_at";
+  "id,workspace_id,title,group_id,sort_order,schema_version,revision,created_at,updated_at,deleted_at";
 const CANVAS_LOAD_SELECT =
   "id,workspace_id,title,schema_version,document,revision,created_at,updated_at,deleted_at";
 const VIEW_STATE_SELECT =
   "canvas_id,user_id,viewport_x,viewport_y,zoom,updated_at";
+const CANVAS_GROUP_SELECT =
+  "id,workspace_id,parent_group_id,title,sort_order,created_at,updated_at,deleted_at";
 
 export type CloudCanvasRepositoryErrorCode =
   | "unauthenticated"
@@ -50,6 +61,8 @@ export type CloudCanvasSummary = {
   id: string;
   workspaceId: string;
   title: string;
+  groupId: string | null;
+  sortOrder: number;
   revision: number;
   schemaVersion: typeof CANVAS_DOCUMENT_V2_SCHEMA_VERSION;
   createdAt: string;
@@ -89,9 +102,13 @@ export type SaveCanvasViewStateInput = {
   zoom: number;
 };
 
-export interface CloudCanvasRepository {
+export interface CloudCanvasRepository extends CanvasGroupRepository {
   listCanvases(workspaceId: string): Promise<CloudCanvasSummary[]>;
-  createCanvas(workspaceId: string, title: string): Promise<CloudLoadedCanvas>;
+  createCanvas(
+    workspaceId: string,
+    title: string,
+    groupId?: string | null,
+  ): Promise<CloudLoadedCanvas>;
   loadCanvas(workspaceId: string, canvasId: string): Promise<CloudLoadedCanvas>;
   renameCanvas(
     workspaceId: string,
@@ -220,6 +237,16 @@ function serverRevision(value: unknown): number {
   return value;
 }
 
+function serverSortOrder(value: unknown): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new CloudCanvasRepositoryError(
+      "server-contract",
+      "Cloud Canvas response has an invalid sort order.",
+    );
+  }
+  return value;
+}
+
 function serverTimestamp(value: unknown, field: string): string {
   if (
     typeof value !== "string" ||
@@ -301,10 +328,46 @@ function mapCanvasSummary(
     id: serverIdentifier(value.id, "id"),
     workspaceId: rowWorkspaceId,
     title: serverTitle(value.title),
+    groupId:
+      value.group_id === null || value.group_id === undefined
+        ? null
+        : serverIdentifier(value.group_id, "group_id"),
+    sortOrder:
+      value.sort_order === undefined ? 0 : serverSortOrder(value.sort_order),
     revision: serverRevision(value.revision),
     schemaVersion: serverSchemaVersion(value.schema_version),
     createdAt: serverTimestamp(value.created_at, "created_at"),
     updatedAt: serverTimestamp(value.updated_at, "updated_at"),
+  };
+}
+
+function mapCanvasGroup(value: unknown, workspaceId: string): CanvasGroup {
+  if (!isRecord(value))
+    throw new CloudCanvasRepositoryError(
+      "server-contract",
+      "Canvas group response is not an object.",
+    );
+  const rowWorkspaceId = serverIdentifier(value.workspace_id, "workspace_id");
+  if (rowWorkspaceId !== workspaceId)
+    throw new CloudCanvasRepositoryError(
+      "server-contract",
+      "Canvas group response crossed the workspace boundary.",
+    );
+  return {
+    id: serverIdentifier(value.id, "id"),
+    workspaceId: rowWorkspaceId,
+    parentGroupId:
+      value.parent_group_id === null
+        ? null
+        : serverIdentifier(value.parent_group_id, "parent_group_id"),
+    title: serverTitle(value.title),
+    sortOrder: serverSortOrder(value.sort_order),
+    createdAt: serverTimestamp(value.created_at, "created_at"),
+    updatedAt: serverTimestamp(value.updated_at, "updated_at"),
+    deletedAt:
+      value.deleted_at === null
+        ? null
+        : serverTimestamp(value.deleted_at, "deleted_at"),
   };
 }
 
@@ -444,7 +507,9 @@ async function authenticatedUserId(
   return data.user.id;
 }
 
-export class SupabaseCloudCanvasRepository implements CloudCanvasRepository {
+export class SupabaseCloudCanvasRepository
+  implements CloudCanvasRepository, CanvasGroupRepository
+{
   private readonly supabase: SupabaseClient<Database>;
 
   constructor(options: CloudCanvasRepositoryOptions) {
@@ -471,14 +536,161 @@ export class SupabaseCloudCanvasRepository implements CloudCanvasRepository {
     }
   }
 
+  async listCanvasGroups(workspaceId: string): Promise<CanvasGroup[]> {
+    try {
+      const scopedWorkspaceId = inputIdentifier(workspaceId, "workspaceId");
+      const { data, error } = await this.supabase
+        .from("canvas_groups")
+        .select(CANVAS_GROUP_SELECT)
+        .eq("workspace_id", scopedWorkspaceId)
+        .is("deleted_at", null)
+        .order("parent_group_id", { ascending: true, nullsFirst: true })
+        .order("sort_order", { ascending: true })
+        .order("id", { ascending: true });
+      if (error) throw error;
+      return (data ?? []).map((row) => mapCanvasGroup(row, scopedWorkspaceId));
+    } catch (cause) {
+      throw projectSupabaseError(cause, "list-groups");
+    }
+  }
+
+  async createCanvasGroup(input: CreateCanvasGroupInput): Promise<CanvasGroup> {
+    try {
+      const workspaceId = inputIdentifier(input.workspaceId, "workspaceId");
+      const title = inputTitle(input.title);
+      const parentGroupId =
+        input.parentGroupId === null || input.parentGroupId === undefined
+          ? null
+          : inputIdentifier(input.parentGroupId, "parentGroupId");
+      const { data, error } = await this.supabase.rpc("create_canvas_group", {
+        target_parent_group_id: parentGroupId,
+        target_title: title,
+        target_workspace_id: workspaceId,
+      });
+      if (error) throw error;
+      return mapCanvasGroup(
+        rpcRow(
+          data as
+            | Database["public"]["Functions"]["create_canvas_group"]["Returns"]
+            | null,
+          "create-group",
+        ),
+        workspaceId,
+      );
+    } catch (cause) {
+      throw projectSupabaseError(cause, "create-group");
+    }
+  }
+
+  async renameCanvasGroup(input: RenameCanvasGroupInput): Promise<CanvasGroup> {
+    try {
+      const workspaceId = inputIdentifier(input.workspaceId, "workspaceId");
+      const groupId = inputIdentifier(input.groupId, "groupId");
+      const title = inputTitle(input.title);
+      const { data, error } = await this.supabase.rpc("rename_canvas_group", {
+        target_group_id: groupId,
+        target_title: title,
+      });
+      if (error) throw error;
+      return mapCanvasGroup(
+        rpcRow(
+          data as
+            | Database["public"]["Functions"]["rename_canvas_group"]["Returns"]
+            | null,
+          "rename-group",
+        ),
+        workspaceId,
+      );
+    } catch (cause) {
+      throw projectSupabaseError(cause, "rename-group");
+    }
+  }
+
+  async softDeleteCanvasGroup(
+    input: DeleteCanvasGroupInput,
+  ): Promise<{ status: "deleted" | "already-deleted" }> {
+    try {
+      const workspaceId = inputIdentifier(input.workspaceId, "workspaceId");
+      const groupId = inputIdentifier(input.groupId, "groupId");
+      const { data, error } = await this.supabase.rpc("delete_canvas_group", {
+        target_group_id: groupId,
+      });
+      if (error) throw error;
+      const row = rpcRow(
+        data as
+          | Database["public"]["Functions"]["delete_canvas_group"]["Returns"]
+          | null,
+        "delete-group",
+      );
+      if (row.workspace_id !== workspaceId)
+        throw new CloudCanvasRepositoryError(
+          "server-contract",
+          "Canvas group delete crossed the workspace boundary.",
+        );
+      return { status: row.deleted ? "deleted" : "already-deleted" };
+    } catch (cause) {
+      throw projectSupabaseError(cause, "delete-group");
+    }
+  }
+
+  async moveCanvasGroup(input: MoveCanvasGroupInput): Promise<CanvasGroup> {
+    try {
+      const workspaceId = inputIdentifier(input.workspaceId, "workspaceId");
+      const groupId = inputIdentifier(input.groupId, "groupId");
+      const parentGroupId =
+        input.parentGroupId === null
+          ? null
+          : inputIdentifier(input.parentGroupId, "parentGroupId");
+      const { data, error } = await this.supabase.rpc("move_canvas_group", {
+        target_group_id: groupId,
+        target_parent_group_id: parentGroupId,
+      });
+      if (error) throw error;
+      return mapCanvasGroup(
+        rpcRow(
+          data as
+            | Database["public"]["Functions"]["move_canvas_group"]["Returns"]
+            | null,
+          "move-group",
+        ),
+        workspaceId,
+      );
+    } catch (cause) {
+      throw projectSupabaseError(cause, "move-group");
+    }
+  }
+
+  async moveCanvasToGroup(input: MoveCanvasToGroupInput): Promise<void> {
+    try {
+      const workspaceId = inputIdentifier(input.workspaceId, "workspaceId");
+      const canvasId = inputIdentifier(input.canvasId, "canvasId");
+      const groupId =
+        input.groupId === null
+          ? null
+          : inputIdentifier(input.groupId, "groupId");
+      const { error } = await this.supabase.rpc("move_canvas_to_group", {
+        target_canvas_id: canvasId,
+        target_group_id: groupId,
+      });
+      if (error) throw error;
+      await this.loadCanvas(workspaceId, canvasId);
+    } catch (cause) {
+      throw projectSupabaseError(cause, "move-canvas");
+    }
+  }
+
   async createCanvas(
     workspaceId: string,
     title: string,
+    groupId: string | null = null,
   ): Promise<CloudLoadedCanvas> {
     try {
       const scopedWorkspaceId = inputIdentifier(workspaceId, "workspaceId");
       const canvasTitle = inputTitle(title);
+      const targetGroupId =
+        groupId === null ? null : inputIdentifier(groupId, "groupId");
       const { data, error } = await this.supabase.rpc("create_canvas", {
+        target_group_id: targetGroupId,
         target_workspace_id: scopedWorkspaceId,
         target_title: canvasTitle,
       });

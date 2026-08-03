@@ -370,6 +370,14 @@ RPC, workspace-scoped reads, server-owned revisions and authenticated RLS. Viewp
 state remains a separate user-scoped stream; binary assets and Storage resolution
 remain outside this repository checkpoint.
 
+Canvas navigation groups are part of the independent Canvas persistence domain,
+not the Desktop snapshot. `canvas_groups` is workspace-scoped and supports nested
+groups through a composite `(workspace_id, parent_group_id)` foreign key. Canvas
+membership uses the same workspace boundary, while `sort_order` is a derived
+navigation ordering field. Group and Canvas mutations go through authenticated
+RPCs; deleting a group archives it and promotes its direct children to the
+deleted group's parent without deleting Canvas content.
+
 The cloud asset foundation adds a private `canvas-assets` bucket and an injected
 typed asset repository. Metadata is reserved and finalized through authenticated
 RPCs, object paths are Canvas-scoped, and Storage policies use the metadata row

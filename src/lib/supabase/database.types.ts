@@ -100,6 +100,57 @@ export type Database = {
           },
         ]
       }
+      canvas_groups: {
+        Row: {
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          id: string
+          parent_group_id: string | null
+          sort_order: number
+          title: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          deleted_at?: string | null
+          id?: string
+          parent_group_id?: string | null
+          sort_order?: number
+          title: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          deleted_at?: string | null
+          id?: string
+          parent_group_id?: string | null
+          sort_order?: number
+          title?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canvas_groups_parent_workspace_fkey"
+            columns: ["workspace_id", "parent_group_id"]
+            isOneToOne: false
+            referencedRelation: "canvas_groups"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "canvas_groups_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       canvas_view_states: {
         Row: {
           canvas_id: string
@@ -141,9 +192,11 @@ export type Database = {
           created_by: string
           deleted_at: string | null
           document: Json
+          group_id: string | null
           id: string
           revision: number
           schema_version: number
+          sort_order: number
           title: string
           updated_at: string
           workspace_id: string
@@ -153,9 +206,11 @@ export type Database = {
           created_by: string
           deleted_at?: string | null
           document?: Json
+          group_id?: string | null
           id?: string
           revision?: number
           schema_version?: number
+          sort_order?: number
           title: string
           updated_at?: string
           workspace_id: string
@@ -165,9 +220,11 @@ export type Database = {
           created_by?: string
           deleted_at?: string | null
           document?: Json
+          group_id?: string | null
           id?: string
           revision?: number
           schema_version?: number
+          sort_order?: number
           title?: string
           updated_at?: string
           workspace_id?: string
@@ -179,6 +236,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "workspaces"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "canvases_group_workspace_fkey"
+            columns: ["workspace_id", "group_id"]
+            isOneToOne: false
+            referencedRelation: "canvas_groups"
+            referencedColumns: ["workspace_id", "id"]
           },
         ]
       }
@@ -415,10 +479,32 @@ export type Database = {
         Returns: undefined
       }
       create_canvas: {
-        Args: { target_title: string; target_workspace_id: string }
+        Args: {
+          target_group_id: string | null
+          target_title: string
+          target_workspace_id: string
+        }
         Returns: {
           id: string
           revision: number
+        }[]
+      }
+      create_canvas_group: {
+        Args: {
+          target_parent_group_id: string | null
+          target_title: string
+          target_workspace_id: string
+        }
+        Returns: {
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          id: string
+          parent_group_id: string | null
+          sort_order: number
+          title: string
+          updated_at: string
+          workspace_id: string
         }[]
       }
       delete_canvas: {
@@ -464,12 +550,38 @@ export type Database = {
         Args: { roles: string[]; target_workspace_id: string }
         Returns: boolean
       }
+      delete_canvas_group: {
+        Args: { target_group_id: string }
+        Returns: {
+          deleted: boolean
+          id: string
+          workspace_id: string
+        }[]
+      }
       initialize_workspace_snapshot: {
         Args: {
           target_schema_version: number
           target_snapshot: Json
           target_workspace_id: string
         }
+        Returns: undefined
+      }
+      move_canvas_group: {
+        Args: { target_group_id: string; target_parent_group_id?: string | null }
+        Returns: {
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          id: string
+          parent_group_id: string | null
+          sort_order: number
+          title: string
+          updated_at: string
+          workspace_id: string
+        }[]
+      }
+      move_canvas_to_group: {
+        Args: { target_canvas_id: string; target_group_id?: string | null }
         Returns: undefined
       }
       is_workspace_member: {
@@ -484,6 +596,20 @@ export type Database = {
           id: string
           revision: number
           schema_version: number
+          title: string
+          updated_at: string
+          workspace_id: string
+        }[]
+      }
+      rename_canvas_group: {
+        Args: { target_group_id: string; target_title: string }
+        Returns: {
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          id: string
+          parent_group_id: string | null
+          sort_order: number
           title: string
           updated_at: string
           workspace_id: string

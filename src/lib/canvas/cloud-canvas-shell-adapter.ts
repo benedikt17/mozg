@@ -1,4 +1,13 @@
-﻿import type {
+import type {
+  CanvasGroup,
+  CanvasGroupRepository,
+  CreateCanvasGroupInput,
+  DeleteCanvasGroupInput,
+  MoveCanvasGroupInput,
+  MoveCanvasToGroupInput,
+  RenameCanvasGroupInput,
+} from "@/lib/canvas/canvas-group-repository";
+import type {
   CanvasAssetRecord,
   CanvasAssetRepository,
   CanvasRepository,
@@ -21,15 +30,17 @@ import {
   CANVAS_DOCUMENT_SCHEMA_VERSION,
   parseCanvasDocumentV2,
 } from "@/lib/canvas/canvas-document";
-
 export type CanvasShellRepository = CanvasRepository &
-  CanvasViewStateRepository;
+  CanvasViewStateRepository &
+  CanvasGroupRepository;
 
 function summary(canvas: CloudCanvasSummary): CanvasSummary {
   return {
     id: canvas.id,
     workspaceId: canvas.workspaceId,
     title: canvas.title,
+    groupId: canvas.groupId,
+    sortOrder: canvas.sortOrder,
     revision: canvas.revision,
     createdAt: canvas.createdAt,
     updatedAt: canvas.updatedAt,
@@ -81,13 +92,34 @@ export class CloudCanvasShellRepository
   async createCanvas(input: {
     workspaceId: string;
     title: string;
+    groupId?: string | null;
   }): Promise<LoadedCanvas> {
     return loadedCanvas(
       await this.canvasRepository.createCanvas(
         input.workspaceId,
         input.title,
+        input.groupId,
       ),
     );
+  }
+
+  listCanvasGroups(workspaceId: string): Promise<CanvasGroup[]> {
+    return this.canvasRepository.listCanvasGroups(workspaceId);
+  }
+  createCanvasGroup(input: CreateCanvasGroupInput): Promise<CanvasGroup> {
+    return this.canvasRepository.createCanvasGroup(input);
+  }
+  renameCanvasGroup(input: RenameCanvasGroupInput): Promise<CanvasGroup> {
+    return this.canvasRepository.renameCanvasGroup(input);
+  }
+  softDeleteCanvasGroup(input: DeleteCanvasGroupInput) {
+    return this.canvasRepository.softDeleteCanvasGroup(input);
+  }
+  moveCanvasGroup(input: MoveCanvasGroupInput): Promise<CanvasGroup> {
+    return this.canvasRepository.moveCanvasGroup(input);
+  }
+  moveCanvasToGroup(input: MoveCanvasToGroupInput): Promise<void> {
+    return this.canvasRepository.moveCanvasToGroup(input);
   }
 
   async loadCanvas(input: {

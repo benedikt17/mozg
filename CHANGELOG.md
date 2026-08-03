@@ -9,6 +9,8 @@
 
 ### Added
 
+- Canvas navigation groups: nested persistent local/cloud groups, Canvas membership moves, archive promotion, and RLS coverage.
+
 - `ARCHITECTURE.md v1.2` как замороженный архитектурный baseline.
 - `AGENTS.md` с правилами работы AI-агентов.
 - `STAGE-1A-SPEC.md` с последовательностью задач этапа 1A.

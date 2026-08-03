@@ -265,6 +265,7 @@ describe("IndexedDbCanvasRepository", () => {
     });
     expect(factory.storeNames("local-canvas-tests")).toEqual([
       "canvas-assets",
+      "canvas-groups",
       "canvas-view-states",
       "canvases",
       "domain-snapshots",
@@ -470,6 +471,7 @@ describe("IndexedDbCanvasRepository", () => {
     await upgraded.createCanvas({ workspaceId: "w1", title: "Board" });
     expect(factory.storeNames("upgrade-tests")).toEqual([
       "canvas-assets",
+      "canvas-groups",
       "canvas-view-states",
       "canvases",
       "domain-snapshots",
@@ -487,6 +489,7 @@ describe("IndexedDbCanvasRepository", () => {
     expect(await reopened.listCanvases("w1")).toHaveLength(1);
     expect(factory.storeNames("upgrade-tests")).toEqual([
       "canvas-assets",
+      "canvas-groups",
       "canvas-view-states",
       "canvases",
       "domain-snapshots",
@@ -515,7 +518,7 @@ describe("IndexedDbCanvasRepository", () => {
       idGenerator: () => "retry",
     });
     await retry.createCanvas({ workspaceId: "w1", title: "Retry" });
-    expect(factory.storeNames("interrupted-upgrade")).toHaveLength(4);
+    expect(factory.storeNames("interrupted-upgrade")).toHaveLength(5);
     expect(
       factory.read("interrupted-upgrade", MOZG_DESKTOP_DOMAIN_STORE, "legacy"),
     ).toEqual({ value: "preserve" });
@@ -535,7 +538,7 @@ describe("IndexedDbCanvasRepository", () => {
       title: "Other workspace",
     });
     const list = await repository.listCanvases("w1");
-    expect(list.map((item) => item.id)).toEqual([second.id, first.id]);
+    expect(list.map((item) => item.id)).toEqual([first.id, second.id]);
     expect(list.every((item) => !("document" in item))).toBe(true);
     list[0]!.title = "mutated summary";
     expect(
@@ -877,5 +880,70 @@ describe("IndexedDbCanvasRepository", () => {
     await expect(
       repository.loadCanvas({ workspaceId: "w1", canvasId: canvas.id }),
     ).rejects.toMatchObject({ code: "invalid-stored-record" });
+  });
+  it("persists nested groups, supports moves, and promotes children on group archive", async () => {
+    const parent = await repository.createCanvasGroup({
+      workspaceId: "w1",
+      title: "Projects",
+    });
+    const child = await repository.createCanvasGroup({
+      workspaceId: "w1",
+      title: "Launch",
+      parentGroupId: parent.id,
+    });
+    const canvas = await repository.createCanvas({
+      workspaceId: "w1",
+      title: "Brief",
+      groupId: child.id,
+    });
+
+    expect(await repository.listCanvasGroups("w1")).toEqual([parent, child]);
+    expect((await repository.listCanvases("w1"))[0]).toMatchObject({
+      id: canvas.id,
+      groupId: child.id,
+      sortOrder: 0,
+    });
+
+    await repository.renameCanvasGroup({
+      workspaceId: "w1",
+      groupId: child.id,
+      title: "Launch renamed",
+    });
+    await repository.moveCanvasToGroup({
+      workspaceId: "w1",
+      canvasId: canvas.id,
+      groupId: parent.id,
+    });
+    await expect(
+      repository.moveCanvasGroup({
+        workspaceId: "w1",
+        groupId: parent.id,
+        parentGroupId: child.id,
+      }),
+    ).rejects.toMatchObject({ code: "invalid-input" });
+
+    await repository.softDeleteCanvasGroup({
+      workspaceId: "w1",
+      groupId: parent.id,
+    });
+    expect(await repository.listCanvasGroups("w1")).toEqual([
+      expect.objectContaining({ id: child.id, parentGroupId: null }),
+    ]);
+    expect((await repository.listCanvases("w1"))[0]).toMatchObject({
+      id: canvas.id,
+      groupId: null,
+    });
+
+    repository.close();
+    const reopened = new IndexedDbCanvasRepository({
+      indexedDb: factory as unknown as IDBFactory,
+      databaseName: "local-canvas-tests",
+      clock: () => time,
+      idGenerator: () => "reopened",
+    });
+    expect(await reopened.listCanvases("w1")).toHaveLength(1);
+    expect(await reopened.listCanvasGroups("w1")).toEqual([
+      expect.objectContaining({ id: child.id, parentGroupId: null }),
+    ]);
   });
 });

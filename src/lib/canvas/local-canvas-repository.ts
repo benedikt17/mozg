@@ -11,13 +11,22 @@ import {
 } from "@/lib/canvas/canvas-document";
 import {
   MOZG_CANVAS_ASSET_STORE,
+  MOZG_CANVAS_GROUP_STORE,
   MOZG_CANVAS_STORE,
   MOZG_CANVAS_VIEW_STATE_STORE,
   MOZG_DESKTOP_DATABASE_NAME,
   MOZG_DESKTOP_DATABASE_VERSION,
   MOZG_DESKTOP_DOMAIN_STORE,
 } from "@/prototype/persistence/indexeddb-adapter";
-
+import type {
+  CanvasGroup,
+  CanvasGroupRepository,
+  CreateCanvasGroupInput,
+  DeleteCanvasGroupInput,
+  MoveCanvasGroupInput,
+  MoveCanvasToGroupInput,
+  RenameCanvasGroupInput,
+} from "@/lib/canvas/canvas-group-repository";
 const MAX_BYTES = 20 * 1024 * 1024;
 const MAX_PIXELS = 40_000_000;
 const MAX_IMAGE_DIMENSION = 10_000;
@@ -53,6 +62,8 @@ export type CanvasSummary = {
   id: string;
   workspaceId: string;
   title: string;
+  groupId?: string | null;
+  sortOrder?: number;
   revision: number;
   createdAt: string;
   updatedAt: string;
@@ -70,6 +81,7 @@ export interface CanvasRepository {
   createCanvas(input: {
     workspaceId: string;
     title: string;
+    groupId?: string | null;
   }): Promise<LoadedCanvas>;
   loadCanvas(input: {
     workspaceId: string;
@@ -196,6 +208,15 @@ function revision(value: number): number {
       "Canvas revision is invalid.",
     );
   return value;
+}
+function sortOrder(value: unknown): number {
+  if (value === undefined) return 0;
+  if (!Number.isSafeInteger(value) || Number(value) < 0)
+    throw new CanvasRepositoryError(
+      "invalid-stored-record",
+      "Canvas sort order is invalid.",
+    );
+  return Number(value);
 }
 function timestamp(value: unknown, field: string): string {
   if (
@@ -395,9 +416,35 @@ function storedCanvas(value: unknown): LoadedCanvas {
     id: storedIdentifier(value.id, "id"),
     workspaceId: storedIdentifier(value.workspaceId, "workspaceId"),
     title: storedTitle(value.title),
+    groupId:
+      value.groupId === undefined || value.groupId === null
+        ? null
+        : storedIdentifier(value.groupId, "groupId"),
+    sortOrder: sortOrder(value.sortOrder),
     schemaVersion: 1,
     document,
     revision: storedRevision(value.revision),
+    createdAt: timestamp(value.createdAt, "createdAt"),
+    updatedAt: timestamp(value.updatedAt, "updatedAt"),
+    deletedAt:
+      value.deletedAt === null ? null : timestamp(value.deletedAt, "deletedAt"),
+  };
+}
+function storedCanvasGroup(value: unknown): CanvasGroup {
+  if (!isRecord(value))
+    throw new CanvasRepositoryError(
+      "invalid-stored-record",
+      "Stored Canvas group record is invalid.",
+    );
+  return {
+    id: storedIdentifier(value.id, "groupId"),
+    workspaceId: storedIdentifier(value.workspaceId, "workspaceId"),
+    parentGroupId:
+      value.parentGroupId === undefined || value.parentGroupId === null
+        ? null
+        : storedIdentifier(value.parentGroupId, "parentGroupId"),
+    title: storedTitle(value.title),
+    sortOrder: sortOrder(value.sortOrder),
     createdAt: timestamp(value.createdAt, "createdAt"),
     updatedAt: timestamp(value.updatedAt, "updatedAt"),
     deletedAt:
@@ -560,11 +607,52 @@ function failed(cause: unknown): CanvasRepositoryError {
         { cause },
       );
 }
+function nextSortOrder(
+  records: readonly {
+    workspaceId: string;
+    sortOrder?: number;
+    parentGroupId?: string | null;
+    groupId?: string | null;
+  }[],
+  workspaceId: string,
+  parentGroupId: string | null,
+): number {
+  return (
+    records
+      .filter(
+        (record) =>
+          record.workspaceId === workspaceId &&
+          (record.parentGroupId ?? record.groupId ?? null) === parentGroupId,
+      )
+      .reduce(
+        (maximum, record) => Math.max(maximum, record.sortOrder ?? 0),
+        -1,
+      ) + 1
+  );
+}
+function isDescendant(
+  groups: readonly CanvasGroup[],
+  groupId: string,
+  candidateParentId: string | null,
+): boolean {
+  let current = candidateParentId;
+  const seen = new Set<string>();
+  while (current) {
+    if (current === groupId) return true;
+    if (seen.has(current)) return true;
+    seen.add(current);
+    current =
+      groups.find((group) => group.id === current)?.parentGroupId ?? null;
+  }
+  return false;
+}
 function summary(canvas: LoadedCanvas): CanvasSummary {
   return {
     id: canvas.id,
     workspaceId: canvas.workspaceId,
     title: canvas.title,
+    groupId: canvas.groupId,
+    sortOrder: canvas.sortOrder,
     revision: canvas.revision,
     createdAt: canvas.createdAt,
     updatedAt: canvas.updatedAt,
@@ -573,7 +661,11 @@ function summary(canvas: LoadedCanvas): CanvasSummary {
 }
 
 export class IndexedDbCanvasRepository
-  implements CanvasRepository, CanvasViewStateRepository, CanvasAssetRepository
+  implements
+    CanvasRepository,
+    CanvasViewStateRepository,
+    CanvasAssetRepository,
+    CanvasGroupRepository
 {
   private readonly factory?: IDBFactory;
   private readonly databaseName: string;
@@ -604,7 +696,8 @@ export class IndexedDbCanvasRepository
         )
         .sort(
           (a, b) =>
-            Date.parse(b.updatedAt) - Date.parse(a.updatedAt) ||
+            (a.sortOrder ?? 0) - (b.sortOrder ?? 0) ||
+            Date.parse(a.updatedAt) - Date.parse(b.updatedAt) ||
             a.id.localeCompare(b.id),
         )
         .map(summary);
@@ -613,18 +706,248 @@ export class IndexedDbCanvasRepository
       throw failed(cause);
     }
   }
+  async listCanvasGroups(workspaceId: string): Promise<CanvasGroup[]> {
+    identifier(workspaceId, "workspaceId");
+    const db = await this.open();
+    const tx = db.transaction(MOZG_CANVAS_GROUP_STORE, "readonly");
+    const done = completion(tx);
+    try {
+      const rows = await requestResult(
+        tx.objectStore(MOZG_CANVAS_GROUP_STORE).getAll(),
+      );
+      await done;
+      return rows
+        .map(storedCanvasGroup)
+        .filter(
+          (group) => group.workspaceId === workspaceId && !group.deletedAt,
+        )
+        .sort(
+          (a, b) =>
+            (a.parentGroupId ?? "").localeCompare(b.parentGroupId ?? "") ||
+            a.sortOrder - b.sortOrder ||
+            a.title.localeCompare(b.title) ||
+            a.id.localeCompare(b.id),
+        );
+    } catch (cause) {
+      void done.catch(() => undefined);
+      throw failed(cause);
+    }
+  }
+  async createCanvasGroup(input: CreateCanvasGroupInput): Promise<CanvasGroup> {
+    const workspaceId = identifier(input.workspaceId, "workspaceId");
+    const groupTitle = title(input.title);
+    const parentGroupId = input.parentGroupId ?? null;
+    const id = identifier(this.idGenerator(), "groupId");
+    const createdAt = now(this.clock);
+    const db = await this.open();
+    const tx = db.transaction(MOZG_CANVAS_GROUP_STORE, "readwrite");
+    const done = completion(tx);
+    try {
+      const store = tx.objectStore(MOZG_CANVAS_GROUP_STORE);
+      await this.assertGroupReference(store, workspaceId, parentGroupId);
+      const groups = await this.readGroups(store);
+      const row: CanvasGroup = {
+        id,
+        workspaceId,
+        parentGroupId,
+        title: groupTitle,
+        sortOrder: nextSortOrder(groups, workspaceId, parentGroupId),
+        createdAt,
+        updatedAt: createdAt,
+        deletedAt: null,
+      };
+      await requestResult(store.add(copy(row)));
+      await done;
+      return copy(row);
+    } catch (cause) {
+      void done.catch(() => undefined);
+      throw failed(cause);
+    }
+  }
+  async renameCanvasGroup(input: RenameCanvasGroupInput): Promise<CanvasGroup> {
+    const workspaceId = identifier(input.workspaceId, "workspaceId");
+    const groupId = identifier(input.groupId, "groupId");
+    const groupTitle = title(input.title);
+    const db = await this.open();
+    const tx = db.transaction(MOZG_CANVAS_GROUP_STORE, "readwrite");
+    const done = completion(tx);
+    try {
+      const store = tx.objectStore(MOZG_CANVAS_GROUP_STORE);
+      const group = await this.loadActiveGroup(store, workspaceId, groupId);
+      const next = { ...group, title: groupTitle, updatedAt: now(this.clock) };
+      await requestResult(store.put(copy(next)));
+      await done;
+      return copy(next);
+    } catch (cause) {
+      void done.catch(() => undefined);
+      throw failed(cause);
+    }
+  }
+  async softDeleteCanvasGroup(
+    input: DeleteCanvasGroupInput,
+  ): Promise<{ status: "deleted" | "already-deleted" }> {
+    const workspaceId = identifier(input.workspaceId, "workspaceId");
+    const groupId = identifier(input.groupId, "groupId");
+    const db = await this.open();
+    const tx = db.transaction(
+      [MOZG_CANVAS_GROUP_STORE, MOZG_CANVAS_STORE],
+      "readwrite",
+    );
+    const done = completion(tx);
+    try {
+      const groupStore = tx.objectStore(MOZG_CANVAS_GROUP_STORE);
+      const group = await this.loadGroup(groupStore, groupId);
+      if (!group)
+        throw new CanvasRepositoryError(
+          "not-found",
+          "Canvas group was not found.",
+        );
+      if (group.workspaceId !== workspaceId)
+        throw new CanvasRepositoryError(
+          "workspace-mismatch",
+          "Canvas group belongs to another workspace.",
+        );
+      if (group.deletedAt) {
+        await done;
+        return { status: "already-deleted" };
+      }
+      const deletedAt = now(this.clock);
+      const groups = await this.readGroups(groupStore);
+      for (const child of groups) {
+        if (
+          child.workspaceId === workspaceId &&
+          child.parentGroupId === groupId
+        ) {
+          await requestResult(
+            groupStore.put(
+              copy({
+                ...child,
+                parentGroupId: group.parentGroupId,
+                updatedAt: deletedAt,
+              }),
+            ),
+          );
+        }
+      }
+      const canvasStore = tx.objectStore(MOZG_CANVAS_STORE);
+      const canvases = (await requestResult(canvasStore.getAll())).map(
+        storedCanvas,
+      );
+      for (const canvas of canvases) {
+        if (canvas.workspaceId === workspaceId && canvas.groupId === groupId) {
+          await requestResult(
+            canvasStore.put(
+              copy({
+                ...canvas,
+                groupId: group.parentGroupId,
+                updatedAt: deletedAt,
+              }),
+            ),
+          );
+        }
+      }
+      await requestResult(
+        groupStore.put(copy({ ...group, deletedAt, updatedAt: deletedAt })),
+      );
+      await done;
+      return { status: "deleted" };
+    } catch (cause) {
+      void done.catch(() => undefined);
+      throw failed(cause);
+    }
+  }
+  async moveCanvasGroup(input: MoveCanvasGroupInput): Promise<CanvasGroup> {
+    const workspaceId = identifier(input.workspaceId, "workspaceId");
+    const groupId = identifier(input.groupId, "groupId");
+    const parentGroupId = input.parentGroupId;
+    const db = await this.open();
+    const tx = db.transaction(MOZG_CANVAS_GROUP_STORE, "readwrite");
+    const done = completion(tx);
+    try {
+      const store = tx.objectStore(MOZG_CANVAS_GROUP_STORE);
+      const group = await this.loadActiveGroup(store, workspaceId, groupId);
+      await this.assertGroupReference(store, workspaceId, parentGroupId);
+      const groups = await this.readGroups(store);
+      if (
+        parentGroupId === groupId ||
+        isDescendant(groups, groupId, parentGroupId)
+      )
+        throw new CanvasRepositoryError(
+          "invalid-input",
+          "Canvas group cycle is not allowed.",
+        );
+      const next = {
+        ...group,
+        parentGroupId,
+        sortOrder: nextSortOrder(groups, workspaceId, parentGroupId),
+        updatedAt: now(this.clock),
+      };
+      await requestResult(store.put(copy(next)));
+      await done;
+      return copy(next);
+    } catch (cause) {
+      void done.catch(() => undefined);
+      throw failed(cause);
+    }
+  }
+  async moveCanvasToGroup(input: MoveCanvasToGroupInput): Promise<void> {
+    const workspaceId = identifier(input.workspaceId, "workspaceId");
+    const canvasId = identifier(input.canvasId, "canvasId");
+    const db = await this.open();
+    const tx = db.transaction(
+      [MOZG_CANVAS_STORE, MOZG_CANVAS_GROUP_STORE],
+      "readwrite",
+    );
+    const done = completion(tx);
+    try {
+      const groupStore = tx.objectStore(MOZG_CANVAS_GROUP_STORE);
+      await this.assertGroupReference(groupStore, workspaceId, input.groupId);
+      const canvasStore = tx.objectStore(MOZG_CANVAS_STORE);
+      const raw = await requestResult(canvasStore.get(canvasId));
+      if (raw === undefined)
+        throw new CanvasRepositoryError("not-found", "Canvas was not found.");
+      const canvas = storedCanvas(raw);
+      if (canvas.workspaceId !== workspaceId)
+        throw new CanvasRepositoryError(
+          "workspace-mismatch",
+          "Canvas belongs to another workspace.",
+        );
+      const canvases = (await requestResult(canvasStore.getAll())).map(
+        storedCanvas,
+      );
+      const next = {
+        ...canvas,
+        groupId: input.groupId,
+        sortOrder: nextSortOrder(
+          canvases.filter((item) => item.id !== canvasId),
+          workspaceId,
+          input.groupId,
+        ),
+        updatedAt: now(this.clock),
+      };
+      await requestResult(canvasStore.put(copy(next)));
+      await done;
+    } catch (cause) {
+      void done.catch(() => undefined);
+      throw failed(cause);
+    }
+  }
   async createCanvas(input: {
     workspaceId: string;
     title: string;
+    groupId?: string | null;
   }): Promise<LoadedCanvas> {
     const workspaceId = identifier(input.workspaceId, "workspaceId");
     const canvasTitle = title(input.title);
+    const groupId = input.groupId ?? null;
     const id = identifier(this.idGenerator(), "canvasId");
     const createdAt = now(this.clock);
     const row: LoadedCanvas = {
       id,
       workspaceId,
       title: canvasTitle,
+      groupId,
+      sortOrder: 0,
       schemaVersion: 1,
       document: createEmptyCanvasDocumentV1(),
       revision: 1,
@@ -633,9 +956,22 @@ export class IndexedDbCanvasRepository
       deletedAt: null,
     };
     const db = await this.open();
-    const tx = db.transaction(MOZG_CANVAS_STORE, "readwrite");
+    const tx = db.transaction(
+      [MOZG_CANVAS_STORE, MOZG_CANVAS_GROUP_STORE],
+      "readwrite",
+    );
     const done = completion(tx);
     try {
+      await this.assertGroupReference(
+        tx.objectStore(MOZG_CANVAS_GROUP_STORE),
+        workspaceId,
+        groupId,
+      );
+      row.sortOrder = await this.nextCanvasSortOrder(
+        tx.objectStore(MOZG_CANVAS_STORE),
+        workspaceId,
+        groupId,
+      );
       await requestResult(tx.objectStore(MOZG_CANVAS_STORE).add(copy(row)));
       await done;
       return copy(row);
@@ -1020,6 +1356,8 @@ export class IndexedDbCanvasRepository
           });
         if (!db.objectStoreNames.contains(MOZG_CANVAS_STORE))
           db.createObjectStore(MOZG_CANVAS_STORE, { keyPath: "id" });
+        if (!db.objectStoreNames.contains(MOZG_CANVAS_GROUP_STORE))
+          db.createObjectStore(MOZG_CANVAS_GROUP_STORE, { keyPath: "id" });
         if (!db.objectStoreNames.contains(MOZG_CANVAS_VIEW_STATE_STORE))
           db.createObjectStore(MOZG_CANVAS_VIEW_STATE_STORE, {
             keyPath: "key",
@@ -1058,5 +1396,60 @@ export class IndexedDbCanvasRepository
     } finally {
       if (this.opening === opening) this.opening = undefined;
     }
+  }
+
+  private async readGroups(store: IDBObjectStore): Promise<CanvasGroup[]> {
+    return (await requestResult(store.getAll())).map(storedCanvasGroup);
+  }
+
+  private async loadGroup(
+    store: IDBObjectStore,
+    groupId: string,
+  ): Promise<CanvasGroup | null> {
+    const raw = await requestResult(store.get(groupId));
+    return raw === undefined ? null : storedCanvasGroup(raw);
+  }
+
+  private async loadActiveGroup(
+    store: IDBObjectStore,
+    workspaceId: string,
+    groupId: string,
+  ): Promise<CanvasGroup> {
+    const group = await this.loadGroup(store, groupId);
+    if (!group)
+      throw new CanvasRepositoryError(
+        "not-found",
+        "Canvas group was not found.",
+      );
+    if (group.workspaceId !== workspaceId)
+      throw new CanvasRepositoryError(
+        "workspace-mismatch",
+        "Canvas group belongs to another workspace.",
+      );
+    if (group.deletedAt)
+      throw new CanvasRepositoryError(
+        "soft-deleted",
+        "Canvas group is archived.",
+      );
+    return group;
+  }
+
+  private async assertGroupReference(
+    store: IDBObjectStore,
+    workspaceId: string,
+    groupId: string | null,
+  ): Promise<void> {
+    if (groupId === null) return;
+    identifier(groupId, "groupId");
+    await this.loadActiveGroup(store, workspaceId, groupId);
+  }
+
+  private async nextCanvasSortOrder(
+    store: IDBObjectStore,
+    workspaceId: string,
+    groupId: string | null,
+  ): Promise<number> {
+    const canvases = (await requestResult(store.getAll())).map(storedCanvas);
+    return nextSortOrder(canvases, workspaceId, groupId);
   }
 }

@@ -10,6 +10,7 @@ import type {
   CloudCanvasSummary,
   CloudLoadedCanvas,
 } from "@/lib/canvas/cloud-canvas-repository";
+import type { CanvasGroup } from "@/lib/canvas/canvas-group-repository";
 
 const workspaceId = "20000000-0000-0000-0000-000000000001";
 const canvasId = "30000000-0000-0000-0000-000000000001";
@@ -23,6 +24,8 @@ function summary(): CloudCanvasSummary {
     id: canvasId,
     workspaceId,
     title: "Cloud Canvas",
+    groupId: null,
+    sortOrder: 0,
     revision: 1,
     schemaVersion: 2,
     createdAt: now,
@@ -34,6 +37,18 @@ function loaded(): CloudLoadedCanvas {
   return { ...summary(), document };
 }
 
+function group(): CanvasGroup {
+  return {
+    id: "60000000-0000-0000-0000-000000000001",
+    workspaceId,
+    parentGroupId: null,
+    title: "Group",
+    sortOrder: 0,
+    createdAt: now,
+    updatedAt: now,
+    deletedAt: null,
+  };
+}
 
 function metadata(): CloudCanvasAssetMetadata {
   return {
@@ -74,6 +89,12 @@ function cloudCanvasRepository(): CloudCanvasRepository {
       updatedAt: now,
     }),
     saveCanvasViewState: async () => undefined,
+    listCanvasGroups: async () => [group()],
+    createCanvasGroup: async () => group(),
+    renameCanvasGroup: async () => group(),
+    softDeleteCanvasGroup: async () => ({ status: "deleted" }),
+    moveCanvasGroup: async () => group(),
+    moveCanvasToGroup: async () => undefined,
   };
 }
 

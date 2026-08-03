@@ -157,6 +157,8 @@ describe("SupabaseCloudCanvasRepository", () => {
           id: canvasId,
           workspaceId,
           title: "Cloud Canvas",
+          groupId: null,
+          sortOrder: 0,
           revision: 4,
           schemaVersion: 2,
           createdAt: timestamps.created,
@@ -166,7 +168,7 @@ describe("SupabaseCloudCanvasRepository", () => {
     );
     const query = client.from.mock.results[0]?.value as FakeBuilder;
     expect(query.select).toHaveBeenCalledWith(
-      "id,workspace_id,title,schema_version,revision,created_at,updated_at,deleted_at",
+      "id,workspace_id,title,group_id,sort_order,schema_version,revision,created_at,updated_at,deleted_at",
     );
     expect(query.eq).toHaveBeenCalledWith("workspace_id", workspaceId);
     expect(query.eq).toHaveBeenCalledWith("schema_version", 2);
@@ -191,6 +193,7 @@ describe("SupabaseCloudCanvasRepository", () => {
 
     expect(result).toMatchObject({ schemaVersion: 2, revision: 1, document });
     expect(client.rpc).toHaveBeenCalledWith("create_canvas", {
+      target_group_id: null,
       target_workspace_id: workspaceId,
       target_title: "New Canvas",
     });
