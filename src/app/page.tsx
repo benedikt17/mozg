@@ -1,17 +1,11 @@
-import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
 
-export default function Home() {
-  return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col justify-center gap-4 p-8">
-      <p className="text-sm font-medium tracking-widest text-neutral-500 uppercase">
-        Hub foundation
-      </p>
-      <h1 className="text-4xl font-semibold">Каркас проекта готов</h1>
-      <p className="max-w-xl text-neutral-600">
-        Минимальный smoke route для проверки Next.js App Router, Tailwind CSS и
-        shadcn/ui.
-      </p>
-      <Button className="w-fit">Smoke UI</Button>
-    </main>
-  );
+export default async function Home() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  redirect(user ? "/prototype/desktop" : "/sign-in");
 }
