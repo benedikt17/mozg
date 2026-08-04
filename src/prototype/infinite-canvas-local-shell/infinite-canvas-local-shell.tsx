@@ -54,7 +54,10 @@ import {
   scheduleViewportReveal,
   type CanvasViewportInitialization,
 } from "@/lib/canvas/canvas-viewport-initialization";
-import { isExplicitCanvasResize } from "@/lib/canvas/canvas-runtime-projection";
+import {
+  isExplicitCanvasResize,
+  projectExplicitCanvasResizes,
+} from "@/lib/canvas/canvas-runtime-projection";
 import { canvasMiniMapNodeColor } from "@/lib/canvas/canvas-minimap";
 import {
   CANVAS_IMAGE_NODE_TYPE,
@@ -2159,7 +2162,10 @@ function InfiniteCanvasLocalShellSurface({
       );
       if (shouldPersist) {
         controller.setRuntimeNodes(
-          applyNodeChanges(renderChanges, nodesRef.current),
+          projectExplicitCanvasResizes(
+            applyNodeChanges(renderChanges, nodesRef.current),
+            changes,
+          ),
         );
         if (
           changes.some(

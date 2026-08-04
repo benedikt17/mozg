@@ -12,6 +12,7 @@ import {
   extractCanvasImageTransfer,
   type CanvasImageTransferPayload,
 } from "@/lib/canvas/canvas-image-ingestion";
+import { projectExplicitCanvasResizes } from "@/lib/canvas/canvas-runtime-projection";
 import {
   canvasDocumentToTaskNodes,
   canvasDocumentToImageNodes,
@@ -505,7 +506,9 @@ describe("production-shaped local Canvas shell", () => {
     runtime.data.objectUrl = "blob:runtime-only";
     runtime.data.intrinsicWidth = 999;
     runtime.position = { x: 12, y: 34 };
-    runtime.style = { width: 500, height: 250 };
+    runtime.width = 500;
+    runtime.height = 250;
+    runtime.style = { width: 320, height: 180 };
     const serialized = imageNodesToCanvasDocument(source, [runtime]);
     expect(serialized.nodes[0]).toEqual(
       expect.objectContaining({
@@ -522,7 +525,9 @@ describe("production-shaped local Canvas shell", () => {
     const source = documentWithImage();
     const runtime = canvasDocumentToImageNodes(source)[0];
     runtime.position = { x: 700, y: 800 };
-    runtime.style = { width: 420, height: 210 };
+    runtime.width = 420;
+    runtime.height = 210;
+    runtime.style = { width: 320, height: 180 };
     const serialized = imageNodesToCanvasDocument(source, [runtime]);
     expect(serialized.nodes[0]?.position).toEqual({ x: 700, y: 800 });
     expect(serialized.nodes[0]?.size).toEqual({ width: 420, height: 210 });
@@ -1095,7 +1100,9 @@ describe("production-shaped local Canvas shell", () => {
     });
     const runtime = canvasDocumentToTaskNodes(source)[0]!;
     runtime.position = { x: 80, y: 90 };
-    runtime.style = { width: 360, height: 180 };
+    runtime.width = 360;
+    runtime.height = 180;
+    runtime.style = { width: 300, height: 150 };
     runtime.data.lastKnownTitle = "A newer display fallback";
     const serialized = runtimeNodesToCanvasDocument(source, [runtime]);
 
@@ -1110,6 +1117,53 @@ describe("production-shaped local Canvas shell", () => {
     });
     expect(JSON.stringify(serialized)).not.toContain("completed");
     expect(JSON.stringify(serialized)).not.toContain("taskBridge");
+  });
+
+  it("saves one completed task resize and restores its exact final geometry", async () => {
+    const repository = new MemoryCanvasRepository();
+    const controller = new LocalCanvasShellController(
+      controllerOptions(repository),
+    );
+    const created = await controller.createCanvas("Resized task");
+    const task = createCanvasTaskFlowNode({
+      id: "task-node-1",
+      taskId: "task-1",
+      position: { x: 44, y: 55 },
+      size: { width: 300, height: 150 },
+      zIndex: 2,
+    });
+    controller.insertTaskNode(task);
+    await controller.save();
+
+    controller.setRuntimeNodes(
+      projectExplicitCanvasResizes(
+        [task],
+        [
+          {
+            id: "task-node-1",
+            type: "dimensions",
+            resizing: false,
+            dimensions: { width: 420, height: 340 },
+          },
+        ],
+      ),
+    );
+    await controller.save();
+
+    expect(repository.saveCalls).toBe(2);
+    expect(controller.state.revision).toBe(3);
+    expect(controller.state.document.nodes[0]?.size).toEqual({
+      width: 420,
+      height: 340,
+    });
+    const reloaded = new LocalCanvasShellController(
+      controllerOptions(repository),
+    );
+    const reopened = await reloaded.openCanvas(created.canvasId!);
+    expect(reopened.document.nodes[0]?.size).toEqual({
+      width: 420,
+      height: 340,
+    });
   });
 
   it("persists and reloads only the task reference and layout through Canvas CAS", async () => {

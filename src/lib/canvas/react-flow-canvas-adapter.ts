@@ -197,8 +197,8 @@ function staggeredPosition(base: FlowPosition, index: number): FlowPosition {
 
 function nodeSize(node: CanvasImageFlowNode): CanvasSize {
   const style = node.style ?? {};
-  const width = style.width ?? node.width;
-  const height = style.height ?? node.height;
+  const width = node.width ?? style.width;
+  const height = node.height ?? style.height;
   if (typeof width !== "number" || typeof height !== "number") {
     throw new Error(`Canvas image node ${node.id} has no numeric dimensions.`);
   }
@@ -420,8 +420,8 @@ export function imageNodesToCanvasDocument(
 
 function runtimeNodeSize(node: CanvasFlowNode): CanvasSize {
   const style = node.style ?? {};
-  const width = style.width ?? node.width;
-  const height = style.height ?? node.height;
+  const width = node.width ?? style.width;
+  const height = node.height ?? style.height;
   if (typeof width !== "number" || typeof height !== "number") {
     throw new Error(`Canvas node ${node.id} has no numeric dimensions.`);
   }
