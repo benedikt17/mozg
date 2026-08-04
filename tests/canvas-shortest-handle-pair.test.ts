@@ -135,8 +135,24 @@ describe("shortest Canvas handle pair", () => {
 
   it("keeps every edge valid across a sequence of transient drag positions", () => {
     const initialEdges = [
-      { id: "edge-1", source: "source", target: "middle", sourceHandle: "top", targetHandle: "top", routing: "curved", arrows: "none" },
-      { id: "edge-2", source: "middle", target: "target", sourceHandle: "top", targetHandle: "top", routing: "orthogonal", arrows: "target" },
+      {
+        id: "edge-1",
+        source: "source",
+        target: "middle",
+        sourceHandle: "top",
+        targetHandle: "top",
+        routing: "curved",
+        arrows: "none",
+      },
+      {
+        id: "edge-2",
+        source: "middle",
+        target: "target",
+        sourceHandle: "top",
+        targetHandle: "top",
+        routing: "orthogonal",
+        arrows: "target",
+      },
     ] as const;
     const transientPositions = [
       { x: 180, y: 40 },
@@ -161,6 +177,9 @@ describe("shortest Canvas handle pair", () => {
           expect.objectContaining({ source: "middle", target: "target" }),
         ]),
       );
-      expect(edges.every((edge) => edge.sourceHandle && edge.targetHandle)).toBe(true);
+      expect(
+        edges.every((edge) => edge.sourceHandle && edge.targetHandle),
+      ).toBe(true);
     }
-  });});
+  });
+});

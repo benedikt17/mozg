@@ -76,9 +76,12 @@ export function InboxSidebar({
                     aria-current={
                       state.inboxFilter === filter.id ? "page" : undefined
                     }
-                    className={`task-custom-list-select${
-                      state.inboxFilter === filter.id ? " is-active" : ""
-                    }`}
+                    className={[
+                      "task-custom-list-select",
+                      state.inboxFilter === filter.id && "is-active",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
                     key={filter.id}
                     onClick={() =>
                       dispatch({ type: "set-inbox-filter", filter: filter.id })

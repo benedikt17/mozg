@@ -1222,7 +1222,6 @@ describe("production-shaped local Canvas shell", () => {
       runtimeNodesToCanvasDocument(document, restored.nodes).nodes,
     ).toEqual(document.nodes);
   });
-
 });
 
 describe("C6 Canvas groups sidebar composition", () => {
@@ -1252,7 +1251,7 @@ describe("C6 Canvas groups sidebar composition", () => {
     expect(sidebar).toContain("onDeleteGroup");
     expect(sidebar).toContain("onMoveGroup");
     expect(sidebar).toContain('event.key === "Escape"');
-    expect(sidebar).toContain("document.addEventListener(\"pointerdown\"");
+    expect(sidebar).toContain('document.addEventListener("pointerdown"');
     expect(sidebar).toContain("toggleAll");
     expect(shell).toContain("createCanvasGroup");
     expect(shell).toContain("renameCanvasGroup");

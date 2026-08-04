@@ -204,7 +204,7 @@ function changedSnapshot(title: string): DesktopDomainSnapshot {
 }
 
 function createRuntime(
-  adapter: FakeDesktopPersistenceAdapter,
+  adapter: DesktopPersistenceAdapter,
   options: {
     hydrate?: (snapshot: DesktopDomainSnapshot) => void;
     lifecycle?: (value: DesktopPersistenceLifecycle) => void;

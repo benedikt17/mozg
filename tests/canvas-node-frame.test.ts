@@ -134,4 +134,5 @@ describe("CanvasNodeFrame composition", () => {
     expect(shell).toContain("recomputeCanvasRuntimeEdgeHandles(");
     expect(shell).toContain("controller.setRuntimeNodes(");
     expect(shell).toContain("controller.setRuntimeEdges(edgesRef.current)");
-  });});
+  });
+});

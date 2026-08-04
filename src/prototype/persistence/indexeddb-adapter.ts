@@ -370,7 +370,9 @@ export class IndexedDbDesktopPersistenceAdapter implements DesktopPersistenceAda
           database.createObjectStore(MOZG_CANVAS_STORE, { keyPath: "id" });
         }
         if (!database.objectStoreNames.contains(MOZG_CANVAS_GROUP_STORE)) {
-          database.createObjectStore(MOZG_CANVAS_GROUP_STORE, { keyPath: "id" });
+          database.createObjectStore(MOZG_CANVAS_GROUP_STORE, {
+            keyPath: "id",
+          });
         }
         if (!database.objectStoreNames.contains(MOZG_CANVAS_VIEW_STATE_STORE)) {
           database.createObjectStore(MOZG_CANVAS_VIEW_STATE_STORE, {
