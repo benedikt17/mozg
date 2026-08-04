@@ -235,6 +235,41 @@ describe("Canvas image variants", () => {
     });
   });
 
+  it("reuses the already loaded original asset during variant backfill", async () => {
+    const loadAsset = vi.fn(async () => record);
+    const assetRepository = {
+      storeImage: vi.fn(),
+      loadAsset,
+      markAssetDeleted: vi.fn(),
+    } as unknown as CanvasAssetRepository;
+    const variantRepository = {
+      listVariants: vi.fn(async () => []),
+      loadVariant: vi.fn(async () => null),
+      storeVariant: vi.fn(async (input) => ({ ...input })),
+      deleteVariants: vi.fn(),
+    } satisfies CanvasAssetVariantRepository;
+
+    await backfillCanvasImageVariant({
+      assetRepository,
+      variantRepository,
+      workspaceId: "workspace-1",
+      canvasId: "canvas-1",
+      assetId: "asset-1",
+      kind: "thumbnail",
+      originalAsset: record,
+      generate: async () => [
+        {
+          kind: "thumbnail",
+          blob: new Blob(["thumbnail"], { type: "image/webp" }),
+          pixelWidth: 512,
+          pixelHeight: 256,
+        },
+      ],
+    });
+
+    expect(loadAsset).not.toHaveBeenCalled();
+  });
+
   it("deduplicates concurrent backfills for the same scoped asset variant", async () => {
     let release: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {

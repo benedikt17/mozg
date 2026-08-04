@@ -13,11 +13,13 @@ import {
   type CanvasImageTransferPayload,
 } from "@/lib/canvas/canvas-image-ingestion";
 import { projectExplicitCanvasResizes } from "@/lib/canvas/canvas-runtime-projection";
+import { CanvasImageLoadCache } from "@/lib/canvas/canvas-image-load-cache";
 import {
   canvasDocumentToTaskNodes,
   canvasDocumentToImageNodes,
   createCanvasTaskFlowNode,
   createCanvasTextFlowNode,
+  findCachedCanvasImagePayload,
   imageNodesToCanvasDocument,
   ingestCanvasImageTransferToNodes,
   restoreCanvasImageNodes,
@@ -433,6 +435,52 @@ describe("production-shaped local Canvas shell", () => {
       expect.objectContaining({ kind: "preview" }),
     );
     expect(restored.nodes[0]?.data.variantKind).toBe("preview");
+  });
+
+  it("shares one batched catalogue and variant Blob across overlapping restores", async () => {
+    const repository = new MemoryCanvasRepository();
+    const cache = new CanvasImageLoadCache();
+    const variant = {
+      workspaceId: WORKSPACE_A,
+      canvasId: "canvas-1",
+      assetId: "asset-1",
+      kind: "thumbnail" as const,
+      storagePath: "thumbnail.webp",
+      mimeType: "image/webp" as const,
+      byteSize: 10,
+      pixelWidth: 512,
+      pixelHeight: 288,
+      createdAt: "2026-08-03T10:00:00.000Z",
+    };
+    const variantRepository = {
+      listVariants: vi.fn(async () => [variant]),
+      listVariantsForAssets: vi.fn(
+        async () => new Map([["asset-1", [variant]]]),
+      ),
+      loadVariant: vi.fn(async () => ({
+        ...variant,
+        blob: new Blob(["thumbnail"], { type: "image/webp" }),
+      })),
+      storeVariant: vi.fn(),
+      deleteVariants: vi.fn(),
+    } satisfies CanvasAssetVariantRepository;
+    const dependencies = {
+      assetRepository: repository,
+      variantRepository,
+      objectUrls: urlRegistry().registry,
+      workspaceId: WORKSPACE_A,
+      canvasId: "canvas-1",
+      loadCache: cache,
+    };
+
+    await Promise.all([
+      restoreCanvasImageNodes(documentWithImage(), dependencies),
+      restoreCanvasImageNodes(documentWithImage(), dependencies),
+    ]);
+
+    expect(variantRepository.listVariantsForAssets).toHaveBeenCalledOnce();
+    expect(variantRepository.loadVariant).toHaveBeenCalledOnce();
+    expect(repository.assetLoadCalls).toBe(0);
   });
 
   it("does not emit a stale lower-resolution completion after abort", async () => {
@@ -1275,6 +1323,44 @@ describe("production-shaped local Canvas shell", () => {
     expect(
       runtimeNodesToCanvasDocument(document, restored.nodes).nodes,
     ).toEqual(document.nodes);
+  });
+
+  it("keeps the best warm cached image when the requested variant is lower quality", () => {
+    const cached = findCachedCanvasImagePayload({
+      payloads: new Map([
+        [
+          "workspace-a/canvas-a/asset-a/thumbnail",
+          {
+            objectUrl: "blob:thumbnail",
+            mimeType: "image/webp",
+            intrinsicWidth: 512,
+            intrinsicHeight: 288,
+            source: "restored",
+            variantKind: "thumbnail" as const,
+          },
+        ],
+        [
+          "workspace-a/canvas-a/asset-a/original",
+          {
+            objectUrl: "blob:original",
+            mimeType: "image/png",
+            intrinsicWidth: 4000,
+            intrinsicHeight: 2250,
+            source: "restored",
+            variantKind: "original" as const,
+          },
+        ],
+      ]),
+      workspaceId: "workspace-a",
+      canvasId: "canvas-a",
+      assetId: "asset-a",
+      requestedKind: "thumbnail",
+    });
+
+    expect(cached).toMatchObject({
+      kind: "original",
+      payload: { objectUrl: "blob:original" },
+    });
   });
 });
 

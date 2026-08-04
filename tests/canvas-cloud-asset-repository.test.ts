@@ -11,6 +11,7 @@ type QueryResult = { data: unknown; error: { code?: string } | null };
 type FakeBuilder = {
   select: ReturnType<typeof vi.fn>;
   eq: ReturnType<typeof vi.fn>;
+  in: ReturnType<typeof vi.fn>;
   is: ReturnType<typeof vi.fn>;
   not: ReturnType<typeof vi.fn>;
   maybeSingle: ReturnType<typeof vi.fn>;
@@ -61,10 +62,27 @@ function assetRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function variantRow(overrides: Record<string, unknown> = {}) {
+  return {
+    workspace_id: workspaceId,
+    canvas_id: canvasId,
+    asset_id: assetId,
+    kind: "thumbnail",
+    storage_path: `${workspaceId}/${canvasId}/${assetId}/thumbnail.webp`,
+    mime_type: "image/webp",
+    byte_size: 10,
+    pixel_width: 512,
+    pixel_height: 410,
+    created_at: createdAt,
+    ...overrides,
+  };
+}
+
 function builder(response: QueryResult): FakeBuilder {
   const value: FakeBuilder = {
     select: vi.fn(),
     eq: vi.fn(),
+    in: vi.fn(),
     is: vi.fn(),
     not: vi.fn(),
     maybeSingle: vi.fn(async () => response),
@@ -76,6 +94,7 @@ function builder(response: QueryResult): FakeBuilder {
   };
   value.select.mockReturnValue(value);
   value.eq.mockReturnValue(value);
+  value.in.mockReturnValue(value);
   value.is.mockReturnValue(value);
   value.not.mockReturnValue(value);
   return value;
@@ -331,5 +350,55 @@ describe("SupabaseCloudCanvasAssetRepository", () => {
     await expect(
       repository(client).deleteAsset({ workspaceId, canvasId, assetId }),
     ).rejects.toMatchObject({ code: "partial-cleanup-failure" });
+  });
+
+  it("coalesces authentication until the session is explicitly invalidated", async () => {
+    const client = fakeClient();
+    const assets = repository(client);
+
+    await Promise.all([
+      assets.listVariants({ workspaceId, canvasId, assetId }),
+      assets.listVariants({ workspaceId, canvasId, assetId }),
+    ]);
+    await assets.listVariants({ workspaceId, canvasId, assetId });
+    expect(client.auth.getUser).toHaveBeenCalledOnce();
+
+    assets.invalidateAuthentication();
+    await assets.listVariants({ workspaceId, canvasId, assetId });
+    expect(client.auth.getUser).toHaveBeenCalledTimes(2);
+  });
+
+  it("loads a scoped variant catalogue in one query and groups it by asset", async () => {
+    const secondAssetId = "62000000-0000-0000-0000-000000000002";
+    const client = fakeClient({
+      queryResults: [
+        {
+          data: [
+            variantRow(),
+            variantRow({
+              asset_id: secondAssetId,
+              storage_path: `${workspaceId}/${canvasId}/${secondAssetId}/preview.webp`,
+              kind: "preview",
+              pixel_width: 1280,
+              pixel_height: 1024,
+            }),
+          ],
+          error: null,
+        },
+      ],
+    });
+
+    const catalogue = await repository(client).listVariantsForAssets({
+      workspaceId,
+      canvasId,
+      assetIds: [assetId, secondAssetId, assetId],
+    });
+
+    expect(client.from).toHaveBeenCalledOnce();
+    expect(catalogue.get(assetId)).toHaveLength(1);
+    expect(catalogue.get(secondAssetId)?.[0]).toMatchObject({
+      kind: "preview",
+      assetId: secondAssetId,
+    });
   });
 });

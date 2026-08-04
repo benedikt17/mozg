@@ -43,6 +43,10 @@ export function CloudCanvasWorkspace({
 }): React.JSX.Element {
   const { taskBridge, taskWorkspaceId } = useDesktopTaskRuntime();
   const supabase = useMemo(() => createClient(), []);
+  const cloudAssetRepository = useMemo(
+    () => createCloudCanvasAssetRepository({ supabase }),
+    [supabase],
+  );
   const [userId, setUserId] = useState<string | null>(null);
   const previousWorkspaceId = useRef<string | null>(null);
   useEffect(() => {
@@ -58,6 +62,7 @@ export function CloudCanvasWorkspace({
       if (active) setUserId(data.user?.id ?? null);
     });
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      cloudAssetRepository.invalidateAuthentication();
       cloudCanvasRuntimeCache.clearAllExcept(session?.user.id ?? null);
       if (active) setUserId(session?.user.id ?? null);
     });
@@ -65,15 +70,14 @@ export function CloudCanvasWorkspace({
       active = false;
       data.subscription.unsubscribe();
     };
-  }, [supabase]);
+  }, [cloudAssetRepository, supabase]);
   const dependencies = useMemo(() => {
     try {
       const canvasRepository = createCloudCanvasRepository({ supabase });
-      const assetRepository = createCloudCanvasAssetRepository({ supabase });
       const shellRepository = new CloudCanvasShellRepository(
         workspaceId,
         canvasRepository,
-        assetRepository,
+        cloudAssetRepository,
       );
       return {
         assetRepository: shellRepository,
@@ -87,7 +91,7 @@ export function CloudCanvasWorkspace({
         error: "Не удалось настроить облачное хранилище холстов.",
       };
     }
-  }, [supabase, workspaceId]);
+  }, [cloudAssetRepository, supabase, workspaceId]);
 
   if (!workspaceId.trim()) {
     return (

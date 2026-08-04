@@ -27,6 +27,7 @@ import type {
 } from "@/lib/canvas/local-canvas-repository";
 import type { ObjectUrlRegistry } from "@/lib/canvas/canvas-image-ingestion";
 import type { CanvasTaskBridge } from "@/lib/canvas/canvas-task-bridge";
+import { CanvasImageLoadCache } from "@/lib/canvas/canvas-image-load-cache";
 import { canvasArrowsToRuntimeMarkers } from "@/lib/canvas/canvas-edge-markers";
 import {
   chooseCanvasImageVariant,
@@ -34,6 +35,7 @@ import {
   generateCanvasImageVariants,
   type CanvasAssetVariantKind,
   type CanvasImageVariantCandidate,
+  type CanvasAssetVariantMetadata,
   type CanvasAssetVariantRepository,
   type CanvasImageSourceKind,
   type CanvasImageVariantGenerator,
@@ -124,7 +126,9 @@ export type CanvasImageAdapterDependencies = {
   variantRepository?: CanvasAssetVariantRepository;
   objectUrls: ObjectUrlRegistry;
   workspaceId: string;
+  userId?: string;
   canvasId?: string;
+  loadCache?: CanvasImageLoadCache;
   decodeImageDimensions?: DecodeImageDimensions;
   generateImageVariants?: CanvasImageVariantGenerator;
   onVariantError?: (error: unknown) => void;
@@ -154,6 +158,7 @@ export type RestoreCanvasImageOptions = {
   onVariantMissing?: (input: {
     assetId: string;
     kind: CanvasAssetVariantKind;
+    originalAsset?: CanvasAssetRecord;
   }) => void;
   onVariantError?: (error: unknown) => void;
   concurrency?: number;
@@ -168,6 +173,63 @@ export type RestoreCanvasImageResult = {
   maxConcurrentAssetReads: number;
   staleIgnored: boolean;
 };
+
+export type CanvasCachedImagePayload = Pick<
+  CanvasImageNodeData,
+  | "objectUrl"
+  | "mimeType"
+  | "intrinsicWidth"
+  | "intrinsicHeight"
+  | "source"
+  | "variantKind"
+>;
+
+export function findCachedCanvasImagePayload(input: {
+  payloads: ReadonlyMap<string, CanvasCachedImagePayload> | undefined;
+  workspaceId: string;
+  canvasId: string;
+  assetId: string;
+  requestedKind: CanvasImageSourceKind;
+}): { kind: CanvasImageSourceKind; payload: CanvasCachedImagePayload } | null {
+  if (!input.payloads) return null;
+  const exactKey = canvasImageVariantCacheKey({
+    workspaceId: input.workspaceId,
+    canvasId: input.canvasId,
+    assetId: input.assetId,
+    kind: input.requestedKind,
+  });
+  const prefix = `${input.workspaceId}/${input.canvasId}/${input.assetId}/`;
+  const consider = (
+    payload: CanvasCachedImagePayload | undefined,
+    fallbackKind: CanvasImageSourceKind,
+    best: {
+      kind: CanvasImageSourceKind;
+      payload: CanvasCachedImagePayload;
+    } | null,
+  ): {
+    kind: CanvasImageSourceKind;
+    payload: CanvasCachedImagePayload;
+  } | null => {
+    if (!payload) return best;
+    const kind = payload.variantKind ?? fallbackKind;
+    if (kind !== "thumbnail" && kind !== "preview" && kind !== "original")
+      return best;
+    return !best || sourceRank(kind) > sourceRank(best.kind)
+      ? { kind, payload }
+      : best;
+  };
+  let best = consider(input.payloads.get(exactKey), input.requestedKind, null);
+  best = consider(input.payloads.get(input.assetId), input.requestedKind, best);
+  for (const [key, payload] of input.payloads) {
+    if (!key.startsWith(prefix)) continue;
+    best = consider(
+      payload,
+      key.slice(prefix.length) as CanvasImageSourceKind,
+      best,
+    );
+  }
+  return best;
+}
 
 export type CanvasDocumentEditor = {
   document: CanvasDocumentV2;
@@ -656,13 +718,35 @@ export async function restoreCanvasImageNodes(
   let maxConcurrentAssetReads = 0;
   let assetReadCount = 0;
   let staleIgnored = false;
+  const loadScope = {
+    userId: dependencies.userId,
+    workspaceId: dependencies.workspaceId,
+    canvasId: dependencies.canvasId ?? "",
+  };
+  let variantCatalogue:
+    ReadonlyMap<string, readonly CanvasAssetVariantMetadata[]> | undefined;
+  if (
+    dependencies.variantRepository?.listVariantsForAssets &&
+    dependencies.canvasId
+  ) {
+    try {
+      const assetIds = imageNodes.map((node) => node.assetId);
+      const load = () =>
+        dependencies.variantRepository!.listVariantsForAssets!({
+          workspaceId: dependencies.workspaceId,
+          canvasId: dependencies.canvasId!,
+          assetIds,
+        });
+      variantCatalogue = dependencies.loadCache
+        ? await dependencies.loadCache.catalogue(loadScope, assetIds, load)
+        : await load();
+    } catch (error: unknown) {
+      options.onVariantError?.(error);
+    }
+  }
   const variantLoads = new Map<
     string,
     ReturnType<CanvasAssetVariantRepository["loadVariant"]>
-  >();
-  const variantMetadataLoads = new Map<
-    string,
-    ReturnType<CanvasAssetVariantRepository["listVariants"]>
   >();
   const assetLoads = new Map<
     string,
@@ -677,20 +761,26 @@ export async function restoreCanvasImageNodes(
         return;
       }
       const canonical = imageNodes[index];
-      const metadataKey = `${dependencies.workspaceId}/${dependencies.canvasId ?? ""}/${canonical.assetId}`;
       let availableVariants: readonly CanvasImageVariantCandidate[] | undefined;
       if (dependencies.variantRepository && dependencies.canvasId) {
-        let metadataPromise = variantMetadataLoads.get(metadataKey);
-        if (!metadataPromise) {
-          metadataPromise = dependencies.variantRepository.listVariants({
-            workspaceId: dependencies.workspaceId,
-            canvasId: dependencies.canvasId,
-            assetId: canonical.assetId,
-          });
-          variantMetadataLoads.set(metadataKey, metadataPromise);
-        }
         try {
-          availableVariants = await metadataPromise;
+          if (variantCatalogue) {
+            availableVariants = variantCatalogue.get(canonical.assetId) ?? [];
+          } else {
+            const load = () =>
+              dependencies.variantRepository!.listVariants({
+                workspaceId: dependencies.workspaceId,
+                canvasId: dependencies.canvasId!,
+                assetId: canonical.assetId,
+              });
+            availableVariants = dependencies.loadCache
+              ? await dependencies.loadCache.variantsForAsset(
+                  loadScope,
+                  canonical.assetId,
+                  load,
+                )
+              : await load();
+          }
         } catch (error: unknown) {
           options.onVariantError?.(error);
           // Metadata is required to prove a smaller source is sufficient.
@@ -726,15 +816,13 @@ export async function restoreCanvasImageNodes(
         sourceRank(selectedVariant) < sourceRank(currentVariant)
           ? currentVariant
           : selectedVariant;
-      const cacheKey = canvasImageVariantCacheKey({
+      const cachedPayload = findCachedCanvasImagePayload({
+        payloads: options.cachedAssetPayloads,
         workspaceId: dependencies.workspaceId,
         canvasId: dependencies.canvasId ?? "",
         assetId: canonical.assetId,
-        kind: requestedVariant,
+        requestedKind: requestedVariant,
       });
-      const cachedPayload =
-        options.cachedAssetPayloads?.get(cacheKey) ??
-        options.cachedAssetPayloads?.get(canonical.assetId);
       if (cachedPayload) {
         const node: CanvasImageFlowNode = {
           id: canonical.id,
@@ -743,11 +831,12 @@ export async function restoreCanvasImageNodes(
           width: canonical.size.width,
           height: canonical.size.height,
           style: { width: canonical.size.width, height: canonical.size.height },
-          data: { assetId: canonical.assetId, ...cachedPayload },
+          data: { assetId: canonical.assetId, ...cachedPayload.payload },
         };
         nodes[index] = node;
         options.onNode?.(node, index, imageNodes.length);
-        continue;
+        if (sourceRank(cachedPayload.kind) >= sourceRank(requestedVariant))
+          continue;
       }
       if (
         requestedVariant !== "original" &&
@@ -762,12 +851,21 @@ export async function restoreCanvasImageNodes(
         });
         let variantPromise = variantLoads.get(variantKey);
         if (!variantPromise) {
-          variantPromise = dependencies.variantRepository.loadVariant({
-            workspaceId: dependencies.workspaceId,
-            canvasId: dependencies.canvasId,
-            assetId: canonical.assetId,
-            kind: requestedVariant,
-          });
+          const load = () =>
+            dependencies.variantRepository!.loadVariant({
+              workspaceId: dependencies.workspaceId,
+              canvasId: dependencies.canvasId!,
+              assetId: canonical.assetId,
+              kind: requestedVariant,
+            });
+          variantPromise = dependencies.loadCache
+            ? dependencies.loadCache.variant(
+                loadScope,
+                canonical.assetId,
+                requestedVariant,
+                load,
+              )
+            : load();
           variantLoads.set(variantKey, variantPromise);
         }
         let variant: Awaited<typeof variantPromise> = null;
@@ -805,10 +903,6 @@ export async function restoreCanvasImageNodes(
           options.onNode?.(node, index, imageNodes.length);
           continue;
         }
-        options.onVariantMissing?.({
-          assetId: canonical.assetId,
-          kind: requestedVariant,
-        });
       }
       const assetKey = `${dependencies.workspaceId}/${canonical.assetId}`;
       let assetPromise = assetLoads.get(assetKey);
@@ -819,10 +913,14 @@ export async function restoreCanvasImageNodes(
           activeReads,
         );
         assetReadCount += 1;
-        assetPromise = dependencies.assetRepository.loadAsset({
-          workspaceId: dependencies.workspaceId,
-          assetId: canonical.assetId,
-        });
+        const load = () =>
+          dependencies.assetRepository.loadAsset({
+            workspaceId: dependencies.workspaceId,
+            assetId: canonical.assetId,
+          });
+        assetPromise = dependencies.loadCache
+          ? dependencies.loadCache.asset(loadScope, canonical.assetId, load)
+          : load();
         assetLoads.set(assetKey, assetPromise);
         void assetPromise.then(
           () => {
@@ -841,6 +939,13 @@ export async function restoreCanvasImageNodes(
       if (!record) {
         missingAssetIds.push(canonical.assetId);
         continue;
+      }
+      if (requestedVariant !== "original") {
+        options.onVariantMissing?.({
+          assetId: canonical.assetId,
+          kind: requestedVariant,
+          originalAsset: record,
+        });
       }
       const node = imageNodeForCanonical(
         canonical,

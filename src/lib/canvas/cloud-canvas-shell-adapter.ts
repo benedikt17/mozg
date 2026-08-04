@@ -254,6 +254,24 @@ export class CloudCanvasShellRepository
     return this.assetRepository.listVariants(input);
   }
 
+  listVariantsForAssets(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetIds: readonly string[];
+  }): Promise<ReadonlyMap<string, readonly CanvasAssetVariantMetadata[]>> {
+    if (this.assetRepository.listVariantsForAssets)
+      return this.assetRepository.listVariantsForAssets(input);
+    return Promise.all(
+      input.assetIds.map(
+        async (assetId) =>
+          [
+            assetId,
+            await this.assetRepository.listVariants({ ...input, assetId }),
+          ] as const,
+      ),
+    ).then((entries) => new Map(entries));
+  }
+
   loadVariant(input: {
     workspaceId: string;
     canvasId: string;

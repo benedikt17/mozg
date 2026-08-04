@@ -72,6 +72,7 @@ import {
   createCanvasTaskId,
   createCanvasEdgeFromConnection,
   createCanvasTextFlowNode,
+  findCachedCanvasImagePayload,
   ingestCanvasImageTransferToNodes,
   restoreCanvasImageNodes,
   updateCanvasEdgeFlowRuntime,
@@ -84,6 +85,7 @@ import {
   type CanvasTextFlowNode,
   type FlowPosition,
 } from "@/lib/canvas/react-flow-canvas-adapter";
+import { CanvasImageLoadCache } from "@/lib/canvas/canvas-image-load-cache";
 import type {
   CanvasEdgeArrows,
   CanvasEdgeV2,
@@ -224,15 +226,16 @@ function withCachedAssetPayloads(
         nodeHeight: height ?? 1,
         viewportZoom,
       });
-    const payload = assetPayloads.get(
-      canvasImageVariantCacheKey({
-        workspaceId: scope.workspaceId,
-        canvasId: scope.canvasId,
-        assetId: node.data.assetId,
-        kind,
-      }),
-    );
-    return payload ? { ...node, data: { ...node.data, ...payload } } : node;
+    const cached = findCachedCanvasImagePayload({
+      payloads: assetPayloads,
+      workspaceId: scope.workspaceId,
+      canvasId: scope.canvasId,
+      assetId: node.data.assetId,
+      requestedKind: kind,
+    });
+    return cached
+      ? { ...node, data: { ...node.data, ...cached.payload } }
+      : node;
   });
 }
 
@@ -1070,6 +1073,13 @@ function InfiniteCanvasLocalShellSurface({
   const variantRefreshSequenceRef = useRef(0);
   const variantRefreshFrameRef = useRef<number | null>(null);
   const variantDowngradeTimerRef = useRef<number | null>(null);
+  const backfillRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const imageLoadCacheRef = useRef(new CanvasImageLoadCache());
+  const imageLoadCacheCanvasIdRef = useRef<string | null>(
+    initialRuntime?.shellState.canvasId ?? null,
+  );
   const refreshImageVariantsRef = useRef<
     (viewportZoom: number, allowDowngrade: boolean) => void
   >(() => undefined);
@@ -1126,6 +1136,7 @@ function InfiniteCanvasLocalShellSurface({
   const imageRepository = assetRepository;
   const shellWorkspaceId = workspaceId;
   const shellUserId = userId;
+  const imageLoadCacheUserIdRef = useRef(shellUserId);
   const [objectUrls] = useState(
     () => initialRuntime?.objectUrls ?? createObjectUrlRegistry(),
   );
@@ -1180,13 +1191,21 @@ function InfiniteCanvasLocalShellSurface({
       assetRepository: imageRepository,
       ...(variantRepository === undefined ? {} : { variantRepository }),
       objectUrls,
+      userId: shellUserId,
       workspaceId: shellWorkspaceId,
       canvasId: shellState.canvasId ?? undefined,
+      loadCache: imageLoadCacheRef.current,
       onVariantError: (error: unknown) => {
         reportVariantError("Canvas image variant generation failed.", error);
       },
     };
-  }, [imageRepository, objectUrls, shellState.canvasId, shellWorkspaceId]);
+  }, [
+    imageRepository,
+    objectUrls,
+    shellState.canvasId,
+    shellUserId,
+    shellWorkspaceId,
+  ]);
 
   useEffect(() => {
     nodesRef.current = nodes;
@@ -1203,6 +1222,13 @@ function InfiniteCanvasLocalShellSurface({
   useEffect(() => {
     shellStateRef.current = shellState;
   }, [shellState]);
+
+  useEffect(() => {
+    if (imageLoadCacheUserIdRef.current === shellUserId) return;
+    imageLoadCacheUserIdRef.current = shellUserId;
+    imageLoadCacheRef.current.clear();
+    imageLoadCacheCanvasIdRef.current = shellStateRef.current.canvasId;
+  }, [shellUserId]);
 
   useEffect(() => {
     screenToFlowRef.current = reactFlow.screenToFlowPosition;
@@ -1419,6 +1445,14 @@ function InfiniteCanvasLocalShellSurface({
         clearTimeout(variantDowngradeTimerRef.current);
         variantDowngradeTimerRef.current = null;
       }
+      if (backfillRefreshTimerRef.current !== null) {
+        clearTimeout(backfillRefreshTimerRef.current);
+        backfillRefreshTimerRef.current = null;
+      }
+      if (imageLoadCacheCanvasIdRef.current !== nextState.canvasId) {
+        imageLoadCacheRef.current.clear();
+        imageLoadCacheCanvasIdRef.current = nextState.canvasId;
+      }
       restoreControllerRef.current = new AbortController();
       variantPayloadsRef.current.clear();
       objectUrls.revokeAll();
@@ -1445,26 +1479,37 @@ function InfiniteCanvasLocalShellSurface({
           signal,
           concurrency: 4,
           viewportZoom: nextState.viewport.zoom,
-          onVariantMissing: ({ assetId, kind }) => {
-            if (
-              !adapterDependencies.variantRepository ||
-              !adapterDependencies.canvasId
-            )
-              return;
+          onVariantMissing: ({ assetId, kind, originalAsset }) => {
+            const canvasId = adapterDependencies.canvasId;
+            if (!adapterDependencies.variantRepository || !canvasId) return;
             void backfillCanvasImageVariant({
               assetRepository: adapterDependencies.assetRepository,
               variantRepository: adapterDependencies.variantRepository,
               workspaceId: adapterDependencies.workspaceId,
-              canvasId: adapterDependencies.canvasId,
+              canvasId,
               assetId,
               kind,
+              originalAsset,
             })
               .then((created) => {
                 if (!created || signal.aborted) return;
-                refreshImageVariantsRef.current(
-                  shellStateRef.current.viewport.zoom,
-                  false,
+                imageLoadCacheRef.current.invalidateVariants(
+                  {
+                    userId: shellUserId,
+                    workspaceId: shellWorkspaceId,
+                    canvasId,
+                  },
+                  assetId,
                 );
+                if (backfillRefreshTimerRef.current !== null) return;
+                backfillRefreshTimerRef.current = setTimeout(() => {
+                  backfillRefreshTimerRef.current = null;
+                  if (signal.aborted) return;
+                  refreshImageVariantsRef.current(
+                    shellStateRef.current.viewport.zoom,
+                    false,
+                  );
+                }, 150);
               })
               .catch((error: unknown) => {
                 if (process.env.NODE_ENV === "production") return;
@@ -1514,7 +1559,6 @@ function InfiniteCanvasLocalShellSurface({
       if (pendingContentHeightSaveRef.current) {
         pendingContentHeightSaveRef.current = false;
       }
-      scheduleSave();
       setLoadingLifecycle("ready");
     },
     [
@@ -1522,9 +1566,9 @@ function InfiniteCanvasLocalShellSurface({
       handleEdgeUpdate,
       handleTaskNodeContentHeightChange,
       objectUrls,
-      scheduleSave,
       setEdges,
       setNodes,
+      shellUserId,
       shellWorkspaceId,
     ],
   );
@@ -1696,6 +1740,7 @@ function InfiniteCanvasLocalShellSurface({
 
   useEffect(() => {
     let active = true;
+    const imageLoadCache = imageLoadCacheRef.current;
     if (initialRuntime) restoreCachedScene(initialRuntime);
     const groupLoad = groupsRepository
       ? groupsRepository
@@ -1768,6 +1813,11 @@ function InfiniteCanvasLocalShellSurface({
         clearTimeout(variantDowngradeTimerRef.current);
         variantDowngradeTimerRef.current = null;
       }
+      if (backfillRefreshTimerRef.current !== null) {
+        clearTimeout(backfillRefreshTimerRef.current);
+        backfillRefreshTimerRef.current = null;
+      }
+      imageLoadCache.clear();
       let latestState = controller.state;
       if (saveTimerRef.current) {
         controller.setRuntimeNodes(nodesRef.current);

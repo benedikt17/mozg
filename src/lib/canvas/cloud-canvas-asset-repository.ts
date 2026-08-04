@@ -101,6 +101,7 @@ export interface CloudCanvasAssetRepository extends CanvasAssetVariantRepository
     canvasId: string;
     assetId: string;
   }): Promise<void>;
+  invalidateAuthentication(): void;
 }
 
 export type CloudCanvasAssetRepositoryOptions = {
@@ -594,19 +595,6 @@ function projectError(
   );
 }
 
-async function assertAuthenticated(
-  supabase: SupabaseClient<Database>,
-): Promise<void> {
-  const { data, error } = await supabase.auth.getUser();
-  if (error) throw error;
-  if (!data.user?.id) {
-    throw new CloudCanvasAssetRepositoryError(
-      "unauthenticated",
-      "Canvas asset access requires an authenticated session.",
-    );
-  }
-}
-
 function defaultIdGenerator(): string {
   if (
     typeof crypto === "undefined" ||
@@ -623,10 +611,44 @@ function defaultIdGenerator(): string {
 export class SupabaseCloudCanvasAssetRepository implements CloudCanvasAssetRepository {
   private readonly supabase: SupabaseClient<Database>;
   private readonly idGenerator: () => string;
+  private authenticatedUserId: string | null = null;
+  private authenticationPromise: Promise<void> | null = null;
+  private authenticationGeneration = 0;
 
   constructor(options: CloudCanvasAssetRepositoryOptions) {
     this.supabase = options.supabase;
     this.idGenerator = options.idGenerator ?? defaultIdGenerator;
+  }
+
+  invalidateAuthentication(): void {
+    this.authenticationGeneration += 1;
+    this.authenticatedUserId = null;
+    this.authenticationPromise = null;
+  }
+
+  private assertAuthenticated(): Promise<void> {
+    if (this.authenticatedUserId) return Promise.resolve();
+    if (this.authenticationPromise) return this.authenticationPromise;
+    const generation = this.authenticationGeneration;
+    const pending = this.supabase.auth
+      .getUser()
+      .then(({ data, error }) => {
+        if (error) throw error;
+        if (!data.user?.id) {
+          throw new CloudCanvasAssetRepositoryError(
+            "unauthenticated",
+            "Canvas asset access requires an authenticated session.",
+          );
+        }
+        if (generation === this.authenticationGeneration)
+          this.authenticatedUserId = data.user.id;
+      })
+      .finally(() => {
+        if (this.authenticationPromise === pending)
+          this.authenticationPromise = null;
+      });
+    this.authenticationPromise = pending;
+    return pending;
   }
 
   async uploadAsset(
@@ -634,7 +656,7 @@ export class SupabaseCloudCanvasAssetRepository implements CloudCanvasAssetRepos
   ): Promise<CloudCanvasAssetMetadata> {
     let reserved: CloudCanvasAssetMetadata | undefined;
     try {
-      await assertAuthenticated(this.supabase);
+      await this.assertAuthenticated();
       const validated = inputUpload(input, this.idGenerator);
       const reserveParams = {
         target_workspace_id: validated.workspaceId,
@@ -695,7 +717,7 @@ export class SupabaseCloudCanvasAssetRepository implements CloudCanvasAssetRepos
     assetId: string;
   }): Promise<CloudCanvasAssetMetadata> {
     try {
-      await assertAuthenticated(this.supabase);
+      await this.assertAuthenticated();
       const workspaceId = inputUuid(input.workspaceId, "workspaceId");
       const canvasId = inputUuid(input.canvasId, "canvasId");
       const assetId = inputUuid(input.assetId, "assetId");
@@ -750,7 +772,7 @@ export class SupabaseCloudCanvasAssetRepository implements CloudCanvasAssetRepos
     assetId: string;
   }): Promise<CanvasAssetVariantMetadata[]> {
     try {
-      await assertAuthenticated(this.supabase);
+      await this.assertAuthenticated();
       const workspaceId = inputUuid(input.workspaceId, "workspaceId");
       const canvasId = inputUuid(input.canvasId, "canvasId");
       const assetId = inputUuid(input.assetId, "assetId");
@@ -775,6 +797,63 @@ export class SupabaseCloudCanvasAssetRepository implements CloudCanvasAssetRepos
     }
   }
 
+  async listVariantsForAssets(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetIds: readonly string[];
+  }): Promise<ReadonlyMap<string, readonly CanvasAssetVariantMetadata[]>> {
+    try {
+      await this.assertAuthenticated();
+      const workspaceId = inputUuid(input.workspaceId, "workspaceId");
+      const canvasId = inputUuid(input.canvasId, "canvasId");
+      const assetIds = [...new Set(input.assetIds)].map((assetId) =>
+        inputUuid(assetId, "assetId"),
+      );
+      const grouped = new Map<string, CanvasAssetVariantMetadata[]>();
+      if (assetIds.length === 0) return grouped;
+      const { data, error } = await this.supabase
+        .from("canvas_asset_variants")
+        .select(VARIANT_SELECT)
+        .eq("workspace_id", workspaceId)
+        .eq("canvas_id", canvasId)
+        .in("asset_id", assetIds)
+        .not("ready_at", "is", null);
+      if (error) throw error;
+      const requested = new Set(assetIds);
+      const seen = new Set<string>();
+      for (const row of data ?? []) {
+        const assetId = inputUuid(String(row.asset_id), "assetId");
+        if (!requested.has(assetId)) {
+          throw new CloudCanvasAssetRepositoryError(
+            "invalid-server-metadata",
+            "Canvas asset variant does not belong to the requested catalogue.",
+          );
+        }
+        const kind = row.kind as CanvasAssetVariantKind;
+        const key = `${assetId}:${kind}`;
+        if (seen.has(key)) {
+          throw new CloudCanvasAssetRepositoryError(
+            "invalid-server-metadata",
+            "Canvas asset variant catalogue contains duplicate metadata.",
+          );
+        }
+        seen.add(key);
+        const metadata = variantMetadata(row, {
+          workspaceId,
+          canvasId,
+          assetId,
+          kind,
+        });
+        const variants = grouped.get(assetId) ?? [];
+        variants.push(metadata);
+        grouped.set(assetId, variants);
+      }
+      return grouped;
+    } catch (cause) {
+      throw projectError(cause, "metadata");
+    }
+  }
+
   async loadVariant(input: {
     workspaceId: string;
     canvasId: string;
@@ -782,7 +861,7 @@ export class SupabaseCloudCanvasAssetRepository implements CloudCanvasAssetRepos
     kind: CanvasAssetVariantKind;
   }): Promise<CanvasAssetVariantRecord | null> {
     try {
-      await assertAuthenticated(this.supabase);
+      await this.assertAuthenticated();
       const workspaceId = inputUuid(input.workspaceId, "workspaceId");
       const canvasId = inputUuid(input.canvasId, "canvasId");
       const assetId = inputUuid(input.assetId, "assetId");
@@ -829,7 +908,7 @@ export class SupabaseCloudCanvasAssetRepository implements CloudCanvasAssetRepos
     let reserved: CanvasAssetVariantMetadata | undefined;
     const validated = validateVariantInput(input);
     try {
-      await assertAuthenticated(this.supabase);
+      await this.assertAuthenticated();
       const workspaceId = inputUuid(validated.workspaceId, "workspaceId");
       const canvasId = inputUuid(validated.canvasId, "canvasId");
       const assetId = inputUuid(validated.assetId, "assetId");
@@ -1034,6 +1113,6 @@ export class SupabaseCloudCanvasAssetRepository implements CloudCanvasAssetRepos
 
 export function createCloudCanvasAssetRepository(
   options: CloudCanvasAssetRepositoryOptions,
-): CloudCanvasAssetRepository {
+): SupabaseCloudCanvasAssetRepository {
   return new SupabaseCloudCanvasAssetRepository(options);
 }

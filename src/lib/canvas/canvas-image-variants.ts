@@ -1,4 +1,7 @@
-import type { CanvasAssetRepository } from "@/lib/canvas/local-canvas-repository";
+import type {
+  CanvasAssetRecord,
+  CanvasAssetRepository,
+} from "@/lib/canvas/local-canvas-repository";
 
 export const CANVAS_IMAGE_THUMBNAIL_MAX_EDGE = 512;
 export const CANVAS_IMAGE_PREVIEW_MAX_EDGE = 2560;
@@ -86,6 +89,11 @@ export interface CanvasAssetVariantRepository {
     canvasId: string;
     assetId: string;
   }): Promise<CanvasAssetVariantMetadata[]>;
+  listVariantsForAssets?(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetIds: readonly string[];
+  }): Promise<ReadonlyMap<string, readonly CanvasAssetVariantMetadata[]>>;
   loadVariant(input: {
     workspaceId: string;
     canvasId: string;
@@ -359,13 +367,16 @@ async function performBackfill(input: {
   kind: CanvasAssetVariantKind;
   generate?: CanvasImageVariantGenerator;
   signal?: AbortSignal;
+  originalAsset?: CanvasAssetRecord;
 }): Promise<CanvasAssetVariantMetadata | null> {
   const existing = await input.variantRepository.loadVariant(input);
   if (existing) return existing;
-  const asset = await input.assetRepository.loadAsset({
-    workspaceId: input.workspaceId,
-    assetId: input.assetId,
-  });
+  const asset =
+    input.originalAsset ??
+    (await input.assetRepository.loadAsset({
+      workspaceId: input.workspaceId,
+      assetId: input.assetId,
+    }));
   if (!asset) return null;
   const generated = await (input.generate ?? generateCanvasImageVariants)(
     asset.blob,
@@ -398,6 +409,7 @@ export async function backfillCanvasImageVariant(input: {
   kind: CanvasAssetVariantKind;
   generate?: CanvasImageVariantGenerator;
   signal?: AbortSignal;
+  originalAsset?: CanvasAssetRecord;
 }): Promise<CanvasAssetVariantMetadata | null> {
   const key = canvasImageVariantCacheKey(input);
   const inflight = backfillInflight.get(key);

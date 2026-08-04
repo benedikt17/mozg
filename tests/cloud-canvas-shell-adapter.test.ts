@@ -104,6 +104,7 @@ function cloudAssetRepository(blob: Blob): CloudCanvasAssetRepository {
     getAssetMetadata: async () => metadata(),
     downloadAsset: async () => ({ ...metadata(), blob }),
     deleteAsset: async () => undefined,
+    invalidateAuthentication: () => undefined,
     listVariants: async () => [],
     loadVariant: async () => null,
     storeVariant: async (input) => ({
