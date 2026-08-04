@@ -35,6 +35,14 @@ as $$
   select '{"schemaVersion":2,"projects":[{"id":"project-1","name":"","shortName":"","description":""}],"overviewDirections":[{"id":"direction-1","projectId":"project-1","title":"","order":0}],"taskGroups":[{"id":"group-1","projectId":"project-1","title":"","order":0,"kind":"system"}],"taskLists":[{"id":"list-1","projectId":"project-1","groupId":"group-1","title":"","order":0,"kind":"system","overviewDirectionId":"direction-1"}],"tasks":[{"id":"task-1","projectId":"project-1","title":"","overviewDirectionId":"direction-1","overviewOrder":0,"taskListOrder":0,"listId":"list-1","showOnOverview":false,"completedAt":null,"signal":"none","starred":false,"myDay":false,"links":[],"linkedDocumentIds":[],"subtasks":[{"id":"subtask-1","title":"Duplicate titles are valid","done":false,"detailsMarkdown":"- First point\\n\\n[Reference](https://example.test/details)"}]}],"knowledgeFolders":[],"documents":[]}'::jsonb
 $$;
 
+create function public.test_valid_user_list_desktop_snapshot_v2()
+returns jsonb
+language sql
+immutable
+as $$
+  select '{"schemaVersion":2,"projects":[{"id":"project-1","name":"","shortName":"","description":""}],"overviewDirections":[{"id":"direction-1","projectId":"project-1","title":"","order":0}],"taskGroups":[{"id":"user-group-1","projectId":"project-1","title":"","order":0,"kind":"user"}],"taskLists":[{"id":"user-list-1","projectId":"project-1","groupId":"user-group-1","title":"","order":0,"kind":"user"}],"tasks":[{"id":"user-task-1","projectId":"project-1","title":"","overviewDirectionId":"","overviewOrder":0,"taskListOrder":0,"listId":"user-list-1","showOnOverview":false,"completedAt":null,"signal":"none","starred":false,"myDay":false,"links":[],"linkedDocumentIds":[],"subtasks":[]}],"knowledgeFolders":[],"documents":[]}'::jsonb
+$$;
+
 create function public.test_reject_desktop_snapshot_v2(target jsonb, version smallint default 2)
 returns void
 language plpgsql
@@ -260,6 +268,46 @@ select is(
   (select snapshot->'projects'->0->>'id' from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'),
   'project-1'::text,
   'successful CAS save stores the new snapshot'
+);
+
+select results_eq(
+  $$ select status || ':' || revision::text from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000003'::uuid, 1::bigint, 2::smallint, public.test_valid_user_list_desktop_snapshot_v2()) $$,
+  array['saved:2'::text],
+  'owner CAS saves a valid user-list task snapshot'
+);
+select is(
+  (select revision from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000003'),
+  2::bigint,
+  'user-list snapshot save increments its revision'
+);
+select is(
+  (select snapshot from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000003'),
+  public.test_valid_user_list_desktop_snapshot_v2(),
+  'user-list task snapshot persists unchanged'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v2(jsonb_set(public.test_valid_user_list_desktop_snapshot_v2(), '{tasks,0,showOnOverview}', 'true'::jsonb)) $$,
+  'user-list task cannot be visible on Overview'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v2(jsonb_set(public.test_valid_desktop_snapshot_v2(), '{tasks,0,overviewDirectionId}', '""'::jsonb)) $$,
+  'system-list task cannot use an empty Overview direction'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v2(jsonb_set(public.test_valid_desktop_snapshot_v2(), '{tasks,0,overviewDirectionId}', '"missing-direction"'::jsonb)) $$,
+  'system-list task cannot reference a dangling Overview direction'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v2(jsonb_set(public.test_valid_user_list_desktop_snapshot_v2(), '{tasks,0,listId}', '"missing-list"'::jsonb)) $$,
+  'user-list task with a missing list is rejected'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v2(jsonb_set(jsonb_set(public.test_valid_user_list_desktop_snapshot_v2(), '{projects}', public.test_valid_user_list_desktop_snapshot_v2()->'projects' || '[{"id":"project-2","name":"","shortName":"","description":""}]'::jsonb), '{tasks,0,projectId}', '"project-2"'::jsonb)) $$,
+  'cross-project task and user-list relation is rejected'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v2(jsonb_set(public.test_valid_user_list_desktop_snapshot_v2(), '{taskGroups,0,kind}', '"system"'::jsonb)) $$,
+  'user-list and task-group kind mismatch is rejected'
 );
 
 select lives_ok($$ select public.test_reject_desktop_snapshot_v1('{}'::jsonb) $$, 'empty snapshot is rejected with 22023');

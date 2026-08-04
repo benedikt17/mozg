@@ -985,6 +985,25 @@ function validateIntegrity(
         "Task and direction must belong to the same project.",
       );
     }
+    if (list?.kind === "system" && !direction) {
+      addIssue(
+        issues,
+        "invalid-overview-link",
+        `tasks[${index}].overviewDirectionId`,
+        "System-list tasks require an existing Overview direction.",
+      );
+    }
+    if (
+      list?.kind === "user" &&
+      (task.overviewDirectionId !== "" || task.showOnOverview)
+    ) {
+      addIssue(
+        issues,
+        "invalid-overview-link",
+        `tasks[${index}].overviewDirectionId`,
+        "User-list tasks must stay outside Overview.",
+      );
+    }
     if (
       task.showOnOverview &&
       (!list ||

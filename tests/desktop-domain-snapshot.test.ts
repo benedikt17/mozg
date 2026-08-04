@@ -187,6 +187,65 @@ describe("desktop domain snapshot v2", () => {
     });
   });
 
+  it("round-trips tasks created and moved into a user list", () => {
+    let state = structuredClone(initialDesktopPrototypeState);
+    state = desktopPrototypeReducer(state, {
+      type: "create-task-group",
+      title: "Personal tasks",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "create-task-list",
+      groupId: "mock-task-group-1",
+      title: "Private list",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "switch-section",
+      section: "tasks",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "select-task-list",
+      listId: "mock-task-list-1",
+    });
+    state = desktopPrototypeReducer(state, {
+      type: "create-task",
+      title: "Created in user list",
+    });
+
+    const created = parseDesktopDomainSnapshot(
+      createDesktopDomainSnapshot(state),
+    );
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    expect(
+      created.snapshot.tasks.find(
+        (task) => task.title === "Created in user list",
+      ),
+    ).toMatchObject({
+      listId: "mock-task-list-1",
+      overviewDirectionId: "",
+      showOnOverview: false,
+    });
+
+    const movedState = desktopPrototypeReducer(state, {
+      type: "move-task-to-list",
+      taskId: "luko-first-scene",
+      targetListId: "mock-task-list-1",
+      targetTaskId: null,
+    });
+    const moved = parseDesktopDomainSnapshot(
+      createDesktopDomainSnapshot(movedState),
+    );
+    expect(moved.ok).toBe(true);
+    if (!moved.ok) return;
+    expect(
+      moved.snapshot.tasks.find((task) => task.id === "luko-first-scene"),
+    ).toMatchObject({
+      listId: "mock-task-list-1",
+      overviewDirectionId: "",
+      showOnOverview: false,
+    });
+  });
+
   it("round-trips domain IDs, relations, content and independent date metadata", () => {
     const snapshot = cloneSnapshot();
     snapshot.knowledgeFolders.push({
@@ -448,6 +507,37 @@ describe("desktop domain snapshot v2", () => {
     invalidVisibility.tasks[0]!.overviewDirectionId = "lukomorie-characters";
     invalidVisibility.tasks[0]!.showOnOverview = true;
     expectInvalid(invalidVisibility, "invalid-overview-link");
+
+    const emptySystemDirection = cloneSnapshot();
+    emptySystemDirection.tasks[0]!.overviewDirectionId = "";
+    expectInvalid(emptySystemDirection, "invalid-overview-link");
+
+    const userListTask = cloneSnapshot();
+    userListTask.taskGroups.push({
+      id: "user-group",
+      projectId: "lukomorie",
+      title: "User group",
+      order: 1,
+      kind: "user",
+    });
+    userListTask.taskLists.push({
+      id: "user-list",
+      projectId: "lukomorie",
+      groupId: "user-group",
+      title: "User list",
+      order: 1,
+      kind: "user",
+    });
+    userListTask.tasks[0] = {
+      ...userListTask.tasks[0]!,
+      listId: "user-list",
+      overviewDirectionId: "",
+      showOnOverview: false,
+    };
+    expect(parseDesktopDomainSnapshot(userListTask).ok).toBe(true);
+
+    userListTask.tasks[0]!.showOnOverview = true;
+    expectInvalid(userListTask, "invalid-overview-link");
   });
 
   it("rejects invalid Knowledge ownership and duplicate materialized paths", () => {
