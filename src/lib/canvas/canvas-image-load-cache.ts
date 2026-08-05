@@ -4,6 +4,7 @@ import type {
   CanvasAssetVariantMetadata,
   CanvasAssetVariantRecord,
   CanvasAssetVariantV2Record,
+  CanvasAssetVariantV2Metadata,
   CanvasImagePyramidTargetMaxEdge,
 } from "@/lib/canvas/canvas-image-variants";
 
@@ -54,6 +55,14 @@ export class CanvasImageLoadCache {
   private readonly variantTiers = new Map<
     string,
     Promise<CanvasAssetVariantV2Record | null>
+  >();
+  private readonly tierMetadata = new Map<
+    string,
+    Promise<readonly CanvasAssetVariantV2Metadata[]>
+  >();
+  private readonly tierCatalogues = new Map<
+    string,
+    Promise<ReadonlyMap<string, readonly CanvasAssetVariantV2Metadata[]>>
   >();
   private readonly assets = new Map<
     string,
@@ -113,6 +122,33 @@ export class CanvasImageLoadCache {
     );
   }
 
+  tiersForAsset(
+    scope: CanvasImageLoadScope,
+    assetId: string,
+    load: () => Promise<readonly CanvasAssetVariantV2Metadata[]>,
+  ): Promise<readonly CanvasAssetVariantV2Metadata[]> {
+    return retainUntilFailure(
+      this.tierMetadata,
+      `${scopeKey(scope)}\u0000${assetId}`,
+      load,
+    );
+  }
+
+  tierCatalogue(
+    scope: CanvasImageLoadScope,
+    assetIds: readonly string[],
+    load: () => Promise<
+      ReadonlyMap<string, readonly CanvasAssetVariantV2Metadata[]>
+    >,
+  ): Promise<ReadonlyMap<string, readonly CanvasAssetVariantV2Metadata[]>> {
+    const ids = [...new Set(assetIds)].sort().join(",");
+    return retainUntilFailure(
+      this.tierCatalogues,
+      `${scopeKey(scope)}\u0000edge-catalogue\u0000${ids}`,
+      load,
+    );
+  }
+
   asset(
     scope: CanvasImageLoadScope,
     assetId: string,
@@ -141,13 +177,21 @@ export class CanvasImageLoadCache {
     for (const key of this.catalogues.keys()) {
       if (key.startsWith(prefix)) this.catalogues.delete(key);
     }
+    for (const key of this.tierMetadata.keys()) {
+      if (key === `${prefix}${assetId}`) this.tierMetadata.delete(key);
+    }
+    for (const key of this.tierCatalogues.keys()) {
+      if (key.startsWith(prefix)) this.tierCatalogues.delete(key);
+    }
   }
 
   clearScope(scope: CanvasImageLoadScope): void {
     const prefix = `${scopeKey(scope)}\u0000`;
     for (const cache of [
       this.metadata,
+      this.tierMetadata,
       this.catalogues,
+      this.tierCatalogues,
       this.variants,
       this.variantTiers,
       this.assets,
@@ -159,7 +203,9 @@ export class CanvasImageLoadCache {
 
   clear(): void {
     this.metadata.clear();
+    this.tierMetadata.clear();
     this.catalogues.clear();
+    this.tierCatalogues.clear();
     this.variants.clear();
     this.variantTiers.clear();
     this.assets.clear();

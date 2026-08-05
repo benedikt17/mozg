@@ -27,7 +27,10 @@ import {
   type CanvasImageFlowNode,
 } from "@/lib/canvas/react-flow-canvas-adapter";
 import { shouldCloseCanvasTaskDetails } from "@/lib/canvas/canvas-task-selection";
-import type { CanvasAssetVariantRepository } from "@/lib/canvas/canvas-image-variants";
+import type {
+  CanvasAssetVariantRepository,
+  CanvasAssetVariantV2Repository,
+} from "@/lib/canvas/canvas-image-variants";
 import {
   LocalCanvasShellController,
   type LocalCanvasShellControllerOptions,
@@ -480,6 +483,60 @@ describe("production-shaped local Canvas shell", () => {
 
     expect(variantRepository.listVariantsForAssets).toHaveBeenCalledOnce();
     expect(variantRepository.loadVariant).toHaveBeenCalledOnce();
+    expect(repository.assetLoadCalls).toBe(0);
+  });
+
+  it("uses the V2 numeric catalogue and tier loader for runtime selection", async () => {
+    const repository = new MemoryCanvasRepository();
+    const { registry } = urlRegistry();
+    const tier = {
+      workspaceId: WORKSPACE_A,
+      canvasId: "canvas-1",
+      assetId: "asset-1",
+      targetMaxEdge: 1024,
+      storagePath: "edge-1024.webp",
+      mimeType: "image/webp" as const,
+      byteSize: 10,
+      pixelWidth: 1024,
+      pixelHeight: 576,
+      createdAt: "2026-08-03T10:00:00.000Z",
+    };
+    const variantRepository = {
+      listVariants: vi.fn(async () => []),
+      loadVariant: vi.fn(async () => null),
+      storeVariant: vi.fn(),
+      deleteVariants: vi.fn(),
+      listVariantTiers: vi.fn(async () => [tier]),
+      listVariantTiersForAssets: vi.fn(
+        async () => new Map([["asset-1", [tier]]]),
+      ),
+      loadVariantTier: vi.fn(async () => ({
+        ...tier,
+        blob: new Blob(["tier"], { type: "image/webp" }),
+      })),
+      storeVariantTier: vi.fn(),
+    } satisfies CanvasAssetVariantRepository & CanvasAssetVariantV2Repository;
+
+    const restored = await restoreCanvasImageNodes(
+      documentWithImage({ size: { width: 400, height: 225 } }),
+      {
+        assetRepository: repository,
+        variantRepository,
+        objectUrls: registry,
+        workspaceId: WORKSPACE_A,
+        canvasId: "canvas-1",
+      },
+      { viewportZoom: 1, devicePixelRatio: 1 },
+    );
+
+    expect(variantRepository.listVariantTiersForAssets).toHaveBeenCalledOnce();
+    expect(variantRepository.loadVariantTier).toHaveBeenCalledWith(
+      expect.objectContaining({ targetMaxEdge: 1024 }),
+    );
+    expect(restored.nodes[0]?.data.resolutionSource).toEqual({
+      type: "variant",
+      targetMaxEdge: 1024,
+    });
     expect(repository.assetLoadCalls).toBe(0);
   });
 
@@ -1328,17 +1385,6 @@ describe("production-shaped local Canvas shell", () => {
   it("keeps the best warm cached image when the requested variant is lower quality", () => {
     const cached = findCachedCanvasImagePayload({
       payloads: new Map([
-        [
-          "workspace-a/canvas-a/asset-a/thumbnail",
-          {
-            objectUrl: "blob:thumbnail",
-            mimeType: "image/webp",
-            intrinsicWidth: 512,
-            intrinsicHeight: 288,
-            source: "restored",
-            variantKind: "thumbnail" as const,
-          },
-        ],
         [
           "workspace-a/canvas-a/asset-a/original",
           {

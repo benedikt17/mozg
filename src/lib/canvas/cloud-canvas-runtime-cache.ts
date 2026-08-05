@@ -25,6 +25,7 @@ export type CanvasImageRuntimePayload = Pick<
   | "intrinsicHeight"
   | "source"
   | "variantKind"
+  | "resolutionSource"
 >;
 
 function scopeKey(scope: CloudCanvasRuntimeScope): string {

@@ -456,4 +456,40 @@ describe("SupabaseCloudCanvasAssetRepository", () => {
       assets.loadVariantTier({ workspaceId, canvasId, assetId, targetMaxEdge }),
     ).resolves.toMatchObject({ targetMaxEdge, storagePath: tierPath, blob });
   });
+
+  it("loads a V2 tier catalogue for many assets with one scoped query", async () => {
+    const secondAssetId = "62000000-0000-0000-0000-000000000002";
+    const client = fakeClient({
+      queryResults: [
+        {
+          data: [
+            variantRow({
+              target_max_edge: 512,
+              kind: "edge-512",
+              storage_path: `${workspaceId}/${canvasId}/${assetId}/edge-512.webp`,
+            }),
+            variantRow({
+              asset_id: secondAssetId,
+              target_max_edge: 2048,
+              kind: "edge-2048",
+              storage_path: `${workspaceId}/${canvasId}/${secondAssetId}/edge-2048.webp`,
+            }),
+          ],
+          error: null,
+        },
+      ],
+    });
+
+    const catalogue = await repository(client).listVariantTiersForAssets({
+      workspaceId,
+      canvasId,
+      assetIds: [assetId, secondAssetId, assetId],
+    });
+
+    expect(client.from).toHaveBeenCalledOnce();
+    expect(catalogue.get(assetId)?.[0]).toMatchObject({ targetMaxEdge: 512 });
+    expect(catalogue.get(secondAssetId)?.[0]).toMatchObject({
+      targetMaxEdge: 2048,
+    });
+  });
 });

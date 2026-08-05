@@ -30,6 +30,17 @@ export type CanvasAssetVariantKind = "thumbnail" | "preview";
 export type CanvasImageSourceKind = CanvasAssetVariantKind | "original";
 export type CanvasImagePyramidTargetMaxEdge = number;
 
+/** Runtime-only identity. It never enters CanvasDocumentV2. */
+export type CanvasImageResolutionSource =
+  | { type: "variant"; targetMaxEdge: CanvasImagePyramidTargetMaxEdge }
+  | { type: "original" };
+
+export type CanvasImagePyramidCandidate = {
+  source: Extract<CanvasImageResolutionSource, { type: "variant" }>;
+  pixelWidth: number;
+  pixelHeight: number;
+};
+
 export type CanvasImageVariantCandidate = {
   kind: CanvasAssetVariantKind;
   pixelWidth: number;
@@ -150,6 +161,11 @@ export interface CanvasAssetVariantV2Repository {
     canvasId: string;
     assetId: string;
   }): Promise<CanvasAssetVariantV2Metadata[]>;
+  listVariantTiersForAssets?(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetIds: readonly string[];
+  }): Promise<ReadonlyMap<string, readonly CanvasAssetVariantV2Metadata[]>>;
   loadVariantTier(input: {
     workspaceId: string;
     canvasId: string;
@@ -231,6 +247,125 @@ export function canvasImagePyramidTierCacheKey(input: {
     input.assetId,
     canvasImagePyramidTierStorageName(input.targetMaxEdge),
   ].join("/");
+}
+
+export function canvasImageResolutionSourceCacheKey(input: {
+  workspaceId: string;
+  canvasId: string;
+  assetId: string;
+  source: CanvasImageResolutionSource;
+}): string {
+  return [
+    input.workspaceId,
+    input.canvasId,
+    input.assetId,
+    input.source.type === "original"
+      ? "original"
+      : canvasImagePyramidTierStorageName(input.source.targetMaxEdge),
+  ].join("/");
+}
+
+export function canvasImageResolutionSourceFromLegacyKind(
+  kind: CanvasImageSourceKind | undefined,
+): CanvasImageResolutionSource {
+  return kind === "thumbnail"
+    ? { type: "variant", targetMaxEdge: 512 }
+    : kind === "preview"
+      ? { type: "variant", targetMaxEdge: 2560 }
+      : { type: "original" };
+}
+
+export function canvasImageLegacyKindFromResolutionSource(
+  source: CanvasImageResolutionSource,
+): CanvasAssetVariantKind | "original" | undefined {
+  if (source.type === "original") return "original";
+  return source.targetMaxEdge === 512
+    ? "thumbnail"
+    : source.targetMaxEdge === 2560
+      ? "preview"
+      : undefined;
+}
+
+function sourceResolution(source: CanvasImageResolutionSource): number {
+  return source.type === "original"
+    ? Number.POSITIVE_INFINITY
+    : source.targetMaxEdge;
+}
+
+function isValidPyramidCandidate(
+  candidate: CanvasImagePyramidCandidate,
+): boolean {
+  return (
+    isCanvasImagePyramidTargetMaxEdge(candidate.source.targetMaxEdge) &&
+    Number.isSafeInteger(candidate.pixelWidth) &&
+    Number.isSafeInteger(candidate.pixelHeight) &&
+    candidate.pixelWidth > 0 &&
+    candidate.pixelHeight > 0
+  );
+}
+
+function sortedPyramidCandidates(
+  candidates: readonly CanvasImagePyramidCandidate[],
+): CanvasImagePyramidCandidate[] {
+  return candidates
+    .filter(isValidPyramidCandidate)
+    .sort(
+      (left, right) =>
+        left.source.targetMaxEdge - right.source.targetMaxEdge ||
+        left.pixelWidth - right.pixelWidth ||
+        left.pixelHeight - right.pixelHeight,
+    );
+}
+
+function sourceEquals(
+  left: CanvasImageResolutionSource,
+  right: CanvasImageResolutionSource,
+): boolean {
+  return (
+    left.type === right.type &&
+    (left.type === "original" ||
+      right.type === "original" ||
+      left.targetMaxEdge === right.targetMaxEdge)
+  );
+}
+
+/**
+ * Numeric runtime selector. Coverage always uses actual pixel dimensions;
+ * targetMaxEdge only identifies a loadable derivative and provides ordering.
+ */
+export function chooseCanvasImageResolutionSource(input: {
+  nodeWidth: number;
+  nodeHeight: number;
+  viewportZoom: number;
+  devicePixelRatio?: number;
+  renderedWidthCssPx?: number;
+  renderedHeightCssPx?: number;
+  currentSource?: CanvasImageResolutionSource;
+  candidates: readonly CanvasImagePyramidCandidate[];
+  allowDowngrade?: boolean;
+}): CanvasImageResolutionSource {
+  const required = calculateCanvasImageRequiredPixels(input);
+  const candidates = sortedPyramidCandidates(input.candidates);
+  const covers = (
+    candidate: CanvasImagePyramidCandidate,
+    multiplier = 1,
+  ): boolean =>
+    candidate.pixelWidth >= required.width * multiplier &&
+    candidate.pixelHeight >= required.height * multiplier;
+  const desired = candidates.find((candidate) => covers(candidate))?.source ?? {
+    type: "original" as const,
+  };
+  const current = input.currentSource;
+  if (!current || sourceEquals(current, desired)) return desired;
+  if (sourceResolution(desired) >= sourceResolution(current)) return desired;
+  if (!input.allowDowngrade) return current;
+  return (
+    candidates.find(
+      (candidate) =>
+        sourceResolution(candidate.source) < sourceResolution(current) &&
+        covers(candidate, 1 + CANVAS_IMAGE_VARIANT_HYSTERESIS),
+    )?.source ?? current
+  );
 }
 
 function maxEdgeFor(kind: CanvasAssetVariantKind): number {
@@ -362,13 +497,22 @@ export function calculateCanvasImageRequiredPixels(input: {
   renderedWidthCssPx?: number;
   renderedHeightCssPx?: number;
 }): CanvasImageRequiredPixels {
-  const renderedWidthCssPx =
-    input.renderedWidthCssPx ??
-    input.nodeWidth * Math.max(input.viewportZoom, 0.01);
-  const renderedHeightCssPx =
-    input.renderedHeightCssPx ??
-    input.nodeHeight * Math.max(input.viewportZoom, 0.01);
-  const devicePixelRatio = Math.max(input.devicePixelRatio ?? 1, 1);
+  const safeDimension = (value: number, fallback: number): number =>
+    Number.isFinite(value) && value > 0 ? value : fallback;
+  const nodeWidth = safeDimension(input.nodeWidth, 1);
+  const nodeHeight = safeDimension(input.nodeHeight, 1);
+  const viewportZoom = safeDimension(input.viewportZoom, 1);
+  const fallbackWidth = nodeWidth * viewportZoom;
+  const fallbackHeight = nodeHeight * viewportZoom;
+  const renderedWidthCssPx = safeDimension(
+    input.renderedWidthCssPx ?? fallbackWidth,
+    fallbackWidth,
+  );
+  const renderedHeightCssPx = safeDimension(
+    input.renderedHeightCssPx ?? fallbackHeight,
+    fallbackHeight,
+  );
+  const devicePixelRatio = safeDimension(input.devicePixelRatio ?? 1, 1);
   return {
     width: Math.ceil(
       Math.max(renderedWidthCssPx, 1) *

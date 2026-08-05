@@ -4,7 +4,9 @@ import {
   calculateCanvasImageRequiredPixels,
   canvasImagePyramidTierCacheKey,
   canvasImagePyramidTierStoragePath,
+  canvasImageResolutionSourceCacheKey,
   canvasImageVariantCacheKey,
+  chooseCanvasImageResolutionSource,
   chooseCanvasImageVariant,
   CANVAS_IMAGE_PYRAMID_RECOMMENDED_TARGET_MAX_EDGES,
   CANVAS_IMAGE_VARIANT_QUALITY_SAFETY_FACTOR,
@@ -122,6 +124,85 @@ describe("Canvas image variants", () => {
       renderedHeightCssPx: 620,
       devicePixelRatio: 1.25,
     });
+  });
+
+  it("selects numeric tiers by their actual dimensions, not a legacy label", () => {
+    expect(
+      chooseCanvasImageResolutionSource({
+        nodeWidth: 300,
+        nodeHeight: 180,
+        viewportZoom: 1,
+        devicePixelRatio: 1,
+        candidates: [
+          {
+            source: { type: "variant", targetMaxEdge: 512 },
+            pixelWidth: 512,
+            pixelHeight: 288,
+          },
+          {
+            source: { type: "variant", targetMaxEdge: 2560 },
+            pixelWidth: 1600,
+            pixelHeight: 900,
+          },
+        ],
+      }),
+    ).toEqual({ type: "variant", targetMaxEdge: 512 });
+  });
+
+  it("upgrades immediately and scans every lower tier before retaining a source", () => {
+    const candidates = [
+      {
+        source: { type: "variant" as const, targetMaxEdge: 512 },
+        pixelWidth: 512,
+        pixelHeight: 286,
+      },
+      {
+        source: { type: "variant" as const, targetMaxEdge: 2560 },
+        pixelWidth: 2560,
+        pixelHeight: 1429,
+      },
+    ];
+    expect(
+      chooseCanvasImageResolutionSource({
+        nodeWidth: 300,
+        nodeHeight: 168,
+        viewportZoom: 1,
+        renderedWidthCssPx: 300,
+        renderedHeightCssPx: 168,
+        devicePixelRatio: 2,
+        currentSource: { type: "original" },
+        candidates,
+        allowDowngrade: true,
+      }),
+    ).toEqual({ type: "variant", targetMaxEdge: 2560 });
+    expect(
+      chooseCanvasImageResolutionSource({
+        nodeWidth: 1400,
+        nodeHeight: 800,
+        viewportZoom: 1,
+        currentSource: { type: "variant", targetMaxEdge: 512 },
+        candidates,
+      }),
+    ).toEqual({ type: "variant", targetMaxEdge: 2560 });
+  });
+
+  it("uses numeric cache identities while keeping original separate", () => {
+    expect(
+      canvasImageResolutionSourceCacheKey({
+        workspaceId: "workspace-1",
+        canvasId: "canvas-1",
+        assetId: "asset-1",
+        source: { type: "variant", targetMaxEdge: 512 },
+      }),
+    ).toBe("workspace-1/canvas-1/asset-1/edge-512");
+    expect(
+      canvasImageResolutionSourceCacheKey({
+        workspaceId: "workspace-1",
+        canvasId: "canvas-1",
+        assetId: "asset-1",
+        source: { type: "original" },
+      }),
+    ).toBe("workspace-1/canvas-1/asset-1/original");
   });
 
   it("accepts rounded dimensions at the one-pixel aspect-ratio tolerance boundary", () => {

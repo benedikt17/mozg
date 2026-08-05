@@ -1055,11 +1055,63 @@ export class SupabaseCloudCanvasAssetRepository implements CloudCanvasAssetRepos
         .eq("workspace_id", workspaceId)
         .eq("canvas_id", canvasId)
         .eq("asset_id", assetId)
+        .not("target_max_edge", "is", null)
         .not("ready_at", "is", null);
       if (error) throw error;
       return (data ?? []).map((row) =>
         variantV2Metadata(row, { workspaceId, canvasId, assetId }),
       );
+    } catch (cause) {
+      throw projectError(cause, "metadata");
+    }
+  }
+
+  async listVariantTiersForAssets(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetIds: readonly string[];
+  }): Promise<ReadonlyMap<string, readonly CanvasAssetVariantV2Metadata[]>> {
+    try {
+      await this.assertAuthenticated();
+      const workspaceId = inputUuid(input.workspaceId, "workspaceId");
+      const canvasId = inputUuid(input.canvasId, "canvasId");
+      const assetIds = [...new Set(input.assetIds)].map((assetId) =>
+        inputUuid(assetId, "assetId"),
+      );
+      const grouped = new Map<string, CanvasAssetVariantV2Metadata[]>();
+      if (assetIds.length === 0) return grouped;
+      const { data, error } = await this.supabase
+        .from("canvas_asset_variants")
+        .select(VARIANT_V2_SELECT)
+        .eq("workspace_id", workspaceId)
+        .eq("canvas_id", canvasId)
+        .in("asset_id", assetIds)
+        .not("target_max_edge", "is", null)
+        .not("ready_at", "is", null);
+      if (error) throw error;
+      const requested = new Set(assetIds);
+      for (const row of data ?? []) {
+        const assetId = inputUuid(String(row.asset_id), "assetId");
+        if (!requested.has(assetId))
+          throw new CloudCanvasAssetRepositoryError(
+            "invalid-server-metadata",
+            "Canvas image pyramid catalogue crossed its requested assets.",
+          );
+        const metadata = variantV2Metadata(row, {
+          workspaceId,
+          canvasId,
+          assetId,
+        });
+        const tiers = grouped.get(assetId) ?? [];
+        if (tiers.some((tier) => tier.targetMaxEdge === metadata.targetMaxEdge))
+          throw new CloudCanvasAssetRepositoryError(
+            "invalid-server-metadata",
+            "Canvas image pyramid catalogue contains duplicate tiers.",
+          );
+        tiers.push(metadata);
+        grouped.set(assetId, tiers);
+      }
+      return grouped;
     } catch (cause) {
       throw projectError(cause, "metadata");
     }
