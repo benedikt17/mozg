@@ -34,7 +34,10 @@ import type {
   CanvasAssetVariantKind,
   CanvasAssetVariantMetadata,
   CanvasAssetVariantRecord,
+  CanvasAssetVariantV2Metadata,
+  CanvasAssetVariantV2Record,
   StoreCanvasAssetVariantInput,
+  StoreCanvasAssetVariantV2Input,
 } from "@/lib/canvas/canvas-image-variants";
 
 export type CanvasShellRepository = CanvasRepository &
@@ -279,6 +282,29 @@ export class CloudCanvasShellRepository
     kind: CanvasAssetVariantKind;
   }): Promise<CanvasAssetVariantRecord | null> {
     return this.assetRepository.loadVariant(input);
+  }
+
+  listVariantTiers(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetId: string;
+  }): Promise<CanvasAssetVariantV2Metadata[]> {
+    return this.assetRepository.listVariantTiers(input);
+  }
+
+  loadVariantTier(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetId: string;
+    targetMaxEdge: number;
+  }): Promise<CanvasAssetVariantV2Record | null> {
+    return this.assetRepository.loadVariantTier(input);
+  }
+
+  storeVariantTier(
+    input: StoreCanvasAssetVariantV2Input,
+  ): Promise<CanvasAssetVariantV2Metadata> {
+    return this.assetRepository.storeVariantTier(input);
   }
 
   storeVariant(

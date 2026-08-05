@@ -28,6 +28,38 @@ select is(
   false,
   'anonymous clients do not receive the finalize RPC grant'
 );
+select has_function(
+  'public',
+  'reserve_canvas_asset_variant_v2',
+  array['uuid', 'uuid', 'uuid', 'integer', 'bigint', 'integer', 'integer'],
+  'numeric pyramid reserve function exists'
+);
+select has_function(
+  'public',
+  'finalize_canvas_asset_variant_v2',
+  array['uuid', 'uuid', 'uuid', 'integer'],
+  'numeric pyramid finalize function exists'
+);
+select is(
+  (select prosecdef from pg_proc where oid = 'public.reserve_canvas_asset_variant_v2(uuid,uuid,uuid,integer,bigint,integer,integer)'::regprocedure),
+  true,
+  'numeric pyramid reserve is SECURITY DEFINER'
+);
+select is(
+  (select array_to_string(proconfig, ',') from pg_proc where oid = 'public.finalize_canvas_asset_variant_v2(uuid,uuid,uuid,integer)'::regprocedure),
+  'search_path=pg_catalog, public, private'::text,
+  'numeric pyramid finalize pins a safe search_path'
+);
+select is(
+  has_function_privilege('authenticated', 'public.reserve_canvas_asset_variant_v2(uuid,uuid,uuid,integer,bigint,integer,integer)', 'EXECUTE'),
+  true,
+  'authenticated clients receive the numeric pyramid reserve grant'
+);
+select is(
+  has_function_privilege('anon', 'public.reserve_canvas_asset_variant_v2(uuid,uuid,uuid,integer,bigint,integer,integer)', 'EXECUTE'),
+  false,
+  'anonymous clients do not receive the numeric pyramid reserve grant'
+);
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password,
@@ -112,6 +144,66 @@ select results_eq(
   ) $$,
   array['thumbnail:true'::text],
   'authorized owner can finalize a reserved variant'
+);
+
+select results_eq(
+  $$ select kind || ':' || target_max_edge::text || ':' || (ready_at is null)::text from public.reserve_canvas_asset_variant_v2(
+    '82000000-0000-0000-0000-000000000001'::uuid,
+    '82000000-0000-0000-0000-000000000011'::uuid,
+    '82000000-0000-0000-0000-000000000021'::uuid,
+    1024, 128, 100, 100
+  ) $$,
+  array['edge-1024:1024:true'::text],
+  'authorized owner can reserve an open numeric pyramid tier'
+);
+reset role;
+insert into storage.objects (id, bucket_id, name, owner, metadata, version, owner_id, user_metadata)
+values (
+  gen_random_uuid(), 'canvas-assets',
+  '82000000-0000-0000-0000-000000000001/82000000-0000-0000-0000-000000000011/82000000-0000-0000-0000-000000000021/edge-1024.webp',
+  '72000000-0000-0000-0000-000000000001', '{"mimetype":"image/webp","size":128}', 'security-edge-version', '72000000-0000-0000-0000-000000000001', '{}'
+);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '72000000-0000-0000-0000-000000000001', true);
+select results_eq(
+  $$ select kind || ':' || target_max_edge::text || ':' || (ready_at is not null)::text from public.finalize_canvas_asset_variant_v2(
+    '82000000-0000-0000-0000-000000000001'::uuid,
+    '82000000-0000-0000-0000-000000000011'::uuid,
+    '82000000-0000-0000-0000-000000000021'::uuid,
+    1024
+  ) $$,
+  array['edge-1024:1024:true'::text],
+  'authorized owner can finalize an open numeric pyramid tier'
+);
+select is(
+  (select target_max_edge from public.canvas_asset_variants
+    where workspace_id = '82000000-0000-0000-0000-000000000001'::uuid
+      and canvas_id = '82000000-0000-0000-0000-000000000011'::uuid
+      and asset_id = '82000000-0000-0000-0000-000000000021'::uuid
+      and kind = 'thumbnail'),
+  512,
+  'legacy thumbnail rows retain their canonical numeric tier'
+);
+select throws_ok(
+  $$ select * from public.reserve_canvas_asset_variant_v2(
+    '82000000-0000-0000-0000-000000000001'::uuid,
+    '82000000-0000-0000-0000-000000000011'::uuid,
+    '82000000-0000-0000-0000-000000000021'::uuid,
+    64, 128, 100, 100
+  ) $$,
+  '22023', 'Canvas asset variant metadata is invalid',
+  'numeric pyramid reserve rejects dimensions that exceed its tier'
+);
+select set_config('request.jwt.claim.sub', '72000000-0000-0000-0000-000000000003', true);
+select throws_ok(
+  $$ select * from public.reserve_canvas_asset_variant_v2(
+    '82000000-0000-0000-0000-000000000001'::uuid,
+    '82000000-0000-0000-0000-000000000011'::uuid,
+    '82000000-0000-0000-0000-000000000021'::uuid,
+    2048, 100, 100, 100
+  ) $$,
+  '42501', 'Canvas asset variant access denied',
+  'outsider cannot reserve a numeric pyramid tier'
 );
 
 select set_config('request.jwt.claim.sub', '72000000-0000-0000-0000-000000000002', true);

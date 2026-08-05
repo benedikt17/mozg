@@ -5,6 +5,14 @@ import type {
 
 export const CANVAS_IMAGE_THUMBNAIL_MAX_EDGE = 512;
 export const CANVAS_IMAGE_PREVIEW_MAX_EDGE = 2560;
+/**
+ * The V2 pyramid is intentionally configuration, not a database enum. New
+ * levels may be introduced without changing the storage schema.
+ */
+export const CANVAS_IMAGE_PYRAMID_RECOMMENDED_TARGET_MAX_EDGES = [
+  256, 512, 1024, 2048, 4096,
+] as const;
+export const CANVAS_IMAGE_PYRAMID_MAX_TARGET_MAX_EDGE = 10_000;
 export const CANVAS_IMAGE_VARIANT_MIME_TYPE = "image/webp" as const;
 export const CANVAS_IMAGE_VARIANT_QUALITY = 0.82;
 export const CANVAS_IMAGE_VARIANT_HYSTERESIS = 0.15;
@@ -20,6 +28,7 @@ export const CANVAS_IMAGE_VARIANT_ORIENTATION_POLICY =
 
 export type CanvasAssetVariantKind = "thumbnail" | "preview";
 export type CanvasImageSourceKind = CanvasAssetVariantKind | "original";
+export type CanvasImagePyramidTargetMaxEdge = number;
 
 export type CanvasImageVariantCandidate = {
   kind: CanvasAssetVariantKind;
@@ -83,6 +92,27 @@ export type StoreCanvasAssetVariantInput = CanvasAssetVariantMetadata & {
   blob: Blob;
 };
 
+export type CanvasAssetVariantV2Metadata = {
+  workspaceId: string;
+  canvasId: string;
+  assetId: string;
+  targetMaxEdge: CanvasImagePyramidTargetMaxEdge;
+  storagePath: string;
+  mimeType: typeof CANVAS_IMAGE_VARIANT_MIME_TYPE;
+  byteSize: number;
+  pixelWidth: number;
+  pixelHeight: number;
+  createdAt: string;
+};
+
+export type CanvasAssetVariantV2Record = CanvasAssetVariantV2Metadata & {
+  blob: Blob;
+};
+
+export type StoreCanvasAssetVariantV2Input = CanvasAssetVariantV2Metadata & {
+  blob: Blob;
+};
+
 export interface CanvasAssetVariantRepository {
   listVariants(input: {
     workspaceId: string;
@@ -110,6 +140,27 @@ export interface CanvasAssetVariantRepository {
   }): Promise<void>;
 }
 
+/**
+ * Additive V2 contract. It deliberately has no runtime-selection semantics;
+ * production selection continues to use the legacy kind-based interface.
+ */
+export interface CanvasAssetVariantV2Repository {
+  listVariantTiers(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetId: string;
+  }): Promise<CanvasAssetVariantV2Metadata[]>;
+  loadVariantTier(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetId: string;
+    targetMaxEdge: CanvasImagePyramidTargetMaxEdge;
+  }): Promise<CanvasAssetVariantV2Record | null>;
+  storeVariantTier(
+    input: StoreCanvasAssetVariantV2Input,
+  ): Promise<CanvasAssetVariantV2Metadata>;
+}
+
 export type GeneratedCanvasImageVariant = {
   kind: CanvasAssetVariantKind;
   blob: Blob;
@@ -132,6 +183,54 @@ export function canvasImageVariantCacheKey(input: {
   return [input.workspaceId, input.canvasId, input.assetId, input.kind].join(
     "/",
   );
+}
+
+export function isCanvasImagePyramidTargetMaxEdge(
+  value: unknown,
+): value is CanvasImagePyramidTargetMaxEdge {
+  return (
+    typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value > 0 &&
+    value <= CANVAS_IMAGE_PYRAMID_MAX_TARGET_MAX_EDGE
+  );
+}
+
+export function canvasImagePyramidTierStorageName(
+  targetMaxEdge: CanvasImagePyramidTargetMaxEdge,
+): string {
+  if (!isCanvasImagePyramidTargetMaxEdge(targetMaxEdge)) {
+    throw new Error("Canvas image pyramid target_max_edge is invalid.");
+  }
+  return `edge-${targetMaxEdge}`;
+}
+
+export function canvasImagePyramidTierStoragePath(input: {
+  workspaceId: string;
+  canvasId: string;
+  assetId: string;
+  targetMaxEdge: CanvasImagePyramidTargetMaxEdge;
+}): string {
+  return [
+    input.workspaceId,
+    input.canvasId,
+    input.assetId,
+    `${canvasImagePyramidTierStorageName(input.targetMaxEdge)}.webp`,
+  ].join("/");
+}
+
+export function canvasImagePyramidTierCacheKey(input: {
+  workspaceId: string;
+  canvasId: string;
+  assetId: string;
+  targetMaxEdge: CanvasImagePyramidTargetMaxEdge;
+}): string {
+  return [
+    input.workspaceId,
+    input.canvasId,
+    input.assetId,
+    canvasImagePyramidTierStorageName(input.targetMaxEdge),
+  ].join("/");
 }
 
 function maxEdgeFor(kind: CanvasAssetVariantKind): number {

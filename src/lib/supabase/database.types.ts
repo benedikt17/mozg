@@ -7,33 +7,61 @@ export type Json =
   | Json[]
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
+      canvas_asset_variants: {
+        Row: {
+          asset_id: string
+          byte_size: number
+          canvas_id: string
+          created_at: string
+          kind: string
+          mime_type: string
+          pixel_height: number
+          pixel_width: number
+          ready_at: string | null
+          storage_path: string
+          target_max_edge: number
+          workspace_id: string
+        }
+        Insert: {
+          asset_id: string
+          byte_size: number
+          canvas_id: string
+          created_at?: string
+          kind: string
+          mime_type: string
+          pixel_height: number
+          pixel_width: number
+          ready_at?: string | null
+          storage_path: string
+          target_max_edge: number
+          workspace_id: string
+        }
+        Update: {
+          asset_id?: string
+          byte_size?: number
+          canvas_id?: string
+          created_at?: string
+          kind?: string
+          mime_type?: string
+          pixel_height?: number
+          pixel_width?: number
+          ready_at?: string | null
+          storage_path?: string
+          target_max_edge?: number
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canvas_asset_variants_parent_fkey"
+            columns: ["workspace_id", "canvas_id", "asset_id"]
+            isOneToOne: false
+            referencedRelation: "canvas_assets"
+            referencedColumns: ["workspace_id", "canvas_id", "id"]
+          },
+        ]
+      }
       canvas_assets: {
         Row: {
           byte_size: number
@@ -97,56 +125,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "workspaces"
             referencedColumns: ["id"]
-          },
-        ]
-      }
-      canvas_asset_variants: {
-        Row: {
-          asset_id: string
-          byte_size: number
-          canvas_id: string
-          created_at: string
-          kind: string
-          mime_type: string
-          pixel_height: number
-          pixel_width: number
-          ready_at: string | null
-          storage_path: string
-          workspace_id: string
-        }
-        Insert: {
-          asset_id: string
-          byte_size: number
-          canvas_id: string
-          created_at?: string
-          kind: string
-          mime_type: string
-          pixel_height: number
-          pixel_width: number
-          ready_at?: string | null
-          storage_path: string
-          workspace_id: string
-        }
-        Update: {
-          asset_id?: string
-          byte_size?: number
-          canvas_id?: string
-          created_at?: string
-          kind?: string
-          mime_type?: string
-          pixel_height?: number
-          pixel_width?: number
-          ready_at?: string | null
-          storage_path?: string
-          workspace_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "canvas_asset_variants_parent_fkey"
-            columns: ["workspace_id", "canvas_id", "asset_id"]
-            isOneToOne: false
-            referencedRelation: "canvas_assets"
-            referencedColumns: ["workspace_id", "canvas_id", "id"]
           },
         ]
       }
@@ -281,18 +259,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "canvases_workspace_id_fkey"
-            columns: ["workspace_id"]
-            isOneToOne: false
-            referencedRelation: "workspaces"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "canvases_group_workspace_fkey"
             columns: ["workspace_id", "group_id"]
             isOneToOne: false
             referencedRelation: "canvas_groups"
             referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "canvases_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -528,20 +506,28 @@ export type Database = {
         }
         Returns: undefined
       }
-      create_canvas: {
-        Args: {
-          target_group_id: string | null
-          target_title: string
-          target_workspace_id: string
-        }
-        Returns: {
-          id: string
-          revision: number
-        }[]
-      }
+      create_canvas:
+        | {
+            Args: { target_title: string; target_workspace_id: string }
+            Returns: {
+              id: string
+              revision: number
+            }[]
+          }
+        | {
+            Args: {
+              target_group_id: string
+              target_title: string
+              target_workspace_id: string
+            }
+            Returns: {
+              id: string
+              revision: number
+            }[]
+          }
       create_canvas_group: {
         Args: {
-          target_parent_group_id: string | null
+          target_parent_group_id: string
           target_title: string
           target_workspace_id: string
         }
@@ -556,6 +542,12 @@ export type Database = {
           updated_at: string
           workspace_id: string
         }[]
+        SetofOptions: {
+          from: "*"
+          to: "canvas_groups"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       delete_canvas: {
         Args: { target_canvas_id: string }
@@ -580,7 +572,9 @@ export type Database = {
           target_kind: string
           target_workspace_id: string
         }
-        Returns: { deleted: boolean }[]
+        Returns: {
+          deleted: boolean
+        }[]
       }
       delete_canvas_asset_variants: {
         Args: {
@@ -589,6 +583,14 @@ export type Database = {
           target_workspace_id: string
         }
         Returns: undefined
+      }
+      delete_canvas_group: {
+        Args: { target_group_id: string }
+        Returns: {
+          deleted: boolean
+          id: string
+          workspace_id: string
+        }[]
       }
       finalize_canvas_asset: {
         Args: {
@@ -613,18 +615,6 @@ export type Database = {
           workspace_id: string
         }[]
       }
-      has_workspace_role: {
-        Args: { roles: string[]; target_workspace_id: string }
-        Returns: boolean
-      }
-      delete_canvas_group: {
-        Args: { target_group_id: string }
-        Returns: {
-          deleted: boolean
-          id: string
-          workspace_id: string
-        }[]
-      }
       finalize_canvas_asset_variant: {
         Args: {
           target_asset_id: string
@@ -646,6 +636,32 @@ export type Database = {
           workspace_id: string
         }[]
       }
+      finalize_canvas_asset_variant_v2: {
+        Args: {
+          requested_max_edge: number
+          target_asset_id: string
+          target_canvas_id: string
+          target_workspace_id: string
+        }
+        Returns: {
+          asset_id: string
+          byte_size: number
+          canvas_id: string
+          created_at: string
+          kind: string
+          mime_type: string
+          pixel_height: number
+          pixel_width: number
+          ready_at: string
+          storage_path: string
+          target_max_edge: number
+          workspace_id: string
+        }[]
+      }
+      has_workspace_role: {
+        Args: { roles: string[]; target_workspace_id: string }
+        Returns: boolean
+      }
       initialize_workspace_snapshot: {
         Args: {
           target_schema_version: number
@@ -654,8 +670,12 @@ export type Database = {
         }
         Returns: undefined
       }
+      is_workspace_member: {
+        Args: { target_workspace_id: string }
+        Returns: boolean
+      }
       move_canvas_group: {
-        Args: { target_group_id: string; target_parent_group_id?: string | null }
+        Args: { target_group_id: string; target_parent_group_id: string }
         Returns: {
           created_at: string
           created_by: string
@@ -667,14 +687,16 @@ export type Database = {
           updated_at: string
           workspace_id: string
         }[]
+        SetofOptions: {
+          from: "*"
+          to: "canvas_groups"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       move_canvas_to_group: {
-        Args: { target_canvas_id: string; target_group_id?: string | null }
+        Args: { target_canvas_id: string; target_group_id: string }
         Returns: undefined
-      }
-      is_workspace_member: {
-        Args: { target_workspace_id: string }
-        Returns: boolean
       }
       rename_canvas: {
         Args: { target_canvas_id: string; target_title: string }
@@ -702,6 +724,12 @@ export type Database = {
           updated_at: string
           workspace_id: string
         }[]
+        SetofOptions: {
+          from: "*"
+          to: "canvas_groups"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       reserve_canvas_asset: {
         Args: {
@@ -750,8 +778,33 @@ export type Database = {
           mime_type: string
           pixel_height: number
           pixel_width: number
-          ready_at: string | null
+          ready_at: string
           storage_path: string
+          workspace_id: string
+        }[]
+      }
+      reserve_canvas_asset_variant_v2: {
+        Args: {
+          requested_max_edge: number
+          target_asset_id: string
+          target_byte_size: number
+          target_canvas_id: string
+          target_pixel_height: number
+          target_pixel_width: number
+          target_workspace_id: string
+        }
+        Returns: {
+          asset_id: string
+          byte_size: number
+          canvas_id: string
+          created_at: string
+          kind: string
+          mime_type: string
+          pixel_height: number
+          pixel_width: number
+          ready_at: string
+          storage_path: string
+          target_max_edge: number
           workspace_id: string
         }[]
       }
@@ -923,10 +976,8 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {},
   },
 } as const
+

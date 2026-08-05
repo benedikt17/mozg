@@ -8,12 +8,18 @@ import {
 import type { Database } from "@/lib/supabase/database.types";
 import {
   CANVAS_IMAGE_VARIANT_MIME_TYPE,
+  canvasImagePyramidTierStoragePath,
+  isCanvasImagePyramidTargetMaxEdge,
   isCanvasImageVariantDimensionContractValid,
   type CanvasAssetVariantKind,
   type CanvasAssetVariantMetadata,
   type CanvasAssetVariantRecord,
   type CanvasAssetVariantRepository,
+  type CanvasAssetVariantV2Metadata,
+  type CanvasAssetVariantV2Record,
+  type CanvasAssetVariantV2Repository,
   type StoreCanvasAssetVariantInput,
+  type StoreCanvasAssetVariantV2Input,
 } from "@/lib/canvas/canvas-image-variants";
 
 export const CANVAS_ASSET_BUCKET = "canvas-assets";
@@ -82,7 +88,8 @@ export type UploadCloudCanvasAssetInput = {
   checksum?: string | null;
 };
 
-export interface CloudCanvasAssetRepository extends CanvasAssetVariantRepository {
+export interface CloudCanvasAssetRepository
+  extends CanvasAssetVariantRepository, CanvasAssetVariantV2Repository {
   uploadAsset(
     input: UploadCloudCanvasAssetInput,
   ): Promise<CloudCanvasAssetMetadata>;
@@ -115,6 +122,8 @@ const ASSET_SELECT =
   "id,workspace_id,canvas_id,storage_key,preview_storage_key,mime_type,byte_size,width,height,checksum,created_by,created_at,ready_at,deleted_at";
 const VARIANT_SELECT =
   "workspace_id,canvas_id,asset_id,kind,storage_path,mime_type,byte_size,pixel_width,pixel_height,created_at";
+const VARIANT_V2_SELECT =
+  "workspace_id,canvas_id,asset_id,kind,target_max_edge,storage_path,mime_type,byte_size,pixel_width,pixel_height,created_at";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
@@ -504,6 +513,132 @@ function validateVariantInput(
   return { ...input, workspaceId, canvasId, assetId, storagePath };
 }
 
+function variantV2Metadata(
+  value: unknown,
+  expected: { workspaceId: string; canvasId: string; assetId: string },
+): CanvasAssetVariantV2Metadata {
+  if (!isRecord(value))
+    throw new CloudCanvasAssetRepositoryError(
+      "invalid-server-metadata",
+      "Canvas image pyramid metadata is not an object.",
+    );
+  const workspaceId = serverUuid(value.workspace_id, "workspace_id");
+  const canvasId = serverUuid(value.canvas_id, "canvas_id");
+  const assetId = serverUuid(value.asset_id, "asset_id");
+  if (
+    workspaceId !== expected.workspaceId ||
+    canvasId !== expected.canvasId ||
+    assetId !== expected.assetId
+  )
+    throw new CloudCanvasAssetRepositoryError(
+      "invalid-server-metadata",
+      "Canvas image pyramid tier belongs to another scope.",
+    );
+  const targetMaxEdge = serverPositiveInteger(
+    value.target_max_edge,
+    "target_max_edge",
+  );
+  if (!isCanvasImagePyramidTargetMaxEdge(targetMaxEdge))
+    throw new CloudCanvasAssetRepositoryError(
+      "invalid-server-metadata",
+      "Canvas image pyramid target_max_edge is invalid.",
+    );
+  const kind = serverString(value.kind, "kind");
+  const storagePath = serverString(value.storage_path, "storage_path");
+  const legacyPath =
+    (kind === "thumbnail" && targetMaxEdge === 512) ||
+    (kind === "preview" && targetMaxEdge === 2560)
+      ? `${workspaceId}/${canvasId}/${assetId}/${kind}.webp`
+      : null;
+  const expectedPath =
+    legacyPath ??
+    (kind === `edge-${targetMaxEdge}`
+      ? canvasImagePyramidTierStoragePath({
+          workspaceId,
+          canvasId,
+          assetId,
+          targetMaxEdge,
+        })
+      : null);
+  if (
+    expectedPath === null ||
+    storagePath !== expectedPath ||
+    value.mime_type !== CANVAS_IMAGE_VARIANT_MIME_TYPE
+  )
+    throw new CloudCanvasAssetRepositoryError(
+      "invalid-server-metadata",
+      "Canvas image pyramid tier metadata is invalid.",
+    );
+  const byteSize = serverPositiveInteger(value.byte_size, "byte_size");
+  const pixelWidth = serverPositiveInteger(value.pixel_width, "pixel_width");
+  const pixelHeight = serverPositiveInteger(value.pixel_height, "pixel_height");
+  if (
+    byteSize > CANVAS_IMAGE_INPUT_MAX_BYTES ||
+    pixelWidth > CANVAS_ASSET_MAX_DIMENSION ||
+    pixelHeight > CANVAS_ASSET_MAX_DIMENSION
+  )
+    throw new CloudCanvasAssetRepositoryError(
+      "invalid-server-metadata",
+      "Canvas image pyramid tier exceeds the supported limits.",
+    );
+  return {
+    workspaceId,
+    canvasId,
+    assetId,
+    targetMaxEdge,
+    storagePath,
+    mimeType: CANVAS_IMAGE_VARIANT_MIME_TYPE,
+    byteSize,
+    pixelWidth,
+    pixelHeight,
+    createdAt: serverTimestamp(value.created_at, "created_at"),
+  };
+}
+
+function validateVariantV2Input(
+  input: StoreCanvasAssetVariantV2Input,
+): StoreCanvasAssetVariantV2Input {
+  const workspaceId = inputUuid(input.workspaceId, "workspaceId");
+  const canvasId = inputUuid(input.canvasId, "canvasId");
+  const assetId = inputUuid(input.assetId, "assetId");
+  if (!isCanvasImagePyramidTargetMaxEdge(input.targetMaxEdge))
+    throw new CloudCanvasAssetRepositoryError(
+      "invalid-input",
+      "Canvas image pyramid target_max_edge is invalid.",
+    );
+  if (
+    !(input.blob instanceof Blob) ||
+    input.blob.type !== CANVAS_IMAGE_VARIANT_MIME_TYPE ||
+    !Number.isSafeInteger(input.byteSize) ||
+    input.byteSize <= 0 ||
+    input.byteSize > CANVAS_IMAGE_INPUT_MAX_BYTES ||
+    input.byteSize !== input.blob.size ||
+    !Number.isSafeInteger(input.pixelWidth) ||
+    !Number.isSafeInteger(input.pixelHeight) ||
+    input.pixelWidth <= 0 ||
+    input.pixelHeight <= 0 ||
+    input.pixelWidth > CANVAS_ASSET_MAX_DIMENSION ||
+    input.pixelHeight > CANVAS_ASSET_MAX_DIMENSION ||
+    Math.max(input.pixelWidth, input.pixelHeight) > input.targetMaxEdge
+  )
+    throw new CloudCanvasAssetRepositoryError(
+      "invalid-input",
+      "Canvas image pyramid tier metadata is invalid.",
+    );
+  const storagePath = canvasImagePyramidTierStoragePath({
+    workspaceId,
+    canvasId,
+    assetId,
+    targetMaxEdge: input.targetMaxEdge,
+  });
+  if (input.storagePath !== storagePath)
+    throw new CloudCanvasAssetRepositoryError(
+      "invalid-input",
+      "Canvas image pyramid tier storage path is invalid.",
+    );
+  return { ...input, workspaceId, canvasId, assetId, storagePath };
+}
+
 function errorCode(cause: unknown): string | undefined {
   return isRecord(cause) && typeof cause.code === "string"
     ? cause.code
@@ -782,6 +917,7 @@ export class SupabaseCloudCanvasAssetRepository implements CloudCanvasAssetRepos
         .eq("workspace_id", workspaceId)
         .eq("canvas_id", canvasId)
         .eq("asset_id", assetId)
+        .in("kind", ["thumbnail", "preview"])
         .not("ready_at", "is", null);
       if (error) throw error;
       return (data ?? []).map((row) =>
@@ -817,6 +953,7 @@ export class SupabaseCloudCanvasAssetRepository implements CloudCanvasAssetRepos
         .eq("workspace_id", workspaceId)
         .eq("canvas_id", canvasId)
         .in("asset_id", assetIds)
+        .in("kind", ["thumbnail", "preview"])
         .not("ready_at", "is", null);
       if (error) throw error;
       const requested = new Set(assetIds);
@@ -895,6 +1032,79 @@ export class SupabaseCloudCanvasAssetRepository implements CloudCanvasAssetRepos
         throw new CloudCanvasAssetRepositoryError(
           "invalid-server-metadata",
           "Canvas asset variant download did not return binary content.",
+        );
+      return { ...metadata, blob };
+    } catch (cause) {
+      throw projectError(cause, "download");
+    }
+  }
+
+  async listVariantTiers(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetId: string;
+  }): Promise<CanvasAssetVariantV2Metadata[]> {
+    try {
+      await this.assertAuthenticated();
+      const workspaceId = inputUuid(input.workspaceId, "workspaceId");
+      const canvasId = inputUuid(input.canvasId, "canvasId");
+      const assetId = inputUuid(input.assetId, "assetId");
+      const { data, error } = await this.supabase
+        .from("canvas_asset_variants")
+        .select(VARIANT_V2_SELECT)
+        .eq("workspace_id", workspaceId)
+        .eq("canvas_id", canvasId)
+        .eq("asset_id", assetId)
+        .not("ready_at", "is", null);
+      if (error) throw error;
+      return (data ?? []).map((row) =>
+        variantV2Metadata(row, { workspaceId, canvasId, assetId }),
+      );
+    } catch (cause) {
+      throw projectError(cause, "metadata");
+    }
+  }
+
+  async loadVariantTier(input: {
+    workspaceId: string;
+    canvasId: string;
+    assetId: string;
+    targetMaxEdge: number;
+  }): Promise<CanvasAssetVariantV2Record | null> {
+    try {
+      await this.assertAuthenticated();
+      const workspaceId = inputUuid(input.workspaceId, "workspaceId");
+      const canvasId = inputUuid(input.canvasId, "canvasId");
+      const assetId = inputUuid(input.assetId, "assetId");
+      if (!isCanvasImagePyramidTargetMaxEdge(input.targetMaxEdge))
+        throw new CloudCanvasAssetRepositoryError(
+          "invalid-input",
+          "Canvas image pyramid target_max_edge is invalid.",
+        );
+      const { data, error } = await this.supabase
+        .from("canvas_asset_variants")
+        .select(VARIANT_V2_SELECT)
+        .eq("workspace_id", workspaceId)
+        .eq("canvas_id", canvasId)
+        .eq("asset_id", assetId)
+        .eq("target_max_edge", input.targetMaxEdge)
+        .not("ready_at", "is", null)
+        .maybeSingle();
+      if (error) throw error;
+      if (data === null) return null;
+      const metadata = variantV2Metadata(data, {
+        workspaceId,
+        canvasId,
+        assetId,
+      });
+      const { data: blob, error: downloadError } = await this.supabase.storage
+        .from(CANVAS_ASSET_BUCKET)
+        .download(metadata.storagePath);
+      if (downloadError) throw downloadError;
+      if (!(blob instanceof Blob))
+        throw new CloudCanvasAssetRepositoryError(
+          "invalid-server-metadata",
+          "Canvas image pyramid download did not return binary content.",
         );
       return { ...metadata, blob };
     } catch (cause) {
@@ -983,6 +1193,85 @@ export class SupabaseCloudCanvasAssetRepository implements CloudCanvasAssetRepos
           target_canvas_id: reserved.canvasId,
           target_asset_id: reserved.assetId,
           target_kind: reserved.kind,
+        });
+      }
+      throw projectError(cause, "upload");
+    }
+  }
+
+  async storeVariantTier(
+    input: StoreCanvasAssetVariantV2Input,
+  ): Promise<CanvasAssetVariantV2Metadata> {
+    let reserved: CanvasAssetVariantV2Metadata | undefined;
+    const validated = validateVariantV2Input(input);
+    try {
+      await this.assertAuthenticated();
+      const original = await this.getAssetMetadata({
+        workspaceId: validated.workspaceId,
+        canvasId: validated.canvasId,
+        assetId: validated.assetId,
+      });
+      if (
+        validated.pixelWidth > original.width ||
+        validated.pixelHeight > original.height ||
+        Math.abs(
+          validated.pixelWidth * original.height -
+            original.width * validated.pixelHeight,
+        ) > original.height
+      )
+        throw new CloudCanvasAssetRepositoryError(
+          "invalid-input",
+          "Canvas image pyramid tier dimensions do not match the original asset.",
+        );
+      const { data, error } = await this.supabase.rpc(
+        "reserve_canvas_asset_variant_v2",
+        {
+          target_workspace_id: validated.workspaceId,
+          target_canvas_id: validated.canvasId,
+          target_asset_id: validated.assetId,
+          requested_max_edge: validated.targetMaxEdge,
+          target_byte_size: validated.byteSize,
+          target_pixel_width: validated.pixelWidth,
+          target_pixel_height: validated.pixelHeight,
+        },
+      );
+      if (error) throw error;
+      reserved = variantV2Metadata(rpcRow(data, "pyramid tier reserve"), {
+        workspaceId: validated.workspaceId,
+        canvasId: validated.canvasId,
+        assetId: validated.assetId,
+      });
+      const { error: uploadError } = await this.supabase.storage
+        .from(CANVAS_ASSET_BUCKET)
+        .upload(reserved.storagePath, validated.blob, {
+          cacheControl: "31536000",
+          contentType: CANVAS_IMAGE_VARIANT_MIME_TYPE,
+          upsert: true,
+        });
+      if (uploadError && statusCode(uploadError) !== "409") throw uploadError;
+      const { data: finalizedData, error: finalizeError } =
+        await this.supabase.rpc("finalize_canvas_asset_variant_v2", {
+          target_workspace_id: validated.workspaceId,
+          target_canvas_id: validated.canvasId,
+          target_asset_id: validated.assetId,
+          requested_max_edge: validated.targetMaxEdge,
+        });
+      if (finalizeError) throw finalizeError;
+      return variantV2Metadata(rpcRow(finalizedData, "pyramid tier finalize"), {
+        workspaceId: validated.workspaceId,
+        canvasId: validated.canvasId,
+        assetId: validated.assetId,
+      });
+    } catch (cause) {
+      if (reserved) {
+        await this.supabase.storage
+          .from(CANVAS_ASSET_BUCKET)
+          .remove([reserved.storagePath]);
+        await this.supabase.rpc("delete_canvas_asset_variant", {
+          target_workspace_id: reserved.workspaceId,
+          target_canvas_id: reserved.canvasId,
+          target_asset_id: reserved.assetId,
+          target_kind: `edge-${reserved.targetMaxEdge}`,
         });
       }
       throw projectError(cause, "upload");

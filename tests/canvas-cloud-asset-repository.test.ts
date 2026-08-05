@@ -401,4 +401,59 @@ describe("SupabaseCloudCanvasAssetRepository", () => {
       assetId: secondAssetId,
     });
   });
+
+  it("stores and loads an additive numeric pyramid tier through V2 RPCs", async () => {
+    const targetMaxEdge = 1024;
+    const tierPath = `${workspaceId}/${canvasId}/${assetId}/edge-${targetMaxEdge}.webp`;
+    const tier = variantRow({
+      kind: `edge-${targetMaxEdge}`,
+      target_max_edge: targetMaxEdge,
+      storage_path: tierPath,
+      pixel_width: 100,
+      pixel_height: 80,
+    });
+    const blob = new Blob(["webp"], { type: "image/webp" });
+    const client = fakeClient({
+      queryResults: [
+        { data: assetRow(), error: null },
+        { data: tier, error: null },
+      ],
+      rpcResults: [
+        { data: [tier], error: null },
+        { data: [tier], error: null },
+      ],
+      downloadResults: [{ data: blob, error: null }],
+    });
+    const assets = repository(client);
+
+    await expect(
+      assets.storeVariantTier({
+        workspaceId,
+        canvasId,
+        assetId,
+        targetMaxEdge,
+        storagePath: tierPath,
+        mimeType: "image/webp",
+        byteSize: blob.size,
+        pixelWidth: 100,
+        pixelHeight: 80,
+        createdAt,
+        blob,
+      }),
+    ).resolves.toMatchObject({ targetMaxEdge, storagePath: tierPath });
+    expect(client.rpc).toHaveBeenNthCalledWith(
+      1,
+      "reserve_canvas_asset_variant_v2",
+      expect.objectContaining({ requested_max_edge: targetMaxEdge }),
+    );
+    expect(client.rpc).toHaveBeenNthCalledWith(
+      2,
+      "finalize_canvas_asset_variant_v2",
+      expect.objectContaining({ requested_max_edge: targetMaxEdge }),
+    );
+
+    await expect(
+      assets.loadVariantTier({ workspaceId, canvasId, assetId, targetMaxEdge }),
+    ).resolves.toMatchObject({ targetMaxEdge, storagePath: tierPath, blob });
+  });
 });

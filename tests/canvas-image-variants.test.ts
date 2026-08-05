@@ -2,9 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import {
   backfillCanvasImageVariant,
   calculateCanvasImageRequiredPixels,
+  canvasImagePyramidTierCacheKey,
+  canvasImagePyramidTierStoragePath,
   canvasImageVariantCacheKey,
   chooseCanvasImageVariant,
+  CANVAS_IMAGE_PYRAMID_RECOMMENDED_TARGET_MAX_EDGES,
   CANVAS_IMAGE_VARIANT_QUALITY_SAFETY_FACTOR,
+  isCanvasImagePyramidTargetMaxEdge,
   isCanvasImageVariantDimensionContractValid,
   type CanvasAssetVariantRepository,
 } from "@/lib/canvas/canvas-image-variants";
@@ -29,6 +33,31 @@ const record: CanvasAssetRecord = {
 };
 
 describe("Canvas image variants", () => {
+  it("defines open numeric pyramid tiers with deterministic edge paths", () => {
+    expect(CANVAS_IMAGE_PYRAMID_RECOMMENDED_TARGET_MAX_EDGES).toEqual([
+      256, 512, 1024, 2048, 4096,
+    ]);
+    expect(isCanvasImagePyramidTargetMaxEdge(3072)).toBe(true);
+    expect(isCanvasImagePyramidTargetMaxEdge(0)).toBe(false);
+    expect(isCanvasImagePyramidTargetMaxEdge(10_001)).toBe(false);
+    expect(
+      canvasImagePyramidTierStoragePath({
+        workspaceId: "workspace-1",
+        canvasId: "canvas-1",
+        assetId: "asset-1",
+        targetMaxEdge: 3072,
+      }),
+    ).toBe("workspace-1/canvas-1/asset-1/edge-3072.webp");
+    expect(
+      canvasImagePyramidTierCacheKey({
+        workspaceId: "workspace-1",
+        canvasId: "canvas-1",
+        assetId: "asset-1",
+        targetMaxEdge: 3072,
+      }),
+    ).toBe("workspace-1/canvas-1/asset-1/edge-3072");
+  });
+
   it.each([
     [{ nodeWidth: 200, nodeHeight: 100, viewportZoom: 1 }, "thumbnail"],
     [{ nodeWidth: 1200, nodeHeight: 800, viewportZoom: 1 }, "preview"],

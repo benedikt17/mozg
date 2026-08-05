@@ -563,7 +563,9 @@ export class SupabaseCloudCanvasRepository
           ? null
           : inputIdentifier(input.parentGroupId, "parentGroupId");
       const { data, error } = await this.supabase.rpc("create_canvas_group", {
-        target_parent_group_id: parentGroupId,
+        // Supabase generation currently models nullable RPC arguments as
+        // required strings, while the SQL function accepts NULL for root groups.
+        target_parent_group_id: parentGroupId as string,
         target_title: title,
         target_workspace_id: workspaceId,
       });
@@ -643,7 +645,7 @@ export class SupabaseCloudCanvasRepository
           : inputIdentifier(input.parentGroupId, "parentGroupId");
       const { data, error } = await this.supabase.rpc("move_canvas_group", {
         target_group_id: groupId,
-        target_parent_group_id: parentGroupId,
+        target_parent_group_id: parentGroupId as string,
       });
       if (error) throw error;
       return mapCanvasGroup(
@@ -670,7 +672,7 @@ export class SupabaseCloudCanvasRepository
           : inputIdentifier(input.groupId, "groupId");
       const { error } = await this.supabase.rpc("move_canvas_to_group", {
         target_canvas_id: canvasId,
-        target_group_id: groupId,
+        target_group_id: groupId as string,
       });
       if (error) throw error;
       await this.loadCanvas(workspaceId, canvasId);

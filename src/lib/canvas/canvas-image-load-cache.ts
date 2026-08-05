@@ -3,6 +3,8 @@ import type {
   CanvasAssetVariantKind,
   CanvasAssetVariantMetadata,
   CanvasAssetVariantRecord,
+  CanvasAssetVariantV2Record,
+  CanvasImagePyramidTargetMaxEdge,
 } from "@/lib/canvas/canvas-image-variants";
 
 export type CanvasImageLoadScope = {
@@ -49,6 +51,10 @@ export class CanvasImageLoadCache {
     string,
     Promise<CanvasAssetVariantRecord | null>
   >();
+  private readonly variantTiers = new Map<
+    string,
+    Promise<CanvasAssetVariantV2Record | null>
+  >();
   private readonly assets = new Map<
     string,
     Promise<CanvasAssetRecord | null>
@@ -94,6 +100,19 @@ export class CanvasImageLoadCache {
     );
   }
 
+  variantTier(
+    scope: CanvasImageLoadScope,
+    assetId: string,
+    targetMaxEdge: CanvasImagePyramidTargetMaxEdge,
+    load: () => Promise<CanvasAssetVariantV2Record | null>,
+  ): Promise<CanvasAssetVariantV2Record | null> {
+    return retainUntilFailure(
+      this.variantTiers,
+      `${scopeKey(scope)}\u0000${assetId}\u0000edge-${targetMaxEdge}`,
+      load,
+    );
+  }
+
   asset(
     scope: CanvasImageLoadScope,
     assetId: string,
@@ -115,6 +134,10 @@ export class CanvasImageLoadCache {
       if (key.startsWith(`${prefix}${assetId}\u0000`))
         this.variants.delete(key);
     }
+    for (const key of this.variantTiers.keys()) {
+      if (key.startsWith(`${prefix}${assetId}\u0000`))
+        this.variantTiers.delete(key);
+    }
     for (const key of this.catalogues.keys()) {
       if (key.startsWith(prefix)) this.catalogues.delete(key);
     }
@@ -126,6 +149,7 @@ export class CanvasImageLoadCache {
       this.metadata,
       this.catalogues,
       this.variants,
+      this.variantTiers,
       this.assets,
     ]) {
       for (const key of cache.keys())
@@ -137,6 +161,7 @@ export class CanvasImageLoadCache {
     this.metadata.clear();
     this.catalogues.clear();
     this.variants.clear();
+    this.variantTiers.clear();
     this.assets.clear();
   }
 }

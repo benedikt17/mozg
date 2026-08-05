@@ -36,4 +36,17 @@ describe("CanvasImageLoadCache", () => {
 
     expect(load).toHaveBeenCalledTimes(2);
   });
+
+  it("keeps numeric pyramid tiers isolated from legacy variant cache keys", async () => {
+    const cache = new CanvasImageLoadCache();
+    const load = vi.fn(async () => null);
+
+    await Promise.all([
+      cache.variantTier(scope, "asset-a", 1024, load),
+      cache.variantTier(scope, "asset-a", 1024, load),
+      cache.variantTier(scope, "asset-a", 2048, load),
+    ]);
+
+    expect(load).toHaveBeenCalledTimes(2);
+  });
 });
