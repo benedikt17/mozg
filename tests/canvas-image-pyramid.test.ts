@@ -251,6 +251,7 @@ describe("CanvasImagePyramidScheduler", () => {
         variantRepository,
         loadCache: cache,
         generate,
+        priorityTargetMaxEdge: 1024,
       }),
       scheduler.enqueue({
         ...scope,
@@ -263,11 +264,17 @@ describe("CanvasImagePyramidScheduler", () => {
     ]);
 
     expect(first.stored.map((tier) => tier.targetMaxEdge)).toEqual([
-      256, 512, 1024, 2048,
+      1024, 256, 512, 2048,
     ]);
     expect(second.stored).toEqual(first.stored);
     expect(assetRepository.loadAsset).toHaveBeenCalledOnce();
     expect(generate).toHaveBeenCalledOnce();
+    expect(generate).toHaveBeenLastCalledWith(
+      record.blob,
+      { width: 2752, height: 1536 },
+      [1024, 256, 512, 2048],
+      expect.any(AbortSignal),
+    );
     expect(variantRepository.storeVariantTier).toHaveBeenCalledTimes(4);
     const loaded = await cache.variantTier(scope, record.id, 1024, async () => {
       throw new Error("Storage download must not occur for a primed tier.");

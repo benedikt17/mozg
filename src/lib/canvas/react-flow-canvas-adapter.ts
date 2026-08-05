@@ -34,6 +34,8 @@ import {
 } from "@/lib/canvas/canvas-image-pyramid";
 import { canvasArrowsToRuntimeMarkers } from "@/lib/canvas/canvas-edge-markers";
 import {
+  CANVAS_IMAGE_PYRAMID_RECOMMENDED_TARGET_MAX_EDGES,
+  calculateCanvasImageRequiredPixels,
   canvasImageLegacyKindFromResolutionSource,
   canvasImageResolutionSourceCacheKey,
   canvasImageResolutionSourceFromLegacyKind,
@@ -224,6 +226,36 @@ function scheduleCanvasImagePyramid(
       if (error instanceof Error && error.name === "AbortError") return;
       dependencies.onVariantError?.(error);
     });
+}
+
+function pyramidPriorityTargetMaxEdge(
+  node: CanvasImageNode,
+  options: RestoreCanvasImageOptions,
+): number {
+  const renderedCssSize = options.renderedCssSizes?.get(node.id);
+  const required = calculateCanvasImageRequiredPixels({
+    nodeWidth: node.size.width,
+    nodeHeight: node.size.height,
+    viewportZoom: options.viewportZoom ?? 1,
+    devicePixelRatio:
+      options.devicePixelRatio ??
+      (typeof window === "undefined" ? 1 : window.devicePixelRatio),
+    ...(renderedCssSize === undefined
+      ? {}
+      : {
+          renderedWidthCssPx: renderedCssSize.width,
+          renderedHeightCssPx: renderedCssSize.height,
+        }),
+  });
+  const maxRequiredEdge = Math.max(required.width, required.height);
+  return (
+    CANVAS_IMAGE_PYRAMID_RECOMMENDED_TARGET_MAX_EDGES.find(
+      (targetMaxEdge) => targetMaxEdge >= maxRequiredEdge,
+    ) ??
+    CANVAS_IMAGE_PYRAMID_RECOMMENDED_TARGET_MAX_EDGES[
+      CANVAS_IMAGE_PYRAMID_RECOMMENDED_TARGET_MAX_EDGES.length - 1
+    ]
+  );
 }
 
 export type CanvasCachedImagePayload = Pick<
@@ -1015,9 +1047,10 @@ export async function restoreCanvasImageNodes(
         scheduleCanvasImagePyramid(dependencies, {
           assetId: canonical.assetId,
           signal: options.signal,
-          ...(selectedSource.type === "variant"
-            ? { priorityTargetMaxEdge: selectedSource.targetMaxEdge }
-            : {}),
+          priorityTargetMaxEdge: pyramidPriorityTargetMaxEdge(
+            canonical,
+            options,
+          ),
         });
         if (cachedPayload.exact) continue;
       }
@@ -1087,9 +1120,10 @@ export async function restoreCanvasImageNodes(
           scheduleCanvasImagePyramid(dependencies, {
             assetId: canonical.assetId,
             signal: options.signal,
-            ...(selectedSource.type === "variant"
-              ? { priorityTargetMaxEdge: selectedSource.targetMaxEdge }
-              : {}),
+            priorityTargetMaxEdge: pyramidPriorityTargetMaxEdge(
+              canonical,
+              options,
+            ),
           });
           continue;
         }
@@ -1162,9 +1196,10 @@ export async function restoreCanvasImageNodes(
             scheduleCanvasImagePyramid(dependencies, {
               assetId: canonical.assetId,
               signal: options.signal,
-              ...(selectedSource.type === "variant"
-                ? { priorityTargetMaxEdge: selectedSource.targetMaxEdge }
-                : {}),
+              priorityTargetMaxEdge: pyramidPriorityTargetMaxEdge(
+                canonical,
+                options,
+              ),
             });
             continue;
           }
@@ -1218,9 +1253,7 @@ export async function restoreCanvasImageNodes(
         assetId: canonical.assetId,
         originalAsset: record,
         signal: options.signal,
-        ...(selectedSource.type === "variant"
-          ? { priorityTargetMaxEdge: selectedSource.targetMaxEdge }
-          : {}),
+        priorityTargetMaxEdge: pyramidPriorityTargetMaxEdge(canonical, options),
       });
     }
   };
