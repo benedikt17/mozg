@@ -143,6 +143,7 @@ export type CanvasAssetRecord = {
   readyAt: string | null;
   deletedAt: string | null;
 };
+export type CanvasAssetMetadata = Omit<CanvasAssetRecord, "blob" | "preview">;
 export type StoreLocalCanvasImageInput = {
   id?: string;
   workspaceId: string;
@@ -160,6 +161,11 @@ export interface CanvasAssetRepository {
     workspaceId: string;
     assetId: string;
   }): Promise<CanvasAssetRecord | null>;
+  /** Optional remote-friendly metadata lookup that never downloads original binary. */
+  getAssetMetadata?(input: {
+    workspaceId: string;
+    assetId: string;
+  }): Promise<CanvasAssetMetadata | null>;
   markAssetDeleted(input: {
     workspaceId: string;
     assetId: string;

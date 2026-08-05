@@ -143,6 +143,7 @@ import {
   canvasImageResolutionSourceCacheKey,
   canvasImageResolutionSourceFromLegacyKind,
 } from "@/lib/canvas/canvas-image-variants";
+import { CanvasImagePyramidScheduler } from "@/lib/canvas/canvas-image-pyramid";
 import { shouldCloseCanvasTaskDetails } from "@/lib/canvas/canvas-task-selection";
 import {
   CanvasEdgeMarkerDefinitions,
@@ -1069,6 +1070,7 @@ function InfiniteCanvasLocalShellSurface({
   const variantRefreshFrameRef = useRef<number | null>(null);
   const variantDowngradeTimerRef = useRef<number | null>(null);
   const imageLoadCacheRef = useRef(new CanvasImageLoadCache());
+  const pyramidSchedulerRef = useRef(new CanvasImagePyramidScheduler());
   const imageLoadCacheCanvasIdRef = useRef<string | null>(
     initialRuntime?.shellState.canvasId ?? null,
   );
@@ -1187,6 +1189,14 @@ function InfiniteCanvasLocalShellSurface({
       workspaceId: shellWorkspaceId,
       canvasId: shellState.canvasId ?? undefined,
       loadCache: imageLoadCacheRef.current,
+      pyramidScheduler: pyramidSchedulerRef.current,
+      onPyramidComplete: ({ result }) => {
+        if (result.stored.length === 0) return;
+        refreshImageVariantsRef.current(
+          shellStateRef.current.viewport.zoom,
+          false,
+        );
+      },
       onVariantError: (error: unknown) => {
         reportVariantError("Canvas image variant generation failed.", error);
       },
@@ -1438,6 +1448,16 @@ function InfiniteCanvasLocalShellSurface({
         variantDowngradeTimerRef.current = null;
       }
       if (imageLoadCacheCanvasIdRef.current !== nextState.canvasId) {
+        if (imageLoadCacheCanvasIdRef.current) {
+          pyramidSchedulerRef.current.cancelScope(
+            {
+              userId: shellUserId,
+              workspaceId: shellWorkspaceId,
+              canvasId: imageLoadCacheCanvasIdRef.current,
+            },
+            true,
+          );
+        }
         imageLoadCacheRef.current.clear();
         imageLoadCacheCanvasIdRef.current = nextState.canvasId;
       }
@@ -1504,6 +1524,7 @@ function InfiniteCanvasLocalShellSurface({
       objectUrls,
       setEdges,
       setNodes,
+      shellUserId,
       shellWorkspaceId,
     ],
   );
@@ -1679,6 +1700,7 @@ function InfiniteCanvasLocalShellSurface({
   useEffect(() => {
     let active = true;
     const imageLoadCache = imageLoadCacheRef.current;
+    const pyramidScheduler = pyramidSchedulerRef.current;
     if (initialRuntime) restoreCachedScene(initialRuntime);
     const groupLoad = groupsRepository
       ? groupsRepository
@@ -1751,12 +1773,22 @@ function InfiniteCanvasLocalShellSurface({
         clearTimeout(variantDowngradeTimerRef.current);
         variantDowngradeTimerRef.current = null;
       }
-      imageLoadCache.clear();
       let latestState = controller.state;
       if (saveTimerRef.current) {
         controller.setRuntimeNodes(nodesRef.current);
         latestState = controller.setRuntimeEdges(edgesRef.current);
       }
+      if (latestState.canvasId) {
+        pyramidScheduler.cancelScope(
+          {
+            userId: shellUserId,
+            workspaceId: shellWorkspaceId,
+            canvasId: latestState.canvasId,
+          },
+          true,
+        );
+      }
+      imageLoadCache.clear();
       if (runtimeCache && latestState.canvasId) {
         runtimeCache.set({
           workspaceId: shellWorkspaceId,

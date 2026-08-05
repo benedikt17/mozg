@@ -28,13 +28,16 @@ import type {
 import type { ObjectUrlRegistry } from "@/lib/canvas/canvas-image-ingestion";
 import type { CanvasTaskBridge } from "@/lib/canvas/canvas-task-bridge";
 import { CanvasImageLoadCache } from "@/lib/canvas/canvas-image-load-cache";
+import {
+  CanvasImagePyramidScheduler,
+  type CanvasImagePyramidJobResult,
+} from "@/lib/canvas/canvas-image-pyramid";
 import { canvasArrowsToRuntimeMarkers } from "@/lib/canvas/canvas-edge-markers";
 import {
   canvasImageLegacyKindFromResolutionSource,
   canvasImageResolutionSourceCacheKey,
   canvasImageResolutionSourceFromLegacyKind,
   chooseCanvasImageResolutionSource,
-  generateCanvasImageVariants,
   type CanvasAssetVariantKind,
   type CanvasAssetVariantMetadata,
   type CanvasAssetVariantRepository,
@@ -43,7 +46,6 @@ import {
   type CanvasImagePyramidCandidate,
   type CanvasImageResolutionSource,
   type CanvasImageSourceKind,
-  type CanvasImageVariantGenerator,
   isCanvasImagePyramidTargetMaxEdge,
 } from "@/lib/canvas/canvas-image-variants";
 
@@ -135,7 +137,11 @@ export type CanvasImageAdapterDependencies = {
   canvasId?: string;
   loadCache?: CanvasImageLoadCache;
   decodeImageDimensions?: DecodeImageDimensions;
-  generateImageVariants?: CanvasImageVariantGenerator;
+  pyramidScheduler?: CanvasImagePyramidScheduler;
+  onPyramidComplete?: (input: {
+    assetId: string;
+    result: CanvasImagePyramidJobResult;
+  }) => void;
   onVariantError?: (error: unknown) => void;
   idGenerator?: () => string;
 };
@@ -174,6 +180,51 @@ export type RestoreCanvasImageResult = {
   maxConcurrentAssetReads: number;
   staleIgnored: boolean;
 };
+
+function v2Repository(
+  dependencies: CanvasImageAdapterDependencies,
+): CanvasAssetVariantV2Repository | null {
+  const repository = dependencies.variantRepository;
+  return repository?.listVariantTiers && repository.storeVariantTier
+    ? (repository as CanvasAssetVariantV2Repository)
+    : null;
+}
+
+function scheduleCanvasImagePyramid(
+  dependencies: CanvasImageAdapterDependencies,
+  input: {
+    assetId: string;
+    originalAsset?: CanvasAssetRecord;
+    signal?: AbortSignal;
+    priorityTargetMaxEdge?: number;
+  },
+): void {
+  const repository = v2Repository(dependencies);
+  if (!dependencies.pyramidScheduler || !repository || !dependencies.canvasId)
+    return;
+  void dependencies.pyramidScheduler
+    .enqueue({
+      assetRepository: dependencies.assetRepository,
+      variantRepository: repository,
+      workspaceId: dependencies.workspaceId,
+      canvasId: dependencies.canvasId,
+      assetId: input.assetId,
+      userId: dependencies.userId,
+      originalAsset: input.originalAsset,
+      loadCache: dependencies.loadCache,
+      signal: input.signal,
+      ...(input.priorityTargetMaxEdge === undefined
+        ? {}
+        : { priorityTargetMaxEdge: input.priorityTargetMaxEdge }),
+    })
+    .then((result) =>
+      dependencies.onPyramidComplete?.({ assetId: input.assetId, result }),
+    )
+    .catch((error: unknown) => {
+      if (error instanceof Error && error.name === "AbortError") return;
+      dependencies.onVariantError?.(error);
+    });
+}
 
 export type CanvasCachedImagePayload = Pick<
   CanvasImageNodeData,
@@ -735,39 +786,7 @@ export async function ingestCanvasImageTransferToNodes(
   });
   const nodes: CanvasImageFlowNode[] = [];
   for (const [index, accepted] of result.accepted.entries()) {
-    const record = await dependencies.assetRepository.loadAsset({
-      workspaceId: dependencies.workspaceId,
-      assetId: accepted.assetId,
-    });
-    if (!record) continue;
-    if (dependencies.variantRepository && dependencies.canvasId) {
-      void (dependencies.generateImageVariants ?? generateCanvasImageVariants)(
-        record.blob,
-        { width: record.width, height: record.height },
-      )
-        .then((variants) =>
-          Promise.all(
-            variants.map((variant) =>
-              dependencies.variantRepository!.storeVariant({
-                workspaceId: dependencies.workspaceId,
-                canvasId: dependencies.canvasId!,
-                assetId: record.id,
-                kind: variant.kind,
-                storagePath: `${dependencies.workspaceId}/${dependencies.canvasId}/${record.id}/${variant.kind}.webp`,
-                mimeType: "image/webp",
-                byteSize: variant.blob.size,
-                pixelWidth: variant.pixelWidth,
-                pixelHeight: variant.pixelHeight,
-                createdAt: new Date().toISOString(),
-                blob: variant.blob,
-              }),
-            ),
-          ),
-        )
-        .catch((error: unknown) => {
-          dependencies.onVariantError?.(error);
-        });
-    }
+    const record = accepted.record;
     nodes.push(
       createCanvasImageFlowNode({
         record,
@@ -777,6 +796,10 @@ export async function ingestCanvasImageTransferToNodes(
         index,
       }),
     );
+    scheduleCanvasImagePyramid(dependencies, {
+      assetId: record.id,
+      originalAsset: record,
+    });
   }
   return { accepted: result.accepted, rejected: result.rejected.length, nodes };
 }
@@ -989,6 +1012,13 @@ export async function restoreCanvasImageNodes(
         };
         nodes[index] = node;
         options.onNode?.(node, index, imageNodes.length);
+        scheduleCanvasImagePyramid(dependencies, {
+          assetId: canonical.assetId,
+          signal: options.signal,
+          ...(selectedSource.type === "variant"
+            ? { priorityTargetMaxEdge: selectedSource.targetMaxEdge }
+            : {}),
+        });
         if (cachedPayload.exact) continue;
       }
       if (
@@ -1054,6 +1084,13 @@ export async function restoreCanvasImageNodes(
           );
           nodes[index] = node;
           options.onNode?.(node, index, imageNodes.length);
+          scheduleCanvasImagePyramid(dependencies, {
+            assetId: canonical.assetId,
+            signal: options.signal,
+            ...(selectedSource.type === "variant"
+              ? { priorityTargetMaxEdge: selectedSource.targetMaxEdge }
+              : {}),
+          });
           continue;
         }
       }
@@ -1122,6 +1159,13 @@ export async function restoreCanvasImageNodes(
             );
             nodes[index] = node;
             options.onNode?.(node, index, imageNodes.length);
+            scheduleCanvasImagePyramid(dependencies, {
+              assetId: canonical.assetId,
+              signal: options.signal,
+              ...(selectedSource.type === "variant"
+                ? { priorityTargetMaxEdge: selectedSource.targetMaxEdge }
+                : {}),
+            });
             continue;
           }
         }
@@ -1170,6 +1214,14 @@ export async function restoreCanvasImageNodes(
       );
       nodes[index] = node;
       options.onNode?.(node, index, imageNodes.length);
+      scheduleCanvasImagePyramid(dependencies, {
+        assetId: canonical.assetId,
+        originalAsset: record,
+        signal: options.signal,
+        ...(selectedSource.type === "variant"
+          ? { priorityTargetMaxEdge: selectedSource.targetMaxEdge }
+          : {}),
+      });
     }
   };
   await Promise.all(Array.from({ length: concurrency }, () => worker()));

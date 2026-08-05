@@ -190,6 +190,26 @@ export type CanvasImageVariantGenerator = (
   signal?: AbortSignal,
 ) => Promise<GeneratedCanvasImageVariant[]>;
 
+export type GeneratedCanvasImagePyramidTier = {
+  targetMaxEdge: CanvasImagePyramidTargetMaxEdge;
+  blob: Blob;
+  pixelWidth: number;
+  pixelHeight: number;
+};
+
+/** Generates every requested derivative from one decoded original source. */
+export type CanvasImagePyramidGenerator = (
+  blob: Blob,
+  dimensions: { width: number; height: number },
+  targetMaxEdges: readonly number[],
+  signal?: AbortSignal,
+) => Promise<GeneratedCanvasImagePyramidTier[]>;
+
+/** Streams completed numeric tiers without retaining every encoded Blob in memory. */
+export type CanvasImagePyramidTierConsumer = (
+  tier: GeneratedCanvasImagePyramidTier,
+) => Promise<void> | void;
+
 export function canvasImageVariantCacheKey(input: {
   workspaceId: string;
   canvasId: string;
@@ -386,6 +406,49 @@ function scaledDimensions(
   };
 }
 
+function abortError(): Error {
+  const error = new Error("Aborted");
+  error.name = "AbortError";
+  return error;
+}
+
+/**
+ * Canonicalizes configuration input. Invalid values are ignored so a future
+ * configuration typo cannot produce an unsafe storage identity.
+ */
+export function normalizeCanvasImagePyramidTargetMaxEdges(
+  targetMaxEdges: readonly unknown[],
+): CanvasImagePyramidTargetMaxEdge[] {
+  return [
+    ...new Set(targetMaxEdges.filter(isCanvasImagePyramidTargetMaxEdge)),
+  ].sort((left, right) => left - right);
+}
+
+/** Returns useful derivative edges only: never equal to or above the original. */
+export function planCanvasImagePyramidTiers(input: {
+  width: number;
+  height: number;
+  targetMaxEdges?: readonly unknown[];
+  readyTargetMaxEdges?: readonly unknown[];
+}): CanvasImagePyramidTargetMaxEdge[] {
+  const maximum = Math.max(input.width, input.height);
+  if (
+    !Number.isSafeInteger(input.width) ||
+    !Number.isSafeInteger(input.height) ||
+    input.width <= 0 ||
+    input.height <= 0
+  )
+    return [];
+  const ready = new Set(
+    normalizeCanvasImagePyramidTargetMaxEdges(input.readyTargetMaxEdges ?? []),
+  );
+  return normalizeCanvasImagePyramidTargetMaxEdges(
+    input.targetMaxEdges ?? CANVAS_IMAGE_PYRAMID_RECOMMENDED_TARGET_MAX_EDGES,
+  ).filter(
+    (targetMaxEdge) => targetMaxEdge < maximum && !ready.has(targetMaxEdge),
+  );
+}
+
 function canvasToBlob(
   canvas: OffscreenCanvas | HTMLCanvasElement,
 ): Promise<Blob | null> {
@@ -467,7 +530,8 @@ export const generateCanvasImageVariants: CanvasImageVariantGenerator = async (
               height: target.height,
             })
           : new OffscreenCanvas(target.width, target.height);
-      const context = canvas.getContext("2d");
+      const context = canvas.getContext("2d") as
+        CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
       if (!context) throw new Error("Canvas 2D context is unavailable.");
       context.imageSmoothingEnabled = true;
       context.imageSmoothingQuality = "high";
@@ -487,6 +551,87 @@ export const generateCanvasImageVariants: CanvasImageVariantGenerator = async (
   } finally {
     decoded.close?.();
   }
+};
+
+export async function generateCanvasImagePyramidProgressively(
+  blob: Blob,
+  dimensions: { width: number; height: number },
+  targetMaxEdges: readonly number[],
+  onTier: CanvasImagePyramidTierConsumer,
+  signal?: AbortSignal,
+): Promise<void> {
+  const planned = planCanvasImagePyramidTiers({
+    width: dimensions.width,
+    height: dimensions.height,
+    targetMaxEdges,
+  });
+  if (signal?.aborted) throw abortError();
+  if (planned.length === 0) return;
+  if (typeof OffscreenCanvas === "undefined" && typeof document === "undefined")
+    return;
+  const decoded = await decodeVariantSource(blob);
+  try {
+    const plannedTargets = new Set(planned);
+    const generationOrder = [
+      ...new Set(targetMaxEdges.filter(isCanvasImagePyramidTargetMaxEdge)),
+    ].filter((targetMaxEdge) => plannedTargets.has(targetMaxEdge));
+    for (const targetMaxEdge of generationOrder) {
+      if (signal?.aborted) throw abortError();
+      const target = scaledDimensions(
+        dimensions.width,
+        dimensions.height,
+        targetMaxEdge,
+      );
+      const canvas =
+        typeof OffscreenCanvas === "undefined"
+          ? Object.assign(document.createElement("canvas"), {
+              width: target.width,
+              height: target.height,
+            })
+          : new OffscreenCanvas(target.width, target.height);
+      const context = canvas.getContext("2d") as
+        CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+      if (!context) throw new Error("Canvas 2D context is unavailable.");
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(decoded.source, 0, 0, target.width, target.height);
+      const generated = await canvasToBlob(canvas);
+      if (!generated || generated.type !== CANVAS_IMAGE_VARIANT_MIME_TYPE)
+        throw new Error("WebP encoding is unavailable.");
+      await onTier({
+        targetMaxEdge,
+        blob: generated,
+        pixelWidth: target.width,
+        pixelHeight: target.height,
+      });
+    }
+  } finally {
+    decoded.close?.();
+  }
+}
+
+export const generateCanvasImagePyramid: CanvasImagePyramidGenerator = async (
+  blob,
+  dimensions,
+  targetMaxEdges,
+  signal,
+) => {
+  const tiers: GeneratedCanvasImagePyramidTier[] = [];
+  const planned = planCanvasImagePyramidTiers({
+    width: dimensions.width,
+    height: dimensions.height,
+    targetMaxEdges,
+  });
+  await generateCanvasImagePyramidProgressively(
+    blob,
+    dimensions,
+    planned,
+    (tier) => {
+      tiers.push(tier);
+    },
+    signal,
+  );
+  return tiers;
 };
 
 export function calculateCanvasImageRequiredPixels(input: {

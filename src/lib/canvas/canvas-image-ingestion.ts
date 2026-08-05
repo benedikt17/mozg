@@ -35,6 +35,8 @@ export type AcceptedCanvasImage = {
   width: number;
   height: number;
   source: CanvasImageInputSource;
+  /** Runtime-only upload result; lets immediate Canvas work reuse the original Blob. */
+  record: CanvasAssetRecord;
 };
 
 export type CanvasImageRejectionReason =
@@ -296,6 +298,7 @@ export async function ingestCanvasImageCandidates(
         width: record.width,
         height: record.height,
         source: candidate.source,
+        record,
       });
     } catch {
       rejected.push(rejection(candidate, "repository-failure"));

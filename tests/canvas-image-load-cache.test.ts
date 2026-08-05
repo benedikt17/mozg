@@ -49,4 +49,23 @@ describe("CanvasImageLoadCache", () => {
 
     expect(load).toHaveBeenCalledTimes(2);
   });
+
+  it("invalidates only the generated asset's tier metadata and catalogues", async () => {
+    const cache = new CanvasImageLoadCache();
+    const assetMetadata = vi.fn(async () => []);
+    const sharedCatalogue = vi.fn(async () => new Map());
+    const unrelatedCatalogue = vi.fn(async () => new Map());
+
+    await cache.tiersForAsset(scope, "asset-a", assetMetadata);
+    await cache.tierCatalogue(scope, ["asset-a", "asset-b"], sharedCatalogue);
+    await cache.tierCatalogue(scope, ["asset-b"], unrelatedCatalogue);
+    cache.invalidateTierMetadata(scope, "asset-a");
+    await cache.tiersForAsset(scope, "asset-a", assetMetadata);
+    await cache.tierCatalogue(scope, ["asset-a", "asset-b"], sharedCatalogue);
+    await cache.tierCatalogue(scope, ["asset-b"], unrelatedCatalogue);
+
+    expect(assetMetadata).toHaveBeenCalledTimes(2);
+    expect(sharedCatalogue).toHaveBeenCalledTimes(2);
+    expect(unrelatedCatalogue).toHaveBeenCalledOnce();
+  });
 });

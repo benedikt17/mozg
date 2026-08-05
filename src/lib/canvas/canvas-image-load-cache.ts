@@ -122,6 +122,18 @@ export class CanvasImageLoadCache {
     );
   }
 
+  /** Makes a just-uploaded tier available to selection without a Storage read. */
+  primeVariantTier(
+    scope: CanvasImageLoadScope,
+    assetId: string,
+    record: CanvasAssetVariantV2Record,
+  ): void {
+    this.variantTiers.set(
+      `${scopeKey(scope)}\u0000${assetId}\u0000edge-${record.targetMaxEdge}`,
+      Promise.resolve(record),
+    );
+  }
+
   tiersForAsset(
     scope: CanvasImageLoadScope,
     assetId: string,
@@ -182,6 +194,20 @@ export class CanvasImageLoadCache {
     }
     for (const key of this.tierCatalogues.keys()) {
       if (key.startsWith(prefix)) this.tierCatalogues.delete(key);
+    }
+  }
+
+  /** Invalidates only metadata/catalogues that may claim this asset lacks a tier. */
+  invalidateTierMetadata(scope: CanvasImageLoadScope, assetId: string): void {
+    const prefix = `${scopeKey(scope)}\u0000`;
+    this.tierMetadata.delete(`${prefix}${assetId}`);
+    for (const key of this.tierCatalogues.keys()) {
+      const separator = "\u0000edge-catalogue\u0000";
+      const ids = key.includes(separator)
+        ? key.slice(key.indexOf(separator) + separator.length).split(",")
+        : [];
+      if (key.startsWith(prefix) && ids.includes(assetId))
+        this.tierCatalogues.delete(key);
     }
   }
 

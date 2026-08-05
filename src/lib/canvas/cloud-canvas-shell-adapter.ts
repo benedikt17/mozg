@@ -9,6 +9,7 @@ import type {
 } from "@/lib/canvas/canvas-group-repository";
 import type {
   CanvasAssetRecord,
+  CanvasAssetMetadata,
   CanvasAssetRepository,
   CanvasRepository,
   CanvasSummary,
@@ -232,6 +233,46 @@ export class CloudCanvasShellRepository
         assetId: input.assetId,
       });
       return assetRecord(asset, asset.blob);
+    } catch (error) {
+      if (isNotFound(error)) return null;
+      throw error;
+    }
+  }
+
+  async getAssetMetadata(input: {
+    workspaceId: string;
+    assetId: string;
+  }): Promise<CanvasAssetMetadata | null> {
+    try {
+      const metadata = await this.assetRepository.getAssetMetadata({
+        workspaceId: input.workspaceId,
+        canvasId: this.canvasIdForAssetLookup(),
+        assetId: input.assetId,
+      });
+      const {
+        id,
+        workspaceId,
+        mimeType,
+        byteSize,
+        width,
+        height,
+        checksum,
+        createdAt,
+        readyAt,
+        deletedAt,
+      } = metadata;
+      return {
+        id,
+        workspaceId,
+        mimeType,
+        byteSize,
+        width,
+        height,
+        checksum,
+        createdAt,
+        readyAt,
+        deletedAt,
+      };
     } catch (error) {
       if (isNotFound(error)) return null;
       throw error;
