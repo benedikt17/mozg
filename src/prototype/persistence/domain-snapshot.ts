@@ -743,6 +743,7 @@ function parseDocument(
       "order",
       "folder",
       "folderPath",
+      "deletedAt",
       "isKeyDocument",
       "title",
       "excerpt",
@@ -759,6 +760,9 @@ function parseDocument(
   const order = readOrder(value, "order", path, issues, true);
   const folder = readString(value, "folder", path, issues);
   const folderPath = readOptionalFolderPath(value, path, issues);
+  const deletedAt = readString(value, "deletedAt", path, issues, {
+    optional: true,
+  });
   const isKeyDocument = readBoolean(value, "isKeyDocument", path, issues, true);
   const title = readString(value, "title", path, issues);
   const excerpt = readString(value, "excerpt", path, issues);
@@ -786,6 +790,7 @@ function parseDocument(
     ...(order === undefined ? {} : { order }),
     folder,
     ...(folderPath === undefined ? {} : { folderPath }),
+    ...(deletedAt === undefined ? {} : { deletedAt }),
     ...(isKeyDocument === undefined ? {} : { isKeyDocument }),
     title,
     excerpt,

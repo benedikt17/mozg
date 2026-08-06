@@ -83,6 +83,7 @@ export type PrototypeDocument = {
   order?: number;
   folder: string;
   folderPath?: string[];
+  deletedAt?: string;
   isKeyDocument?: boolean;
   title: string;
   excerpt: string;

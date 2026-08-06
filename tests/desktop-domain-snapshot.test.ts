@@ -152,6 +152,42 @@ describe("desktop domain snapshot v2", () => {
     expect(snapshot.documents[0]?.linkedTaskIds[0]).toBe(linkedTaskId);
   });
 
+  it("persists a soft-deleted Knowledge article and its Markdown through reload hydration", () => {
+    const state = desktopPrototypeReducer(initialDesktopPrototypeState, {
+      type: "soft-delete-knowledge-document",
+      documentId: "doc-l-routes",
+    });
+    const parsed = parseDesktopDomainSnapshot(
+      createDesktopDomainSnapshot(state),
+    );
+
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const persisted = parsed.snapshot.documents.find(
+      (document) => document.id === "doc-l-routes",
+    );
+    expect(persisted).toMatchObject({
+      deletedAt: expect.any(String),
+      folderPath: state.documents.find(
+        (document) => document.id === "doc-l-routes",
+      )?.folderPath,
+      content: state.documents.find(
+        (document) => document.id === "doc-l-routes",
+      )?.content,
+    });
+
+    const reloaded = desktopPrototypeReducer(initialDesktopPrototypeState, {
+      type: "hydrate-domain",
+      snapshot: parsed.snapshot,
+    });
+    expect(
+      reloaded.documents.find((document) => document.id === "doc-l-routes"),
+    ).toMatchObject({
+      deletedAt: expect.any(String),
+      content: persisted?.content,
+    });
+  });
+
   it("round-trips a newly created task in its explicit list", () => {
     let state = structuredClone(initialDesktopPrototypeState);
     state = desktopPrototypeReducer(state, {

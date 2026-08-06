@@ -52,6 +52,25 @@ export function getProjectDocuments(
   return state.documents.filter((document) => document.projectId === projectId);
 }
 
+export function getKnowledgeTrashDocuments(
+  state: DesktopPrototypeState,
+  projectId = state.activeProjectId,
+): PrototypeDocument[] {
+  const documentOrder = new Map(
+    state.documents.map((document, index) => [
+      document.id,
+      document.order ?? index,
+    ]),
+  );
+  return getProjectDocuments(state, projectId)
+    .filter((document) => document.deletedAt !== undefined)
+    .sort(
+      (first, second) =>
+        (documentOrder.get(first.id) ?? 0) -
+        (documentOrder.get(second.id) ?? 0),
+    );
+}
+
 export function getKeyDocuments(
   state: DesktopPrototypeState,
 ): PrototypeDocument[] {
@@ -152,7 +171,9 @@ export function getKnowledgeTree(
   state: DesktopPrototypeState,
   projectId = state.activeProjectId,
 ): KnowledgeTreeNode[] {
-  const documents = getProjectDocuments(state, projectId);
+  const documents = getProjectDocuments(state, projectId).filter(
+    (document) => document.deletedAt === undefined,
+  );
   const documentOrder = new Map(
     documents.map((document, index) => [document.id, document.order ?? index]),
   );
@@ -529,6 +550,7 @@ function getKnowledgeFolderPathById(
   if (materializedFolder) return materializedFolder.path;
 
   for (const document of getProjectDocuments(state)) {
+    if (document.deletedAt !== undefined) continue;
     const documentPath = getDocumentFolderPath(document);
     for (let length = 1; length <= documentPath.length; length += 1) {
       const path = documentPath.slice(0, length);
@@ -550,6 +572,7 @@ function getKnowledgeFolderPaths(state: DesktopPrototypeState): string[][] {
     if (folder.projectId === state.activeProjectId) addPath(folder.path);
   }
   for (const document of getProjectDocuments(state)) {
+    if (document.deletedAt !== undefined) continue;
     const documentPath = getDocumentFolderPath(document);
     for (let length = 1; length <= documentPath.length; length += 1) {
       addPath(documentPath.slice(0, length));
@@ -680,6 +703,7 @@ export function deleteKnowledgeFolder(
   const folderPath =
     folder?.path ??
     getProjectDocuments(state)
+      .filter((document) => document.deletedAt === undefined)
       .map((document) => getDocumentFolderPath(document))
       .find(
         (path) => knowledgeFolderId(state.activeProjectId, path) === folderId,
@@ -690,6 +714,7 @@ export function deleteKnowledgeFolder(
     knowledgePathStartsWith(path, folderPath);
   const documents = state.documents.map((document) => {
     if (document.projectId !== state.activeProjectId) return document;
+    if (document.deletedAt !== undefined) return document;
     const documentPath = getDocumentFolderPath(document);
     if (!isInFolder(documentPath)) return document;
     return {
@@ -726,6 +751,89 @@ export function deleteKnowledgeFolder(
         (id) => id !== folderId && !id.startsWith(`${folderId}/`),
       ) ?? null,
     editingKnowledgeFolderId: null,
+  };
+}
+
+export function softDeleteKnowledgeDocument(
+  state: DesktopPrototypeState,
+  documentId: string,
+): DesktopPrototypeState {
+  const document = getDocumentById(state, documentId);
+  if (
+    !document ||
+    document.projectId !== state.activeProjectId ||
+    document.deletedAt !== undefined
+  ) {
+    return state;
+  }
+
+  const nextState = closeDocumentTab(state, documentId);
+  const deletingActiveDocument = state.selectedDocumentId === documentId;
+  const deletingSplitDocument = state.splitViewDocumentId === documentId;
+  return {
+    ...nextState,
+    documents: nextState.documents.map((item) =>
+      item.id === documentId
+        ? { ...item, deletedAt: new Date().toISOString() }
+        : item,
+    ),
+    documentHistoryBack: nextState.documentHistoryBack.filter(
+      (historyDocumentId) => historyDocumentId !== documentId,
+    ),
+    documentHistoryForward: nextState.documentHistoryForward.filter(
+      (historyDocumentId) => historyDocumentId !== documentId,
+    ),
+    knowledgeSplitEnabled:
+      deletingActiveDocument || deletingSplitDocument
+        ? false
+        : nextState.knowledgeSplitEnabled,
+    splitViewDocumentId:
+      deletingActiveDocument || deletingSplitDocument
+        ? null
+        : nextState.splitViewDocumentId,
+    activeKnowledgePane:
+      deletingActiveDocument || deletingSplitDocument
+        ? "primary"
+        : nextState.activeKnowledgePane,
+  };
+}
+
+export function restoreKnowledgeDocument(
+  state: DesktopPrototypeState,
+  documentId: string,
+): DesktopPrototypeState {
+  const document = getDocumentById(state, documentId);
+  if (
+    !document ||
+    document.projectId !== state.activeProjectId ||
+    document.deletedAt === undefined
+  ) {
+    return state;
+  }
+
+  const originalFolderPath = getDocumentFolderPath(document);
+  const restoredFolderPath = getKnowledgeFolderPaths(state).some((path) =>
+    knowledgePathsEqual(path, originalFolderPath),
+  )
+    ? originalFolderPath
+    : [];
+  const documentWithoutDeletedAt = { ...document };
+  delete documentWithoutDeletedAt.deletedAt;
+  return {
+    ...state,
+    documents: state.documents.map((item) =>
+      item.id === documentId
+        ? {
+            ...documentWithoutDeletedAt,
+            folder: restoredFolderPath.at(-1) ?? "",
+            ...(restoredFolderPath.length === 0
+              ? { folderPath: [] }
+              : document.folderPath === undefined
+                ? {}
+                : { folderPath: restoredFolderPath }),
+          }
+        : item,
+    ),
   };
 }
 

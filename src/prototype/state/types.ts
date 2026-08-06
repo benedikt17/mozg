@@ -304,6 +304,8 @@ export type DesktopPrototypeAction =
   | { type: "start-editing-knowledge-folder"; folderId: string }
   | { type: "rename-knowledge-folder"; folderId: string; title: string }
   | { type: "delete-knowledge-folder"; folderId: string }
+  | { type: "soft-delete-knowledge-document"; documentId: string }
+  | { type: "restore-knowledge-document"; documentId: string }
   | { type: "finish-editing-knowledge-folder" }
   | {
       type: "move-knowledge-document";

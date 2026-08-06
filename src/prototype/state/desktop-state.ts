@@ -66,6 +66,8 @@ import {
   getDocumentById,
   getDocumentFolderPath,
   getKnowledgePaneState,
+  restoreKnowledgeDocument,
+  softDeleteKnowledgeDocument,
   knowledgeFolderId,
   finishEditingKnowledgeFolder,
   moveKnowledgeDocument,
@@ -571,6 +573,7 @@ function selectKnowledgeDocument(
     pushHistory: true,
   },
 ): DesktopPrototypeState {
+  if (document.deletedAt !== undefined) return state;
   const sameProjectState =
     document.projectId === state.activeProjectId
       ? state
@@ -624,7 +627,12 @@ function selectKnowledgeDocumentInActivePane(
     return selectKnowledgeDocument(state, document);
   }
 
-  if (document.projectId !== state.activeProjectId) return state;
+  if (
+    document.projectId !== state.activeProjectId ||
+    document.deletedAt !== undefined
+  ) {
+    return state;
+  }
   if (document.id === paneState.primaryDocument?.id) {
     return {
       ...state,
@@ -1257,6 +1265,10 @@ export function desktopPrototypeReducer(
       return renameKnowledgeFolder(state, action.folderId, action.title);
     case "delete-knowledge-folder":
       return deleteKnowledgeFolder(state, action.folderId);
+    case "soft-delete-knowledge-document":
+      return softDeleteKnowledgeDocument(state, action.documentId);
+    case "restore-knowledge-document":
+      return restoreKnowledgeDocument(state, action.documentId);
     case "finish-editing-knowledge-folder":
       return finishEditingKnowledgeFolder(state);
     case "move-knowledge-document":

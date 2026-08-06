@@ -10,6 +10,7 @@ import {
   getDocumentById,
   getKeyDocuments,
   getKnowledgePaneState,
+  getKnowledgeTrashDocuments,
   getKnowledgeTree,
   getProjectDocuments,
   getProjectOverviewDirections,
@@ -3643,6 +3644,125 @@ describe("desktop structural prototype state", () => {
       deleted.knowledgeFolders.some((folder) => folder.id === folderId),
     ).toBe(false);
     expect(deleted.selectedKnowledgeFolderPath).toEqual(["Персонажи"]);
+  });
+
+  it("soft-deletes an inactive article into Trash without changing the active article", () => {
+    const state = {
+      ...freshState(),
+      selectedDocumentId: "doc-l-routes",
+      openDocumentIds: ["doc-l-nastenka", "doc-l-routes"],
+    };
+    const deleted = desktopPrototypeReducer(state, {
+      type: "soft-delete-knowledge-document",
+      documentId: "doc-l-nastenka",
+    });
+
+    expect(deleted.selectedDocumentId).toBe("doc-l-routes");
+    expect(deleted.openDocumentIds).toEqual(["doc-l-routes"]);
+    expect(
+      getKnowledgeTree(deleted).some((node) => node.id === "doc-l-nastenka"),
+    ).toBe(false);
+    expect(
+      getKnowledgeTrashDocuments(deleted).map((document) => document.id),
+    ).toEqual(["doc-l-nastenka"]);
+    expect(
+      deleted.documents.find((document) => document.id === "doc-l-nastenka"),
+    ).toMatchObject({
+      content: state.documents.find(
+        (document) => document.id === "doc-l-nastenka",
+      )?.content,
+    });
+  });
+
+  it("soft-deletes the active article, closes its tabs, and selects the nearest remaining tab", () => {
+    const state = {
+      ...freshState(),
+      selectedDocumentId: "doc-l-routes",
+      openDocumentIds: ["doc-l-nastenka", "doc-l-routes", "doc-l-magic"],
+      knowledgeSplitEnabled: true,
+      splitViewDocumentId: "doc-l-routes",
+      activeKnowledgePane: "secondary" as const,
+    };
+    const deleted = desktopPrototypeReducer(state, {
+      type: "soft-delete-knowledge-document",
+      documentId: "doc-l-routes",
+    });
+
+    expect(
+      deleted.documents.find((document) => document.id === "doc-l-routes")
+        ?.deletedAt,
+    ).toBeTypeOf("string");
+    expect(deleted.openDocumentIds).toEqual(["doc-l-nastenka", "doc-l-magic"]);
+    expect(deleted.selectedDocumentId).toBe("doc-l-magic");
+    expect(deleted.knowledgeSplitEnabled).toBe(false);
+    expect(deleted.splitViewDocumentId).toBeNull();
+    expect(getKnowledgePaneState(deleted).activeDocument?.id).toBe(
+      "doc-l-magic",
+    );
+    expect(getKnowledgePaneState(deleted).activeDocument?.content).toEqual(
+      getDocumentById(state, "doc-l-magic")?.content,
+    );
+  });
+
+  it("restores an article to its original parent and keeps its Markdown title/content", () => {
+    const state = freshState();
+    const original = getDocumentById(state, "doc-l-routes");
+    if (!original) throw new Error("Expected nested document");
+    const trashed = desktopPrototypeReducer(state, {
+      type: "soft-delete-knowledge-document",
+      documentId: original.id,
+    });
+    const restored = desktopPrototypeReducer(trashed, {
+      type: "restore-knowledge-document",
+      documentId: original.id,
+    });
+
+    expect(getKnowledgeTrashDocuments(restored)).toHaveLength(0);
+    expect(JSON.stringify(getKnowledgeTree(restored))).toContain(original.id);
+    expect(getDocumentById(restored, original.id)).toMatchObject({
+      folderPath: original.folderPath,
+      title: original.title,
+      content: original.content,
+    });
+    expect(getDocumentById(restored, original.id)).not.toHaveProperty(
+      "deletedAt",
+    );
+  });
+
+  it("restores a trashed article to root when its original parent no longer exists", () => {
+    const initial = freshState();
+    const state = {
+      ...initial,
+      documents: [
+        ...initial.documents,
+        {
+          ...initial.documents[0]!,
+          id: "doc-l-temporary-parent",
+          folder: "Temporary parent",
+          folderPath: ["Temporary parent"],
+          content: ["# Temporary parent article", "", "Keep this Markdown"],
+        },
+      ],
+      selectedDocumentId: "doc-l-routes",
+      openDocumentIds: ["doc-l-routes"],
+    };
+    const trashed = desktopPrototypeReducer(state, {
+      type: "soft-delete-knowledge-document",
+      documentId: "doc-l-temporary-parent",
+    });
+    const restored = desktopPrototypeReducer(trashed, {
+      type: "restore-knowledge-document",
+      documentId: "doc-l-temporary-parent",
+    });
+
+    expect(getDocumentById(restored, "doc-l-temporary-parent")).toMatchObject({
+      folder: "",
+      folderPath: [],
+      content: ["# Temporary parent article", "", "Keep this Markdown"],
+    });
+    expect(JSON.stringify(getKnowledgeTree(restored))).toContain(
+      "doc-l-temporary-parent",
+    );
   });
 
   it("moves a selected Knowledge document into another folder at an exact position", () => {
