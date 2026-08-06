@@ -10,6 +10,92 @@ as $$
   select '{"schemaVersion":1,"projects":[{"id":"project-1","name":"","shortName":"","description":""}],"overviewDirections":[],"taskGroups":[],"taskLists":[],"tasks":[],"knowledgeFolders":[],"documents":[]}'::jsonb
 $$;
 
+create function public.test_valid_desktop_snapshot_v1_with_deleted_at()
+returns jsonb
+language sql
+immutable
+as $$
+  select jsonb_set(
+    public.test_valid_desktop_snapshot_v1(),
+    '{documents}',
+    jsonb_build_array(
+      jsonb_build_object(
+        'id', 'document-deleted-1',
+        'projectId', 'project-1',
+        'folder', '',
+        'folderPath', jsonb_build_array(),
+        'title', 'Deleted article',
+        'excerpt', 'A deleted Knowledge article',
+        'content', jsonb_build_array('# Deleted article', '', 'Preserved Markdown'),
+        'linkedTaskIds', jsonb_build_array(),
+        'backlinks', jsonb_build_array(),
+        'deletedAt', '2026-08-06T07:20:31.123Z'
+      )
+    )
+  )
+$$;
+
+create function public.test_valid_desktop_snapshot_v1_with_multiple_deleted_at()
+returns jsonb
+language sql
+immutable
+as $$
+  select jsonb_set(
+    public.test_valid_desktop_snapshot_v1(),
+    '{documents}',
+    jsonb_build_array(
+      jsonb_build_object(
+        'id', 'document-deleted-1',
+        'projectId', 'project-1',
+        'folder', '',
+        'folderPath', jsonb_build_array(),
+        'title', 'Deleted article one',
+        'excerpt', '',
+        'content', jsonb_build_array('# Deleted article one'),
+        'linkedTaskIds', jsonb_build_array(),
+        'backlinks', jsonb_build_array(),
+        'deletedAt', '2026-08-06T07:20:31.123Z'
+      ),
+      jsonb_build_object(
+        'id', 'document-deleted-2',
+        'projectId', 'project-1',
+        'folder', '',
+        'folderPath', jsonb_build_array(),
+        'title', 'Deleted article two',
+        'excerpt', '',
+        'content', jsonb_build_array('# Deleted article two'),
+        'linkedTaskIds', jsonb_build_array(),
+        'backlinks', jsonb_build_array(),
+        'deletedAt', '2026-08-06T07:20:31Z'
+      )
+    )
+  )
+$$;
+
+create function public.test_valid_desktop_snapshot_v1_with_restored_document()
+returns jsonb
+language sql
+immutable
+as $$
+  select jsonb_set(
+    public.test_valid_desktop_snapshot_v1(),
+    '{documents}',
+    jsonb_build_array(
+      jsonb_build_object(
+        'id', 'document-restored-1',
+        'projectId', 'project-1',
+        'folder', '',
+        'folderPath', jsonb_build_array(),
+        'title', 'Restored article',
+        'excerpt', '',
+        'content', jsonb_build_array('# Restored article'),
+        'linkedTaskIds', jsonb_build_array(),
+        'backlinks', jsonb_build_array()
+      )
+    )
+  )
+$$;
+
 create function public.test_reject_desktop_snapshot_v1(target jsonb, version smallint default 1)
 returns void
 language plpgsql
@@ -145,7 +231,8 @@ insert into public.workspaces (id, name)
 values
   ('22000000-0000-0000-0000-000000000001', 'Snapshot workspace'),
   ('22000000-0000-0000-0000-000000000002', 'Disposable workspace'),
-  ('22000000-0000-0000-0000-000000000003', 'Initializer workspace');
+  ('22000000-0000-0000-0000-000000000003', 'Initializer workspace'),
+  ('22000000-0000-0000-0000-000000000004', 'Deleted article workspace');
 
 insert into public.workspace_members (workspace_id, user_id, role)
 values
@@ -153,12 +240,14 @@ values
   ('22000000-0000-0000-0000-000000000001', '12000000-0000-0000-0000-000000000002', 'editor'),
   ('22000000-0000-0000-0000-000000000001', '12000000-0000-0000-0000-000000000003', 'viewer'),
   ('22000000-0000-0000-0000-000000000002', '12000000-0000-0000-0000-000000000001', 'owner'),
-  ('22000000-0000-0000-0000-000000000003', '12000000-0000-0000-0000-000000000001', 'owner');
+  ('22000000-0000-0000-0000-000000000003', '12000000-0000-0000-0000-000000000001', 'owner'),
+  ('22000000-0000-0000-0000-000000000004', '12000000-0000-0000-0000-000000000001', 'owner');
 
 insert into public.workspace_snapshots (workspace_id, snapshot)
 values
   ('22000000-0000-0000-0000-000000000001', public.test_valid_desktop_snapshot_v1()),
-  ('22000000-0000-0000-0000-000000000002', public.test_valid_desktop_snapshot_v1());
+  ('22000000-0000-0000-0000-000000000002', public.test_valid_desktop_snapshot_v1()),
+  ('22000000-0000-0000-0000-000000000004', public.test_valid_desktop_snapshot_v1());
 
 select throws_ok(
   $$ insert into public.workspace_snapshots (workspace_id, schema_version, snapshot) values ('22000000-0000-0000-0000-000000000001', 0, '{}') $$,
@@ -268,6 +357,57 @@ select is(
   (select snapshot->'projects'->0->>'id' from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'),
   'project-1'::text,
   'successful CAS save stores the new snapshot'
+);
+
+select results_eq(
+  $$ select status || ':' || revision::text from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000004'::uuid, 1::bigint, 1::smallint, public.test_valid_desktop_snapshot_v1_with_deleted_at()) $$,
+  array['saved:2'::text],
+  'owner CAS accepts a valid deletedAt Knowledge document'
+);
+select is(
+  (select revision from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000004'),
+  2::bigint,
+  'deletedAt save increments revision'
+);
+select is(
+  (select snapshot->'documents'->0->>'deletedAt' from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000004'),
+  '2026-08-06T07:20:31.123Z'::text,
+  'saved snapshot reload preserves the exact deletedAt value'
+);
+select results_eq(
+  $$ select status || ':' || revision::text from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000004'::uuid, 2::bigint, 1::smallint, public.test_valid_desktop_snapshot_v1_with_multiple_deleted_at()) $$,
+  array['saved:3'::text],
+  'multiple deleted Knowledge documents are accepted'
+);
+select is(
+  (select jsonb_array_length(snapshot->'documents') from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000004'),
+  2,
+  'multiple deleted documents are persisted'
+);
+select results_eq(
+  $$ select status || ':' || revision::text from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000004'::uuid, 3::bigint, 1::smallint, public.test_valid_desktop_snapshot_v1_with_restored_document()) $$,
+  array['saved:4'::text],
+  'restored document without deletedAt remains valid'
+);
+select ok(
+  (select not (snapshot->'documents'->0 ? 'deletedAt') from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000004'),
+  'restored document omits deletedAt'
+);
+
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1(jsonb_set(public.test_valid_desktop_snapshot_v1_with_deleted_at(), '{documents,0,deletedAt}', 'null'::jsonb)) $$, 'deletedAt null is rejected with 22023');
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1(jsonb_set(public.test_valid_desktop_snapshot_v1_with_deleted_at(), '{documents,0,deletedAt}', '123'::jsonb)) $$, 'deletedAt number is rejected with 22023');
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1(jsonb_set(public.test_valid_desktop_snapshot_v1_with_deleted_at(), '{documents,0,deletedAt}', 'true'::jsonb)) $$, 'deletedAt boolean is rejected with 22023');
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1(jsonb_set(public.test_valid_desktop_snapshot_v1_with_deleted_at(), '{documents,0,deletedAt}', '[]'::jsonb)) $$, 'deletedAt array is rejected with 22023');
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1(jsonb_set(public.test_valid_desktop_snapshot_v1_with_deleted_at(), '{documents,0,deletedAt}', '{}'::jsonb)) $$, 'deletedAt object is rejected with 22023');
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1(jsonb_set(public.test_valid_desktop_snapshot_v1_with_deleted_at(), '{documents,0,deletedAt}', to_jsonb(''::text))) $$, 'empty deletedAt is rejected with 22023');
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1(jsonb_set(public.test_valid_desktop_snapshot_v1_with_deleted_at(), '{documents,0,deletedAt}', '"yesterday"'::jsonb)) $$, 'malformed deletedAt is rejected with 22023');
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1(jsonb_set(public.test_valid_desktop_snapshot_v1_with_deleted_at(), '{documents,0,deletedAt}', '"2026-99-99T07:20:31Z"'::jsonb)) $$, 'invalid deletedAt date is rejected with 22023');
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1(jsonb_set(public.test_valid_desktop_snapshot_v1_with_deleted_at(), '{documents,0,unknownField}', 'true'::jsonb)) $$, 'unknown document field remains rejected');
+select lives_ok($$ select public.test_reject_desktop_snapshot_v1(jsonb_set(public.test_valid_desktop_snapshot_v1_with_deleted_at(), '{projects,0,deletedAt}', '"2026-08-06T07:20:31Z"'::jsonb)) $$, 'deletedAt on an unrelated entity remains rejected');
+select is(
+  (select revision from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'),
+  2::bigint,
+  'invalid deletedAt values do not increment revision'
 );
 
 select results_eq(

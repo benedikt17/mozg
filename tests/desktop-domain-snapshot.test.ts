@@ -157,9 +157,8 @@ describe("desktop domain snapshot v2", () => {
       type: "soft-delete-knowledge-document",
       documentId: "doc-l-routes",
     });
-    const parsed = parseDesktopDomainSnapshot(
-      createDesktopDomainSnapshot(state),
-    );
+    const snapshot = createDesktopDomainSnapshot(state);
+    const parsed = parseDesktopDomainSnapshot(snapshot);
 
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
@@ -175,6 +174,9 @@ describe("desktop domain snapshot v2", () => {
         (document) => document.id === "doc-l-routes",
       )?.content,
     });
+    expect(persisted?.deletedAt).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+    );
 
     const reloaded = desktopPrototypeReducer(initialDesktopPrototypeState, {
       type: "hydrate-domain",
@@ -186,6 +188,10 @@ describe("desktop domain snapshot v2", () => {
       deletedAt: expect.any(String),
       content: persisted?.content,
     });
+    expect(
+      reloaded.documents.find((document) => document.id === "doc-l-routes")
+        ?.deletedAt,
+    ).toBe(persisted?.deletedAt);
   });
 
   it("round-trips a newly created task in its explicit list", () => {
