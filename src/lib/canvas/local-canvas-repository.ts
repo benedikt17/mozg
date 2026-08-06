@@ -144,6 +144,11 @@ export type CanvasAssetRecord = {
   deletedAt: string | null;
 };
 export type CanvasAssetMetadata = Omit<CanvasAssetRecord, "blob" | "preview">;
+export type CanvasOriginalLoadReason =
+  | "viewport-demand"
+  | "derivative-fallback"
+  | "ingestion-owned"
+  | "explicit-maintenance";
 export type StoreLocalCanvasImageInput = {
   id?: string;
   workspaceId: string;
@@ -160,6 +165,8 @@ export interface CanvasAssetRepository {
   loadAsset(input: {
     workspaceId: string;
     assetId: string;
+    /** Required by production callers to classify every original download. */
+    reason?: CanvasOriginalLoadReason;
   }): Promise<CanvasAssetRecord | null>;
   /** Optional remote-friendly metadata lookup that never downloads original binary. */
   getAssetMetadata?(input: {
@@ -1411,6 +1418,7 @@ export class IndexedDbCanvasRepository
   async loadAsset(input: {
     workspaceId: string;
     assetId: string;
+    reason?: CanvasOriginalLoadReason;
   }): Promise<CanvasAssetRecord | null> {
     identifier(input.workspaceId, "workspaceId");
     identifier(input.assetId, "assetId");
@@ -1542,6 +1550,7 @@ export class IndexedDbCanvasRepository
     const original = await this.loadAsset({
       workspaceId: row.workspaceId,
       assetId: row.assetId,
+      reason: "explicit-maintenance",
     });
     if (
       !original ||

@@ -11,6 +11,7 @@ import type {
   CanvasAssetRecord,
   CanvasAssetMetadata,
   CanvasAssetRepository,
+  CanvasOriginalLoadReason,
   CanvasRepository,
   CanvasSummary,
   CanvasViewState,
@@ -224,6 +225,7 @@ export class CloudCanvasShellRepository
   async loadAsset(input: {
     workspaceId: string;
     assetId: string;
+    reason?: CanvasOriginalLoadReason;
   }): Promise<CanvasAssetRecord | null> {
     const canvasId = this.canvasIdForAssetLookup();
     try {

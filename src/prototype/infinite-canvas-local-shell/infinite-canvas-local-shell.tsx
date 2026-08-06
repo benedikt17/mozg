@@ -68,6 +68,7 @@ import {
   canvasDocumentToImageNodes,
   canvasDocumentToTaskNodes,
   canvasDocumentToTextNodes,
+  canvasImageAdapterDependenciesForCanvas,
   createCanvasTaskFlowNode,
   createCanvasTaskId,
   createCanvasEdgeFromConnection,
@@ -1480,9 +1481,13 @@ function InfiniteCanvasLocalShellSurface({
       setRestoreStats(EMPTY_RESTORE_STATS);
       setLoadingLifecycle("skeleton-ready");
       setLoadingLifecycle("content-hydrating");
+      const restoreDependencies = canvasImageAdapterDependenciesForCanvas(
+        adapterDependencies,
+        nextState.canvasId,
+      );
       const result = await restoreCanvasImageNodes(
         nextState.document,
-        adapterDependencies,
+        restoreDependencies,
         {
           signal,
           concurrency: 4,
@@ -1575,6 +1580,7 @@ function InfiniteCanvasLocalShellSurface({
   const refreshImageVariants = useCallback(
     (viewportZoom: number, allowDowngrade: boolean): void => {
       if (
+        hydratingRef.current ||
         !adapterDependencies.variantRepository ||
         !adapterDependencies.canvasId
       )
@@ -1699,7 +1705,6 @@ function InfiniteCanvasLocalShellSurface({
 
   useEffect(() => {
     let active = true;
-    const imageLoadCache = imageLoadCacheRef.current;
     const pyramidScheduler = pyramidSchedulerRef.current;
     if (initialRuntime) restoreCachedScene(initialRuntime);
     const groupLoad = groupsRepository
@@ -1788,7 +1793,10 @@ function InfiniteCanvasLocalShellSurface({
           true,
         );
       }
-      imageLoadCache.clear();
+      // Keep in-flight work alive across a StrictMode-style cleanup/setup pair.
+      // The cache is component-owned and becomes unreachable on a real unmount;
+      // clearing it here would allow an aborted original request to be started
+      // again while the first browser request is still downloading.
       if (runtimeCache && latestState.canvasId) {
         runtimeCache.set({
           workspaceId: shellWorkspaceId,

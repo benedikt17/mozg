@@ -286,11 +286,13 @@ export class CanvasImagePyramidScheduler {
             input.assetRepository.loadAsset({
               workspaceId: input.workspaceId,
               assetId: input.assetId,
+              reason: "explicit-maintenance",
             }),
           )
         : input.assetRepository.loadAsset({
             workspaceId: input.workspaceId,
             assetId: input.assetId,
+            reason: "explicit-maintenance",
           });
     const dimensions =
       knownOriginal ??

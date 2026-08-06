@@ -148,6 +148,16 @@ export type CanvasImageAdapterDependencies = {
   idGenerator?: () => string;
 };
 
+/** Bind a dependency snapshot to the Canvas generation being restored. */
+export function canvasImageAdapterDependenciesForCanvas(
+  dependencies: CanvasImageAdapterDependencies,
+  canvasId: string | null | undefined,
+): CanvasImageAdapterDependencies {
+  const resolvedCanvasId = canvasId ?? undefined;
+  if (dependencies.canvasId === resolvedCanvasId) return dependencies;
+  return { ...dependencies, canvasId: resolvedCanvasId };
+}
+
 export type RestoreCanvasImageOptions = {
   cachedAssetPayloads?: ReadonlyMap<
     string,
@@ -1182,6 +1192,10 @@ export async function restoreCanvasImageNodes(
         }
       }
       const assetKey = `${dependencies.workspaceId}/${canonical.assetId}`;
+      const originalLoadReason =
+        selectedSource.type === "original"
+          ? "viewport-demand"
+          : "derivative-fallback";
       let assetPromise = assetLoads.get(assetKey);
       if (!assetPromise) {
         activeReads += 1;
@@ -1194,6 +1208,7 @@ export async function restoreCanvasImageNodes(
           dependencies.assetRepository.loadAsset({
             workspaceId: dependencies.workspaceId,
             assetId: canonical.assetId,
+            reason: originalLoadReason,
           });
         assetPromise = dependencies.loadCache
           ? dependencies.loadCache.asset(loadScope, canonical.assetId, load)

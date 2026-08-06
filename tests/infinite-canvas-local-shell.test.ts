@@ -18,6 +18,7 @@ import { CanvasImagePyramidScheduler } from "@/lib/canvas/canvas-image-pyramid";
 import {
   canvasDocumentToTaskNodes,
   canvasDocumentToImageNodes,
+  canvasImageAdapterDependenciesForCanvas,
   createCanvasTaskFlowNode,
   createCanvasTextFlowNode,
   findCachedCanvasImagePayload,
@@ -1058,6 +1059,124 @@ describe("production-shaped local Canvas shell", () => {
       });
       expect(node.data.resolutionSource?.type).not.toBe("original");
     }
+  });
+
+  it("reproduces the first shell restore using stale dependencies before the canvas id exists", async () => {
+    const repository = new MemoryCanvasRepository();
+    const canvas = await repository.createCanvas({
+      workspaceId: WORKSPACE_A,
+      title: "Stale dependency reproduction",
+    });
+    const assetIds = ["asset-a", "asset-b", "asset-c", "asset-d", "asset-e"];
+    const document = parseCanvasDocumentV1({
+      schemaVersion: 1,
+      nodes: assetIds.map((assetId, index) => ({
+        id: `image-node-${assetId}`,
+        kind: "image" as const,
+        assetId,
+        position: { x: index * 400, y: 0 },
+        size: { width: 320, height: 180 },
+        zIndex: index,
+        aspectRatioLocked: true,
+      })),
+      edges: [],
+    });
+    for (const assetId of assetIds)
+      await repository.storeImage({
+        id: assetId,
+        workspaceId: WORKSPACE_A,
+        blob: new Blob([`${assetId}:original`], { type: "image/png" }),
+        mimeType: "image/png",
+        byteSize: 1,
+        width: 2752,
+        height: 1536,
+      });
+    await repository.saveCanvas({
+      workspaceId: WORKSPACE_A,
+      canvasId: canvas.id,
+      expectedRevision: canvas.revision,
+      title: canvas.title,
+      document,
+    });
+    await repository.saveViewState({
+      canvasId: canvas.id,
+      userId: USER,
+      viewportX: 0,
+      viewportY: 0,
+      zoom: 0.25,
+      updatedAt: "2026-08-06T00:00:00.000Z",
+    });
+    repository.saveCalls = 0;
+
+    const ledger = createImageNetworkLedger();
+    const tier = (assetId: string): CanvasAssetVariantV2Metadata => ({
+      workspaceId: WORKSPACE_A,
+      canvasId: canvas.id,
+      assetId,
+      targetMaxEdge: 1024,
+      storagePath: `${assetId}/edge-1024.webp`,
+      mimeType: "image/webp",
+      byteSize: 12,
+      pixelWidth: 1024,
+      pixelHeight: 572,
+      createdAt: "2026-08-06T00:00:00.000Z",
+    });
+    const variantRepository = createNumericVariantRepository(
+      new Map(assetIds.map((assetId) => [assetId, [tier(assetId)]])),
+      ledger,
+    );
+    const loadCache = new CanvasImageLoadCache();
+    const scheduler = new CanvasImagePyramidScheduler();
+    const enqueue = vi.spyOn(scheduler, "enqueue");
+    const { registry } = urlRegistry();
+    const shell = new LocalCanvasShellController(controllerOptions(repository));
+    const shellState = await shell.openCanvas(canvas.id);
+    const initialRenderDependencies = {
+      assetRepository: repository,
+      variantRepository,
+      objectUrls: registry,
+      workspaceId: WORKSPACE_A,
+      loadCache,
+      pyramidScheduler: scheduler,
+    };
+
+    await restoreCanvasImageNodes(
+      shellState.document,
+      canvasImageAdapterDependenciesForCanvas(
+        initialRenderDependencies,
+        shellState.canvasId,
+      ),
+      {
+        viewportZoom: shellState.viewport.zoom,
+        devicePixelRatio: 1,
+        concurrency: 5,
+      },
+    );
+
+    ledger.originalRequests = assetIds.slice(0, repository.assetLoadCalls);
+    expect(ledger.originalRequests).toEqual([]);
+    expect(ledger.catalogueRequests).toBe(1);
+    expect(ledger.derivativeRequests).toHaveLength(assetIds.length);
+    expect(enqueue).not.toHaveBeenCalled();
+
+    await restoreCanvasImageNodes(
+      shellState.document,
+      canvasImageAdapterDependenciesForCanvas(
+        initialRenderDependencies,
+        shellState.canvasId,
+      ),
+      {
+        viewportZoom: shellState.viewport.zoom,
+        devicePixelRatio: 1,
+        concurrency: 5,
+      },
+    );
+
+    expect(ledger.catalogueRequests).toBe(1);
+    expect(ledger.derivativeRequests).toHaveLength(assetIds.length);
+    expect(repository.assetLoadCalls).toBe(0);
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(repository.saveCalls).toBe(0);
   });
 
   it("loads the original once only when the selected numeric source cannot cover demand", async () => {

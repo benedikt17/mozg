@@ -764,6 +764,7 @@ async function performBackfill(input: {
     (await input.assetRepository.loadAsset({
       workspaceId: input.workspaceId,
       assetId: input.assetId,
+      reason: "explicit-maintenance",
     }));
   if (!asset) return null;
   const generated = await (input.generate ?? generateCanvasImageVariants)(
