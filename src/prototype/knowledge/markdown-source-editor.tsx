@@ -7,9 +7,8 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
-import type { DesktopPrototypeAction } from "@/prototype/desktop-state";
-
-type Dispatch = React.Dispatch<DesktopPrototypeAction>;
+import type { KnowledgeContentHistoryOrigin } from "./knowledge-content-history";
+import { useKnowledgeContentHistory } from "./knowledge-content-history-runtime";
 
 type MarkdownEditAction =
   | "undo"
@@ -80,19 +79,43 @@ const markdownToolbarActions: Array<{
   { action: "outdent", label: "←", title: "Уменьшить отступ" },
 ];
 
+function getInputOrigin(event: React.ChangeEvent<HTMLTextAreaElement>): {
+  coalesce: boolean;
+  origin: Exclude<KnowledgeContentHistoryOrigin, "baseline">;
+} {
+  const inputType = (event.nativeEvent as InputEvent).inputType;
+  if (inputType === "insertFromPaste") {
+    return { coalesce: false, origin: "paste" };
+  }
+  if (inputType === "deleteByCut") {
+    return { coalesce: false, origin: "cut" };
+  }
+  if (inputType === "deleteContentBackward") {
+    return { coalesce: true, origin: "backspace" };
+  }
+  if (inputType === "deleteContentForward") {
+    return { coalesce: true, origin: "delete" };
+  }
+  if (
+    inputType === "insertText" ||
+    inputType === "insertLineBreak" ||
+    inputType === "insertCompositionText"
+  ) {
+    return { coalesce: true, origin: "typing" };
+  }
+  return { coalesce: false, origin: "replace" };
+}
+
 export function MarkdownSourceEditor({
   document,
-  dispatch,
   documents = [],
 }: {
   document: PrototypeDocument;
-  dispatch: Dispatch;
   documents?: PrototypeDocument[];
 }): React.JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const markdown = document.content.join("\n");
-  const historyRef = useRef<string[]>([markdown]);
-  const historyIndexRef = useRef(0);
+  const contentHistory = useKnowledgeContentHistory();
   const [dialog, setDialog] = useState<"external" | "article" | null>(null);
   const [selection, setSelection] = useState({ start: 0, end: 0 });
   const [linkText, setLinkText] = useState("");
@@ -119,21 +142,31 @@ export function MarkdownSourceEditor({
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) resizeTextarea(textarea);
-  }, [markdown, resizeTextarea]);
-
-  const updateMarkdown = (nextMarkdown: string, addToHistory = true): void => {
-    if (addToHistory) {
-      const history = historyRef.current.slice(0, historyIndexRef.current + 1);
-      if (history[history.length - 1] !== nextMarkdown) {
-        history.push(nextMarkdown);
-        historyRef.current = history;
-        historyIndexRef.current = history.length - 1;
-      }
+    const selection = contentHistory.getSelection(document.id);
+    if (
+      textarea &&
+      selection !== null &&
+      selection?.start !== null &&
+      selection?.end !== null
+    ) {
+      textarea.setSelectionRange(selection.start, selection.end);
     }
-    dispatch({
-      type: "update-knowledge-document-markdown",
-      documentId: document.id,
-      markdown: nextMarkdown,
+  }, [contentHistory, document.id, markdown, resizeTextarea]);
+
+  const updateMarkdown = (
+    nextMarkdown: string,
+    options: {
+      origin?: Exclude<KnowledgeContentHistoryOrigin, "baseline">;
+      selectionStart?: number | null;
+      selectionEnd?: number | null;
+      coalesce?: boolean;
+    } = {},
+  ): void => {
+    contentHistory.commitMarkdown(document.id, nextMarkdown, {
+      coalesce: options.coalesce,
+      origin: options.origin ?? "programmatic",
+      selectionEnd: options.selectionEnd,
+      selectionStart: options.selectionStart,
     });
   };
 
@@ -155,7 +188,11 @@ export function MarkdownSourceEditor({
       markdown.slice(0, textarea.selectionStart) +
       replacement +
       markdown.slice(textarea.selectionEnd);
-    updateMarkdown(next);
+    updateMarkdown(next, {
+      origin: "programmatic",
+      selectionEnd,
+      selectionStart,
+    });
     restoreSelection(selectionStart, selectionEnd);
   };
 
@@ -192,11 +229,18 @@ export function MarkdownSourceEditor({
       .join("\n");
     const next =
       markdown.slice(0, lineStart) + replacement + markdown.slice(lineEnd);
-    updateMarkdown(next);
+    updateMarkdown(next, {
+      origin: "toolbar",
+      selectionEnd: lineStart + replacement.length,
+      selectionStart: lineStart,
+    });
     restoreSelection(lineStart, lineStart + replacement.length);
   };
 
-  const adjustSelectedListLines = (delta: 1 | -1): void => {
+  const adjustSelectedListLines = (
+    delta: 1 | -1,
+    origin: "toolbar" | "programmatic" = "toolbar",
+  ): void => {
     const textarea = textareaRef.current;
     if (!textarea) return;
     const start = markdown.lastIndexOf("\n", textarea.selectionStart - 1) + 1;
@@ -209,6 +253,11 @@ export function MarkdownSourceEditor({
       .join("\n");
     updateMarkdown(
       markdown.slice(0, start) + replacement + markdown.slice(end),
+      {
+        origin,
+        selectionEnd: start + replacement.length,
+        selectionStart: start,
+      },
     );
     restoreSelection(start, start + replacement.length);
   };
@@ -217,17 +266,11 @@ export function MarkdownSourceEditor({
     if (action === "indent") return adjustSelectedListLines(1);
     if (action === "outdent") return adjustSelectedListLines(-1);
     if (action === "undo") {
-      if (historyIndexRef.current === 0) return;
-      historyIndexRef.current -= 1;
-      const previous = historyRef.current[historyIndexRef.current] ?? "";
-      updateMarkdown(previous, false);
+      contentHistory.undo(document.id);
       return;
     }
     if (action === "redo") {
-      if (historyIndexRef.current >= historyRef.current.length - 1) return;
-      historyIndexRef.current += 1;
-      const next = historyRef.current[historyIndexRef.current] ?? "";
-      updateMarkdown(next, false);
+      contentHistory.redo(document.id);
       return;
     }
     if (action === "h1" || action === "h2" || action === "h3") {
@@ -317,6 +360,11 @@ export function MarkdownSourceEditor({
       markdown.slice(0, selection.start) +
         token +
         markdown.slice(selection.end),
+      {
+        origin: "toolbar",
+        selectionEnd: selection.start + token.length,
+        selectionStart: selection.start + token.length,
+      },
     );
     setDialog(null);
     restoreSelection(selection.start + token.length);
@@ -326,6 +374,25 @@ export function MarkdownSourceEditor({
     event: React.KeyboardEvent<HTMLTextAreaElement>,
   ): void => {
     const textarea = event.currentTarget;
+    const modifier = event.ctrlKey || event.metaKey;
+    if (modifier && !event.altKey && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.shiftKey) contentHistory.redo(document.id);
+      else contentHistory.undo(document.id);
+      return;
+    }
+    if (
+      modifier &&
+      !event.altKey &&
+      event.key.toLowerCase() === "y" &&
+      !event.shiftKey
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      contentHistory.redo(document.id);
+      return;
+    }
     const lineStart =
       markdown.lastIndexOf("\n", textarea.selectionStart - 1) + 1;
     const lineEnd = markdown.indexOf("\n", textarea.selectionStart);
@@ -333,7 +400,7 @@ export function MarkdownSourceEditor({
     const line = markdown.slice(lineStart, end);
     if (event.key === "Tab") {
       event.preventDefault();
-      adjustSelectedListLines(event.shiftKey ? -1 : 1);
+      adjustSelectedListLines(event.shiftKey ? -1 : 1, "programmatic");
       return;
     }
     if (
@@ -353,14 +420,22 @@ export function MarkdownSourceEditor({
           const replacement = nextIndent ? " ".repeat(nextIndent) : "";
           const next =
             markdown.slice(0, lineStart) + replacement + markdown.slice(end);
-          updateMarkdown(next);
+          updateMarkdown(next, {
+            origin: "programmatic",
+            selectionEnd: lineStart + replacement.length,
+            selectionStart: lineStart + replacement.length,
+          });
           restoreSelection(lineStart + replacement.length);
         } else {
           const next =
             markdown.slice(0, textarea.selectionStart) +
             `\n${continuation}` +
             markdown.slice(textarea.selectionEnd);
-          updateMarkdown(next);
+          updateMarkdown(next, {
+            origin: "programmatic",
+            selectionEnd: textarea.selectionStart + 1 + continuation.length,
+            selectionStart: textarea.selectionStart + 1 + continuation.length,
+          });
           restoreSelection(textarea.selectionStart + 1 + continuation.length);
         }
         return;
@@ -378,7 +453,17 @@ export function MarkdownSourceEditor({
           markdown.slice(0, lineStart) +
           adjustListIndent(line, -1) +
           markdown.slice(end);
-        updateMarkdown(next);
+        updateMarkdown(next, {
+          origin: "programmatic",
+          selectionEnd: Math.max(
+            lineStart,
+            textarea.selectionStart - LIST_INDENT,
+          ),
+          selectionStart: Math.max(
+            lineStart,
+            textarea.selectionStart - LIST_INDENT,
+          ),
+        });
         restoreSelection(
           Math.max(lineStart, textarea.selectionStart - LIST_INDENT),
         );
@@ -531,7 +616,13 @@ export function MarkdownSourceEditor({
           className="markdown-source-textarea"
           onChange={(event) => {
             resizeTextarea(event.currentTarget);
-            updateMarkdown(event.currentTarget.value);
+            const input = getInputOrigin(event);
+            updateMarkdown(event.currentTarget.value, {
+              coalesce: input.coalesce,
+              origin: input.origin,
+              selectionEnd: event.currentTarget.selectionEnd,
+              selectionStart: event.currentTarget.selectionStart,
+            });
           }}
           onKeyDown={handleEditorKeyDown}
           ref={mountTextarea}

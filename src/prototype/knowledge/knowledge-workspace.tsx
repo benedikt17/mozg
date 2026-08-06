@@ -15,6 +15,7 @@ import { UiIcon } from "@/prototype/desktop-icons";
 import { EmptySection } from "@/prototype/empty-section";
 import { MarkdownSourceEditor } from "./markdown-source-editor";
 import { KnowledgeTrashView } from "./knowledge-trash-view";
+import { useKnowledgeContentHistory } from "./knowledge-content-history-runtime";
 import {
   getDocumentHeadings,
   MarkdownDocumentPreview,
@@ -44,6 +45,15 @@ function markdownDownloadName(title: string): string {
 }
 
 type KnowledgeWorkspaceProps = {
+function isEditableTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    (target instanceof HTMLElement && target.isContentEditable)
+  );
+}
+
   state: DesktopPrototypeState;
   dispatch: Dispatch;
   aiPanel?: React.ReactNode;
@@ -80,6 +90,7 @@ function KnowledgeDocumentWorkspace({
   const openTabs = getOpenDocuments(state);
   const editingDocumentId = state.editingKnowledgeDocumentId;
   const currentDocument = activeDocument ?? selectedDocument;
+  const contentHistory = useKnowledgeContentHistory();
   const markdownFileInputRef = useRef<HTMLInputElement>(null);
   const printDocumentRef = useRef<HTMLElement>(null);
   const shareMenuRef = useRef<HTMLDivElement>(null);
@@ -163,10 +174,8 @@ function KnowledgeDocumentWorkspace({
     const file = input.files?.[0];
     if (!file || !currentDocument) return;
     try {
-      dispatch({
-        type: "update-knowledge-document-markdown",
-        documentId: currentDocument.id,
-        markdown: await file.text(),
+      contentHistory.commitMarkdown(currentDocument.id, await file.text(), {
+        origin: "load",
       });
     } finally {
       input.value = "";
@@ -351,6 +360,34 @@ function KnowledgeDocumentWorkspace({
               variant="quiet"
             />
           </div>
+          <IconButton
+            className="knowledge-content-history-action"
+            disabled={
+              !activeDocument || !contentHistory.canUndo(activeDocument.id)
+            }
+            icon={<UiIcon name="arrow-left" />}
+            label="Отменить"
+            onClick={() => {
+              if (activeDocument) contentHistory.undo(activeDocument.id);
+            }}
+            onMouseDown={(event) => event.preventDefault()}
+            title="Отменить"
+            variant="quiet"
+          />
+          <IconButton
+            className="knowledge-content-history-action"
+            disabled={
+              !activeDocument || !contentHistory.canRedo(activeDocument.id)
+            }
+            icon={<UiIcon name="arrow-right" />}
+            label="Повторить"
+            onClick={() => {
+              if (activeDocument) contentHistory.redo(activeDocument.id);
+            }}
+            onMouseDown={(event) => event.preventDefault()}
+            title="Повторить"
+            variant="quiet"
+          />
           <IconButton
             className="knowledge-edit-action"
             active={editingDocumentId === activePaneDocumentId}
@@ -770,6 +807,8 @@ function DocumentArticle({
   dispatch: Dispatch;
   onActivate: () => void;
 }): React.JSX.Element {
+  const contentHistory = useKnowledgeContentHistory();
+
   return (
     <article
       className={[
@@ -785,6 +824,19 @@ function DocumentArticle({
       }
       data-document-id={document?.id}
       onFocusCapture={onActivate}
+      onKeyDown={(event) => {
+        if (!active || isEditableTarget(event.target)) return;
+        const modifier = event.ctrlKey || event.metaKey;
+        if (!modifier || event.altKey) return;
+        if (event.key.toLowerCase() === "z") {
+          event.preventDefault();
+          if (event.shiftKey) contentHistory.redo(document?.id ?? "");
+          else contentHistory.undo(document?.id ?? "");
+        } else if (event.key.toLowerCase() === "y" && !event.shiftKey) {
+          event.preventDefault();
+          contentHistory.redo(document?.id ?? "");
+        }
+      }}
       onPointerDown={onActivate}
       tabIndex={0}
     >
@@ -794,7 +846,6 @@ function DocumentArticle({
         </div>
       ) : editing ? (
         <MarkdownSourceEditor
-          dispatch={dispatch}
           document={document}
           documents={documents}
           key={document.id}
@@ -804,15 +855,17 @@ function DocumentArticle({
           <MarkdownDocumentPreview
             document={document}
             onTaskToggle={(lineIndex, checked) =>
-              dispatch({
-                type: "update-knowledge-document-markdown",
-                documentId: document.id,
-                markdown: toggleTaskListMarker(
+              contentHistory.commitMarkdown(
+                document.id,
+                toggleTaskListMarker(
                   document.content.join("\n"),
                   lineIndex,
                   checked,
                 ),
-              })
+                {
+                  origin: "checklist",
+                },
+              )
             }
             onInternalLink={(documentId) => {
               const target = documents.find((item) => item.id === documentId);

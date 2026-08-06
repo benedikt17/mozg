@@ -17,6 +17,7 @@ import {
 import { OverviewSectionWorkspace } from "@/prototype/overview/overview-section-workspace";
 import { KnowledgeSidebar } from "@/prototype/knowledge/knowledge-sidebar";
 import { KnowledgeWorkspace } from "@/prototype/knowledge/knowledge-workspace";
+import { KnowledgeContentHistoryProvider } from "@/prototype/knowledge/knowledge-content-history-runtime";
 import { ContextPanelSlot } from "@/prototype/context-panels/context-panel-slot";
 import { TasksSidebar } from "@/prototype/tasks/tasks-sidebar";
 import { TasksWorkspace } from "@/prototype/tasks/tasks-workspace";
@@ -53,7 +54,9 @@ export function DesktopPrototypeShell({
       cloudBootstrap={cloudBootstrap}
       runtimeMode={runtimeMode}
     >
-      <DesktopPrototypeShellContent runtimeMode={runtimeMode} />
+      <KnowledgeContentHistoryProvider>
+        <DesktopPrototypeShellContent runtimeMode={runtimeMode} />
+      </KnowledgeContentHistoryProvider>
     </DesktopTaskRuntimeProvider>
   );
 }

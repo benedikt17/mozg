@@ -18,6 +18,7 @@ import {
 import { IconButton, PrototypeButton } from "@/prototype/desktop-ui";
 import { TaskDetailsPanel } from "@/prototype/context-panels/task-details-panel";
 import { TaskSubtasksDocument } from "@/prototype/overview/task-subtasks-document";
+import { useKnowledgeContentHistory } from "@/prototype/knowledge/knowledge-content-history-runtime";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 
@@ -153,6 +154,7 @@ export function OverviewContextualReader({
   const articleScrollPositionsRef = useRef(new Map<string, number>());
   const mobileContextCloseRef = useRef<HTMLButtonElement>(null);
   const mobileContextTriggerRef = useRef<HTMLButtonElement>(null);
+  const contentHistory = useKnowledgeContentHistory();
   const attachedDocuments = task.linkedDocumentIds
     .map((documentId) =>
       documents.find((document) => document.id === documentId),
@@ -423,15 +425,17 @@ export function OverviewContextualReader({
                     document={activeDocument}
                     hideLeadingTitle
                     onTaskToggle={(lineIndex, checked) =>
-                      dispatch({
-                        type: "update-knowledge-document-markdown",
-                        documentId: activeDocument.id,
-                        markdown: toggleTaskListMarker(
+                      contentHistory.commitMarkdown(
+                        activeDocument.id,
+                        toggleTaskListMarker(
                           activeDocument.content.join("\n"),
                           lineIndex,
                           checked,
                         ),
-                      })
+                        {
+                          origin: "checklist",
+                        },
+                      )
                     }
                   />
                 </>
@@ -453,15 +457,17 @@ export function OverviewContextualReader({
                   document={splitDocument}
                   hideLeadingTitle
                   onTaskToggle={(lineIndex, checked) =>
-                    dispatch({
-                      type: "update-knowledge-document-markdown",
-                      documentId: splitDocument.id,
-                      markdown: toggleTaskListMarker(
+                    contentHistory.commitMarkdown(
+                      splitDocument.id,
+                      toggleTaskListMarker(
                         splitDocument.content.join("\n"),
                         lineIndex,
                         checked,
                       ),
-                    })
+                      {
+                        origin: "checklist",
+                      },
+                    )
                   }
                 />
               </div>
