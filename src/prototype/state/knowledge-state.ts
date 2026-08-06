@@ -4,6 +4,7 @@ import type {
   KnowledgeContextMode,
   KnowledgePaneState,
   KnowledgePane,
+  KnowledgePathSelection,
   KnowledgeTreeNode,
 } from "@/prototype/state/types";
 
@@ -56,6 +57,9 @@ export function getKnowledgeTrashDocuments(
   state: DesktopPrototypeState,
   projectId = state.activeProjectId,
 ): PrototypeDocument[] {
+  const documentPosition = new Map(
+    state.documents.map((document, index) => [document.id, index]),
+  );
   const documentOrder = new Map(
     state.documents.map((document, index) => [
       document.id,
@@ -64,11 +68,21 @@ export function getKnowledgeTrashDocuments(
   );
   return getProjectDocuments(state, projectId)
     .filter((document) => document.deletedAt !== undefined)
-    .sort(
-      (first, second) =>
+    .sort((first, second) => {
+      const firstDeletedAt = Date.parse(first.deletedAt ?? "");
+      const secondDeletedAt = Date.parse(second.deletedAt ?? "");
+      const firstTime = Number.isNaN(firstDeletedAt) ? 0 : firstDeletedAt;
+      const secondTime = Number.isNaN(secondDeletedAt) ? 0 : secondDeletedAt;
+      if (firstTime !== secondTime) return secondTime - firstTime;
+      const orderDifference =
         (documentOrder.get(first.id) ?? 0) -
-        (documentOrder.get(second.id) ?? 0),
-    );
+        (documentOrder.get(second.id) ?? 0);
+      if (orderDifference !== 0) return orderDifference;
+      return (
+        (documentPosition.get(first.id) ?? 0) -
+        (documentPosition.get(second.id) ?? 0)
+      );
+    });
 }
 
 export function getKeyDocuments(
@@ -124,10 +138,14 @@ export function getOpenDocuments(
 ): PrototypeDocument[] {
   const openDocuments = state.openDocumentIds
     .map((documentId) => getDocumentById(state, documentId))
-    .filter((document): document is PrototypeDocument => Boolean(document));
+    .filter(
+      (document): document is PrototypeDocument =>
+        document !== undefined && document.deletedAt === undefined,
+    );
   const selectedDocument = getDocumentById(state, state.selectedDocumentId);
   if (
     selectedDocument &&
+    selectedDocument.deletedAt === undefined &&
     !openDocuments.some((document) => document.id === selectedDocument.id)
   ) {
     return [...openDocuments, selectedDocument];
@@ -141,14 +159,17 @@ export function getKnowledgePaneState(
   const projectDocuments = getProjectDocuments(state);
   const selectedDocument = getDocumentById(state, state.selectedDocumentId);
   const primaryDocument =
-    selectedDocument?.projectId === state.activeProjectId
+    selectedDocument?.projectId === state.activeProjectId &&
+    selectedDocument.deletedAt === undefined
       ? selectedDocument
-      : projectDocuments[0];
+      : projectDocuments.find((document) => document.deletedAt === undefined);
   const requestedSecondaryDocument = state.knowledgeSplitEnabled
     ? getDocumentById(state, state.splitViewDocumentId)
     : undefined;
   const secondaryDocument =
-    requestedSecondaryDocument?.projectId === state.activeProjectId &&
+    requestedSecondaryDocument !== undefined &&
+    requestedSecondaryDocument.projectId === state.activeProjectId &&
+    requestedSecondaryDocument.deletedAt === undefined &&
     requestedSecondaryDocument.id !== primaryDocument?.id
       ? requestedSecondaryDocument
       : undefined;
@@ -467,6 +488,7 @@ export function createKnowledgeDocument(
   return {
     ...nextState,
     activeSection: "knowledge",
+    knowledgeWorkspaceView: "documents",
     selectedDocumentId: document.id,
     selectedDocumentFolder: document.folder,
     selectedKnowledgeFolderPath: getDocumentFolderPath(document),
@@ -834,6 +856,148 @@ export function restoreKnowledgeDocument(
           }
         : item,
     ),
+  };
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function removeInternalDocumentLink(
+  content: string[],
+  documentId: string,
+): string[] {
+  const linkPattern = new RegExp(
+    `\\[\\[doc:${escapeRegExp(documentId)}\\|([^\\]]+)\\]\\]`,
+    "g",
+  );
+  return content.map((line) => line.replace(linkPattern, "$1"));
+}
+
+export function permanentlyDeleteKnowledgeDocument(
+  state: DesktopPrototypeState,
+  documentId: string,
+): DesktopPrototypeState {
+  const document = getDocumentById(state, documentId);
+  if (
+    !document ||
+    document.projectId !== state.activeProjectId ||
+    document.deletedAt === undefined
+  ) {
+    return state;
+  }
+
+  const nextOpenDocumentIds = state.openDocumentIds.filter(
+    (openDocumentId) => openDocumentId !== documentId,
+  );
+  const fallbackDocumentId =
+    state.selectedDocumentId === documentId
+      ? (nextOpenDocumentIds.at(-1) ??
+        getProjectDocuments(state).find(
+          (item) => item.id !== documentId && item.deletedAt === undefined,
+        )?.id ??
+        null)
+      : state.selectedDocumentId;
+  const fallbackDocument = getDocumentById(state, fallbackDocumentId);
+  const isDocumentSelection = (selection: KnowledgePathSelection): boolean =>
+    selection?.kind === "document" && selection.documentId === documentId;
+  const cleanContextPanel = (
+    contextPanel: DesktopPrototypeState["contextPanel"],
+  ): DesktopPrototypeState["contextPanel"] =>
+    contextPanel?.kind === "document-context" &&
+    contextPanel.documentId === documentId
+      ? null
+      : contextPanel;
+  const cleanRestorablePanel = (
+    contextPanel: DesktopPrototypeState["contextPanelBeforeAi"],
+  ): DesktopPrototypeState["contextPanelBeforeAi"] =>
+    contextPanel?.kind === "document-context" &&
+    contextPanel.documentId === documentId
+      ? null
+      : contextPanel;
+
+  return {
+    ...state,
+    documents: state.documents
+      .filter((item) => item.id !== documentId)
+      .map((item) => {
+        const content = removeInternalDocumentLink(item.content, documentId);
+        return content.every((line, index) => line === item.content[index])
+          ? item
+          : { ...item, content };
+      }),
+    tasks: state.tasks.map((task) =>
+      task.linkedDocumentIds.includes(documentId)
+        ? {
+            ...task,
+            linkedDocumentIds: task.linkedDocumentIds.filter(
+              (linkedDocumentId) => linkedDocumentId !== documentId,
+            ),
+          }
+        : task,
+    ),
+    selectedDocumentId: fallbackDocumentId,
+    selectedDocumentFolder: fallbackDocument?.folder ?? null,
+    selectedKnowledgeFolderPath: fallbackDocument
+      ? getDocumentFolderPath(fallbackDocument)
+      : null,
+    selectedKnowledgePath: isDocumentSelection(state.selectedKnowledgePath)
+      ? fallbackDocument
+        ? {
+            kind: "document",
+            path: getDocumentFolderPath(fallbackDocument),
+            documentId: fallbackDocument.id,
+          }
+        : null
+      : state.selectedKnowledgePath,
+    knowledgeBreadcrumbHighlightVisible: isDocumentSelection(
+      state.selectedKnowledgePath,
+    )
+      ? false
+      : state.knowledgeBreadcrumbHighlightVisible,
+    openDocumentIds: nextOpenDocumentIds,
+    documentHistoryBack: state.documentHistoryBack.filter(
+      (historyDocumentId) => historyDocumentId !== documentId,
+    ),
+    documentHistoryForward: state.documentHistoryForward.filter(
+      (historyDocumentId) => historyDocumentId !== documentId,
+    ),
+    knowledgeSplitEnabled:
+      state.splitViewDocumentId === documentId
+        ? false
+        : state.knowledgeSplitEnabled,
+    splitViewDocumentId:
+      state.splitViewDocumentId === documentId
+        ? null
+        : state.splitViewDocumentId,
+    activeKnowledgePane:
+      state.splitViewDocumentId === documentId
+        ? "primary"
+        : state.activeKnowledgePane,
+    editingKnowledgeDocumentId:
+      state.editingKnowledgeDocumentId === documentId
+        ? null
+        : state.editingKnowledgeDocumentId,
+    contextPanel: cleanContextPanel(state.contextPanel),
+    contextPanelBeforeAi: cleanRestorablePanel(state.contextPanelBeforeAi),
+    taskAttachOrigin:
+      state.taskAttachOrigin?.documentId === documentId
+        ? { ...state.taskAttachOrigin, documentId: null }
+        : state.taskAttachOrigin,
+    overviewArticlePreviewDocumentId:
+      state.overviewArticlePreviewDocumentId === documentId
+        ? null
+        : state.overviewArticlePreviewDocumentId,
+    overviewTaskDetailMaterial:
+      state.overviewTaskDetailMaterial?.kind === "knowledge" &&
+      state.overviewTaskDetailMaterial.documentId === documentId
+        ? { kind: "subtasks" }
+        : state.overviewTaskDetailMaterial,
+    overviewTaskDetailSplit:
+      state.overviewTaskDetailSplit.enabled &&
+      state.overviewTaskDetailSplit.documentId === documentId
+        ? { enabled: false }
+        : state.overviewTaskDetailSplit,
   };
 }
 

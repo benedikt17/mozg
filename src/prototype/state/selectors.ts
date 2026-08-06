@@ -105,9 +105,10 @@ export function getCommandResults(
   const documentResults: CommandResult[] = state.documents
     .filter(
       (document) =>
-        matches(getDocumentTitle(document)) ||
-        matches(document.excerpt) ||
-        matches(getDocumentBreadcrumb(document)),
+        document.deletedAt === undefined &&
+        (matches(getDocumentTitle(document)) ||
+          matches(document.excerpt) ||
+          matches(getDocumentBreadcrumb(document))),
     )
     .map((document) => ({
       kind: "document",

@@ -56,6 +56,8 @@ export type KnowledgeContextMode =
 
 export type KnowledgePane = "primary" | "secondary";
 
+export type KnowledgeWorkspaceView = "documents" | "trash";
+
 export type KnowledgePaneState = {
   primaryDocument: PrototypeDocument | undefined;
   secondaryDocument: PrototypeDocument | undefined;
@@ -126,6 +128,7 @@ export type DesktopPrototypeState = {
   knowledgeExpandedBeforeCollapse: string[] | null;
   editingKnowledgeFolderId: string | null;
   knowledgeSearchQuery: string;
+  knowledgeWorkspaceView: KnowledgeWorkspaceView;
   openDocumentIds: string[];
   documentHistoryBack: string[];
   documentHistoryForward: string[];
@@ -294,6 +297,7 @@ export type DesktopPrototypeAction =
   | { type: "toggle-all-knowledge-folders" }
   | { type: "reveal-current-knowledge-document" }
   | { type: "set-knowledge-search"; query: string }
+  | { type: "open-knowledge-trash" }
   | { type: "create-knowledge-document" }
   | {
       type: "update-knowledge-document-markdown";
@@ -306,6 +310,7 @@ export type DesktopPrototypeAction =
   | { type: "delete-knowledge-folder"; folderId: string }
   | { type: "soft-delete-knowledge-document"; documentId: string }
   | { type: "restore-knowledge-document"; documentId: string }
+  | { type: "permanently-delete-knowledge-document"; documentId: string }
   | { type: "finish-editing-knowledge-folder" }
   | {
       type: "move-knowledge-document";

@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from "react";
-import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
 import {
   getDocumentBreadcrumb,
   getDocumentFolderPath,
@@ -33,7 +32,6 @@ export function KnowledgeSidebar({
   const [revealDocumentId, setRevealDocumentId] = useState<string | null>(null);
   const [openKnowledgeMenu, setOpenKnowledgeMenu] =
     useState<KnowledgeMenuTarget>(null);
-  const [trashOpen, setTrashOpen] = useState(false);
   const treeCollapsed = state.knowledgeExpandedBeforeCollapse !== null;
 
   useEffect(() => {
@@ -163,29 +161,29 @@ export function KnowledgeSidebar({
         ) : (
           <p className="empty-state">Ничего не найдено.</p>
         )}
-        <section className="knowledge-trash-section" aria-label="Корзина">
-          <button
-            aria-expanded={trashOpen}
-            className="knowledge-trash-toggle"
-            onClick={() => setTrashOpen((open) => !open)}
-            type="button"
-          >
-            <UiIcon name={trashOpen ? "chevron-down" : "chevron-right"} />
-            <span>Корзина</span>
-          </button>
-          {trashOpen
-            ? getKnowledgeTrashDocuments(state).map((document) => (
-                <KnowledgeTrashDocumentRow
-                  dispatch={dispatch}
-                  document={document}
-                  key={document.id}
-                  onKnowledgeMenuChange={setOpenKnowledgeMenu}
-                  openKnowledgeMenu={openKnowledgeMenu}
-                />
-              ))
-            : null}
-        </section>
       </nav>
+      <footer className="knowledge-sidebar-footer">
+        <button
+          aria-current={
+            state.knowledgeWorkspaceView === "trash" ? "page" : undefined
+          }
+          aria-label={`Корзина, ${getKnowledgeTrashDocuments(state).length} статей`}
+          className={[
+            "knowledge-trash-toggle",
+            state.knowledgeWorkspaceView === "trash" ? "is-active" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          onClick={() => dispatch({ type: "open-knowledge-trash" })}
+          type="button"
+        >
+          <UiIcon name="trash" />
+          <span>Корзина</span>
+          <span className="knowledge-trash-count" aria-hidden="true">
+            {getKnowledgeTrashDocuments(state).length}
+          </span>
+        </button>
+      </footer>
     </aside>
   );
 }
@@ -488,69 +486,19 @@ function KnowledgeTreeNodeView({
   );
 }
 
-function KnowledgeTrashDocumentRow({
-  dispatch,
-  document,
-  onKnowledgeMenuChange,
-  openKnowledgeMenu,
-}: {
-  dispatch: Dispatch;
-  document: PrototypeDocument;
-  onKnowledgeMenuChange: (target: KnowledgeMenuTarget) => void;
-  openKnowledgeMenu: KnowledgeMenuTarget;
-}): React.JSX.Element {
-  const menuOpen =
-    openKnowledgeMenu?.kind === "trash-document" &&
-    openKnowledgeMenu.id === document.id;
-  return (
-    <div
-      className="knowledge-action-row knowledge-document-row knowledge-trash-document-row"
-      title={getDocumentBreadcrumb(document)}
-    >
-      <div className="sidebar-tree-row sidebar-tree-leaf knowledge-tree-row document knowledge-trash-document">
-        <span className="tree-disclosure-spacer" />
-        <span>{document.title}</span>
-      </div>
-      <IconButton
-        aria-expanded={menuOpen}
-        aria-haspopup="menu"
-        className="knowledge-folder-menu-trigger"
-        icon={<UiIcon name="more" />}
-        label={`Действия статьи ${document.title}`}
-        onClick={(event) => {
-          event.stopPropagation();
-          onKnowledgeMenuChange(
-            menuOpen ? null : { kind: "trash-document", id: document.id },
-          );
-        }}
-        onPointerDown={(event) => event.stopPropagation()}
-        title={`Действия статьи ${document.title}`}
-        variant="ghost"
-      />
-      {menuOpen ? (
-        <KnowledgeTreeActionMenu
-          dispatch={dispatch}
-          kind="trash-document"
-          label={document.title}
-          onClose={() => onKnowledgeMenuChange(null)}
-          targetId={document.id}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function KnowledgeTreeActionMenu({
+export function KnowledgeTreeActionMenu({
   dispatch,
   kind,
   label,
   onClose,
+  onPermanentDelete,
   targetId,
 }: {
   dispatch: Dispatch;
   kind: "folder" | "document" | "trash-document";
   label: string;
   onClose: () => void;
+  onPermanentDelete?: () => void;
   targetId: string;
 }): React.JSX.Element {
   const deleteDocument = (): void => {
@@ -588,20 +536,34 @@ function KnowledgeTreeActionMenu({
         </button>
       ) : null}
       {kind === "trash-document" ? (
-        <button
-          onClick={() => {
-            dispatch({
-              type: "restore-knowledge-document",
-              documentId: targetId,
-            });
-            onClose();
-          }}
-          role="menuitem"
-          type="button"
-        >
-          <UiIcon name="arrow-left" />
-          <span>Восстановить</span>
-        </button>
+        <>
+          <button
+            onClick={() => {
+              dispatch({
+                type: "restore-knowledge-document",
+                documentId: targetId,
+              });
+              onClose();
+            }}
+            role="menuitem"
+            type="button"
+          >
+            <UiIcon name="arrow-left" />
+            <span>Восстановить</span>
+          </button>
+          <button
+            className="is-destructive"
+            onClick={() => {
+              onPermanentDelete?.();
+              onClose();
+            }}
+            role="menuitem"
+            type="button"
+          >
+            <UiIcon name="trash" />
+            <span>Удалить навсегда</span>
+          </button>
+        </>
       ) : (
         <button
           onClick={kind === "folder" ? deleteFolder : deleteDocument}

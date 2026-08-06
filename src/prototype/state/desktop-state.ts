@@ -66,6 +66,7 @@ import {
   getDocumentById,
   getDocumentFolderPath,
   getKnowledgePaneState,
+  permanentlyDeleteKnowledgeDocument,
   restoreKnowledgeDocument,
   softDeleteKnowledgeDocument,
   knowledgeFolderId,
@@ -181,6 +182,7 @@ export const initialDesktopPrototypeState: DesktopPrototypeState = {
   knowledgeExpandedBeforeCollapse: null,
   editingKnowledgeFolderId: null,
   knowledgeSearchQuery: "",
+  knowledgeWorkspaceView: "documents",
   openDocumentIds: initialOpenDocumentIds,
   documentHistoryBack: [],
   documentHistoryForward: [],
@@ -224,7 +226,10 @@ function firstDocumentForProject(
   state: DesktopPrototypeState,
   projectId: string,
 ): PrototypeDocument | undefined {
-  return state.documents.find((document) => document.projectId === projectId);
+  return state.documents.find(
+    (document) =>
+      document.projectId === projectId && document.deletedAt === undefined,
+  );
 }
 
 function createPrototypeTask({
@@ -339,6 +344,7 @@ function hydrateDesktopDomain(
     knowledgeExpandedBeforeCollapse: null,
     editingKnowledgeFolderId: null,
     knowledgeSearchQuery: "",
+    knowledgeWorkspaceView: "documents",
     openDocumentIds: [],
     documentHistoryBack: [],
     documentHistoryForward: [],
@@ -587,6 +593,7 @@ function selectKnowledgeDocument(
     ...sameProjectState,
     activeProjectId: document.projectId,
     activeSection: "knowledge",
+    knowledgeWorkspaceView: "documents",
     selectedDocumentId: document.id,
     selectedDocumentFolder: document.folder,
     selectedKnowledgeFolderPath: getDocumentFolderPath(document),
@@ -790,6 +797,7 @@ export function desktopPrototypeReducer(
         knowledgeExpandedBeforeCollapse: null,
         editingKnowledgeFolderId: null,
         knowledgeSearchQuery: "",
+        knowledgeWorkspaceView: "documents",
         openDocumentIds: [],
         documentHistoryBack: [],
         documentHistoryForward: [],
@@ -1249,6 +1257,14 @@ export function desktopPrototypeReducer(
       return revealCurrentKnowledgeDocument(state);
     case "set-knowledge-search":
       return setKnowledgeSearch(state, action.query);
+    case "open-knowledge-trash":
+      return {
+        ...state,
+        activeSection: "knowledge",
+        knowledgeWorkspaceView: "trash",
+        editingKnowledgeDocumentId: null,
+        commandPaletteOpen: false,
+      };
     case "create-knowledge-document":
       return createKnowledgeDocument(state);
     case "update-knowledge-document-markdown":
@@ -1269,6 +1285,8 @@ export function desktopPrototypeReducer(
       return softDeleteKnowledgeDocument(state, action.documentId);
     case "restore-knowledge-document":
       return restoreKnowledgeDocument(state, action.documentId);
+    case "permanently-delete-knowledge-document":
+      return permanentlyDeleteKnowledgeDocument(state, action.documentId);
     case "finish-editing-knowledge-folder":
       return finishEditingKnowledgeFolder(state);
     case "move-knowledge-document":

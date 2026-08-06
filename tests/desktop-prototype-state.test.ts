@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { getDocumentFolderPath } from "@/prototype/state/knowledge-state";
+import {
+  createDesktopDomainSnapshot,
+  parseDesktopDomainSnapshot,
+} from "@/prototype/persistence/domain-snapshot";
 import type { DesktopPrototypeState } from "@/prototype/desktop-state";
 import {
   desktopPrototypeReducer,
@@ -3705,7 +3709,9 @@ describe("desktop structural prototype state", () => {
   });
 
   it("restores an article to its original parent and keeps its Markdown title/content", () => {
-    const state = freshState();
+    const state = desktopPrototypeReducer(freshState(), {
+      type: "open-knowledge-trash",
+    });
     const original = getDocumentById(state, "doc-l-routes");
     if (!original) throw new Error("Expected nested document");
     const trashed = desktopPrototypeReducer(state, {
@@ -3718,6 +3724,7 @@ describe("desktop structural prototype state", () => {
     });
 
     expect(getKnowledgeTrashDocuments(restored)).toHaveLength(0);
+    expect(restored.knowledgeWorkspaceView).toBe("trash");
     expect(JSON.stringify(getKnowledgeTree(restored))).toContain(original.id);
     expect(getDocumentById(restored, original.id)).toMatchObject({
       folderPath: original.folderPath,
@@ -3763,6 +3770,170 @@ describe("desktop structural prototype state", () => {
     expect(JSON.stringify(getKnowledgeTree(restored))).toContain(
       "doc-l-temporary-parent",
     );
+  });
+
+  it("opens a project-scoped Trash view without losing tabs and sorts newest first", () => {
+    const state = {
+      ...freshState(),
+      documents: freshState().documents.map((document) =>
+        document.id === "doc-l-nastenka"
+          ? { ...document, deletedAt: "2026-08-06T09:00:00.000Z" }
+          : document.id === "doc-l-magic"
+            ? { ...document, deletedAt: "2026-08-06T10:00:00.000Z" }
+            : document,
+      ),
+      openDocumentIds: ["doc-l-nastenka", "doc-l-routes"],
+    };
+    const trash = desktopPrototypeReducer(state, {
+      type: "open-knowledge-trash",
+    });
+
+    expect(trash.activeSection).toBe("knowledge");
+    expect(trash.knowledgeWorkspaceView).toBe("trash");
+    expect(trash.openDocumentIds).toEqual(["doc-l-nastenka", "doc-l-routes"]);
+    expect(
+      getKnowledgeTrashDocuments(trash).map((document) => document.id),
+    ).toEqual(["doc-l-magic", "doc-l-nastenka"]);
+    expect(
+      getKnowledgeTree(trash).some((node) => node.id === "doc-l-magic"),
+    ).toBe(false);
+  });
+
+  it("leaves Trash when a normal article is selected and keeps it through project changes", () => {
+    const trashState = desktopPrototypeReducer(freshState(), {
+      type: "open-knowledge-trash",
+    });
+    const selected = desktopPrototypeReducer(trashState, {
+      type: "select-document",
+      documentId: "doc-l-routes",
+    });
+    expect(selected.knowledgeWorkspaceView).toBe("documents");
+    expect(selected.selectedDocumentId).toBe("doc-l-routes");
+
+    const projectTrash = desktopPrototypeReducer(
+      {
+        ...trashState,
+        documents: trashState.documents.map((document) =>
+          document.id === "doc-l-nastenka"
+            ? { ...document, deletedAt: "2026-08-06T10:00:00.000Z" }
+            : document.id === "doc-a-index"
+              ? { ...document, deletedAt: "2026-08-06T11:00:00.000Z" }
+              : document,
+        ),
+      },
+      { type: "switch-project", projectId: "ammonit" },
+    );
+    expect(projectTrash.knowledgeWorkspaceView).toBe("trash");
+    expect(
+      getKnowledgeTrashDocuments(projectTrash).map((document) => document.id),
+    ).toEqual(["doc-a-index"]);
+  });
+
+  it("permanently deletes only trashed articles and cleans document-ID references", () => {
+    const targetId = "doc-l-geography";
+    const state: DesktopPrototypeState = {
+      ...freshState(),
+      activeSection: "knowledge",
+      knowledgeWorkspaceView: "trash",
+      documents: freshState().documents.map((document) =>
+        document.id === "doc-l-nastenka"
+          ? {
+              ...document,
+              content: [
+                ...document.content,
+                "Связано: [[doc:doc-l-geography|География]]",
+              ],
+            }
+          : document.id === targetId
+            ? { ...document, deletedAt: "2026-08-06T10:00:00.000Z" }
+            : document,
+      ),
+      selectedDocumentId: targetId,
+      selectedDocumentFolder: "Мир",
+      selectedKnowledgePath: {
+        kind: "document",
+        path: ["Мир"],
+        documentId: targetId,
+      },
+      openDocumentIds: ["doc-l-nastenka", targetId],
+      documentHistoryBack: [targetId],
+      documentHistoryForward: [targetId],
+      knowledgeSplitEnabled: true,
+      splitViewDocumentId: targetId,
+      activeKnowledgePane: "secondary",
+      editingKnowledgeDocumentId: targetId,
+      contextPanel: { kind: "document-context", documentId: targetId },
+      contextPanelBeforeAi: { kind: "document-context", documentId: targetId },
+      taskAttachOrigin: {
+        section: "tasks",
+        taskId: "luko-world-rules",
+        documentId: targetId,
+      },
+      overviewArticlePreviewDocumentId: targetId,
+      overviewTaskDetailMaterial: { kind: "knowledge", documentId: targetId },
+      overviewTaskDetailSplit: { enabled: true, documentId: targetId },
+    };
+    const deleted = desktopPrototypeReducer(state, {
+      type: "permanently-delete-knowledge-document",
+      documentId: targetId,
+    });
+
+    expect(getDocumentById(deleted, targetId)).toBeUndefined();
+    expect(getKnowledgeTrashDocuments(deleted)).toHaveLength(0);
+    expect(deleted.knowledgeWorkspaceView).toBe("trash");
+    expect(deleted.selectedDocumentId).toBe("doc-l-nastenka");
+    expect(deleted.openDocumentIds).not.toContain(targetId);
+    expect(deleted.documentHistoryBack).not.toContain(targetId);
+    expect(deleted.documentHistoryForward).not.toContain(targetId);
+    expect(deleted.splitViewDocumentId).toBeNull();
+    expect(deleted.selectedKnowledgePath).toMatchObject({
+      documentId: "doc-l-nastenka",
+    });
+    expect(deleted.contextPanel).toBeNull();
+    expect(deleted.contextPanelBeforeAi).toBeNull();
+    expect(deleted.taskAttachOrigin?.documentId).toBeNull();
+    expect(deleted.overviewArticlePreviewDocumentId).toBeNull();
+    expect(deleted.overviewTaskDetailMaterial).toEqual({ kind: "subtasks" });
+    expect(deleted.overviewTaskDetailSplit).toEqual({ enabled: false });
+    expect(
+      deleted.tasks.find((task) => task.id === "luko-world-rules")
+        ?.linkedDocumentIds,
+    ).not.toContain(targetId);
+    expect(getDocumentById(deleted, "doc-l-nastenka")?.content).toContain(
+      "Связано: География",
+    );
+    expect(getDocumentById(deleted, "doc-l-nastenka")?.backlinks).toEqual(
+      getDocumentById(state, "doc-l-nastenka")?.backlinks,
+    );
+    expect(
+      parseDesktopDomainSnapshot(createDesktopDomainSnapshot(deleted)),
+    ).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it("does not permanently delete a live article and keeps restore reversible", () => {
+    const state = freshState();
+    const unchanged = desktopPrototypeReducer(state, {
+      type: "permanently-delete-knowledge-document",
+      documentId: "doc-l-routes",
+    });
+    expect(unchanged).toEqual(state);
+
+    const trashed = desktopPrototypeReducer(state, {
+      type: "soft-delete-knowledge-document",
+      documentId: "doc-l-routes",
+    });
+    const restored = desktopPrototypeReducer(trashed, {
+      type: "restore-knowledge-document",
+      documentId: "doc-l-routes",
+    });
+    expect(restored.knowledgeWorkspaceView).toBe("documents");
+    expect(
+      parseDesktopDomainSnapshot(createDesktopDomainSnapshot(restored)),
+    ).toMatchObject({
+      ok: true,
+    });
   });
 
   it("moves a selected Knowledge document into another folder at an exact position", () => {

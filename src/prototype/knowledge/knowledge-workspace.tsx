@@ -14,6 +14,7 @@ import { IconButton, PrototypeButton } from "@/prototype/desktop-ui";
 import { UiIcon } from "@/prototype/desktop-icons";
 import { EmptySection } from "@/prototype/empty-section";
 import { MarkdownSourceEditor } from "./markdown-source-editor";
+import { KnowledgeTrashView } from "./knowledge-trash-view";
 import {
   getDocumentHeadings,
   MarkdownDocumentPreview,
@@ -42,21 +43,32 @@ function markdownDownloadName(title: string): string {
   return `${safeTitle || "document"}.md`;
 }
 
-export function KnowledgeWorkspace({
-  state,
-  dispatch,
-  aiPanel,
-  onOpenTree,
-  onToggleTree,
-  treeOpen = true,
-}: {
+type KnowledgeWorkspaceProps = {
   state: DesktopPrototypeState;
   dispatch: Dispatch;
   aiPanel?: React.ReactNode;
   onOpenTree?: () => void;
   onToggleTree?: () => void;
   treeOpen?: boolean;
-}): React.JSX.Element {
+};
+
+export function KnowledgeWorkspace(
+  props: KnowledgeWorkspaceProps,
+): React.JSX.Element {
+  if (props.state.knowledgeWorkspaceView === "trash") {
+    return <KnowledgeTrashView state={props.state} dispatch={props.dispatch} />;
+  }
+  return <KnowledgeDocumentWorkspace {...props} />;
+}
+
+function KnowledgeDocumentWorkspace({
+  state,
+  dispatch,
+  aiPanel,
+  onOpenTree,
+  onToggleTree,
+  treeOpen = true,
+}: KnowledgeWorkspaceProps): React.JSX.Element {
   const {
     primaryDocument: selectedDocument,
     secondaryDocument: splitDocument,
