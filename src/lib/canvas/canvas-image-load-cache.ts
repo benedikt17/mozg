@@ -68,6 +68,7 @@ export class CanvasImageLoadCache {
     string,
     Promise<CanvasAssetRecord | null>
   >();
+  private readonly resolvedAssets = new Map<string, CanvasAssetRecord>();
 
   variantsForAsset(
     scope: CanvasImageLoadScope,
@@ -166,10 +167,30 @@ export class CanvasImageLoadCache {
     assetId: string,
     load: () => Promise<CanvasAssetRecord | null>,
   ): Promise<CanvasAssetRecord | null> {
-    return retainUntilFailure(
-      this.assets,
-      `${scopeKey(scope)}\u0000${assetId}`,
-      load,
+    const key = `${scopeKey(scope)}\u0000${assetId}`;
+    const existing = this.assets.get(key);
+    if (existing) return existing;
+    const pending = load();
+    this.assets.set(key, pending);
+    void pending.then(
+      (record) => {
+        if (this.assets.get(key) !== pending) return;
+        if (record) this.resolvedAssets.set(key, record);
+      },
+      () => {
+        if (this.assets.get(key) === pending) this.assets.delete(key);
+      },
+    );
+    return pending;
+  }
+
+  /** Returns an already-loaded original without starting network work. */
+  peekResolvedAsset(
+    scope: CanvasImageLoadScope,
+    assetId: string,
+  ): CanvasAssetRecord | null {
+    return (
+      this.resolvedAssets.get(`${scopeKey(scope)}\u0000${assetId}`) ?? null
     );
   }
 
@@ -221,6 +242,7 @@ export class CanvasImageLoadCache {
       this.variants,
       this.variantTiers,
       this.assets,
+      this.resolvedAssets,
     ]) {
       for (const key of cache.keys())
         if (key.startsWith(prefix)) cache.delete(key);
@@ -235,5 +257,6 @@ export class CanvasImageLoadCache {
     this.variants.clear();
     this.variantTiers.clear();
     this.assets.clear();
+    this.resolvedAssets.clear();
   }
 }

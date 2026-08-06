@@ -1044,14 +1044,6 @@ export async function restoreCanvasImageNodes(
         };
         nodes[index] = node;
         options.onNode?.(node, index, imageNodes.length);
-        scheduleCanvasImagePyramid(dependencies, {
-          assetId: canonical.assetId,
-          signal: options.signal,
-          priorityTargetMaxEdge: pyramidPriorityTargetMaxEdge(
-            canonical,
-            options,
-          ),
-        });
         if (cachedPayload.exact) continue;
       }
       if (
@@ -1117,14 +1109,6 @@ export async function restoreCanvasImageNodes(
           );
           nodes[index] = node;
           options.onNode?.(node, index, imageNodes.length);
-          scheduleCanvasImagePyramid(dependencies, {
-            assetId: canonical.assetId,
-            signal: options.signal,
-            priorityTargetMaxEdge: pyramidPriorityTargetMaxEdge(
-              canonical,
-              options,
-            ),
-          });
           continue;
         }
       }
@@ -1193,14 +1177,6 @@ export async function restoreCanvasImageNodes(
             );
             nodes[index] = node;
             options.onNode?.(node, index, imageNodes.length);
-            scheduleCanvasImagePyramid(dependencies, {
-              assetId: canonical.assetId,
-              signal: options.signal,
-              priorityTargetMaxEdge: pyramidPriorityTargetMaxEdge(
-                canonical,
-                options,
-              ),
-            });
             continue;
           }
         }

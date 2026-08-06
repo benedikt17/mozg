@@ -14,6 +14,7 @@ import {
 } from "@/lib/canvas/canvas-image-ingestion";
 import { projectExplicitCanvasResizes } from "@/lib/canvas/canvas-runtime-projection";
 import { CanvasImageLoadCache } from "@/lib/canvas/canvas-image-load-cache";
+import { CanvasImagePyramidScheduler } from "@/lib/canvas/canvas-image-pyramid";
 import {
   canvasDocumentToTaskNodes,
   canvasDocumentToImageNodes,
@@ -540,6 +541,151 @@ describe("production-shaped local Canvas shell", () => {
     expect(repository.assetLoadCalls).toBe(0);
   });
 
+  it("keeps a covering numeric derivative demand-driven during restore", async () => {
+    const repository = new MemoryCanvasRepository();
+    const { registry } = urlRegistry();
+    const scheduler = new CanvasImagePyramidScheduler();
+    const enqueue = vi.spyOn(scheduler, "enqueue");
+    const tiers = [512, 2560].map((targetMaxEdge) => ({
+      workspaceId: WORKSPACE_A,
+      canvasId: "canvas-1",
+      assetId: "asset-1",
+      targetMaxEdge,
+      storagePath: `edge-${targetMaxEdge}.webp`,
+      mimeType: "image/webp" as const,
+      byteSize: 10,
+      pixelWidth: targetMaxEdge,
+      pixelHeight: Math.round(targetMaxEdge * 0.5625),
+      createdAt: "2026-08-03T10:00:00.000Z",
+    }));
+    const variantRepository = {
+      listVariants: vi.fn(async () => []),
+      loadVariant: vi.fn(async () => null),
+      storeVariant: vi.fn(),
+      deleteVariants: vi.fn(),
+      listVariantTiers: vi.fn(async () => tiers),
+      listVariantTiersForAssets: vi.fn(
+        async () => new Map([["asset-1", tiers]]),
+      ),
+      loadVariantTier: vi.fn(
+        async ({ targetMaxEdge }: { targetMaxEdge: number }) => {
+          const tier = tiers.find(
+            (candidate) => candidate.targetMaxEdge === targetMaxEdge,
+          );
+          return tier
+            ? {
+                ...tier,
+                blob: new Blob([String(targetMaxEdge)], { type: "image/webp" }),
+              }
+            : null;
+        },
+      ),
+      storeVariantTier: vi.fn(),
+    } satisfies CanvasAssetVariantRepository & CanvasAssetVariantV2Repository;
+
+    const restored = await restoreCanvasImageNodes(
+      documentWithImage({ size: { width: 700, height: 394 } }),
+      {
+        assetRepository: repository,
+        variantRepository,
+        objectUrls: registry,
+        workspaceId: WORKSPACE_A,
+        canvasId: "canvas-1",
+        pyramidScheduler: scheduler,
+      },
+      { viewportZoom: 1, devicePixelRatio: 1.25 },
+    );
+
+    expect(restored.nodes[0]?.data.resolutionSource).toEqual({
+      type: "variant",
+      targetMaxEdge: 2560,
+    });
+    expect(variantRepository.loadVariantTier).toHaveBeenCalledWith(
+      expect.objectContaining({ targetMaxEdge: 2560 }),
+    );
+    expect(variantRepository.listVariantTiersForAssets).toHaveBeenCalledOnce();
+    expect(repository.assetLoadCalls).toBe(0);
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(variantRepository.storeVariantTier).not.toHaveBeenCalled();
+    expect(restored.nodes[0]?.data).toMatchObject({
+      intrinsicWidth: 2560,
+      intrinsicHeight: 1440,
+    });
+  });
+
+  it("loads the original once only when the selected numeric source cannot cover demand", async () => {
+    const repository = new MemoryCanvasRepository();
+    await repository.storeImage({
+      id: "asset-1",
+      workspaceId: WORKSPACE_A,
+      blob: new Blob(["original"], { type: "image/png" }),
+      mimeType: "image/png",
+      byteSize: 8,
+      width: 2752,
+      height: 1536,
+    });
+    const { registry } = urlRegistry();
+    const scheduler = new CanvasImagePyramidScheduler();
+    const enqueue = vi.spyOn(scheduler, "enqueue").mockResolvedValue({
+      stored: [],
+      missingTargetMaxEdges: [],
+      failed: [],
+      deferred: false,
+    });
+    const tier = {
+      workspaceId: WORKSPACE_A,
+      canvasId: "canvas-1",
+      assetId: "asset-1",
+      targetMaxEdge: 512,
+      storagePath: "edge-512.webp",
+      mimeType: "image/webp" as const,
+      byteSize: 10,
+      pixelWidth: 512,
+      pixelHeight: 286,
+      createdAt: "2026-08-03T10:00:00.000Z",
+    };
+    const variantRepository = {
+      listVariants: vi.fn(async () => []),
+      loadVariant: vi.fn(async () => null),
+      storeVariant: vi.fn(),
+      deleteVariants: vi.fn(),
+      listVariantTiers: vi.fn(async () => [tier]),
+      listVariantTiersForAssets: vi.fn(
+        async () => new Map([["asset-1", [tier]]]),
+      ),
+      loadVariantTier: vi.fn(async () => ({
+        ...tier,
+        blob: new Blob(["tier"], { type: "image/webp" }),
+      })),
+      storeVariantTier: vi.fn(),
+    } satisfies CanvasAssetVariantRepository & CanvasAssetVariantV2Repository;
+
+    const restored = await restoreCanvasImageNodes(
+      documentWithImage({ size: { width: 700, height: 394 } }),
+      {
+        assetRepository: repository,
+        variantRepository,
+        objectUrls: registry,
+        workspaceId: WORKSPACE_A,
+        canvasId: "canvas-1",
+        pyramidScheduler: scheduler,
+      },
+      { viewportZoom: 2, devicePixelRatio: 2 },
+    );
+
+    expect(restored.nodes[0]?.data.resolutionSource).toEqual({
+      type: "original",
+    });
+    expect(repository.assetLoadCalls).toBe(1);
+    expect(enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assetId: "asset-1",
+        originalAsset: expect.objectContaining({ id: "asset-1" }),
+      }),
+    );
+    expect(variantRepository.loadVariantTier).not.toHaveBeenCalled();
+  });
+
   it("does not emit a stale lower-resolution completion after abort", async () => {
     const repository = new MemoryCanvasRepository();
     const { registry } = urlRegistry();
@@ -917,6 +1063,22 @@ describe("production-shaped local Canvas shell", () => {
     });
     const { registry } = urlRegistry();
     const file = new File(["png"], "capture.png", { type: "image/png" });
+    const scheduler = new CanvasImagePyramidScheduler();
+    const enqueue = vi.spyOn(scheduler, "enqueue").mockResolvedValue({
+      stored: [],
+      missingTargetMaxEdges: [],
+      failed: [],
+      deferred: false,
+    });
+    const variantRepository = {
+      listVariants: vi.fn(async () => []),
+      loadVariant: vi.fn(async () => null),
+      storeVariant: vi.fn(),
+      deleteVariants: vi.fn(),
+      listVariantTiers: vi.fn(async () => []),
+      loadVariantTier: vi.fn(async () => null),
+      storeVariantTier: vi.fn(),
+    } satisfies CanvasAssetVariantRepository & CanvasAssetVariantV2Repository;
     const result = await ingestCanvasImageTransferToNodes(
       {
         items: [{ kind: "file", type: file.type, getAsFile: () => file }],
@@ -929,9 +1091,19 @@ describe("production-shaped local Canvas shell", () => {
         assetRepository: repository,
         objectUrls: registry,
         workspaceId: WORKSPACE_A,
+        canvasId: canvas.id,
+        variantRepository,
+        pyramidScheduler: scheduler,
         decodeImageDimensions: async () => ({ width: 640, height: 360 }),
         idGenerator: () => "asset-ingested",
       },
+    );
+    expect(repository.assetLoadCalls).toBe(0);
+    expect(enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assetId: "asset-ingested",
+        originalAsset: expect.objectContaining({ id: "asset-ingested" }),
+      }),
     );
     const controller = new LocalCanvasShellController(
       controllerOptions(repository),

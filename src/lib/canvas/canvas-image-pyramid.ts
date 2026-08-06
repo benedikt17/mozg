@@ -26,7 +26,13 @@ export type CanvasImagePyramidJobResult = {
     targetMaxEdge: CanvasImagePyramidTargetMaxEdge;
     error: unknown;
   }>;
+  /** Missing tiers await a legitimately available original; this is not an error. */
+  deferred: boolean;
 };
+
+/** Passive runtime work may reuse an original, but cannot download one. */
+export type CanvasImagePyramidOriginalLoadPolicy =
+  "reuse-only" | "allow-download";
 
 export type CanvasImagePyramidJobInput = {
   assetRepository: CanvasAssetRepository;
@@ -36,6 +42,8 @@ export type CanvasImagePyramidJobInput = {
   assetId: string;
   userId?: string;
   originalAsset?: CanvasAssetRecord;
+  /** Defaults to reuse-only so passive completion cannot download originals. */
+  originalLoadPolicy?: CanvasImagePyramidOriginalLoadPolicy;
   targetMaxEdges?: readonly number[];
   priorityTargetMaxEdge?: CanvasImagePyramidTargetMaxEdge;
   loadCache?: CanvasImageLoadCache;
@@ -258,8 +266,13 @@ export class CanvasImagePyramidScheduler {
       ? await input.loadCache.tiersForAsset(scope, input.assetId, list)
       : await list();
     if (signal.aborted) throw abortError();
+    const cachedOriginal = input.loadCache?.peekResolvedAsset(
+      scope,
+      input.assetId,
+    );
     const knownOriginal =
       input.originalAsset ??
+      cachedOriginal ??
       (input.assetRepository.getAssetMetadata
         ? await input.assetRepository.getAssetMetadata({
             workspaceId: input.workspaceId,
@@ -267,21 +280,30 @@ export class CanvasImagePyramidScheduler {
           })
         : null);
     if (signal.aborted) throw abortError();
-    const dimensions =
-      knownOriginal ??
-      (input.loadCache
-        ? await input.loadCache.asset(scope, input.assetId, () =>
+    const loadOriginal = () =>
+      input.loadCache
+        ? input.loadCache.asset(scope, input.assetId, () =>
             input.assetRepository.loadAsset({
               workspaceId: input.workspaceId,
               assetId: input.assetId,
             }),
           )
-        : await input.assetRepository.loadAsset({
+        : input.assetRepository.loadAsset({
             workspaceId: input.workspaceId,
             assetId: input.assetId,
-          }));
+          });
+    const dimensions =
+      knownOriginal ??
+      (input.originalLoadPolicy === "allow-download"
+        ? await loadOriginal()
+        : null);
     if (!dimensions)
-      return { stored: [], missingTargetMaxEdges: [], failed: [] };
+      return {
+        stored: [],
+        missingTargetMaxEdges: [],
+        failed: [],
+        deferred: true,
+      };
     const missing = planCanvasImagePyramidTiers({
       width: dimensions.width,
       height: dimensions.height,
@@ -291,24 +313,27 @@ export class CanvasImagePyramidScheduler {
       readyTargetMaxEdges: ready.map((tier) => tier.targetMaxEdge),
     });
     if (missing.length === 0)
-      return { stored: [], missingTargetMaxEdges: [], failed: [] };
+      return {
+        stored: [],
+        missingTargetMaxEdges: [],
+        failed: [],
+        deferred: false,
+      };
     const original =
       input.originalAsset ??
+      cachedOriginal ??
       (hasOriginalBlob(dimensions)
         ? dimensions
-        : input.loadCache
-          ? await input.loadCache.asset(scope, input.assetId, () =>
-              input.assetRepository.loadAsset({
-                workspaceId: input.workspaceId,
-                assetId: input.assetId,
-              }),
-            )
-          : await input.assetRepository.loadAsset({
-              workspaceId: input.workspaceId,
-              assetId: input.assetId,
-            }));
+        : input.originalLoadPolicy === "allow-download"
+          ? await loadOriginal()
+          : null);
     if (!original)
-      return { stored: [], missingTargetMaxEdges: missing, failed: [] };
+      return {
+        stored: [],
+        missingTargetMaxEdges: missing,
+        failed: [],
+        deferred: true,
+      };
     const stored: CanvasAssetVariantV2Metadata[] = [];
     const failed: Array<{
       targetMaxEdge: CanvasImagePyramidTargetMaxEdge;
@@ -385,6 +410,6 @@ export class CanvasImagePyramidScheduler {
         signal,
       );
     }
-    return { stored, missingTargetMaxEdges: missing, failed };
+    return { stored, missingTargetMaxEdges: missing, failed, deferred: false };
   }
 }

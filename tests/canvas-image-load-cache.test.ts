@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { CanvasImageLoadCache } from "@/lib/canvas/canvas-image-load-cache";
+import type { CanvasAssetRecord } from "@/lib/canvas/local-canvas-repository";
 
 const scope = {
   userId: "user-a",
@@ -8,6 +9,40 @@ const scope = {
 };
 
 describe("CanvasImageLoadCache", () => {
+  it("peeks only successfully resolved originals within the same scope", async () => {
+    const cache = new CanvasImageLoadCache();
+    const record = {
+      id: "asset-a",
+      workspaceId: scope.workspaceId,
+      blob: new Blob(["original"], { type: "image/png" }),
+      preview: null,
+      mimeType: "image/png",
+      byteSize: 8,
+      width: 100,
+      height: 50,
+      checksum: null,
+      createdAt: "2026-08-06T00:00:00.000Z",
+      readyAt: "2026-08-06T00:00:00.000Z",
+      deletedAt: null,
+    } satisfies CanvasAssetRecord;
+    let resolve!: (value: CanvasAssetRecord | null) => void;
+    const pending = new Promise<CanvasAssetRecord | null>((nextResolve) => {
+      resolve = nextResolve;
+    });
+
+    void cache.asset(scope, record.id, async () => pending);
+    expect(cache.peekResolvedAsset(scope, record.id)).toBeNull();
+    resolve(record);
+    await vi.waitFor(() =>
+      expect(cache.peekResolvedAsset(scope, record.id)).toBe(record),
+    );
+    expect(
+      cache.peekResolvedAsset({ ...scope, canvasId: "canvas-b" }, record.id),
+    ).toBeNull();
+    cache.clearScope(scope);
+    expect(cache.peekResolvedAsset(scope, record.id)).toBeNull();
+  });
+
   it("shares successful and in-flight asset loads only within its Canvas scope", async () => {
     const cache = new CanvasImageLoadCache();
     const load = vi.fn(async () => null);

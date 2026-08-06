@@ -252,6 +252,7 @@ describe("CanvasImagePyramidScheduler", () => {
         loadCache: cache,
         generate,
         priorityTargetMaxEdge: 1024,
+        originalLoadPolicy: "allow-download",
       }),
       scheduler.enqueue({
         ...scope,
@@ -260,6 +261,7 @@ describe("CanvasImagePyramidScheduler", () => {
         variantRepository,
         loadCache: cache,
         generate,
+        originalLoadPolicy: "allow-download",
       }),
     ]);
 
@@ -365,5 +367,161 @@ describe("CanvasImagePyramidScheduler", () => {
       generate,
     });
     expect(generate).toHaveBeenCalledOnce();
+  });
+
+  it("defaults to reuse-only and defers missing tiers without downloading an original", async () => {
+    const record = original();
+    const assetRepository = {
+      storeImage: vi.fn(),
+      loadAsset: vi.fn(async () => record),
+      getAssetMetadata: vi.fn(async () => {
+        const { blob, preview, ...value } = record;
+        void blob;
+        void preview;
+        return value;
+      }),
+      markAssetDeleted: vi.fn(),
+    } satisfies CanvasAssetRepository;
+    const variantRepository = {
+      listVariantTiers: vi.fn(async () => []),
+      loadVariantTier: vi.fn(async () => null),
+      storeVariantTier: vi.fn(),
+    } satisfies CanvasAssetVariantV2Repository;
+
+    const result = await new CanvasImagePyramidScheduler().enqueue({
+      ...scope,
+      assetId: record.id,
+      assetRepository,
+      variantRepository,
+    });
+
+    expect(result).toMatchObject({
+      stored: [],
+      missingTargetMaxEdges: [256, 512, 1024, 2048],
+      failed: [],
+      deferred: true,
+    });
+    expect(assetRepository.loadAsset).not.toHaveBeenCalled();
+    expect(variantRepository.storeVariantTier).not.toHaveBeenCalled();
+  });
+
+  it("generates from a supplied original without a repository load", async () => {
+    const record = original({ width: 900, height: 500 });
+    const assetRepository = {
+      storeImage: vi.fn(),
+      loadAsset: vi.fn(async () => record),
+      markAssetDeleted: vi.fn(),
+    } satisfies CanvasAssetRepository;
+    const variantRepository = {
+      listVariantTiers: vi.fn(async () => []),
+      loadVariantTier: vi.fn(async () => null),
+      storeVariantTier: vi.fn(async (input) => metadata(input.targetMaxEdge)),
+    } satisfies CanvasAssetVariantV2Repository;
+    const generate = vi.fn(
+      async (
+        _blob: Blob,
+        _dimensions: { width: number; height: number },
+        targets: readonly number[],
+      ) =>
+        targets.map((targetMaxEdge) => ({
+          targetMaxEdge,
+          blob: new Blob([String(targetMaxEdge)], { type: "image/webp" }),
+          pixelWidth: targetMaxEdge,
+          pixelHeight: Math.round(targetMaxEdge / 2),
+        })),
+    );
+
+    const result = await new CanvasImagePyramidScheduler().enqueue({
+      ...scope,
+      assetId: record.id,
+      assetRepository,
+      variantRepository,
+      originalAsset: record,
+      generate,
+    });
+
+    expect(result.deferred).toBe(false);
+    expect(generate).toHaveBeenCalledOnce();
+    expect(assetRepository.loadAsset).not.toHaveBeenCalled();
+  });
+
+  it("reuses a resolved cached original without initiating another load", async () => {
+    const cache = new CanvasImageLoadCache();
+    const record = original({ width: 900, height: 500 });
+    await cache.asset(scope, record.id, async () => record);
+    const assetRepository = {
+      storeImage: vi.fn(),
+      loadAsset: vi.fn(async () => record),
+      markAssetDeleted: vi.fn(),
+    } satisfies CanvasAssetRepository;
+    const variantRepository = {
+      listVariantTiers: vi.fn(async () => []),
+      loadVariantTier: vi.fn(async () => null),
+      storeVariantTier: vi.fn(async (input) => metadata(input.targetMaxEdge)),
+    } satisfies CanvasAssetVariantV2Repository;
+    const generate = vi.fn(
+      async (
+        _blob: Blob,
+        _dimensions: { width: number; height: number },
+        targets: readonly number[],
+      ) =>
+        targets.map((targetMaxEdge) => ({
+          targetMaxEdge,
+          blob: new Blob([String(targetMaxEdge)], { type: "image/webp" }),
+          pixelWidth: targetMaxEdge,
+          pixelHeight: Math.round(targetMaxEdge / 2),
+        })),
+    );
+
+    await new CanvasImagePyramidScheduler().enqueue({
+      ...scope,
+      assetId: record.id,
+      assetRepository,
+      variantRepository,
+      loadCache: cache,
+      generate,
+    });
+
+    expect(generate).toHaveBeenCalledOnce();
+    expect(assetRepository.loadAsset).not.toHaveBeenCalled();
+  });
+
+  it("removes a deferred job from in-flight state without self-retrying", async () => {
+    const record = original();
+    const assetRepository = {
+      storeImage: vi.fn(),
+      loadAsset: vi.fn(async () => record),
+      getAssetMetadata: vi.fn(async () => {
+        const { blob, preview, ...value } = record;
+        void blob;
+        void preview;
+        return value;
+      }),
+      markAssetDeleted: vi.fn(),
+    } satisfies CanvasAssetRepository;
+    const variantRepository = {
+      listVariantTiers: vi.fn(async () => []),
+      loadVariantTier: vi.fn(async () => null),
+      storeVariantTier: vi.fn(),
+    } satisfies CanvasAssetVariantV2Repository;
+    const scheduler = new CanvasImagePyramidScheduler();
+
+    const first = await scheduler.enqueue({
+      ...scope,
+      assetId: record.id,
+      assetRepository,
+      variantRepository,
+    });
+    const second = await scheduler.enqueue({
+      ...scope,
+      assetId: record.id,
+      assetRepository,
+      variantRepository,
+    });
+
+    expect(first.deferred).toBe(true);
+    expect(second.deferred).toBe(true);
+    expect(variantRepository.listVariantTiers).toHaveBeenCalledTimes(2);
+    expect(assetRepository.loadAsset).not.toHaveBeenCalled();
   });
 });
