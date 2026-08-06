@@ -30,6 +30,7 @@ import {
 import { shouldCloseCanvasTaskDetails } from "@/lib/canvas/canvas-task-selection";
 import type {
   CanvasAssetVariantRepository,
+  CanvasAssetVariantV2Metadata,
   CanvasAssetVariantV2Repository,
 } from "@/lib/canvas/canvas-image-variants";
 import {
@@ -75,6 +76,124 @@ function documentWithImage(
 
 function clone<T>(value: T): T {
   return structuredClone(value);
+}
+
+type ImageNetworkLedger = {
+  catalogueRequests: number;
+  perAssetCatalogueRequests: number;
+  derivativeRequests: Array<{
+    assetId: string;
+    targetMaxEdge: number;
+  }>;
+  originalRequests: string[];
+  generationEnqueueCalls: number;
+  generatedStores: Array<{
+    assetId: string;
+    targetMaxEdge: number;
+  }>;
+  documentSaves: number;
+  maxConcurrentDerivativeRequests: number;
+};
+
+function createImageNetworkLedger(): ImageNetworkLedger {
+  return {
+    catalogueRequests: 0,
+    perAssetCatalogueRequests: 0,
+    derivativeRequests: [],
+    originalRequests: [],
+    generationEnqueueCalls: 0,
+    generatedStores: [],
+    documentSaves: 0,
+    maxConcurrentDerivativeRequests: 0,
+  };
+}
+
+function createNumericVariantRepository(
+  tiersByAsset: ReadonlyMap<string, readonly CanvasAssetVariantV2Metadata[]>,
+  ledger: ImageNetworkLedger,
+  derivativeDelayMs = 0,
+) {
+  let activeDerivativeRequests = 0;
+  const variantRepository = {
+    listVariants: vi.fn(async () => []),
+    loadVariant: vi.fn(async () => null),
+    storeVariant: vi.fn(async (input) => input),
+    deleteVariants: vi.fn(async () => undefined),
+    listVariantTiers: vi.fn(
+      async (
+        input: Parameters<
+          CanvasAssetVariantV2Repository["listVariantTiers"]
+        >[0],
+      ) => {
+        ledger.perAssetCatalogueRequests += 1;
+        return [...(tiersByAsset.get(input.assetId) ?? [])];
+      },
+    ),
+    listVariantTiersForAssets: vi.fn(
+      async (
+        input: Parameters<
+          NonNullable<
+            CanvasAssetVariantV2Repository["listVariantTiersForAssets"]
+          >
+        >[0],
+      ) => {
+        ledger.catalogueRequests += 1;
+        return new Map(
+          input.assetIds.map((assetId) => [
+            assetId,
+            [...(tiersByAsset.get(assetId) ?? [])],
+          ]),
+        );
+      },
+    ),
+    loadVariantTier: vi.fn(
+      async (
+        input: Parameters<CanvasAssetVariantV2Repository["loadVariantTier"]>[0],
+      ) => {
+        ledger.derivativeRequests.push({
+          assetId: input.assetId,
+          targetMaxEdge: input.targetMaxEdge,
+        });
+        activeDerivativeRequests += 1;
+        ledger.maxConcurrentDerivativeRequests = Math.max(
+          ledger.maxConcurrentDerivativeRequests,
+          activeDerivativeRequests,
+        );
+        if (derivativeDelayMs > 0)
+          await new Promise((resolve) =>
+            setTimeout(resolve, derivativeDelayMs),
+          );
+        const tier = tiersByAsset
+          .get(input.assetId)
+          ?.find(
+            (candidate) => candidate.targetMaxEdge === input.targetMaxEdge,
+          );
+        activeDerivativeRequests -= 1;
+        return tier
+          ? {
+              ...tier,
+              blob: new Blob([`${input.assetId}:${input.targetMaxEdge}`], {
+                type: "image/webp",
+              }),
+            }
+          : null;
+      },
+    ),
+    storeVariantTier: vi.fn(
+      async (
+        input: Parameters<
+          CanvasAssetVariantV2Repository["storeVariantTier"]
+        >[0],
+      ) => {
+        ledger.generatedStores.push({
+          assetId: input.assetId,
+          targetMaxEdge: input.targetMaxEdge,
+        });
+        return input;
+      },
+    ),
+  } satisfies CanvasAssetVariantRepository & CanvasAssetVariantV2Repository;
+  return variantRepository;
 }
 
 class MemoryCanvasRepository
@@ -611,6 +730,334 @@ describe("production-shaped local Canvas shell", () => {
       intrinsicWidth: 2560,
       intrinsicHeight: 1440,
     });
+  });
+
+  it("accounts for cold far-zoom hydration from a ready 512 derivative", async () => {
+    const repository = new MemoryCanvasRepository();
+    const canvas = await repository.createCanvas({
+      workspaceId: WORKSPACE_A,
+      title: "Far zoom",
+    });
+    await repository.storeImage({
+      id: "asset-1",
+      workspaceId: WORKSPACE_A,
+      blob: new Blob(["original"], { type: "image/png" }),
+      mimeType: "image/png",
+      byteSize: 8,
+      width: 2752,
+      height: 1536,
+    });
+    const document = documentWithImage({ size: { width: 320, height: 180 } });
+    await repository.saveCanvas({
+      workspaceId: WORKSPACE_A,
+      canvasId: canvas.id,
+      expectedRevision: canvas.revision,
+      title: canvas.title,
+      document,
+    });
+    await repository.saveViewState({
+      canvasId: canvas.id,
+      userId: USER,
+      viewportX: 0,
+      viewportY: 0,
+      zoom: 0.5,
+      updatedAt: "2026-08-01T00:00:00.000Z",
+    });
+    repository.saveCalls = 0;
+
+    const ledger = createImageNetworkLedger();
+    const tier: CanvasAssetVariantV2Metadata = {
+      workspaceId: WORKSPACE_A,
+      canvasId: canvas.id,
+      assetId: "asset-1",
+      targetMaxEdge: 512,
+      storagePath: "edge-512.webp",
+      mimeType: "image/webp",
+      byteSize: 12,
+      pixelWidth: 512,
+      pixelHeight: 286,
+      createdAt: "2026-08-03T10:00:00.000Z",
+    };
+    const variantRepository = createNumericVariantRepository(
+      new Map([["asset-1", [tier]]]),
+      ledger,
+    );
+    const scheduler = new CanvasImagePyramidScheduler();
+    const enqueue = vi.spyOn(scheduler, "enqueue");
+    const originalLoad = vi.spyOn(repository, "loadAsset");
+    const { registry } = urlRegistry();
+    const shell = new LocalCanvasShellController(controllerOptions(repository));
+    const shellState = await shell.openCanvas(canvas.id);
+    const emitted: CanvasImageFlowNode[] = [];
+
+    const result = await restoreCanvasImageNodes(
+      shellState.document,
+      {
+        assetRepository: repository,
+        variantRepository,
+        objectUrls: registry,
+        workspaceId: WORKSPACE_A,
+        canvasId: canvas.id,
+        pyramidScheduler: scheduler,
+      },
+      {
+        viewportZoom: shellState.viewport.zoom,
+        devicePixelRatio: 2,
+        concurrency: 1,
+        onNode: (node) => emitted.push(node),
+      },
+    );
+    ledger.originalRequests = originalLoad.mock.calls.map(
+      ([input]) => input.assetId,
+    );
+    ledger.generationEnqueueCalls = enqueue.mock.calls.length;
+    ledger.documentSaves = repository.saveCalls;
+
+    expect(shellState.status).toBe("saved");
+    expect(result).toMatchObject({
+      missingAssetIds: [],
+      assetReadCount: 0,
+      staleIgnored: false,
+    });
+    expect(ledger).toMatchObject({
+      catalogueRequests: 1,
+      perAssetCatalogueRequests: 0,
+      derivativeRequests: [{ assetId: "asset-1", targetMaxEdge: 512 }],
+      originalRequests: [],
+      generationEnqueueCalls: 0,
+      generatedStores: [],
+      documentSaves: 0,
+    });
+    expect(variantRepository.listVariantTiersForAssets).toHaveBeenCalledOnce();
+    expect(variantRepository.listVariantTiers).not.toHaveBeenCalled();
+    expect(variantRepository.loadVariantTier).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assetId: "asset-1",
+        targetMaxEdge: 512,
+      }),
+    );
+    expect(variantRepository.storeVariantTier).not.toHaveBeenCalled();
+    expect(originalLoad).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]?.data).toMatchObject({
+      resolutionSource: { type: "variant", targetMaxEdge: 512 },
+      intrinsicWidth: 512,
+      intrinsicHeight: 286,
+    });
+  });
+
+  it("accounts for cold multi-image derivative-only hydration with bounded concurrency", async () => {
+    const repository = new MemoryCanvasRepository();
+    const canvas = await repository.createCanvas({
+      workspaceId: WORKSPACE_A,
+      title: "Multi-image hydration",
+    });
+    const document = parseCanvasDocumentV1({
+      schemaVersion: 1,
+      nodes: [
+        {
+          id: "image-node-a",
+          kind: "image",
+          assetId: "asset-a",
+          position: { x: 10, y: 20 },
+          size: { width: 320, height: 180 },
+          zIndex: 1,
+          aspectRatioLocked: true,
+        },
+        {
+          id: "image-node-b",
+          kind: "image",
+          assetId: "asset-b",
+          position: { x: 400, y: 50 },
+          size: { width: 700, height: 394 },
+          zIndex: 2,
+          aspectRatioLocked: true,
+        },
+        {
+          id: "image-node-c",
+          kind: "image",
+          assetId: "asset-c",
+          position: { x: 900, y: 80 },
+          size: { width: 360, height: 203 },
+          zIndex: 3,
+          aspectRatioLocked: true,
+        },
+      ],
+      edges: [],
+    });
+    for (const asset of [
+      { id: "asset-a", width: 2752, height: 1536 },
+      { id: "asset-b", width: 7000, height: 3938 },
+      { id: "asset-c", width: 1600, height: 900 },
+    ]) {
+      await repository.storeImage({
+        id: asset.id,
+        workspaceId: WORKSPACE_A,
+        blob: new Blob([`${asset.id}:original`], { type: "image/png" }),
+        mimeType: "image/png",
+        byteSize: asset.id.length,
+        width: asset.width,
+        height: asset.height,
+      });
+    }
+    await repository.saveCanvas({
+      workspaceId: WORKSPACE_A,
+      canvasId: canvas.id,
+      expectedRevision: canvas.revision,
+      title: canvas.title,
+      document,
+    });
+    repository.saveCalls = 0;
+
+    const ledger = createImageNetworkLedger();
+    const tier = (
+      assetId: string,
+      targetMaxEdge: number,
+      pixelWidth: number,
+      pixelHeight: number,
+    ): CanvasAssetVariantV2Metadata => ({
+      workspaceId: WORKSPACE_A,
+      canvasId: canvas.id,
+      assetId,
+      targetMaxEdge,
+      storagePath: `${assetId}/edge-${targetMaxEdge}.webp`,
+      mimeType: "image/webp",
+      byteSize: targetMaxEdge,
+      pixelWidth,
+      pixelHeight,
+      createdAt: "2026-08-03T10:00:00.000Z",
+    });
+    const tiersByAsset = new Map<
+      string,
+      readonly CanvasAssetVariantV2Metadata[]
+    >([
+      [
+        "asset-a",
+        [tier("asset-a", 512, 512, 286), tier("asset-a", 2560, 2560, 1429)],
+      ],
+      [
+        "asset-b",
+        [
+          tier("asset-b", 256, 256, 144),
+          tier("asset-b", 512, 512, 288),
+          tier("asset-b", 1024, 1024, 576),
+          tier("asset-b", 2048, 2048, 1152),
+          tier("asset-b", 4096, 4096, 2304),
+        ],
+      ],
+      ["asset-c", [tier("asset-c", 512, 512, 288)]],
+    ]);
+    const variantRepository = createNumericVariantRepository(
+      tiersByAsset,
+      ledger,
+      3,
+    );
+    const scheduler = new CanvasImagePyramidScheduler();
+    const enqueue = vi.spyOn(scheduler, "enqueue");
+    const originalLoad = vi.spyOn(repository, "loadAsset");
+    const { registry } = urlRegistry();
+    const shell = new LocalCanvasShellController(controllerOptions(repository));
+    const shellState = await shell.openCanvas(canvas.id);
+    const emitted: CanvasImageFlowNode[] = [];
+
+    const result = await restoreCanvasImageNodes(
+      shellState.document,
+      {
+        assetRepository: repository,
+        variantRepository,
+        objectUrls: registry,
+        workspaceId: WORKSPACE_A,
+        canvasId: canvas.id,
+        pyramidScheduler: scheduler,
+      },
+      {
+        viewportZoom: shellState.viewport.zoom,
+        devicePixelRatio: 1,
+        concurrency: 2,
+        onNode: (node) => emitted.push(node),
+      },
+    );
+    ledger.originalRequests = originalLoad.mock.calls.map(
+      ([input]) => input.assetId,
+    );
+    ledger.generationEnqueueCalls = enqueue.mock.calls.length;
+    ledger.documentSaves = repository.saveCalls;
+
+    expect(shellState.status).toBe("saved");
+    expect(result).toMatchObject({
+      nodes: expect.any(Array),
+      missingAssetIds: [],
+      assetReadCount: 0,
+      maxConcurrentAssetReads: 0,
+      staleIgnored: false,
+    });
+    expect(result.nodes).toHaveLength(3);
+    expect(emitted).toHaveLength(3);
+    expect(ledger.catalogueRequests).toBe(1);
+    expect(ledger.perAssetCatalogueRequests).toBe(0);
+    expect(
+      [...ledger.derivativeRequests].sort((left, right) =>
+        left.assetId.localeCompare(right.assetId),
+      ),
+    ).toEqual([
+      { assetId: "asset-a", targetMaxEdge: 512 },
+      { assetId: "asset-b", targetMaxEdge: 1024 },
+      { assetId: "asset-c", targetMaxEdge: 512 },
+    ]);
+    expect(ledger.originalRequests).toEqual([]);
+    expect(ledger.generationEnqueueCalls).toBe(0);
+    expect(ledger.generatedStores).toEqual([]);
+    expect(ledger.documentSaves).toBe(0);
+    expect(ledger.maxConcurrentDerivativeRequests).toBeLessThanOrEqual(2);
+    expect(variantRepository.listVariantTiersForAssets).toHaveBeenCalledOnce();
+    expect(variantRepository.listVariantTiers).not.toHaveBeenCalled();
+    expect(variantRepository.loadVariantTier).toHaveBeenCalledTimes(3);
+    expect(variantRepository.storeVariantTier).not.toHaveBeenCalled();
+    expect(originalLoad).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+
+    const expectedNodes = new Map([
+      [
+        "asset-a",
+        {
+          position: { x: 10, y: 20 },
+          width: 320,
+          height: 180,
+          targetMaxEdge: 512,
+        },
+      ],
+      [
+        "asset-b",
+        {
+          position: { x: 400, y: 50 },
+          width: 700,
+          height: 394,
+          targetMaxEdge: 1024,
+        },
+      ],
+      [
+        "asset-c",
+        {
+          position: { x: 900, y: 80 },
+          width: 360,
+          height: 203,
+          targetMaxEdge: 512,
+        },
+      ],
+    ]);
+    for (const node of emitted) {
+      const expected = expectedNodes.get(node.data.assetId);
+      expect(expected).toBeDefined();
+      expect(node.position).toEqual(expected?.position);
+      expect(node.width).toBe(expected?.width);
+      expect(node.height).toBe(expected?.height);
+      expect(node.data.resolutionSource).toEqual({
+        type: "variant",
+        targetMaxEdge: expected?.targetMaxEdge,
+      });
+      expect(node.data.resolutionSource?.type).not.toBe("original");
+    }
   });
 
   it("loads the original once only when the selected numeric source cannot cover demand", async () => {
