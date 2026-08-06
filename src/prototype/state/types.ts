@@ -14,6 +14,7 @@ import type {
   TaskSignal,
 } from "@/prototype/desktop-mock-data";
 import type { DesktopDomainSnapshot } from "@/prototype/persistence/domain-snapshot";
+import type { KnowledgeStructuralHistoryEntry } from "@/prototype/knowledge/knowledge-structural-history";
 
 export type TaskSystemView = "day" | "important" | "all";
 
@@ -311,6 +312,11 @@ export type DesktopPrototypeAction =
   | { type: "soft-delete-knowledge-document"; documentId: string }
   | { type: "restore-knowledge-document"; documentId: string }
   | { type: "permanently-delete-knowledge-document"; documentId: string }
+  | {
+      type: "apply-knowledge-structural-history";
+      entry: KnowledgeStructuralHistoryEntry;
+      direction: "undo" | "redo";
+    }
   | { type: "finish-editing-knowledge-folder" }
   | {
       type: "move-knowledge-document";

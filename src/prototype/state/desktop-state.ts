@@ -58,6 +58,7 @@ import {
 import {
   closeKnowledgeSplitView,
   activateKnowledgePane,
+  applyKnowledgeStructuralHistoryEntry,
   closeDocumentTab,
   createKnowledgeDocument,
   createKnowledgeFolder,
@@ -1287,6 +1288,12 @@ export function desktopPrototypeReducer(
       return restoreKnowledgeDocument(state, action.documentId);
     case "permanently-delete-knowledge-document":
       return permanentlyDeleteKnowledgeDocument(state, action.documentId);
+    case "apply-knowledge-structural-history":
+      return applyKnowledgeStructuralHistoryEntry(
+        state,
+        action.entry,
+        action.direction,
+      );
     case "finish-editing-knowledge-folder":
       return finishEditingKnowledgeFolder(state);
     case "move-knowledge-document":

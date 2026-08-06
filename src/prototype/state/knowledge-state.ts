@@ -1,5 +1,6 @@
 import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
 import type {
+  DesktopPrototypeAction,
   DesktopPrototypeState,
   KnowledgeContextMode,
   KnowledgePaneState,
@@ -7,6 +8,10 @@ import type {
   KnowledgePathSelection,
   KnowledgeTreeNode,
 } from "@/prototype/state/types";
+import type {
+  KnowledgeDocumentPlacement,
+  KnowledgeStructuralHistoryEntry,
+} from "@/prototype/knowledge/knowledge-structural-history";
 
 const documentFolderPathOverrides: Record<string, string[]> = {
   "doc-l-nastenka": [
@@ -999,6 +1004,404 @@ export function permanentlyDeleteKnowledgeDocument(
         ? { enabled: false }
         : state.overviewTaskDetailSplit,
   };
+}
+
+function cloneDocument(document: PrototypeDocument): PrototypeDocument {
+  return {
+    ...document,
+    backlinks: [...document.backlinks],
+    content: [...document.content],
+    folderPath: document.folderPath ? [...document.folderPath] : undefined,
+    linkedTaskIds: [...document.linkedTaskIds],
+  };
+}
+
+function placement(document: PrototypeDocument): KnowledgeDocumentPlacement {
+  return {
+    deletedAt: document.deletedAt,
+    folder: document.folder,
+    folderPath: document.folderPath ? [...document.folderPath] : undefined,
+    id: document.id,
+    order: document.order,
+  };
+}
+
+function placementsThatChanged(
+  state: DesktopPrototypeState,
+  nextState: DesktopPrototypeState,
+): {
+  before: KnowledgeDocumentPlacement[];
+  after: KnowledgeDocumentPlacement[];
+} {
+  const previous = new Map(
+    state.documents
+      .filter((document) => document.projectId === state.activeProjectId)
+      .map((document) => [document.id, placement(document)]),
+  );
+  const before: KnowledgeDocumentPlacement[] = [];
+  const after: KnowledgeDocumentPlacement[] = [];
+  for (const document of nextState.documents) {
+    if (document.projectId !== state.activeProjectId) continue;
+    const previousPlacement = previous.get(document.id);
+    const nextPlacement = placement(document);
+    if (
+      !previousPlacement ||
+      previousPlacement.folder !== nextPlacement.folder ||
+      previousPlacement.order !== nextPlacement.order ||
+      previousPlacement.deletedAt !== nextPlacement.deletedAt ||
+      !knowledgePathsEqual(
+        previousPlacement.folderPath ?? [],
+        nextPlacement.folderPath ?? [],
+      )
+    ) {
+      if (previousPlacement) before.push(previousPlacement);
+      after.push(nextPlacement);
+    }
+  }
+  return { after, before };
+}
+
+function historyEntryId(
+  action: DesktopPrototypeAction,
+  state: DesktopPrototypeState,
+): string {
+  return `${action.type}:${state.activeProjectId}:${state.nextDocumentNumber}:${state.nextKnowledgeFolderNumber}`;
+}
+
+export function createKnowledgeStructuralHistoryEntry(
+  state: DesktopPrototypeState,
+  nextState: DesktopPrototypeState,
+  action: DesktopPrototypeAction,
+): KnowledgeStructuralHistoryEntry | null {
+  if (nextState === state) return null;
+  const id = historyEntryId(action, state);
+  if (action.type === "create-knowledge-document") {
+    const document = nextState.documents.find(
+      (item) => !state.documents.some((previous) => previous.id === item.id),
+    );
+    return document
+      ? {
+          document: cloneDocument(document),
+          id,
+          kind: "create-document",
+          label: "Создание статьи",
+          previousSelectedDocumentId: state.selectedDocumentId,
+          wasOpened: nextState.openDocumentIds.includes(document.id),
+        }
+      : null;
+  }
+  if (action.type === "create-knowledge-folder") {
+    const folder = nextState.knowledgeFolders.find(
+      (item) =>
+        !state.knowledgeFolders.some((previous) => previous.id === item.id),
+    );
+    return folder
+      ? {
+          folder: { ...folder, path: [...folder.path] },
+          id,
+          kind: "create-folder",
+          label: "Создание папки",
+        }
+      : null;
+  }
+  if (action.type === "rename-knowledge-folder") {
+    const oldPath = getKnowledgeFolderPathById(state, action.folderId);
+    if (!oldPath) return null;
+    const newPath = [...oldPath.slice(0, -1), action.title.trim()];
+    return {
+      id,
+      kind: "rename-folder",
+      label: "Переименование папки",
+      newPath,
+      oldPath,
+      projectId: state.activeProjectId,
+    };
+  }
+  if (action.type === "move-knowledge-document") {
+    const changed = placementsThatChanged(state, nextState);
+    return changed.before.length > 0
+      ? {
+          ...changed,
+          documentId: action.documentId,
+          id,
+          kind: "move-document",
+          label: "Перемещение статьи",
+        }
+      : null;
+  }
+  if (action.type === "delete-knowledge-folder") {
+    const folderPath = getKnowledgeFolderPathById(state, action.folderId);
+    if (!folderPath) return null;
+    const documents = state.documents
+      .filter(
+        (document) =>
+          document.projectId === state.activeProjectId &&
+          document.deletedAt === undefined &&
+          knowledgePathStartsWith(getDocumentFolderPath(document), folderPath),
+      )
+      .map(placement);
+    return {
+      documents,
+      folderPath,
+      folders: state.knowledgeFolders
+        .filter(
+          (folder) =>
+            folder.projectId === state.activeProjectId &&
+            knowledgePathStartsWith(folder.path, folderPath),
+        )
+        .map((folder) => ({ ...folder, path: [...folder.path] })),
+      id,
+      kind: "delete-folder",
+      label: "Удаление папки",
+      projectId: state.activeProjectId,
+    };
+  }
+  if (
+    action.type === "soft-delete-knowledge-document" ||
+    action.type === "restore-knowledge-document"
+  ) {
+    const beforeDocument = getDocumentById(state, action.documentId);
+    const afterDocument = getDocumentById(nextState, action.documentId);
+    if (!beforeDocument || !afterDocument) return null;
+    return {
+      after: placement(afterDocument),
+      afterOpened: nextState.openDocumentIds.includes(action.documentId),
+      afterSelected: nextState.selectedDocumentId === action.documentId,
+      before: placement(beforeDocument),
+      beforeOpened: state.openDocumentIds.includes(action.documentId),
+      beforeSelected: state.selectedDocumentId === action.documentId,
+      documentId: action.documentId,
+      id,
+      kind:
+        action.type === "soft-delete-knowledge-document"
+          ? "soft-delete-document"
+          : "restore-document",
+      label:
+        action.type === "soft-delete-knowledge-document"
+          ? "Удаление статьи"
+          : "Восстановление статьи",
+    };
+  }
+  return null;
+}
+
+function applyPlacements(
+  state: DesktopPrototypeState,
+  placements: KnowledgeDocumentPlacement[],
+): DesktopPrototypeState {
+  const placementById = new Map(placements.map((item) => [item.id, item]));
+  const documents = state.documents.map((document) => {
+    const next = placementById.get(document.id);
+    if (!next) return document;
+    const updated = {
+      ...document,
+      folder: next.folder,
+      folderPath: next.folderPath ? [...next.folderPath] : undefined,
+      order: next.order,
+    };
+    if (next.deletedAt === undefined) delete updated.deletedAt;
+    else updated.deletedAt = next.deletedAt;
+    return updated;
+  });
+  const selectedDocument = documents.find(
+    (document) => document.id === state.selectedDocumentId,
+  );
+  return {
+    ...state,
+    documents,
+    selectedDocumentFolder:
+      selectedDocument?.folder ?? state.selectedDocumentFolder,
+    selectedKnowledgeFolderPath: selectedDocument
+      ? getDocumentFolderPath(selectedDocument)
+      : state.selectedKnowledgeFolderPath,
+    selectedKnowledgePath: selectedDocument
+      ? {
+          documentId: selectedDocument.id,
+          kind: "document" as const,
+          path: getDocumentFolderPath(selectedDocument),
+        }
+      : state.selectedKnowledgePath,
+  };
+}
+
+function restoreDocumentUi(
+  state: DesktopPrototypeState,
+  documentId: string,
+  selected: boolean,
+  opened: boolean,
+): DesktopPrototypeState {
+  const document = getDocumentById(state, documentId);
+  if (!document || document.deletedAt !== undefined) return state;
+  const openDocumentIds =
+    opened && !state.openDocumentIds.includes(documentId)
+      ? [...state.openDocumentIds, documentId]
+      : state.openDocumentIds;
+  if (!selected) return { ...state, openDocumentIds };
+  return {
+    ...state,
+    activeKnowledgePane: "primary",
+    openDocumentIds,
+    selectedDocumentFolder: document.folder,
+    selectedDocumentId: document.id,
+    selectedKnowledgeFolderPath: getDocumentFolderPath(document),
+    selectedKnowledgePath: {
+      documentId: document.id,
+      kind: "document",
+      path: getDocumentFolderPath(document),
+    },
+  };
+}
+
+function removeDocumentFromSession(
+  state: DesktopPrototypeState,
+  documentId: string,
+): DesktopPrototypeState {
+  const closed = closeDocumentTab(state, documentId);
+  return {
+    ...closed,
+    documentHistoryBack: closed.documentHistoryBack.filter(
+      (id) => id !== documentId,
+    ),
+    documentHistoryForward: closed.documentHistoryForward.filter(
+      (id) => id !== documentId,
+    ),
+    documents: closed.documents.filter(
+      (document) => document.id !== documentId,
+    ),
+    splitViewDocumentId:
+      closed.splitViewDocumentId === documentId
+        ? null
+        : closed.splitViewDocumentId,
+  };
+}
+
+function applyDeletedDocument(
+  state: DesktopPrototypeState,
+  placementToApply: KnowledgeDocumentPlacement,
+): DesktopPrototypeState {
+  const placed = applyPlacements(state, [placementToApply]);
+  const closed = closeDocumentTab(placed, placementToApply.id);
+  return {
+    ...closed,
+    documentHistoryBack: closed.documentHistoryBack.filter(
+      (id) => id !== placementToApply.id,
+    ),
+    documentHistoryForward: closed.documentHistoryForward.filter(
+      (id) => id !== placementToApply.id,
+    ),
+    knowledgeSplitEnabled:
+      placed.selectedDocumentId === placementToApply.id ||
+      placed.splitViewDocumentId === placementToApply.id
+        ? false
+        : closed.knowledgeSplitEnabled,
+    splitViewDocumentId:
+      placed.selectedDocumentId === placementToApply.id ||
+      placed.splitViewDocumentId === placementToApply.id
+        ? null
+        : closed.splitViewDocumentId,
+  };
+}
+
+export function applyKnowledgeStructuralHistoryEntry(
+  state: DesktopPrototypeState,
+  entry: KnowledgeStructuralHistoryEntry,
+  direction: "undo" | "redo",
+): DesktopPrototypeState {
+  if (entry.kind === "create-document") {
+    if (direction === "undo") {
+      const removed = removeDocumentFromSession(state, entry.document.id);
+      return restoreDocumentUi(
+        removed,
+        entry.previousSelectedDocumentId ?? "",
+        entry.previousSelectedDocumentId !== null,
+        entry.previousSelectedDocumentId !== null,
+      );
+    }
+    if (state.documents.some((document) => document.id === entry.document.id))
+      return state;
+    const next = {
+      ...state,
+      documents: [...state.documents, cloneDocument(entry.document)],
+      openDocumentIds: entry.wasOpened
+        ? [...state.openDocumentIds, entry.document.id]
+        : state.openDocumentIds,
+    };
+    return restoreDocumentUi(next, entry.document.id, true, entry.wasOpened);
+  }
+  if (entry.kind === "create-folder") {
+    if (direction === "undo") {
+      return {
+        ...state,
+        editingKnowledgeFolderId: null,
+        knowledgeFolders: state.knowledgeFolders.filter(
+          (folder) => folder.id !== entry.folder.id,
+        ),
+      };
+    }
+    if (
+      state.knowledgeFolders.some((folder) => folder.id === entry.folder.id)
+    ) {
+      return state;
+    }
+    return {
+      ...state,
+      knowledgeFolders: [
+        ...state.knowledgeFolders,
+        { ...entry.folder, path: [...entry.folder.path] },
+      ],
+      selectedKnowledgeFolderPath: [...entry.folder.path],
+      selectedKnowledgePath: { kind: "folder", path: [...entry.folder.path] },
+    };
+  }
+  if (entry.kind === "rename-folder") {
+    const fromPath = direction === "undo" ? entry.newPath : entry.oldPath;
+    const toPath = direction === "undo" ? entry.oldPath : entry.newPath;
+    return renameKnowledgeFolder(
+      state,
+      knowledgeFolderId(entry.projectId, fromPath),
+      toPath.at(-1) ?? "",
+    );
+  }
+  if (entry.kind === "move-document") {
+    return applyPlacements(
+      state,
+      direction === "undo" ? entry.before : entry.after,
+    );
+  }
+  if (entry.kind === "delete-folder") {
+    if (direction === "redo") {
+      return deleteKnowledgeFolder(
+        state,
+        knowledgeFolderId(entry.projectId, entry.folderPath),
+      );
+    }
+    const existingFolderIds = new Set(
+      state.knowledgeFolders.map((folder) => folder.id),
+    );
+    return applyPlacements(
+      {
+        ...state,
+        knowledgeFolders: [
+          ...state.knowledgeFolders,
+          ...entry.folders
+            .filter((folder) => !existingFolderIds.has(folder.id))
+            .map((folder) => ({ ...folder, path: [...folder.path] })),
+        ],
+      },
+      entry.documents,
+    );
+  }
+  const target = direction === "undo" ? entry.before : entry.after;
+  const selected =
+    direction === "undo" ? entry.beforeSelected : entry.afterSelected;
+  const opened = direction === "undo" ? entry.beforeOpened : entry.afterOpened;
+  const next =
+    target.deletedAt === undefined
+      ? applyPlacements(state, [target])
+      : applyDeletedDocument(state, target);
+  return target.deletedAt === undefined
+    ? restoreDocumentUi(next, entry.documentId, selected, opened)
+    : next;
 }
 
 export function finishEditingKnowledgeFolder(

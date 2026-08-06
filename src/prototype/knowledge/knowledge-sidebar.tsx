@@ -12,8 +12,18 @@ import {
 } from "@/prototype/desktop-state";
 import { UiIcon } from "@/prototype/desktop-icons";
 import { IconButton } from "@/prototype/desktop-ui";
+import { useKnowledgeContentHistory } from "./knowledge-content-history-runtime";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    (target instanceof HTMLElement && target.isContentEditable)
+  );
+}
 
 export function KnowledgeSidebar({
   state,
@@ -24,6 +34,7 @@ export function KnowledgeSidebar({
   dispatch: Dispatch;
   onClose?: () => void;
 }): React.JSX.Element {
+  const contentHistory = useKnowledgeContentHistory();
   const tree = getKnowledgeTree(state);
   const { activeDocument } = getKnowledgePaneState(state);
   const treeRef = useRef<HTMLElement>(null);
@@ -76,6 +87,24 @@ export function KnowledgeSidebar({
   return (
     <aside
       className="tool-sidebar knowledge-sidebar"
+      onKeyDown={(event) => {
+        if (isEditableTarget(event.target)) return;
+        const modifier = event.ctrlKey || event.metaKey;
+        if (!modifier || event.altKey) return;
+        if (event.key.toLowerCase() === "z") {
+          event.preventDefault();
+          if (event.shiftKey) contentHistory.redoActive(undefined);
+          else contentHistory.undoActive(undefined);
+        } else if (event.key.toLowerCase() === "y" && !event.shiftKey) {
+          event.preventDefault();
+          contentHistory.redoActive(undefined);
+        }
+      }}
+      onPointerDownCapture={(event) => {
+        if (!isEditableTarget(event.target)) {
+          contentHistory.activateStructuralScope();
+        }
+      }}
       aria-label="Дерево документов"
     >
       <header className="knowledge-sidebar-header">

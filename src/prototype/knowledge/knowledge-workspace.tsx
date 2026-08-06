@@ -44,7 +44,6 @@ function markdownDownloadName(title: string): string {
   return `${safeTitle || "document"}.md`;
 }
 
-type KnowledgeWorkspaceProps = {
 function isEditableTarget(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLInputElement ||
@@ -54,6 +53,7 @@ function isEditableTarget(target: EventTarget | null): boolean {
   );
 }
 
+type KnowledgeWorkspaceProps = {
   state: DesktopPrototypeState;
   dispatch: Dispatch;
   aiPanel?: React.ReactNode;
@@ -362,30 +362,26 @@ function KnowledgeDocumentWorkspace({
           </div>
           <IconButton
             className="knowledge-content-history-action"
-            disabled={
-              !activeDocument || !contentHistory.canUndo(activeDocument.id)
-            }
+            disabled={!contentHistory.canUndoActive(activeDocument?.id)}
             icon={<UiIcon name="arrow-left" />}
             label="Отменить"
             onClick={() => {
-              if (activeDocument) contentHistory.undo(activeDocument.id);
+              contentHistory.undoActive(activeDocument?.id);
             }}
             onMouseDown={(event) => event.preventDefault()}
-            title="Отменить"
+            title={contentHistory.getUndoTitle(activeDocument?.id)}
             variant="quiet"
           />
           <IconButton
             className="knowledge-content-history-action"
-            disabled={
-              !activeDocument || !contentHistory.canRedo(activeDocument.id)
-            }
+            disabled={!contentHistory.canRedoActive(activeDocument?.id)}
             icon={<UiIcon name="arrow-right" />}
             label="Повторить"
             onClick={() => {
-              if (activeDocument) contentHistory.redo(activeDocument.id);
+              contentHistory.redoActive(activeDocument?.id);
             }}
             onMouseDown={(event) => event.preventDefault()}
-            title="Повторить"
+            title={contentHistory.getRedoTitle(activeDocument?.id)}
             variant="quiet"
           />
           <IconButton
@@ -830,11 +826,11 @@ function DocumentArticle({
         if (!modifier || event.altKey) return;
         if (event.key.toLowerCase() === "z") {
           event.preventDefault();
-          if (event.shiftKey) contentHistory.redo(document?.id ?? "");
-          else contentHistory.undo(document?.id ?? "");
+          if (event.shiftKey) contentHistory.redoActive(document?.id);
+          else contentHistory.undoActive(document?.id);
         } else if (event.key.toLowerCase() === "y" && !event.shiftKey) {
           event.preventDefault();
-          contentHistory.redo(document?.id ?? "");
+          contentHistory.redoActive(document?.id);
         }
       }}
       onPointerDown={onActivate}

@@ -134,9 +134,10 @@ export function MarkdownSourceEditor({
       textareaRef.current = textarea;
       if (!textarea) return;
       resizeTextarea(textarea);
+      contentHistory.activateContentScope(document.id);
       textarea.focus({ preventScroll: true });
     },
-    [resizeTextarea],
+    [contentHistory, document.id, resizeTextarea],
   );
 
   useLayoutEffect(() => {
@@ -614,6 +615,7 @@ export function MarkdownSourceEditor({
         <textarea
           aria-label={`Markdown: ${document.title}`}
           className="markdown-source-textarea"
+          onFocus={() => contentHistory.activateContentScope(document.id)}
           onChange={(event) => {
             resizeTextarea(event.currentTarget);
             const input = getInputOrigin(event);

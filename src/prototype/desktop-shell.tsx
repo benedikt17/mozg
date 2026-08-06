@@ -17,7 +17,10 @@ import {
 import { OverviewSectionWorkspace } from "@/prototype/overview/overview-section-workspace";
 import { KnowledgeSidebar } from "@/prototype/knowledge/knowledge-sidebar";
 import { KnowledgeWorkspace } from "@/prototype/knowledge/knowledge-workspace";
-import { KnowledgeContentHistoryProvider } from "@/prototype/knowledge/knowledge-content-history-runtime";
+import {
+  KnowledgeContentHistoryProvider,
+  useKnowledgeContentHistory,
+} from "@/prototype/knowledge/knowledge-content-history-runtime";
 import { ContextPanelSlot } from "@/prototype/context-panels/context-panel-slot";
 import { TasksSidebar } from "@/prototype/tasks/tasks-sidebar";
 import { TasksWorkspace } from "@/prototype/tasks/tasks-workspace";
@@ -322,13 +325,19 @@ function SectionWorkspace({
   dispatch: Dispatch;
   workspaceId?: string;
 }): React.JSX.Element {
+  const knowledgeHistory = useKnowledgeContentHistory();
   const [knowledgeTreeOverlayOpen, setKnowledgeTreeOverlayOpen] =
     useState(false);
   const [knowledgeSidebarCollapsed, setKnowledgeSidebarCollapsed] =
     useState(false);
-  const sidebar = renderToolSidebar(state, dispatch, {
-    onCloseKnowledgeTree: () => setKnowledgeTreeOverlayOpen(false),
-  });
+  const knowledgeDispatch = knowledgeHistory.dispatchKnowledgeAction;
+  const sidebar = renderToolSidebar(
+    state,
+    state.activeSection === "knowledge" ? knowledgeDispatch : dispatch,
+    {
+      onCloseKnowledgeTree: () => setKnowledgeTreeOverlayOpen(false),
+    },
+  );
   const overviewSourceTask = state.tasks.find(
     (task) => task.id === state.overviewArticleSourceTaskId,
   );
@@ -394,32 +403,36 @@ function SectionWorkspace({
       >
         {sidebar}
         <section className="main-workspace" aria-label="Рабочая область">
-          {renderMainWorkspace(state, dispatch, {
-            aiPanel: knowledgeAiOpen ? (
-              <ContextPanelSlot
-                contextPanel={state.contextPanel}
-                dispatch={dispatch}
-                state={state}
-              />
-            ) : undefined,
-            onOpenKnowledgeTree: () => {
-              setKnowledgeSidebarCollapsed(false);
-              setKnowledgeTreeOverlayOpen(true);
-            },
-            onToggleKnowledgeTree: () => {
-              const isResponsive =
-                typeof window !== "undefined" &&
-                window.matchMedia("(max-width: 1023px)").matches;
-              if (isResponsive) {
+          {renderMainWorkspace(
+            state,
+            state.activeSection === "knowledge" ? knowledgeDispatch : dispatch,
+            {
+              aiPanel: knowledgeAiOpen ? (
+                <ContextPanelSlot
+                  contextPanel={state.contextPanel}
+                  dispatch={dispatch}
+                  state={state}
+                />
+              ) : undefined,
+              onOpenKnowledgeTree: () => {
                 setKnowledgeSidebarCollapsed(false);
-                setKnowledgeTreeOverlayOpen((open) => !open);
-                return;
-              }
-              setKnowledgeSidebarCollapsed((collapsed) => !collapsed);
+                setKnowledgeTreeOverlayOpen(true);
+              },
+              onToggleKnowledgeTree: () => {
+                const isResponsive =
+                  typeof window !== "undefined" &&
+                  window.matchMedia("(max-width: 1023px)").matches;
+                if (isResponsive) {
+                  setKnowledgeSidebarCollapsed(false);
+                  setKnowledgeTreeOverlayOpen((open) => !open);
+                  return;
+                }
+                setKnowledgeSidebarCollapsed((collapsed) => !collapsed);
+              },
+              treeOpen: knowledgeTreeOverlayOpen || !knowledgeSidebarCollapsed,
+              workspaceId,
             },
-            treeOpen: knowledgeTreeOverlayOpen || !knowledgeSidebarCollapsed,
-            workspaceId,
-          })}
+          )}
         </section>
       </TasksDndBoundary>
       {state.activeSection === "knowledge" && knowledgeTreeOverlayOpen ? (
