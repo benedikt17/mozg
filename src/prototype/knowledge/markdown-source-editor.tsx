@@ -134,10 +134,9 @@ export function MarkdownSourceEditor({
       textareaRef.current = textarea;
       if (!textarea) return;
       resizeTextarea(textarea);
-      contentHistory.activateContentScope(document.id);
       textarea.focus({ preventScroll: true });
     },
-    [contentHistory, document.id, resizeTextarea],
+    [resizeTextarea],
   );
 
   useLayoutEffect(() => {

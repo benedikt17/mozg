@@ -56,8 +56,21 @@ type KnowledgeContentHistoryContextValue = {
   getRedoTitle: (documentId: string | undefined) => string;
 };
 
-type KnowledgeUndoScope =
+export type KnowledgeUndoScope =
   { kind: "content"; documentId: string } | { kind: "structure" };
+
+export function activateKnowledgeContentScope(
+  currentScope: KnowledgeUndoScope | null,
+  documentId: string,
+): KnowledgeUndoScope {
+  if (
+    currentScope?.kind === "content" &&
+    currentScope.documentId === documentId
+  ) {
+    return currentScope;
+  }
+  return { documentId, kind: "content" };
+}
 
 function isStructuralAction(action: DesktopPrototypeAction): boolean {
   return [
@@ -184,7 +197,9 @@ export function KnowledgeContentHistoryProvider({
   );
 
   const activateContentScope = useCallback((documentId: string): void => {
-    setScope({ documentId, kind: "content" });
+    setScope((currentScope) =>
+      activateKnowledgeContentScope(currentScope, documentId),
+    );
   }, []);
 
   const activateStructuralScope = useCallback((): void => {
