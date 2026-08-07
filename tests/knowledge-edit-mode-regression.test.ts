@@ -45,6 +45,21 @@ describe("Knowledge edit mode regression", () => {
     );
   });
 
+  it("does not let scope-only rerenders restore stale history selection", () => {
+    const editor = source("src/prototype/knowledge/markdown-source-editor.tsx");
+    const effectStart = editor.indexOf("useLayoutEffect");
+    const effectEnd = editor.indexOf("const updateMarkdown", effectStart);
+    const effect = editor.slice(effectStart, effectEnd);
+
+    expect(editor).toContain(
+      "const { getSelection, version } = contentHistory;",
+    );
+    expect(effect).toContain("const selection = getSelection(document.id)");
+    expect(effect).toContain("getSelection,");
+    expect(effect).toContain("version,");
+    expect(effect).not.toContain("[contentHistory, document.id, markdown");
+  });
+
   it("makes repeated activation of the same content scope a no-op", () => {
     const firstScope = activateKnowledgeContentScope(null, "doc-a");
     const repeatedScope = activateKnowledgeContentScope(firstScope, "doc-a");

@@ -9,6 +9,12 @@ import { createPortal } from "react-dom";
 import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
 import type { KnowledgeContentHistoryOrigin } from "./knowledge-content-history";
 import { useKnowledgeContentHistory } from "./knowledge-content-history-runtime";
+import {
+  adjustListIndent,
+  applyMarkdownToolbarFormat,
+  type MarkdownToolbarFormatAction,
+} from "./markdown-source-selection";
+export { adjustListIndent } from "./markdown-source-selection";
 
 type MarkdownEditAction =
   | "undo"
@@ -31,18 +37,7 @@ type MarkdownEditAction =
   | "outdent";
 
 const LIST_INDENT = 4;
-const MAX_LIST_INDENT = 8;
 const listLinePattern = /^(\s*)(- \[[ xX]\]|- |\d+\. )(.*)$/;
-
-export function adjustListIndent(line: string, delta: 1 | -1): string {
-  const match = listLinePattern.exec(line);
-  if (!match) return line;
-  const depth = Math.min(
-    MAX_LIST_INDENT,
-    Math.max(0, match[1]!.length + delta * LIST_INDENT),
-  );
-  return `${" ".repeat(depth)}${match[2]}${match[3]}`;
-}
 
 export function continueListLine(line: string): string | null {
   const match = listLinePattern.exec(line);
@@ -116,6 +111,7 @@ export function MarkdownSourceEditor({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const markdown = document.content.join("\n");
   const contentHistory = useKnowledgeContentHistory();
+  const { getSelection, version } = contentHistory;
   const [dialog, setDialog] = useState<"external" | "article" | null>(null);
   const [selection, setSelection] = useState({ start: 0, end: 0 });
   const [linkText, setLinkText] = useState("");
@@ -142,7 +138,7 @@ export function MarkdownSourceEditor({
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) resizeTextarea(textarea);
-    const selection = contentHistory.getSelection(document.id);
+    const selection = getSelection(document.id);
     if (
       textarea &&
       selection !== null &&
@@ -151,7 +147,7 @@ export function MarkdownSourceEditor({
     ) {
       textarea.setSelectionRange(selection.start, selection.end);
     }
-  }, [contentHistory, document.id, markdown, resizeTextarea]);
+  }, [getSelection, version, document.id, markdown, resizeTextarea]);
 
   const updateMarkdown = (
     nextMarkdown: string,
@@ -175,66 +171,6 @@ export function MarkdownSourceEditor({
       textareaRef.current?.focus({ preventScroll: true });
       textareaRef.current?.setSelectionRange(start, end);
     });
-  };
-
-  const replaceSelection = (
-    replacement: string,
-    selectionStart: number,
-    selectionEnd: number,
-  ): void => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    const next =
-      markdown.slice(0, textarea.selectionStart) +
-      replacement +
-      markdown.slice(textarea.selectionEnd);
-    updateMarkdown(next, {
-      origin: "programmatic",
-      selectionEnd,
-      selectionStart,
-    });
-    restoreSelection(selectionStart, selectionEnd);
-  };
-
-  const wrapSelection = (
-    before: string,
-    after: string,
-    placeholder: string,
-  ): void => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    const selected = markdown.slice(
-      textarea.selectionStart,
-      textarea.selectionEnd,
-    );
-    const content = selected || placeholder;
-    const replacement = `${before}${content}${after}`;
-    const start = textarea.selectionStart + before.length;
-    replaceSelection(replacement, start, start + content.length);
-  };
-
-  const prefixSelectedLines = (
-    prefixForLine: (line: string, index: number) => string,
-  ): void => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    const lineStart =
-      markdown.lastIndexOf("\n", textarea.selectionStart - 1) + 1;
-    const nextLineBreak = markdown.indexOf("\n", textarea.selectionEnd);
-    const lineEnd = nextLineBreak === -1 ? markdown.length : nextLineBreak;
-    const replacement = markdown
-      .slice(lineStart, lineEnd)
-      .split("\n")
-      .map(prefixForLine)
-      .join("\n");
-    const next =
-      markdown.slice(0, lineStart) + replacement + markdown.slice(lineEnd);
-    updateMarkdown(next, {
-      origin: "toolbar",
-      selectionEnd: lineStart + replacement.length,
-      selectionStart: lineStart,
-    });
-    restoreSelection(lineStart, lineStart + replacement.length);
   };
 
   const adjustSelectedListLines = (
@@ -263,8 +199,6 @@ export function MarkdownSourceEditor({
   };
 
   const applyAction = (action: MarkdownEditAction): void => {
-    if (action === "indent") return adjustSelectedListLines(1);
-    if (action === "outdent") return adjustSelectedListLines(-1);
     if (action === "undo") {
       contentHistory.undo(document.id);
       return;
@@ -273,40 +207,9 @@ export function MarkdownSourceEditor({
       contentHistory.redo(document.id);
       return;
     }
-    if (action === "h1" || action === "h2" || action === "h3") {
-      const level = Number(action.slice(1));
-      prefixSelectedLines(
-        (line) => `${"#".repeat(level)} ${line.replace(/^#{1,6}\s+/, "")}`,
-      );
-      return;
-    }
-    if (action === "bullet") {
-      prefixSelectedLines((line) => `- ${line.replace(/^[-*+]\s+/, "")}`);
-      return;
-    }
-    if (action === "numbered") {
-      prefixSelectedLines(
-        (line, index) => `${index + 1}. ${line.replace(/^\d+\.\s+/, "")}`,
-      );
-      return;
-    }
-    if (action === "checklist") {
-      prefixSelectedLines(
-        (line) => `- [ ] ${line.replace(/^- \[[ x]\]\s+/, "")}`,
-      );
-      return;
-    }
-    if (action === "quote") {
-      prefixSelectedLines((line) => `> ${line.replace(/^>\s+/, "")}`);
-      return;
-    }
-    if (action === "bold") wrapSelection("**", "**", "текст");
-    if (action === "italic") wrapSelection("*", "*", "текст");
-    if (action === "strike") wrapSelection("~~", "~~", "текст");
-    if (action === "inline-code") wrapSelection("`", "`", "код");
+    const textarea = textareaRef.current;
+    if (!textarea) return;
     if (action === "link") {
-      const textarea = textareaRef.current;
-      if (!textarea) return;
       setSelection({
         start: textarea.selectionStart,
         end: textarea.selectionEnd,
@@ -318,17 +221,18 @@ export function MarkdownSourceEditor({
       setDialog("external");
       return;
     }
-    if (action === "code-block") wrapSelection("```\n", "\n```", "код");
-    if (action === "horizontal-rule") {
-      const textarea = textareaRef.current;
-      if (!textarea) return;
-      const prefix = textarea.selectionStart > 0 ? "\n" : "";
-      replaceSelection(
-        `${prefix}---\n`,
-        textarea.selectionStart + prefix.length + 4,
-        textarea.selectionStart + prefix.length + 4,
-      );
-    }
+    const result = applyMarkdownToolbarFormat(
+      markdown,
+      textarea.selectionStart,
+      textarea.selectionEnd,
+      action as MarkdownToolbarFormatAction,
+    );
+    updateMarkdown(result.markdown, {
+      origin: "toolbar",
+      selectionEnd: result.selection.end,
+      selectionStart: result.selection.start,
+    });
+    restoreSelection(result.selection.start, result.selection.end);
   };
 
   const openArticleDialog = (): void => {
