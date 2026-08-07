@@ -702,6 +702,9 @@ export function deleteTaskGroup(
       item.kind === "user",
   );
   if (!group) return state;
+  if (state.taskLists.some((list) => list.groupId === group.id)) {
+    return state;
+  }
   const fallbackGroup = state.taskGroups.find(
     (item) =>
       item.projectId === state.activeProjectId && item.kind === "system",
@@ -777,6 +780,10 @@ export function setTaskOverview(
 ): DesktopPrototypeState {
   const task = getTaskById(state, taskId);
   if (!task || task.projectId !== state.activeProjectId) return state;
+  const taskList = state.taskLists.find(
+    (list) => list.id === task.listId && list.projectId === task.projectId,
+  );
+  if (visible && taskList?.kind === "user") return state;
   if (task.showOnOverview === visible) return state;
   return updateTask(state, task.id, (currentTask) => ({
     ...currentTask,
