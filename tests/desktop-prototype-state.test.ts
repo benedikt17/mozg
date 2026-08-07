@@ -417,7 +417,7 @@ describe("desktop structural prototype state", () => {
     expect(baza).toBe(renamed);
   });
 
-  it("deletes a user task group and moves its lists to BAZA", () => {
+  it("rejects deleting a user task group that contains lists", () => {
     let state = desktopPrototypeReducer(freshState(), {
       type: "create-task-group",
       title: "Temporary group",
@@ -428,18 +428,18 @@ describe("desktop structural prototype state", () => {
       title: "Temporary list",
     });
 
-    const deleted = desktopPrototypeReducer(state, {
+    const rejected = desktopPrototypeReducer(state, {
       type: "delete-task-group",
       groupId: "mock-task-group-1",
     });
 
+    expect(rejected).toBe(state);
     expect(
-      deleted.taskGroups.some((group) => group.id === "mock-task-group-1"),
-    ).toBe(false);
+      rejected.taskGroups.some((group) => group.id === "mock-task-group-1"),
+    ).toBe(true);
     expect(
-      deleted.taskLists.find((list) => list.id === "mock-task-list-1"),
-    ).toMatchObject({ groupId: "lukomorie-baza" });
-    expect(deleted.expandedTaskGroupIds).not.toContain("mock-task-group-1");
+      rejected.taskLists.find((list) => list.id === "mock-task-list-1"),
+    ).toMatchObject({ groupId: "mock-task-group-1", kind: "user" });
   });
 
   it("collapses the project rail without changing project navigation state", () => {
