@@ -251,6 +251,7 @@ export function toggleTaskStar(
 export function toggleTaskCompleted(
   state: DesktopPrototypeState,
   taskId: string,
+  completedAt: string | null,
 ): DesktopPrototypeState {
   const task = getTaskById(state, taskId);
   if (!task || task.projectId !== state.activeProjectId) return state;
@@ -261,9 +262,10 @@ export function toggleTaskCompleted(
 
   return updateTask(state, taskId, (currentTask) => {
     if (!restoring) {
+      if (completedAt === null) return currentTask;
       return {
         ...currentTask,
-        completedAt: new Date().toISOString(),
+        completedAt,
       };
     }
 

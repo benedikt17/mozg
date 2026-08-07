@@ -911,7 +911,7 @@ export function desktopPrototypeReducer(
     case "toggle-task-star":
       return toggleTaskStar(state, action.taskId);
     case "toggle-task-completed":
-      return toggleTaskCompleted(state, action.taskId);
+      return toggleTaskCompleted(state, action.taskId, action.completedAt);
     case "delete-task": {
       const task = getTaskById(state, action.taskId);
       if (!task || task.projectId !== state.activeProjectId) return state;
@@ -1293,7 +1293,11 @@ export function desktopPrototypeReducer(
     case "delete-knowledge-folder":
       return deleteKnowledgeFolder(state, action.folderId);
     case "soft-delete-knowledge-document":
-      return softDeleteKnowledgeDocument(state, action.documentId);
+      return softDeleteKnowledgeDocument(
+        state,
+        action.documentId,
+        action.deletedAt,
+      );
     case "restore-knowledge-document":
       return restoreKnowledgeDocument(state, action.documentId);
     case "permanently-delete-knowledge-document":

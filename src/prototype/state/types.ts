@@ -182,7 +182,11 @@ export type DesktopPrototypeAction =
   | { type: "close-task-detail-view" }
   | { type: "close-context-panel" }
   | { type: "toggle-task-star"; taskId: string }
-  | { type: "toggle-task-completed"; taskId: string }
+  | {
+      type: "toggle-task-completed";
+      taskId: string;
+      completedAt: string | null;
+    }
   | { type: "delete-task"; taskId: string }
   | { type: "edit-task-title"; taskId: string; title: string }
   | { type: "begin-task-title-edit"; taskId: string }
@@ -309,7 +313,11 @@ export type DesktopPrototypeAction =
   | { type: "start-editing-knowledge-folder"; folderId: string }
   | { type: "rename-knowledge-folder"; folderId: string; title: string }
   | { type: "delete-knowledge-folder"; folderId: string }
-  | { type: "soft-delete-knowledge-document"; documentId: string }
+  | {
+      type: "soft-delete-knowledge-document";
+      documentId: string;
+      deletedAt: string;
+    }
   | { type: "restore-knowledge-document"; documentId: string }
   | { type: "permanently-delete-knowledge-document"; documentId: string }
   | {

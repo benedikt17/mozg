@@ -784,6 +784,7 @@ export function deleteKnowledgeFolder(
 export function softDeleteKnowledgeDocument(
   state: DesktopPrototypeState,
   documentId: string,
+  deletedAt: string,
 ): DesktopPrototypeState {
   const document = getDocumentById(state, documentId);
   if (
@@ -800,9 +801,7 @@ export function softDeleteKnowledgeDocument(
   return {
     ...nextState,
     documents: nextState.documents.map((item) =>
-      item.id === documentId
-        ? { ...item, deletedAt: new Date().toISOString() }
-        : item,
+      item.id === documentId ? { ...item, deletedAt } : item,
     ),
     documentHistoryBack: nextState.documentHistoryBack.filter(
       (historyDocumentId) => historyDocumentId !== documentId,

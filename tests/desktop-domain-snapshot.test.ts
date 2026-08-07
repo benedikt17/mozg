@@ -156,6 +156,7 @@ describe("desktop domain snapshot v2", () => {
     const state = desktopPrototypeReducer(initialDesktopPrototypeState, {
       type: "soft-delete-knowledge-document",
       documentId: "doc-l-routes",
+      deletedAt: "2026-08-08T00:00:00.000Z",
     });
     const snapshot = createDesktopDomainSnapshot(state);
     const parsed = parseDesktopDomainSnapshot(snapshot);

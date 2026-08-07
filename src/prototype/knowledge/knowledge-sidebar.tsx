@@ -535,6 +535,7 @@ export function KnowledgeTreeActionMenu({
       dispatch({
         type: "soft-delete-knowledge-document",
         documentId: targetId,
+        deletedAt: new Date().toISOString(),
       });
     }
     onClose();
