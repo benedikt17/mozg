@@ -1,6 +1,7 @@
 import React, { useLayoutEffect, useRef, useState, useEffect } from "react";
 import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
 import {
+  getActiveProjectDocuments,
   getKnowledgePaneState,
   getOpenDocuments,
   getDocumentBreadcrumb,
@@ -90,6 +91,7 @@ function KnowledgeDocumentWorkspace({
   const openTabs = getOpenDocuments(state);
   const editingDocumentId = state.editingKnowledgeDocumentId;
   const currentDocument = activeDocument ?? selectedDocument;
+  const activeDocuments = getActiveProjectDocuments(state);
   const contentHistory = useKnowledgeContentHistory();
   const markdownFileInputRef = useRef<HTMLInputElement>(null);
   const printDocumentRef = useRef<HTMLElement>(null);
@@ -638,7 +640,7 @@ function KnowledgeDocumentWorkspace({
                 active={activePane === "primary"}
                 dispatch={dispatch}
                 document={selectedDocument}
-                documents={state.documents}
+                documents={activeDocuments}
                 activeProjectId={state.activeProjectId}
                 editing={editingDocumentId === selectedDocument.id}
                 onActivate={() => activatePane("primary")}
@@ -648,7 +650,7 @@ function KnowledgeDocumentWorkspace({
                   active={activePane === "secondary"}
                   dispatch={dispatch}
                   document={splitDocument}
-                  documents={state.documents}
+                  documents={activeDocuments}
                   activeProjectId={state.activeProjectId}
                   editing={
                     Boolean(splitDocument) &&

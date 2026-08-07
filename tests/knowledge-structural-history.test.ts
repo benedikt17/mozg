@@ -6,13 +6,17 @@ import {
 } from "@/prototype/knowledge/knowledge-structural-history";
 import {
   createKnowledgeStructuralHistoryEntry,
+  getActiveDocumentById,
+  getActiveProjectDocuments,
   getDocumentById,
   getDocumentFolderPath,
 } from "@/prototype/state/knowledge-state";
+import { evaluateKnowledgeStructuralTransition } from "@/prototype/knowledge/knowledge-content-history-runtime";
 import {
   desktopPrototypeReducer,
   initialDesktopPrototypeState,
 } from "@/prototype/desktop-state";
+import { expectPersistentStateValid } from "./helpers/persistent-state-invariant";
 import type {
   DesktopPrototypeAction,
   DesktopPrototypeState,
@@ -28,8 +32,12 @@ function perform(
   action: DesktopPrototypeAction,
 ): DesktopPrototypeState {
   const next = desktopPrototypeReducer(state, action);
-  const entry = createKnowledgeStructuralHistoryEntry(state, next, action);
-  if (entry) history.commit(entry);
+  if (action.type === "permanently-delete-knowledge-document") {
+    if (next !== state) history.commitDocumentBarrier(action.documentId);
+  } else {
+    const entry = createKnowledgeStructuralHistoryEntry(state, next, action);
+    if (entry) history.commit(entry);
+  }
   return next;
 }
 
@@ -60,6 +68,32 @@ function redo(
 }
 
 describe("Knowledge structural history", () => {
+  it("evaluates one structural transition once before committing it", () => {
+    const initial = freshState();
+    let evaluations = 0;
+    const action: Extract<
+      DesktopPrototypeAction,
+      { type: "create-knowledge-folder" }
+    > = { type: "create-knowledge-folder" };
+    const transition = evaluateKnowledgeStructuralTransition(
+      initial,
+      action,
+      (state, nextAction) => {
+        evaluations += 1;
+        return desktopPrototypeReducer(state, nextAction);
+      },
+    );
+
+    expect(evaluations).toBe(1);
+    expect(transition.entry?.kind).toBe("create-folder");
+    expect(
+      desktopPrototypeReducer(initial, {
+        nextState: transition.nextState,
+        type: "commit-knowledge-structural-transition",
+      }),
+    ).toBe(transition.nextState);
+  });
+
   it("creates a document, removes it without Trash on undo, and restores its stable id on redo", () => {
     const history = new KnowledgeStructuralHistory();
     const initial = freshState();
@@ -198,6 +232,97 @@ describe("Knowledge structural history", () => {
     const undoAgain = undo(redoRestore, history);
     perform(undoAgain, history, { type: "create-knowledge-folder" });
     expect(history.canRedo()).toBe(false);
+  });
+
+  it("keeps permanent delete as a barrier without resurrecting its document", () => {
+    const history = new KnowledgeStructuralHistory();
+    const initial = freshState();
+    const withSafeHistory = perform(initial, history, {
+      type: "create-knowledge-folder",
+    });
+    const trashed = perform(withSafeHistory, history, {
+      deletedAt: "2026-08-08T00:00:00.000Z",
+      documentId: "doc-l-nastenka",
+      type: "soft-delete-knowledge-document",
+    });
+    const permanentlyDeleted = perform(trashed, history, {
+      documentId: "doc-l-nastenka",
+      type: "permanently-delete-knowledge-document",
+    });
+
+    expect(
+      getDocumentById(permanentlyDeleted, "doc-l-nastenka"),
+    ).toBeUndefined();
+    expect(
+      history
+        .getEntries()
+        .some(
+          (entry) =>
+            (entry.kind === "create-document" &&
+              entry.document.id === "doc-l-nastenka") ||
+            (entry.kind === "move-document" &&
+              entry.documentId === "doc-l-nastenka") ||
+            ((entry.kind === "soft-delete-document" ||
+              entry.kind === "restore-document") &&
+              entry.documentId === "doc-l-nastenka") ||
+            (entry.kind === "delete-folder" &&
+              entry.documents.some(
+                (document) => document.id === "doc-l-nastenka",
+              )),
+        ),
+    ).toBe(false);
+
+    const undone = undo(permanentlyDeleted, history);
+    expect(getDocumentById(undone, "doc-l-nastenka")).toBeUndefined();
+    expectPersistentStateValid(undone);
+  });
+
+  it("does not add a structural history entry for an effective no-op rename", () => {
+    const history = new KnowledgeStructuralHistory();
+    const initial = {
+      ...freshState(),
+      selectedKnowledgeFolderPath: ["Персонажи"],
+    };
+    const created = perform(initial, history, {
+      type: "create-knowledge-folder",
+    });
+    const folderId = created.activeProjectId + ":Персонажи/Новая папка";
+    const entryCount = history.getEntries().length;
+    const canUndo = history.canUndo();
+    const renamed = perform(created, history, {
+      folderId,
+      title: "Новая папка",
+      type: "rename-knowledge-folder",
+    });
+
+    expect(renamed.editingKnowledgeFolderId).toBeNull();
+    expect(history.getEntries()).toHaveLength(entryCount);
+    expect(history.canUndo()).toBe(canUndo);
+  });
+
+  it("keeps trashed linked documents persisted but excludes them from active projections", () => {
+    const initial = freshState();
+    const trashed = desktopPrototypeReducer(initial, {
+      deletedAt: "2026-08-08T00:00:00.000Z",
+      documentId: "doc-l-nastenka",
+      type: "soft-delete-knowledge-document",
+    });
+
+    expect(getDocumentById(trashed, "doc-l-nastenka")).toBeDefined();
+    expect(getActiveDocumentById(trashed, "doc-l-nastenka")).toBeUndefined();
+    expect(
+      getActiveProjectDocuments(trashed).some(
+        (document) => document.id === "doc-l-nastenka",
+      ),
+    ).toBe(false);
+    expectPersistentStateValid(trashed);
+
+    const restored = desktopPrototypeReducer(trashed, {
+      documentId: "doc-l-nastenka",
+      type: "restore-knowledge-document",
+    });
+    expect(getActiveDocumentById(restored, "doc-l-nastenka")).toBeDefined();
+    expectPersistentStateValid(restored);
   });
 
   it("caps entries at 100 and undo/redo do not create entries", () => {

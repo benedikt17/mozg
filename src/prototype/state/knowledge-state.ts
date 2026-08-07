@@ -58,6 +58,28 @@ export function getProjectDocuments(
   return state.documents.filter((document) => document.projectId === projectId);
 }
 
+export function getActiveProjectDocuments(
+  state: DesktopPrototypeState,
+  projectId = state.activeProjectId,
+): PrototypeDocument[] {
+  return getProjectDocuments(state, projectId).filter(
+    (document) => document.deletedAt === undefined,
+  );
+}
+
+export function getActiveDocumentById(
+  state: DesktopPrototypeState,
+  documentId: string | null,
+  projectId?: string,
+): PrototypeDocument | undefined {
+  const document = getDocumentById(state, documentId);
+  return document &&
+    document.deletedAt === undefined &&
+    (projectId === undefined || document.projectId === projectId)
+    ? document
+    : undefined;
+}
+
 export function getKnowledgeTrashDocuments(
   state: DesktopPrototypeState,
   projectId = state.activeProjectId,
@@ -1107,6 +1129,13 @@ export function createKnowledgeStructuralHistoryEntry(
     const oldPath = getKnowledgeFolderPathById(state, action.folderId);
     if (!oldPath) return null;
     const newPath = [...oldPath.slice(0, -1), action.title.trim()];
+    if (knowledgePathsEqual(oldPath, newPath)) return null;
+    const hasSiblingCollision = getKnowledgeFolderPaths(state).some(
+      (path) =>
+        knowledgePathsEqual(path, newPath) &&
+        !knowledgePathsEqual(path, oldPath),
+    );
+    if (hasSiblingCollision) return null;
     return {
       id,
       kind: "rename-folder",

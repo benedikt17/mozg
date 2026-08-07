@@ -4,7 +4,7 @@ import type {
   PrototypeTask,
 } from "@/prototype/desktop-mock-data";
 import {
-  getDocumentById,
+  getActiveDocumentById,
   getOverviewTaskDetailMaterial,
   getOverviewTaskDetailSplitDocument,
   isValidTaskLinkUrl,
@@ -56,7 +56,9 @@ export function TaskDetailsPanel({
   const taskTitleEditLifecycleRef = useRef(createTaskTitleEditLifecycle());
   const subtaskRenameCancelledRef = useRef(false);
   const attachedDocuments = task.linkedDocumentIds
-    .map((documentId) => getDocumentById(state, documentId))
+    .map((documentId) =>
+      getActiveDocumentById(state, documentId, task.projectId),
+    )
     .filter(
       (document): document is PrototypeDocument =>
         document !== undefined && document.projectId === task.projectId,
