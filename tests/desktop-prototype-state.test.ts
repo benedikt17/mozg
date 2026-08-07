@@ -2437,6 +2437,7 @@ describe("desktop structural prototype state", () => {
     const completed = desktopPrototypeReducer(state, {
       type: "toggle-task-completed",
       taskId: "luko-world-rules",
+      completedAt: "2026-08-08T00:00:00.000Z",
     });
     expect(getTaskSystemViewCount(completed, "day")).toBe(2);
     expect(getTaskSystemViewCount(completed, "important")).toBe(1);
@@ -2445,6 +2446,7 @@ describe("desktop structural prototype state", () => {
     const restored = desktopPrototypeReducer(completed, {
       type: "toggle-task-completed",
       taskId: "luko-world-rules",
+      completedAt: null,
     });
     const starred = desktopPrototypeReducer(restored, {
       type: "toggle-task-star",
@@ -2491,6 +2493,7 @@ describe("desktop structural prototype state", () => {
     const completed = desktopPrototypeReducer(selected, {
       type: "toggle-task-completed",
       taskId: "luko-production-plan",
+      completedAt: "2026-08-08T00:00:00.000Z",
     });
     expect(getVisibleTaskList(completed).map((task) => task.id)).not.toContain(
       "luko-production-plan",
@@ -2498,6 +2501,7 @@ describe("desktop structural prototype state", () => {
     const restored = desktopPrototypeReducer(completed, {
       type: "toggle-task-completed",
       taskId: "luko-production-plan",
+      completedAt: null,
     });
     expect(getVisibleTaskList(restored).map((task) => task.id)).toContain(
       "luko-production-plan",
@@ -2669,6 +2673,7 @@ describe("desktop structural prototype state", () => {
     state = desktopPrototypeReducer(state, {
       type: "toggle-task-completed",
       taskId: "luko-first-scene",
+      completedAt: "2026-08-08T00:00:00.000Z",
     });
     expect(
       state.tasks.find((task) => task.id === "luko-first-scene")?.completedAt,
@@ -2678,6 +2683,7 @@ describe("desktop structural prototype state", () => {
     state = desktopPrototypeReducer(state, {
       type: "toggle-task-completed",
       taskId: "luko-first-scene",
+      completedAt: null,
     });
     expect(
       state.tasks.find((task) => task.id === "luko-first-scene")?.completedAt,
@@ -2690,6 +2696,7 @@ describe("desktop structural prototype state", () => {
     state = desktopPrototypeReducer(state, {
       type: "toggle-task-completed",
       taskId: "luko-first-scene",
+      completedAt: "2026-08-08T00:00:00.000Z",
     });
     const completed = state.tasks.find(
       (task) => task.id === "luko-first-scene",
@@ -2708,6 +2715,7 @@ describe("desktop structural prototype state", () => {
     state = desktopPrototypeReducer(state, {
       type: "toggle-task-completed",
       taskId: "luko-first-scene",
+      completedAt: null,
     });
     expect(getTaskListActiveCount(state, "lukomorie-list-scenario")).toBe(
       before,
@@ -2726,6 +2734,7 @@ describe("desktop structural prototype state", () => {
       state = desktopPrototypeReducer(state, {
         type: "toggle-task-completed",
         taskId: task.id,
+        completedAt: "2026-08-08T00:00:00.000Z",
       });
     }
 
@@ -2792,6 +2801,7 @@ describe("desktop structural prototype state", () => {
       const restored = desktopPrototypeReducer(state, {
         type: "toggle-task-completed",
         taskId: staleTask.id,
+        completedAt: null,
       });
       const task = restored.tasks.find((item) => item.id === staleTask.id);
 
@@ -2842,6 +2852,7 @@ describe("desktop structural prototype state", () => {
     state = desktopPrototypeReducer(state, {
       type: "toggle-task-completed",
       taskId: staleTask.id,
+      completedAt: null,
     });
     const restored = state.tasks.find((task) => task.id === staleTask.id);
     expect(restored).toMatchObject({
@@ -2873,6 +2884,7 @@ describe("desktop structural prototype state", () => {
       desktopPrototypeReducer(state, {
         type: "toggle-task-completed",
         taskId: foreignTask.id,
+        completedAt: "2026-08-08T00:00:00.000Z",
       }),
     ).toBe(state);
   });
@@ -3659,6 +3671,7 @@ describe("desktop structural prototype state", () => {
     const deleted = desktopPrototypeReducer(state, {
       type: "soft-delete-knowledge-document",
       documentId: "doc-l-nastenka",
+      deletedAt: "2026-08-08T00:00:00.000Z",
     });
 
     expect(deleted.selectedDocumentId).toBe("doc-l-routes");
@@ -3690,6 +3703,7 @@ describe("desktop structural prototype state", () => {
     const deleted = desktopPrototypeReducer(state, {
       type: "soft-delete-knowledge-document",
       documentId: "doc-l-routes",
+      deletedAt: "2026-08-08T00:00:00.000Z",
     });
 
     expect(
@@ -3717,6 +3731,7 @@ describe("desktop structural prototype state", () => {
     const trashed = desktopPrototypeReducer(state, {
       type: "soft-delete-knowledge-document",
       documentId: original.id,
+      deletedAt: "2026-08-08T00:00:00.000Z",
     });
     const restored = desktopPrototypeReducer(trashed, {
       type: "restore-knowledge-document",
@@ -3756,6 +3771,7 @@ describe("desktop structural prototype state", () => {
     const trashed = desktopPrototypeReducer(state, {
       type: "soft-delete-knowledge-document",
       documentId: "doc-l-temporary-parent",
+      deletedAt: "2026-08-08T00:00:00.000Z",
     });
     const restored = desktopPrototypeReducer(trashed, {
       type: "restore-knowledge-document",
@@ -3923,6 +3939,7 @@ describe("desktop structural prototype state", () => {
     const trashed = desktopPrototypeReducer(state, {
       type: "soft-delete-knowledge-document",
       documentId: "doc-l-routes",
+      deletedAt: "2026-08-08T00:00:00.000Z",
     });
     const restored = desktopPrototypeReducer(trashed, {
       type: "restore-knowledge-document",

@@ -125,6 +125,7 @@ describe("persistent Desktop state invariant", () => {
     let state = reduceAndAssert(freshState(), {
       type: "soft-delete-knowledge-document",
       documentId: "doc-l-routes",
+      deletedAt: "2026-08-08T00:00:00.000Z",
     });
     expect(
       state.documents.find((document) => document.id === "doc-l-routes")

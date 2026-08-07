@@ -382,7 +382,12 @@ export function TaskListRow({
         }
         onClick={(event) => {
           event.stopPropagation();
-          dispatch({ type: "toggle-task-completed", taskId: task.id });
+          dispatch({
+            type: "toggle-task-completed",
+            taskId: task.id,
+            completedAt:
+              task.completedAt === null ? new Date().toISOString() : null,
+          });
         }}
         role="checkbox"
         type="button"

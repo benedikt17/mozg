@@ -66,13 +66,20 @@ export function createDesktopTaskBridge(
         .map((task) => projectTask(state, task));
     },
     toggleTaskCompleted: (workspaceId, taskId) => {
+      const state = options.getState();
       if (
-        resolveDesktopTask(options.getState(), workspaceId, taskId).status !==
-        "resolved"
+        resolveDesktopTask(state, workspaceId, taskId).status !== "resolved"
       ) {
         return;
       }
-      options.dispatch({ type: "toggle-task-completed", taskId });
+      const task = state.tasks.find((item) => item.id === taskId);
+      if (!task) return;
+      options.dispatch({
+        type: "toggle-task-completed",
+        taskId,
+        completedAt:
+          task.completedAt === null ? new Date().toISOString() : null,
+      });
     },
     toggleSubtaskCompleted: (workspaceId, taskId, subtaskId) => {
       const state = options.getState();

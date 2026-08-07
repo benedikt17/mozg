@@ -158,6 +158,7 @@ describe("Knowledge structural history", () => {
     const deletedDocument = perform(restoredFolder, history, {
       documentId: "doc-l-routes",
       type: "soft-delete-knowledge-document",
+      deletedAt: "2026-08-08T00:00:00.000Z",
     });
     expect(
       getDocumentById(deletedDocument, "doc-l-routes")?.deletedAt,
@@ -179,6 +180,7 @@ describe("Knowledge structural history", () => {
     const trashed = perform(initial, history, {
       documentId: "doc-l-routes",
       type: "soft-delete-knowledge-document",
+      deletedAt: "2026-08-08T00:00:00.000Z",
     });
     const restored = perform(trashed, history, {
       documentId: "doc-l-routes",
