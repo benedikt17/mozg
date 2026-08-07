@@ -3,6 +3,7 @@ import {
   KnowledgeContentHistory,
   KNOWLEDGE_CONTENT_HISTORY_LIMIT,
 } from "@/prototype/knowledge/knowledge-content-history";
+import { applyMarkdownToolbarFormat } from "@/prototype/knowledge/markdown-source-selection";
 
 function commit(
   history: KnowledgeContentHistory,
@@ -138,5 +139,61 @@ describe("KnowledgeContentHistory", () => {
     history.redo("doc-a");
     expect(history.getEntries("doc-a")).toHaveLength(length);
     expect(history.getCurrentEntry("doc-a")?.markdown).toBe("two");
+  });
+});
+
+describe("Markdown toolbar selection transforms", () => {
+  it("formats the live first, middle, last, and multiple-line selections", () => {
+    const markdown = "one\ntwo\nthree\nfour";
+
+    expect(applyMarkdownToolbarFormat(markdown, 0, 3, "h1").markdown).toBe(
+      "# one\ntwo\nthree\nfour",
+    );
+    expect(applyMarkdownToolbarFormat(markdown, 4, 7, "h2").markdown).toBe(
+      "one\n## two\nthree\nfour",
+    );
+    expect(applyMarkdownToolbarFormat(markdown, 8, 13, "h3").markdown).toBe(
+      "one\ntwo\n### three\nfour",
+    );
+    expect(applyMarkdownToolbarFormat(markdown, 8, 13, "bullet").markdown).toBe(
+      "one\ntwo\n- three\nfour",
+    );
+    expect(
+      applyMarkdownToolbarFormat(markdown, 0, 7, "numbered").markdown,
+    ).toBe("1. one\n2. two\nthree\nfour");
+  });
+
+  it("uses the live selection after an earlier history entry moved elsewhere", () => {
+    const markdown = "alpha beta\ngamma delta\nepsilon zeta";
+    const staleHistorySelection = { start: 23, end: 30 };
+    const liveSelection = { start: 6, end: 10 };
+
+    expect(staleHistorySelection).not.toEqual(liveSelection);
+    expect(
+      applyMarkdownToolbarFormat(
+        markdown,
+        liveSelection.start,
+        liveSelection.end,
+        "bold",
+      ),
+    ).toMatchObject({
+      markdown: "alpha **beta**\ngamma delta\nepsilon zeta",
+      selection: { start: 8, end: 12 },
+    });
+  });
+
+  it("keeps inline and cursor-only formatting selection behavior", () => {
+    expect(
+      applyMarkdownToolbarFormat("alpha beta gamma", 6, 10, "italic"),
+    ).toMatchObject({
+      markdown: "alpha *beta* gamma",
+      selection: { start: 7, end: 11 },
+    });
+    expect(
+      applyMarkdownToolbarFormat("alpha beta", 5, 5, "bold"),
+    ).toMatchObject({
+      markdown: "alpha**текст** beta",
+      selection: { start: 7, end: 12 },
+    });
   });
 });
