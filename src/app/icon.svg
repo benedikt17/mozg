@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>MOZG</title>
+  <rect width="512" height="512" fill="#ff6a00"/>
+  <path fill="#fff" d="M96 384V128h72l88 128 88-128h72v256h-64V226l-64 96h-64l-64-96v158z"/>
+</svg>
