@@ -5,7 +5,7 @@ import type {
 } from "@/prototype/desktop-mock-data";
 import {
   getDocumentBreadcrumb,
-  getDocumentById,
+  getActiveDocumentById,
   getProjectTasks,
   getKnowledgePaneState,
   getTaskById,
@@ -35,7 +35,7 @@ export function KnowledgeTaskAttachmentPanel({
     useState<PrototypeDocument | null>(null);
   const activeDocument = getKnowledgePaneState(state).activeDocument;
   const attachedDocuments = task.linkedDocumentIds
-    .map((id) => getDocumentById(state, id))
+    .map((id) => getActiveDocumentById(state, id, task.projectId))
     .filter((document): document is PrototypeDocument => Boolean(document));
   const canAttach = Boolean(
     activeDocument &&
@@ -271,11 +271,16 @@ export function KnowledgeTaskReferencePanel({
   dispatch: Dispatch;
 }): React.JSX.Element {
   const attachedDocuments = task.linkedDocumentIds
-    .map((documentId) => getDocumentById(state, documentId))
+    .map((documentId) =>
+      getActiveDocumentById(state, documentId, task.projectId),
+    )
     .filter(
       (document): document is PrototypeDocument => document !== undefined,
     );
-  const currentDocument = getDocumentById(state, state.selectedDocumentId);
+  const currentDocument = getActiveDocumentById(
+    state,
+    state.selectedDocumentId,
+  );
   const currentDocumentAttached = currentDocument
     ? task.linkedDocumentIds.includes(currentDocument.id)
     : false;

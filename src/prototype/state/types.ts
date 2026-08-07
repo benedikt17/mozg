@@ -321,6 +321,10 @@ export type DesktopPrototypeAction =
   | { type: "restore-knowledge-document"; documentId: string }
   | { type: "permanently-delete-knowledge-document"; documentId: string }
   | {
+      type: "commit-knowledge-structural-transition";
+      nextState: DesktopPrototypeState;
+    }
+  | {
       type: "apply-knowledge-structural-history";
       entry: KnowledgeStructuralHistoryEntry;
       direction: "undo" | "redo";

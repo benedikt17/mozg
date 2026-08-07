@@ -8,6 +8,7 @@ import {
 } from "@/prototype/desktop-mock-data";
 import {
   getActiveProject,
+  getActiveDocumentById,
   getCommandResults,
   getOverviewTaskDetailMaterial,
   type CommandResult,
@@ -344,12 +345,10 @@ function SectionWorkspace({
   const overviewMaterial = overviewSourceTask
     ? getOverviewTaskDetailMaterial(state, overviewSourceTask.id)
     : null;
-  const overviewPreviewDocument = state.documents.find(
-    (document) =>
-      document.id ===
-      (overviewMaterial?.kind === "knowledge"
-        ? overviewMaterial.documentId
-        : null),
+  const overviewPreviewDocument = getActiveDocumentById(
+    state,
+    overviewMaterial?.kind === "knowledge" ? overviewMaterial.documentId : null,
+    overviewSourceTask?.projectId,
   );
   const overviewReaderActive =
     state.activeSection === "overview" &&

@@ -1,7 +1,7 @@
 import React from "react";
 import {
-  getDocumentById,
-  getProjectDocuments,
+  getActiveDocumentById,
+  getActiveProjectDocuments,
   getProjectOverviewDirections,
   getTaskById,
   getOverviewTaskDetailMaterial,
@@ -22,14 +22,15 @@ export function OverviewSectionWorkspace({
   dispatch: Dispatch;
 }): React.JSX.Element {
   const directions = getProjectOverviewDirections(state);
-  const documents = getProjectDocuments(state);
+  const documents = getActiveProjectDocuments(state);
   const sourceTask = getTaskById(state, state.overviewArticleSourceTaskId);
   const material = sourceTask
     ? getOverviewTaskDetailMaterial(state, sourceTask.id)
     : null;
-  const activeDocument = getDocumentById(
+  const activeDocument = getActiveDocumentById(
     state,
     material?.kind === "knowledge" ? material.documentId : null,
+    sourceTask?.projectId,
   );
   const sourceDirection = sourceTask
     ? directions.find(

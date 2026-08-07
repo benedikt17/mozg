@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   getCanvasObjectById,
-  getDocumentById,
+  getActiveDocumentById,
   getInboxItemById,
   getTaskById,
   type ContextPanelState,
@@ -209,7 +209,7 @@ function renderContextPanelContent(
     );
   }
   if (contextPanel.kind === "knowledge-tasks") {
-    const document = getDocumentById(state, state.selectedDocumentId);
+    const document = getActiveDocumentById(state, state.selectedDocumentId);
     return document ? (
       <KnowledgeTaskLinkPanel
         dispatch={dispatch}
@@ -245,7 +245,7 @@ function renderContextPanelContent(
     );
   }
   if (contextPanel.kind === "document-context") {
-    const document = getDocumentById(state, contextPanel.documentId);
+    const document = getActiveDocumentById(state, contextPanel.documentId);
     return document ? (
       <DocumentContextPanel
         dispatch={dispatch}

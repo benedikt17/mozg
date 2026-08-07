@@ -107,6 +107,37 @@ export class KnowledgeStructuralHistory {
     this.notify();
   }
 
+  commitDocumentBarrier(documentId: string): void {
+    const reachableEntries = this.entries.slice(0, this.index + 1);
+    this.entries = reachableEntries.filter(
+      (entry) => !this.entryReferencesDocument(entry, documentId),
+    );
+    this.index = this.entries.length - 1;
+    this.notify();
+  }
+
+  private entryReferencesDocument(
+    entry: KnowledgeStructuralHistoryEntry,
+    documentId: string,
+  ): boolean {
+    if (entry.kind === "create-document") {
+      return entry.document.id === documentId;
+    }
+    if (entry.kind === "move-document") {
+      return entry.documentId === documentId;
+    }
+    if (entry.kind === "delete-folder") {
+      return entry.documents.some((document) => document.id === documentId);
+    }
+    if (
+      entry.kind === "soft-delete-document" ||
+      entry.kind === "restore-document"
+    ) {
+      return entry.documentId === documentId;
+    }
+    return false;
+  }
+
   canUndo(): boolean {
     return this.index >= 0;
   }

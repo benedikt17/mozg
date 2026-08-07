@@ -1302,6 +1302,8 @@ export function desktopPrototypeReducer(
       return restoreKnowledgeDocument(state, action.documentId);
     case "permanently-delete-knowledge-document":
       return permanentlyDeleteKnowledgeDocument(state, action.documentId);
+    case "commit-knowledge-structural-transition":
+      return action.nextState;
     case "apply-knowledge-structural-history":
       return applyKnowledgeStructuralHistoryEntry(
         state,

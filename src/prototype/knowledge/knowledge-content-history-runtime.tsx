@@ -12,7 +12,10 @@ import {
 } from "react";
 import { useDesktopTaskRuntime } from "@/prototype/tasks/desktop-task-runtime";
 import { desktopPrototypeReducer } from "@/prototype/desktop-state";
-import type { DesktopPrototypeAction } from "@/prototype/state/types";
+import type {
+  DesktopPrototypeAction,
+  DesktopPrototypeState,
+} from "@/prototype/state/types";
 import { createKnowledgeStructuralHistoryEntry } from "@/prototype/state/knowledge-state";
 import {
   KnowledgeContentHistory,
@@ -72,7 +75,24 @@ export function activateKnowledgeContentScope(
   return { documentId, kind: "content" };
 }
 
-function isStructuralAction(action: DesktopPrototypeAction): boolean {
+export type KnowledgeStructuralAction = Extract<
+  DesktopPrototypeAction,
+  {
+    type:
+      | "create-knowledge-document"
+      | "create-knowledge-folder"
+      | "rename-knowledge-folder"
+      | "delete-knowledge-folder"
+      | "soft-delete-knowledge-document"
+      | "restore-knowledge-document"
+      | "move-knowledge-document"
+      | "permanently-delete-knowledge-document";
+  }
+>;
+
+function isStructuralAction(
+  action: DesktopPrototypeAction,
+): action is KnowledgeStructuralAction {
   return [
     "create-knowledge-document",
     "create-knowledge-folder",
@@ -81,7 +101,26 @@ function isStructuralAction(action: DesktopPrototypeAction): boolean {
     "soft-delete-knowledge-document",
     "restore-knowledge-document",
     "move-knowledge-document",
+    "permanently-delete-knowledge-document",
   ].includes(action.type);
+}
+
+export function evaluateKnowledgeStructuralTransition(
+  state: DesktopPrototypeState,
+  action: KnowledgeStructuralAction,
+  reducer: (
+    state: DesktopPrototypeState,
+    action: DesktopPrototypeAction,
+  ) => DesktopPrototypeState = desktopPrototypeReducer,
+): {
+  nextState: DesktopPrototypeState;
+  entry: KnowledgeStructuralHistoryEntry | null;
+} {
+  const nextState = reducer(state, action);
+  return {
+    entry: createKnowledgeStructuralHistoryEntry(state, nextState, action),
+    nextState,
+  };
 }
 
 const KnowledgeContentHistoryContext = createContext<
@@ -214,17 +253,20 @@ export function KnowledgeContentHistoryProvider({
         dispatch(action);
         return;
       }
-      const nextState = desktopPrototypeReducer(state, action);
-      const entry = createKnowledgeStructuralHistoryEntry(
-        state,
-        nextState,
-        action,
-      );
-      if (entry) {
-        structuralHistory.commit(entry);
+      const transition = evaluateKnowledgeStructuralTransition(state, action);
+      if (action.type === "permanently-delete-knowledge-document") {
+        if (transition.nextState !== state) {
+          structuralHistory.commitDocumentBarrier(action.documentId);
+          setScope({ kind: "structure" });
+        }
+      } else if (transition.entry) {
+        structuralHistory.commit(transition.entry);
         setScope({ kind: "structure" });
       }
-      dispatch(action);
+      dispatch({
+        nextState: transition.nextState,
+        type: "commit-knowledge-structural-transition",
+      });
     },
     [dispatch, state, structuralHistory],
   );
