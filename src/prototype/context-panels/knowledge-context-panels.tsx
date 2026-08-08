@@ -18,6 +18,7 @@ import {
   IconButton,
   PrototypeButton,
 } from "@/prototype/desktop-ui";
+import { getLinkedTaskIdsForDocument } from "@/prototype/state/selectors";
 import { taskSignalOptions } from "./task-signal-options";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
@@ -400,7 +401,7 @@ export function DocumentContextPanel({
   document: PrototypeDocument;
   state: DesktopPrototypeState;
 }): React.JSX.Element {
-  const linkedTasks = document.linkedTaskIds
+  const linkedTasks = getLinkedTaskIdsForDocument(state, document.id)
     .map((taskId) => getTaskById(state, taskId))
     .filter((task): task is PrototypeTask => Boolean(task));
   const outgoingLinks = document.content

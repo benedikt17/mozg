@@ -54,7 +54,6 @@ function freshState(): DesktopPrototypeState {
     documents: initialDesktopPrototypeState.documents.map((document) => ({
       ...document,
       content: [...document.content],
-      linkedTaskIds: [...document.linkedTaskIds],
       backlinks: [...document.backlinks],
     })),
     canvases: initialDesktopPrototypeState.canvases.map((canvas) => ({

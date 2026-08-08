@@ -88,7 +88,6 @@ export type PrototypeDocument = {
   title: string;
   excerpt: string;
   content: string[];
-  linkedTaskIds: string[];
   backlinks: string[];
 };
 
@@ -633,7 +632,6 @@ export const initialDocuments: PrototypeDocument[] = [
       "### В сценах",
       "Повторяющиеся встречи должны менять её способ действовать: сначала она торопится, затем учится задавать точные вопросы и замечать цену каждого перехода.",
     ],
-    linkedTaskIds: ["luko-characters-map", "luko-first-scene"],
     backlinks: ["Баба Яга", "Первая глава"],
   },
   {
@@ -647,7 +645,6 @@ export const initialDocuments: PrototypeDocument[] = [
       "Важна не страшность персонажа, а контракт: помощь всегда меняет маршрут героя.",
       "Связь с Кощеем должна выглядеть как старый спор, а не экспозиция.",
     ],
-    linkedTaskIds: ["luko-characters-map"],
     backlinks: ["Кощей", "Правила магии"],
   },
   {
@@ -660,7 +657,6 @@ export const initialDocuments: PrototypeDocument[] = [
       "# Кощей",
       "Главный конфликт строится вокруг страха изменений. Его бессмертие — не сила, а архитектурная проблема мира.",
     ],
-    linkedTaskIds: ["luko-characters-map"],
     backlinks: ["Баба Яга", "Правила магии"],
   },
   {
@@ -673,7 +669,6 @@ export const initialDocuments: PrototypeDocument[] = [
       "# География",
       "Карта должна помогать сценам, а не становиться энциклопедией. Каждый переход между островами требует причины.",
     ],
-    linkedTaskIds: ["luko-world-rules"],
     backlinks: ["Правила магии"],
   },
   {
@@ -687,7 +682,6 @@ export const initialDocuments: PrototypeDocument[] = [
       "# Правила магии",
       "Магия работает только как обмен: время, память или маршрут. Это правило должно быть видно в действии.",
     ],
-    linkedTaskIds: ["luko-world-rules"],
     backlinks: ["География", "Кощей"],
   },
   {
@@ -700,7 +694,6 @@ export const initialDocuments: PrototypeDocument[] = [
       "# Первая глава",
       "Открываем не описанием мира, а ситуацией выбора. Экспозицию распаковываем через последствия.",
     ],
-    linkedTaskIds: ["luko-first-scene"],
     backlinks: ["Настенька", "Сцены"],
   },
   {
@@ -713,7 +706,6 @@ export const initialDocuments: PrototypeDocument[] = [
       "# Сцены",
       "Каждая сцена должна отвечать на вопрос: что изменилось после неё?",
     ],
-    linkedTaskIds: ["luko-shot-list"],
     backlinks: ["Первая глава"],
   },
   {
@@ -726,7 +718,6 @@ export const initialDocuments: PrototypeDocument[] = [
       "# Минимальный цикл",
       "На один рабочий цикл берём только то, что можно проверить видимым результатом.",
     ],
-    linkedTaskIds: ["luko-production-plan", "luko-brief-done"],
     backlinks: ["Первая глава"],
   },
   {
@@ -736,7 +727,6 @@ export const initialDocuments: PrototypeDocument[] = [
     title: "Индекс находок",
     excerpt: "Темы, источники и спорные места.",
     content: ["# Индекс находок", "Сначала факты, потом гипотезы."],
-    linkedTaskIds: ["ammonit-index"],
     backlinks: ["Вопросы интервью"],
   },
   {
@@ -749,7 +739,6 @@ export const initialDocuments: PrototypeDocument[] = [
       "# Вопросы интервью",
       "Оставить только вопросы, которые меняют вывод.",
     ],
-    linkedTaskIds: ["ammonit-interview"],
     backlinks: ["Индекс находок"],
   },
   {
@@ -759,7 +748,6 @@ export const initialDocuments: PrototypeDocument[] = [
     title: "Демо-сценарий",
     excerpt: "Двухминутный прогон для записи.",
     content: ["# Демо-сценарий", "Текст должен держаться на темпе и паузах."],
-    linkedTaskIds: ["voice-script"],
     backlinks: [],
   },
   {
@@ -769,7 +757,6 @@ export const initialDocuments: PrototypeDocument[] = [
     title: "План недели",
     excerpt: "Реальные обязательства без лишних обещаний.",
     content: ["# План недели", "Оставить только то, что действительно нужно."],
-    linkedTaskIds: ["personal-calendar"],
     backlinks: [],
   },
 ];
@@ -792,7 +779,6 @@ const extraLukomorieDocuments: PrototypeDocument[] = [
       "- удерживает Настеньку от решения, которое красиво выглядит в легенде, но плохо работает в сцене.",
       "Связанные заметки: [[Настенька]], [[Пути между островами]], [[Баба Яга]].",
     ],
-    linkedTaskIds: ["luko-characters-map"],
     backlinks: ["Настенька", "Пути между островами"],
   },
   {
@@ -809,7 +795,6 @@ const extraLukomorieDocuments: PrototypeDocument[] = [
       "## Риски",
       "Если Денис становится только голосом автора, он вынимает конфликт из действия. Его вопросы должны создавать выбор, а не лекцию.",
     ],
-    linkedTaskIds: ["luko-characters-map"],
     backlinks: ["Настенька", "Правила магии"],
   },
   {
@@ -826,7 +811,6 @@ const extraLukomorieDocuments: PrototypeDocument[] = [
       "- знает карту троп, но не объясняет правила магии;",
       "- уважает точные просьбы и наказывает расплывчатые.",
     ],
-    linkedTaskIds: ["luko-world-rules"],
     backlinks: ["Острова", "Пути между островами"],
   },
   {
@@ -843,7 +827,6 @@ const extraLukomorieDocuments: PrototypeDocument[] = [
       "## Правило сцены",
       "Каждая встреча должна оставлять след: изменение маршрута, потерянный предмет или новую невозможность.",
     ],
-    linkedTaskIds: ["luko-first-scene"],
     backlinks: ["Настенька", "Правила магии"],
   },
   {
@@ -859,7 +842,6 @@ const extraLukomorieDocuments: PrototypeDocument[] = [
       "Колобок появляется в местах, где нужен сдвиг темпа. Он не должен отменять угрозу, но может показать, что герои ещё способны смеяться.",
       "Связанные заметки: [[Первая глава]], [[Список сцен]].",
     ],
-    linkedTaskIds: ["luko-first-scene"],
     backlinks: ["Первая глава"],
   },
   {
@@ -878,7 +860,6 @@ const extraLukomorieDocuments: PrototypeDocument[] = [
       "- остров памяти, где маршрут зависит от забытых обещаний;",
       "- остров ремесла, где магия требует физической работы.",
     ],
-    linkedTaskIds: ["luko-world-rules"],
     backlinks: ["Карта Лукоморья", "Пути между островами"],
   },
   {
@@ -894,7 +875,6 @@ const extraLukomorieDocuments: PrototypeDocument[] = [
       "Карта — рабочий инструмент сценария. Она должна показывать, почему герои не могут просто пойти самым коротким путём.",
       "См. также: [[Острова]], [[Пути между островами]], [[Правила магии]].",
     ],
-    linkedTaskIds: ["luko-shot-list"],
     backlinks: ["Острова"],
   },
   {
@@ -913,7 +893,6 @@ const extraLukomorieDocuments: PrototypeDocument[] = [
       "- объяснять правило после того, как оно уже спасло героя;",
       "- делать все маршруты одинаково опасными.",
     ],
-    linkedTaskIds: ["luko-world-rules"],
     backlinks: ["Острова", "Правила магии"],
   },
   {
@@ -929,7 +908,6 @@ const extraLukomorieDocuments: PrototypeDocument[] = [
       "## Канон",
       "Старые договоры сильнее новых обещаний, но только если кто-то помнит точную формулировку.",
     ],
-    linkedTaskIds: ["luko-world-rules"],
     backlinks: ["Правила магии"],
   },
   {
@@ -946,7 +924,6 @@ const extraLukomorieDocuments: PrototypeDocument[] = [
       "- показать новый остров через задачу, а не описание;",
       "- связать Коленьку с практической проблемой маршрута.",
     ],
-    linkedTaskIds: ["luko-first-scene"],
     backlinks: ["Первая глава", "Пути между островами"],
   },
   {
@@ -964,7 +941,6 @@ const extraLukomorieDocuments: PrototypeDocument[] = [
       "2. Коленька замечает бытовую цену магии.",
       "3. Леший показывает обходной путь, но требует точной просьбы.",
     ],
-    linkedTaskIds: ["luko-first-scene", "luko-shot-list"],
     backlinks: ["Первая глава", "Колобок и его роль"],
   },
   {
@@ -979,7 +955,6 @@ const extraLukomorieDocuments: PrototypeDocument[] = [
       "Диалог должен звучать так, будто персонажи решают проблему сейчас, а не рассказывают читателю правила.",
       "> «Если дорога просит имя, значит, она уже знает дорогу обратно».",
     ],
-    linkedTaskIds: ["luko-first-scene"],
     backlinks: ["Настенька", "Коленька"],
   },
   {
@@ -995,7 +970,6 @@ const extraLukomorieDocuments: PrototypeDocument[] = [
       "Визуальные ориентиры собираются вокруг функции сцены: карта, силуэт, объект-цена, изменение света.",
       "См. [[Карта Лукоморья]] и [[Список сцен]].",
     ],
-    linkedTaskIds: ["luko-shot-list"],
     backlinks: ["Карта Лукоморья"],
   },
   {
@@ -1010,7 +984,6 @@ const extraLukomorieDocuments: PrototypeDocument[] = [
       "# Озвучка",
       "Голос должен держать сказочную ясность, но не превращать текст в пародию. Самое важное — паузы перед условиями договоров.",
     ],
-    linkedTaskIds: ["luko-production-plan"],
     backlinks: ["Диалоги"],
   },
   {
@@ -1027,7 +1000,6 @@ const extraLukomorieDocuments: PrototypeDocument[] = [
       "## Критерий",
       "У каждой заметки должен быть следующий рабочий шаг или причина оставаться архивной.",
     ],
-    linkedTaskIds: ["luko-production-plan", "luko-brief-done"],
     backlinks: ["Минимальный цикл"],
   },
 ];

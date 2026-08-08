@@ -7,7 +7,7 @@ import { parseDesktopCloudSnapshotRow } from "@/prototype/persistence/cloud-snap
 function row(overrides: Record<string, unknown> = {}) {
   return {
     workspace_id: "workspace-local",
-    schema_version: 2,
+    schema_version: 3,
     snapshot: createDesktopDomainSnapshot(initialDesktopPrototypeState),
     revision: 7,
     updated_at: "2026-07-29T10:00:00.000Z",
@@ -23,7 +23,7 @@ describe("parseDesktopCloudSnapshotRow", () => {
       bootstrap: {
         workspaceId: "workspace-local",
         workspaceName: "Workspace",
-        schemaVersion: 2,
+        schemaVersion: 3,
         revision: 7,
       },
     });
@@ -31,10 +31,10 @@ describe("parseDesktopCloudSnapshotRow", () => {
 
   it("rejects unsupported schema versions", () => {
     expect(
-      parseDesktopCloudSnapshotRow(row({ schema_version: 3 }), "Workspace"),
+      parseDesktopCloudSnapshotRow(row({ schema_version: 4 }), "Workspace"),
     ).toEqual({
       kind: "unsupported-schema",
-      schemaVersion: 3,
+      schemaVersion: 4,
     });
   });
 
@@ -47,7 +47,7 @@ describe("parseDesktopCloudSnapshotRow", () => {
     ).toEqual({ kind: "invalid-metadata" });
   });
 
-  it("migrates a v1 row to a v2 runtime while preserving revision", () => {
+  it("normalizes a v1 row to a v3 runtime while preserving revision", () => {
     const result = parseDesktopCloudSnapshotRow(
       row({ schema_version: 1, snapshot: v1Fixture, revision: 11 }),
       "Workspace",
@@ -55,7 +55,7 @@ describe("parseDesktopCloudSnapshotRow", () => {
 
     expect(result).toMatchObject({
       kind: "ready",
-      bootstrap: { schemaVersion: 2, revision: 11 },
+      bootstrap: { schemaVersion: 3, revision: 11 },
     });
     if (result.kind !== "ready") return;
     expect(

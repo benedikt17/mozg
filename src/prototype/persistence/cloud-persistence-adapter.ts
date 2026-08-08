@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/browser";
 import {
   DESKTOP_DOMAIN_SCHEMA_VERSION,
-  parseDesktopDomainSnapshot,
+  parseDesktopDomainSnapshotV3,
   type DesktopDomainSnapshot,
 } from "@/prototype/persistence/domain-snapshot";
 import {
@@ -50,7 +50,7 @@ export class CloudDesktopPersistenceAdapter implements DesktopPersistenceAdapter
     snapshot: DesktopDomainSnapshot,
     expectedRevision: number,
   ): Promise<DesktopPersistenceSaveResult> {
-    const parsed = parseDesktopDomainSnapshot(snapshot);
+    const parsed = parseDesktopDomainSnapshotV3(snapshot);
     if (!parsed.ok) {
       throw new DesktopPersistenceError(
         "invalid-snapshot",

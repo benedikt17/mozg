@@ -43,7 +43,7 @@ function createRow(
 ): DesktopCloudSnapshotRow {
   return {
     workspace_id: "workspace-local",
-    schema_version: 2,
+    schema_version: 3,
     snapshot,
     revision: 9,
     updated_at: "2026-07-29T10:00:00.000Z",
@@ -133,7 +133,7 @@ describe("loadDesktopCloudSnapshot", () => {
       bootstrap: {
         workspaceId: "workspace-local",
         workspaceName: "Лукоморье",
-        schemaVersion: 2,
+        schemaVersion: 3,
         revision: 9,
       },
     });
@@ -210,7 +210,7 @@ describe("loadDesktopCloudSnapshot", () => {
     });
     expect(client.rpc).toHaveBeenCalledWith("initialize_workspace_snapshot", {
       target_workspace_id: "workspace-local",
-      target_schema_version: 2,
+      target_schema_version: 3,
       target_snapshot: snapshot,
     });
   });
@@ -228,14 +228,14 @@ describe("loadDesktopCloudSnapshot", () => {
   });
 
   it("returns unsupported-schema for a future schema version", async () => {
-    configureClient({ row: createRow({ schema_version: 3 }) });
+    configureClient({ row: createRow({ schema_version: 4 }) });
 
     const result = await loadDesktopCloudSnapshot();
 
-    expect(result).toEqual({ kind: "unsupported-schema", schemaVersion: 3 });
+    expect(result).toEqual({ kind: "unsupported-schema", schemaVersion: 4 });
   });
 
-  it("loads a v1 row as a migrated v2 runtime snapshot", async () => {
+  it("loads a v1 row as a normalized v3 runtime snapshot", async () => {
     configureClient({
       row: createRow({ schema_version: 1, snapshot: v1Fixture }),
     });
@@ -244,7 +244,7 @@ describe("loadDesktopCloudSnapshot", () => {
 
     expect(result).toMatchObject({
       kind: "ready",
-      bootstrap: { schemaVersion: 2, revision: 9 },
+      bootstrap: { schemaVersion: 3, revision: 9 },
     });
     if (result.kind !== "ready") return;
     expect(

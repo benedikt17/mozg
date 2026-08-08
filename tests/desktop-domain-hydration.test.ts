@@ -258,7 +258,6 @@ describe("desktop domain hydration", () => {
     snapshot.documents.push({
       ...snapshot.documents[0]!,
       id: "mock-document-8",
-      linkedTaskIds: [],
     });
     snapshot.knowledgeFolders.push({
       id: "mock-knowledge-folder-3",

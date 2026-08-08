@@ -5,6 +5,7 @@ import {
   initialDesktopPrototypeState,
 } from "@/prototype/desktop-state";
 import type { DesktopPrototypeState } from "@/prototype/state/types";
+import { getLinkedTaskIdsForDocument } from "@/prototype/state/selectors";
 import { expectPersistentStateValid } from "./helpers/persistent-state-invariant";
 
 function freshState(): DesktopPrototypeState {
@@ -66,7 +67,7 @@ describe("Tasks persistent safety", () => {
     expectPersistentStateValid(rejected);
   });
 
-  it("removes deleted Task IDs from Knowledge reverse references", () => {
+  it("derives Knowledge reverse references after deleting a Task", () => {
     const state = freshState();
     const documentBefore = state.documents.find(
       (document) => document.id === "doc-l-nastenka",
@@ -82,16 +83,11 @@ describe("Tasks persistent safety", () => {
     expect(deleted.tasks).not.toContainEqual(
       expect.objectContaining({ id: "luko-characters-map" }),
     );
-    expect(
-      deleted.documents.every(
-        (document) => !document.linkedTaskIds.includes("luko-characters-map"),
-      ),
-    ).toBe(true);
+    expect(getLinkedTaskIdsForDocument(deleted, "doc-l-nastenka")).toEqual([]);
     expect(
       deleted.documents.find((document) => document.id === "doc-l-nastenka"),
     ).toMatchObject({
       content: documentBefore.content,
-      linkedTaskIds: ["luko-first-scene"],
       backlinks: documentBefore.backlinks,
     });
   });

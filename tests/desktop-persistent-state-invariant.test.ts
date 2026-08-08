@@ -27,7 +27,7 @@ describe("persistent Desktop state invariant", () => {
   it("validates the initial state through the production snapshot round-trip", () => {
     const snapshot = expectPersistentStateValid(freshState());
 
-    expect(snapshot.schemaVersion).toBe(2);
+    expect(snapshot.schemaVersion).toBe(3);
   });
 
   it("reports parser diagnostics when the serialized state is invalid", () => {

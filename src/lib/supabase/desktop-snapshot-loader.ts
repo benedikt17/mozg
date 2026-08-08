@@ -6,7 +6,10 @@ import {
   type DesktopCloudBootstrap,
   type DesktopCloudSnapshotRow,
 } from "@/prototype/persistence/cloud-snapshot-bridge";
-import { createDesktopDomainSnapshot } from "@/prototype/persistence/domain-snapshot";
+import {
+  DESKTOP_DOMAIN_SCHEMA_VERSION,
+  createDesktopDomainSnapshot,
+} from "@/prototype/persistence/domain-snapshot";
 import { initialDesktopPrototypeState } from "@/prototype/desktop-state";
 
 export type DesktopCloudSnapshotLoadResult =
@@ -64,7 +67,7 @@ export async function loadDesktopCloudSnapshot(): Promise<DesktopCloudSnapshotLo
       "initialize_workspace_snapshot",
       {
         target_workspace_id: workspace.id,
-        target_schema_version: 2,
+        target_schema_version: DESKTOP_DOMAIN_SCHEMA_VERSION,
         target_snapshot: createLocalDevelopmentSnapshot(),
       },
     );

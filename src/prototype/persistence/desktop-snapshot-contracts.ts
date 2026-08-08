@@ -131,3 +131,56 @@ export type DesktopDomainSnapshotV2 = {
   knowledgeFolders: DesktopSnapshotKnowledgeFolder[];
   documents: DesktopSnapshotDocument[];
 };
+
+/**
+ * Current application-side snapshot contract.
+ *
+ * V3 deliberately owns the Task ↔ Knowledge relation only from the task side.
+ * The reverse document projection is derived from `tasks[].linkedDocumentIds`
+ * and is therefore absent from this persisted shape.
+ */
+export type DesktopSnapshotDocumentV3 = {
+  id: string;
+  projectId: string;
+  order?: number;
+  folder: string;
+  folderPath?: string[];
+  deletedAt?: string;
+  isKeyDocument?: boolean;
+  title: string;
+  excerpt: string;
+  content: string[];
+  backlinks: string[];
+};
+
+export type DesktopSnapshotTaskV3 = {
+  id: string;
+  projectId: string;
+  title: string;
+  overviewDirectionId: string;
+  overviewOrder: number;
+  taskListOrder: number;
+  listId: string;
+  showOnOverview: boolean;
+  completedAt: string | null;
+  signal: DesktopSnapshotTaskSignal;
+  starred: boolean;
+  myDay: boolean;
+  area?: string;
+  dueDate?: string;
+  links: DesktopSnapshotTaskLink[];
+  linkedDocumentIds: string[];
+  subtasks: DesktopSnapshotSubtaskV2[];
+  notes?: string;
+};
+
+export type DesktopDomainSnapshotV3 = {
+  schemaVersion: 3;
+  projects: DesktopSnapshotProject[];
+  overviewDirections: DesktopSnapshotOverviewDirection[];
+  taskGroups: DesktopSnapshotTaskGroup[];
+  taskLists: DesktopSnapshotTaskList[];
+  tasks: DesktopSnapshotTaskV3[];
+  knowledgeFolders: DesktopSnapshotKnowledgeFolder[];
+  documents: DesktopSnapshotDocumentV3[];
+};

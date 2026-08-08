@@ -10,6 +10,7 @@ import {
   createDesktopDomainSnapshot,
   deriveNextPrototypeCounters,
   parseDesktopDomainSnapshot,
+  parseDesktopDomainSnapshotV3,
   snapshotToDomainCollections,
   type DesktopDomainSnapshot,
 } from "@/prototype/persistence/domain-snapshot";
@@ -25,8 +26,8 @@ function cloneSnapshot(): DesktopDomainSnapshot {
 function expectInvalid(
   value: unknown,
   code?: string,
-): ReturnType<typeof parseDesktopDomainSnapshot> {
-  const result = parseDesktopDomainSnapshot(value);
+): ReturnType<typeof parseDesktopDomainSnapshotV3> {
+  const result = parseDesktopDomainSnapshotV3(value);
   expect(result.ok).toBe(false);
   if (!result.ok && code) {
     expect(result.errors.map((error) => error.code)).toContain(code);
@@ -34,7 +35,7 @@ function expectInvalid(
   return result;
 }
 
-describe("desktop domain snapshot v2", () => {
+describe("desktop domain snapshot v3", () => {
   it("creates a deterministic JSON-serializable snapshot from initial state", () => {
     const first = validSnapshot();
     const second = validSnapshot();
@@ -133,7 +134,6 @@ describe("desktop domain snapshot v2", () => {
     const taskTitle = snapshot.tasks[0]?.subtasks[0]?.title;
     const linkTitle = snapshot.tasks[0]?.links[0]?.title;
     const contentLine = snapshot.documents[0]?.content[0];
-    const linkedTaskId = snapshot.documents[0]?.linkedTaskIds[0];
 
     if (state.tasks[0]?.subtasks[0]) {
       state.tasks[0].subtasks[0].title = "Changed after snapshot";
@@ -143,13 +143,12 @@ describe("desktop domain snapshot v2", () => {
     }
     if (state.documents[0]) {
       state.documents[0].content[0] = "Changed content";
-      state.documents[0].linkedTaskIds[0] = "changed-task";
     }
 
     expect(snapshot.tasks[0]?.subtasks[0]?.title).toBe(taskTitle);
     expect(snapshot.tasks[0]?.links[0]?.title).toBe(linkTitle);
     expect(snapshot.documents[0]?.content[0]).toBe(contentLine);
-    expect(snapshot.documents[0]?.linkedTaskIds[0]).toBe(linkedTaskId);
+    expect(snapshot.documents[0]).not.toHaveProperty("linkedTaskIds");
   });
 
   it("persists a soft-deleted Knowledge article and its Markdown through reload hydration", () => {
@@ -340,7 +339,7 @@ describe("desktop domain snapshot v2", () => {
     ],
     [
       "unsupported version",
-      { ...validSnapshot(), schemaVersion: 3 },
+      { ...validSnapshot(), schemaVersion: 4 },
       "unsupported-schema-version",
     ],
     [
@@ -361,7 +360,7 @@ describe("desktop domain snapshot v2", () => {
     expectInvalid(value, code);
   });
 
-  it("accepts the exact current v2 persistent contract", () => {
+  it("accepts the exact current v3 persistent contract", () => {
     const snapshot = cloneSnapshot();
     delete snapshot.tasks[0]!.area;
     delete snapshot.tasks[0]!.dueDate;
@@ -607,9 +606,11 @@ describe("desktop domain snapshot v2", () => {
     crossProjectTaskDocument.tasks[0]!.linkedDocumentIds = ["doc-a-index"];
     expectInvalid(crossProjectTaskDocument, "cross-project-relation");
 
-    const crossProjectDocumentTask = cloneSnapshot();
-    crossProjectDocumentTask.documents[0]!.linkedTaskIds = ["ammonit-index"];
-    expectInvalid(crossProjectDocumentTask, "cross-project-relation");
+    const reverseRelation = cloneSnapshot();
+    (
+      reverseRelation.documents[0] as unknown as Record<string, unknown>
+    ).linkedTaskIds = ["ammonit-index"];
+    expectInvalid(reverseRelation, "unknown-field");
   });
 
   it("derives collision-safe prototype counters by prefix", () => {
@@ -635,7 +636,6 @@ describe("desktop domain snapshot v2", () => {
     snapshot.documents.push({
       ...snapshot.documents[0]!,
       id: "mock-document-8",
-      linkedTaskIds: [],
     });
     snapshot.knowledgeFolders.push({
       id: "mock-knowledge-folder-3",

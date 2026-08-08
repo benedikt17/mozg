@@ -30,6 +30,19 @@ export function getActiveProject(
   );
 }
 
+/**
+ * Derive the reverse Task → Knowledge projection from the authoritative task
+ * relation. This is intentionally not read from or written to documents.
+ */
+export function getLinkedTaskIdsForDocument(
+  state: DesktopPrototypeState,
+  documentId: string,
+): string[] {
+  return state.tasks
+    .filter((task) => task.linkedDocumentIds.includes(documentId))
+    .map((task) => task.id);
+}
+
 export function getAiContextLabel(state: DesktopPrototypeState): string {
   const project = getActiveProject(state).name;
   if (state.activeSection === "knowledge") {

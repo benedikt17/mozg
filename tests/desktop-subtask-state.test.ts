@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import v1Fixture from "./fixtures/desktop-domain-snapshot-v1.json";
 import {
   createDesktopDomainSnapshot,
+  normalizeDesktopDomainSnapshot,
   parseDesktopDomainSnapshot,
 } from "@/prototype/persistence/domain-snapshot";
 import { parseDesktopCloudSnapshotRow } from "@/prototype/persistence/cloud-snapshot-bridge";
@@ -487,7 +488,7 @@ describe("task subtask domain actions", () => {
     if (!parsedV1.ok) return;
     const migrated = desktopPrototypeReducer(freshState(), {
       type: "hydrate-domain",
-      snapshot: parsedV1.snapshot,
+      snapshot: normalizeDesktopDomainSnapshot(parsedV1.snapshot),
     });
     const activeMigrated = { ...migrated, activeProjectId: "project-v1" };
     const updated = desktopPrototypeReducer(activeMigrated, {
@@ -498,7 +499,7 @@ describe("task subtask domain actions", () => {
     });
     const saved = createDesktopDomainSnapshot(updated);
 
-    expect(saved.schemaVersion).toBe(2);
+    expect(saved.schemaVersion).toBe(3);
     expect(saved.tasks[0]?.subtasks[0]?.detailsMarkdown).toBe(
       "Added after v1 migration",
     );
@@ -523,7 +524,7 @@ describe("task subtask domain actions", () => {
     const cloud = parseDesktopCloudSnapshotRow(
       {
         workspace_id: "workspace-local",
-        schema_version: 2,
+        schema_version: 3,
         snapshot: localSnapshot,
         revision: 3,
         updated_at: "2030-01-01T00:00:00.000Z",

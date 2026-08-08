@@ -2,7 +2,9 @@ import type { DesktopPrototypeState } from "@/prototype/state/types";
 import type {
   DesktopDomainSnapshotV1,
   DesktopDomainSnapshotV2,
+  DesktopDomainSnapshotV3,
   DesktopSnapshotDocument,
+  DesktopSnapshotDocumentV3,
   DesktopSnapshotKnowledgeFolder,
   DesktopSnapshotOverviewDirection,
   DesktopSnapshotProject,
@@ -13,12 +15,15 @@ import type {
   DesktopSnapshotTaskList,
   DesktopSnapshotTaskV1,
   DesktopSnapshotTaskV2,
+  DesktopSnapshotTaskV3,
 } from "@/prototype/persistence/desktop-snapshot-contracts";
 
 export type {
   DesktopDomainSnapshotV1,
   DesktopDomainSnapshotV2,
+  DesktopDomainSnapshotV3,
   DesktopSnapshotDocument,
+  DesktopSnapshotDocumentV3,
   DesktopSnapshotKnowledgeFolder,
   DesktopSnapshotOverviewDirection,
   DesktopSnapshotProject,
@@ -29,13 +34,15 @@ export type {
   DesktopSnapshotTaskList,
   DesktopSnapshotTaskV1,
   DesktopSnapshotTaskV2,
+  DesktopSnapshotTaskV3,
 } from "@/prototype/persistence/desktop-snapshot-contracts";
 
 export const DESKTOP_DOMAIN_V1_SCHEMA_VERSION = 1 as const;
-export const DESKTOP_DOMAIN_SCHEMA_VERSION = 2 as const;
+export const DESKTOP_DOMAIN_V2_SCHEMA_VERSION = 2 as const;
+export const DESKTOP_DOMAIN_SCHEMA_VERSION = 3 as const;
 
-/** Runtime persistence uses the frozen V2 wire shape. */
-export type DesktopDomainSnapshot = DesktopDomainSnapshotV2;
+/** Runtime persistence uses the current V3 wire shape. */
+export type DesktopDomainSnapshot = DesktopDomainSnapshotV3;
 
 export type DesktopDomainCollections = Omit<
   DesktopDomainSnapshot,
@@ -51,7 +58,7 @@ export type DesktopDomainValidationIssue = {
 export type ParseDesktopDomainSnapshotResult =
   | {
       ok: true;
-      snapshot: DesktopDomainSnapshot;
+      snapshot: DesktopDomainSnapshotV2;
       warnings: DesktopDomainValidationIssue[];
     }
   | { ok: false; errors: DesktopDomainValidationIssue[] };
@@ -102,7 +109,7 @@ function cloneTaskV1(task: DesktopSnapshotTaskV1): DesktopSnapshotTaskV1 {
   };
 }
 
-function cloneDocument(
+function cloneHistoricalDocument(
   document: DesktopSnapshotDocument,
 ): DesktopSnapshotDocument {
   return {
@@ -116,6 +123,19 @@ function cloneDocument(
   };
 }
 
+function cloneDocument(
+  document: DesktopSnapshotDocumentV3,
+): DesktopSnapshotDocumentV3 {
+  return {
+    ...document,
+    ...(document.folderPath === undefined
+      ? {}
+      : { folderPath: [...document.folderPath] }),
+    content: [...document.content],
+    backlinks: [...document.backlinks],
+  };
+}
+
 function cloneKnowledgeFolder(
   folder: DesktopSnapshotKnowledgeFolder,
 ): DesktopSnapshotKnowledgeFolder {
@@ -124,9 +144,9 @@ function cloneKnowledgeFolder(
 
 export function migrateDesktopDomainSnapshotV1ToV2(
   snapshot: DesktopDomainSnapshotV1,
-): DesktopDomainSnapshot {
+): DesktopDomainSnapshotV2 {
   return {
-    schemaVersion: DESKTOP_DOMAIN_SCHEMA_VERSION,
+    schemaVersion: DESKTOP_DOMAIN_V2_SCHEMA_VERSION,
     projects: snapshot.projects.map((project) => ({ ...project })),
     overviewDirections: snapshot.overviewDirections.map((direction) => ({
       ...direction,
@@ -141,7 +161,7 @@ export function migrateDesktopDomainSnapshotV1ToV2(
       })),
     })),
     knowledgeFolders: snapshot.knowledgeFolders.map(cloneKnowledgeFolder),
-    documents: snapshot.documents.map(cloneDocument),
+    documents: snapshot.documents.map(cloneHistoricalDocument),
   };
 }
 
@@ -175,6 +195,50 @@ export function snapshotToDomainCollections(
     tasks: snapshot.tasks.map(cloneTask),
     knowledgeFolders: snapshot.knowledgeFolders.map(cloneKnowledgeFolder),
     documents: snapshot.documents.map(cloneDocument),
+  };
+}
+
+function deriveLinkedTaskIdsForDocument(
+  tasks: readonly DesktopSnapshotTaskV3[],
+  documentId: string,
+): string[] {
+  return tasks
+    .filter((task) => task.linkedDocumentIds.includes(documentId))
+    .map((task) => task.id);
+}
+
+export function normalizeDesktopDomainSnapshot(
+  snapshot:
+    DesktopDomainSnapshotV1 | DesktopDomainSnapshotV2 | DesktopDomainSnapshot,
+): DesktopDomainSnapshot {
+  const v3Documents =
+    snapshot.schemaVersion === DESKTOP_DOMAIN_SCHEMA_VERSION
+      ? snapshot.documents
+      : snapshot.documents.map((document) => {
+          const { linkedTaskIds, ...documentWithoutReverseRelation } = document;
+          void linkedTaskIds;
+          return documentWithoutReverseRelation;
+        });
+  return {
+    schemaVersion: DESKTOP_DOMAIN_SCHEMA_VERSION,
+    projects: snapshot.projects.map((project) => ({ ...project })),
+    overviewDirections: snapshot.overviewDirections.map((direction) => ({
+      ...direction,
+    })),
+    taskGroups: snapshot.taskGroups.map((group) => ({ ...group })),
+    taskLists: snapshot.taskLists.map((list) => ({ ...list })),
+    tasks: snapshot.tasks.map((task) => ({
+      ...task,
+      links: task.links.map(cloneTaskLink),
+      linkedDocumentIds: [...task.linkedDocumentIds],
+      subtasks: task.subtasks.map((subtask) => ({
+        ...subtask,
+        detailsMarkdown:
+          "detailsMarkdown" in subtask ? subtask.detailsMarkdown : "",
+      })),
+    })),
+    knowledgeFolders: snapshot.knowledgeFolders.map(cloneKnowledgeFolder),
+    documents: v3Documents.map(cloneDocument),
   };
 }
 
@@ -517,7 +581,7 @@ function parseSubtasks<Subtask extends DesktopSnapshotSubtaskV1>(
   issues: DesktopDomainValidationIssue[],
   schemaVersion:
     | typeof DESKTOP_DOMAIN_V1_SCHEMA_VERSION
-    | typeof DESKTOP_DOMAIN_SCHEMA_VERSION,
+    | typeof DESKTOP_DOMAIN_V2_SCHEMA_VERSION,
 ): Subtask[] | undefined {
   if (!Array.isArray(value)) {
     addIssue(issues, "invalid-array", path, "Expected an array.");
@@ -538,14 +602,14 @@ function parseSubtasks<Subtask extends DesktopSnapshotSubtaskV1>(
     const title = readString(item, "title", itemPath, issues);
     const done = readBoolean(item, "done", itemPath, issues);
     const detailsMarkdown =
-      schemaVersion === DESKTOP_DOMAIN_SCHEMA_VERSION
+      schemaVersion === DESKTOP_DOMAIN_V2_SCHEMA_VERSION
         ? readString(item, "detailsMarkdown", itemPath, issues)
         : undefined;
     if (
       id === undefined ||
       title === undefined ||
       done === undefined ||
-      (schemaVersion === DESKTOP_DOMAIN_SCHEMA_VERSION &&
+      (schemaVersion === DESKTOP_DOMAIN_V2_SCHEMA_VERSION &&
         detailsMarkdown === undefined)
     ) {
       return undefined;
@@ -580,7 +644,7 @@ function parseTask<Subtask extends DesktopSnapshotSubtaskV1>(
   issues: DesktopDomainValidationIssue[],
   schemaVersion:
     | typeof DESKTOP_DOMAIN_V1_SCHEMA_VERSION
-    | typeof DESKTOP_DOMAIN_SCHEMA_VERSION,
+    | typeof DESKTOP_DOMAIN_V2_SCHEMA_VERSION,
 ):
   | (Omit<DesktopSnapshotTaskV2, "subtasks"> & { subtasks: Subtask[] })
   | undefined {
@@ -798,6 +862,75 @@ function parseDocument(
     excerpt,
     content,
     linkedTaskIds,
+    backlinks,
+  };
+}
+
+function parseDocumentV3(
+  value: unknown,
+  path: string,
+  issues: DesktopDomainValidationIssue[],
+): DesktopSnapshotDocumentV3 | undefined {
+  if (!isRecord(value)) {
+    addIssue(issues, "invalid-record", path, "Expected an object.");
+    return undefined;
+  }
+  rejectUnknownFields(
+    value,
+    path,
+    [
+      "id",
+      "projectId",
+      "order",
+      "folder",
+      "folderPath",
+      "deletedAt",
+      "isKeyDocument",
+      "title",
+      "excerpt",
+      "content",
+      "backlinks",
+    ],
+    issues,
+  );
+  const id = readString(value, "id", path, issues, { nonEmpty: true });
+  const projectId = readString(value, "projectId", path, issues, {
+    nonEmpty: true,
+  });
+  const order = readOrder(value, "order", path, issues, true);
+  const folder = readString(value, "folder", path, issues);
+  const folderPath = readOptionalFolderPath(value, path, issues);
+  const deletedAt = readString(value, "deletedAt", path, issues, {
+    optional: true,
+  });
+  const isKeyDocument = readBoolean(value, "isKeyDocument", path, issues, true);
+  const title = readString(value, "title", path, issues);
+  const excerpt = readString(value, "excerpt", path, issues);
+  const content = readStringArray(value, "content", path, issues);
+  const backlinks = readStringArray(value, "backlinks", path, issues);
+  if (
+    id === undefined ||
+    projectId === undefined ||
+    folder === undefined ||
+    (value.folderPath !== undefined && folderPath === undefined) ||
+    title === undefined ||
+    excerpt === undefined ||
+    content === undefined ||
+    backlinks === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    id,
+    projectId,
+    ...(order === undefined ? {} : { order }),
+    folder,
+    ...(folderPath === undefined ? {} : { folderPath }),
+    ...(deletedAt === undefined ? {} : { deletedAt }),
+    ...(isKeyDocument === undefined ? {} : { isKeyDocument }),
+    title,
+    excerpt,
+    content,
     backlinks,
   };
 }
@@ -1105,9 +1238,43 @@ function validateIntegrity(
   return issues;
 }
 
+function validateIntegrityV3(
+  snapshot: DesktopDomainSnapshotV3,
+): DesktopDomainValidationIssue[] {
+  const historicalProjection: DesktopDomainSnapshotV2 = {
+    schemaVersion: DESKTOP_DOMAIN_V2_SCHEMA_VERSION,
+    projects: snapshot.projects,
+    overviewDirections: snapshot.overviewDirections,
+    taskGroups: snapshot.taskGroups,
+    taskLists: snapshot.taskLists,
+    tasks: snapshot.tasks,
+    knowledgeFolders: snapshot.knowledgeFolders,
+    documents: snapshot.documents.map((document) => ({
+      ...document,
+      linkedTaskIds: deriveLinkedTaskIdsForDocument(
+        snapshot.tasks,
+        document.id,
+      ),
+    })),
+  };
+  return validateIntegrity(historicalProjection);
+}
+
+export function parseDesktopDomainSnapshot(
+  value: DesktopDomainSnapshot,
+): ParseDesktopDomainSnapshotV3Result;
 export function parseDesktopDomainSnapshot(
   value: unknown,
-): ParseDesktopDomainSnapshotResult {
+): ParseDesktopDomainSnapshotResult;
+export function parseDesktopDomainSnapshot(
+  value: unknown,
+): ParseDesktopDomainSnapshotResult | ParseDesktopDomainSnapshotV3Result {
+  if (
+    isRecord(value) &&
+    value.schemaVersion === DESKTOP_DOMAIN_SCHEMA_VERSION
+  ) {
+    return parseDesktopDomainSnapshotV3(value);
+  }
   const errors: DesktopDomainValidationIssue[] = [];
   if (!isRecord(value)) {
     return {
@@ -1138,7 +1305,7 @@ export function parseDesktopDomainSnapshot(
   );
   const sourceSchemaVersion =
     value.schemaVersion === DESKTOP_DOMAIN_V1_SCHEMA_VERSION ||
-    value.schemaVersion === DESKTOP_DOMAIN_SCHEMA_VERSION
+    value.schemaVersion === DESKTOP_DOMAIN_V2_SCHEMA_VERSION
       ? value.schemaVersion
       : undefined;
   if (sourceSchemaVersion === undefined) {
@@ -1146,7 +1313,7 @@ export function parseDesktopDomainSnapshot(
       errors,
       "unsupported-schema-version",
       "schemaVersion",
-      `Expected schema version ${DESKTOP_DOMAIN_V1_SCHEMA_VERSION} or ${DESKTOP_DOMAIN_SCHEMA_VERSION}.`,
+      `Expected schema version ${DESKTOP_DOMAIN_V1_SCHEMA_VERSION} or ${DESKTOP_DOMAIN_V2_SCHEMA_VERSION}.`,
     );
   }
   const projects = parseCollection(value, "projects", errors, parseProject);
@@ -1178,7 +1345,7 @@ export function parseDesktopDomainSnapshot(
             item,
             path,
             issues,
-            DESKTOP_DOMAIN_SCHEMA_VERSION,
+            DESKTOP_DOMAIN_V2_SCHEMA_VERSION,
           ),
         );
   const knowledgeFolders = parseCollection(
@@ -1229,8 +1396,8 @@ export function parseDesktopDomainSnapshot(
         };
   }
 
-  const snapshot: DesktopDomainSnapshot = {
-    schemaVersion: DESKTOP_DOMAIN_SCHEMA_VERSION,
+  const snapshot: DesktopDomainSnapshotV2 = {
+    schemaVersion: DESKTOP_DOMAIN_V2_SCHEMA_VERSION,
     projects,
     overviewDirections,
     taskGroups,
@@ -1243,6 +1410,141 @@ export function parseDesktopDomainSnapshot(
   return integrityErrors.length > 0
     ? { ok: false, errors: integrityErrors }
     : { ok: true, snapshot, warnings: [] };
+}
+
+export type ParseDesktopDomainSnapshotV3Result =
+  | {
+      ok: true;
+      snapshot: DesktopDomainSnapshot;
+      warnings: DesktopDomainValidationIssue[];
+    }
+  | { ok: false; errors: DesktopDomainValidationIssue[] };
+
+export function parseDesktopDomainSnapshotV3(
+  value: unknown,
+): ParseDesktopDomainSnapshotV3Result {
+  const errors: DesktopDomainValidationIssue[] = [];
+  if (!isRecord(value)) {
+    return {
+      ok: false,
+      errors: [
+        {
+          code: "invalid-snapshot",
+          path: "$",
+          message: "Expected a snapshot object.",
+        },
+      ],
+    };
+  }
+  rejectUnknownFields(
+    value,
+    "$",
+    [
+      "schemaVersion",
+      "projects",
+      "overviewDirections",
+      "taskGroups",
+      "taskLists",
+      "tasks",
+      "knowledgeFolders",
+      "documents",
+    ],
+    errors,
+  );
+  if (value.schemaVersion !== DESKTOP_DOMAIN_SCHEMA_VERSION) {
+    addIssue(
+      errors,
+      "unsupported-schema-version",
+      "schemaVersion",
+      `Expected schema version ${DESKTOP_DOMAIN_SCHEMA_VERSION}.`,
+    );
+  }
+  const projects = parseCollection(value, "projects", errors, parseProject);
+  const overviewDirections = parseCollection(
+    value,
+    "overviewDirections",
+    errors,
+    parseDirection,
+  );
+  const taskGroups = parseCollection(
+    value,
+    "taskGroups",
+    errors,
+    parseTaskGroup,
+  );
+  const taskLists = parseCollection(value, "taskLists", errors, parseTaskList);
+  const tasks = parseCollection(value, "tasks", errors, (item, path, issues) =>
+    parseTask<DesktopSnapshotSubtaskV2>(
+      item,
+      path,
+      issues,
+      DESKTOP_DOMAIN_V2_SCHEMA_VERSION,
+    ),
+  );
+  const knowledgeFolders = parseCollection(
+    value,
+    "knowledgeFolders",
+    errors,
+    parseKnowledgeFolder,
+  );
+  const documents = parseCollection(
+    value,
+    "documents",
+    errors,
+    parseDocumentV3,
+  );
+  if (
+    errors.length > 0 ||
+    projects === undefined ||
+    overviewDirections === undefined ||
+    taskGroups === undefined ||
+    taskLists === undefined ||
+    tasks === undefined ||
+    knowledgeFolders === undefined ||
+    documents === undefined
+  ) {
+    return { ok: false, errors };
+  }
+  const snapshot: DesktopDomainSnapshot = {
+    schemaVersion: DESKTOP_DOMAIN_SCHEMA_VERSION,
+    projects,
+    overviewDirections,
+    taskGroups,
+    taskLists,
+    tasks: tasks as DesktopSnapshotTaskV3[],
+    knowledgeFolders,
+    documents,
+  };
+  const integrityErrors = validateIntegrityV3(snapshot);
+  return integrityErrors.length > 0
+    ? { ok: false, errors: integrityErrors }
+    : { ok: true, snapshot, warnings: [] };
+}
+
+export type ParseDesktopSnapshotForRuntimeResult =
+  | {
+      ok: true;
+      snapshot: DesktopDomainSnapshot;
+      warnings: DesktopDomainValidationIssue[];
+    }
+  | { ok: false; errors: DesktopDomainValidationIssue[] };
+
+export function parseDesktopSnapshotForRuntime(
+  value: unknown,
+): ParseDesktopSnapshotForRuntimeResult {
+  if (
+    isRecord(value) &&
+    value.schemaVersion === DESKTOP_DOMAIN_SCHEMA_VERSION
+  ) {
+    return parseDesktopDomainSnapshotV3(value);
+  }
+  const historical = parseDesktopDomainSnapshot(value);
+  if (!historical.ok) return historical;
+  return {
+    ok: true,
+    snapshot: normalizeDesktopDomainSnapshot(historical.snapshot),
+    warnings: historical.warnings,
+  };
 }
 
 function deriveNextNumber(ids: string[], prefixes: string[]): number {

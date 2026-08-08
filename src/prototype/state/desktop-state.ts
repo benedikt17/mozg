@@ -929,16 +929,6 @@ export function desktopPrototypeReducer(
       return {
         ...state,
         tasks: state.tasks.filter((item) => item.id !== task.id),
-        documents: state.documents.map((document) =>
-          document.linkedTaskIds.includes(task.id)
-            ? {
-                ...document,
-                linkedTaskIds: document.linkedTaskIds.filter(
-                  (taskId) => taskId !== task.id,
-                ),
-              }
-            : document,
-        ),
         activeSection: deletingOverviewFocus ? "overview" : state.activeSection,
         selectedTaskId:
           state.selectedTaskId === task.id ? null : state.selectedTaskId,

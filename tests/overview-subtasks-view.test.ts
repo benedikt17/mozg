@@ -270,7 +270,7 @@ describe("Overview task material selection", () => {
     });
   });
 
-  it("does not include material or Split view state in schema v2 snapshots", () => {
+  it("does not include material or Split view state in schema v3 snapshots", () => {
     let state = desktopPrototypeReducer(freshState(), {
       type: "open-overview-task-subtasks",
       taskId: "luko-world-rules",
@@ -281,7 +281,7 @@ describe("Overview task material selection", () => {
     });
     const snapshot = createDesktopDomainSnapshot(state);
 
-    expect(snapshot.schemaVersion).toBe(2);
+    expect(snapshot.schemaVersion).toBe(3);
     expect("overviewTaskDetailMaterial" in snapshot).toBe(false);
     expect("overviewTaskDetailSplit" in snapshot).toBe(false);
     expect("overviewTaskDetailContextPanel" in snapshot).toBe(false);

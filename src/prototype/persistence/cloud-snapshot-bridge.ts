@@ -1,7 +1,8 @@
 import {
   DESKTOP_DOMAIN_V1_SCHEMA_VERSION,
+  DESKTOP_DOMAIN_V2_SCHEMA_VERSION,
   DESKTOP_DOMAIN_SCHEMA_VERSION,
-  parseDesktopDomainSnapshot,
+  parseDesktopSnapshotForRuntime,
   type DesktopDomainSnapshot,
 } from "@/prototype/persistence/domain-snapshot";
 
@@ -53,6 +54,7 @@ export function parseDesktopCloudSnapshotRow(
   }
   if (
     row.schema_version !== DESKTOP_DOMAIN_V1_SCHEMA_VERSION &&
+    row.schema_version !== DESKTOP_DOMAIN_V2_SCHEMA_VERSION &&
     row.schema_version !== DESKTOP_DOMAIN_SCHEMA_VERSION
   ) {
     return { kind: "unsupported-schema", schemaVersion: row.schema_version };
@@ -60,7 +62,7 @@ export function parseDesktopCloudSnapshotRow(
   if (snapshotSchemaVersion(row.snapshot) !== row.schema_version) {
     return { kind: "invalid-snapshot" };
   }
-  const parsed = parseDesktopDomainSnapshot(row.snapshot);
+  const parsed = parseDesktopSnapshotForRuntime(row.snapshot);
   if (!parsed.ok) return { kind: "invalid-snapshot" };
   return {
     kind: "ready",

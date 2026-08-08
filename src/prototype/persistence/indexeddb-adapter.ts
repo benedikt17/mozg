@@ -1,6 +1,9 @@
 import {
+  DESKTOP_DOMAIN_V1_SCHEMA_VERSION,
+  DESKTOP_DOMAIN_V2_SCHEMA_VERSION,
   DESKTOP_DOMAIN_SCHEMA_VERSION,
-  parseDesktopDomainSnapshot,
+  parseDesktopDomainSnapshotV3,
+  parseDesktopSnapshotForRuntime,
   type DesktopDomainSnapshot,
 } from "@/prototype/persistence/domain-snapshot";
 import {
@@ -62,7 +65,7 @@ function requireExpectedRevision(revision: number): void {
 function validateSnapshotForWrite(
   snapshot: DesktopDomainSnapshot,
 ): DesktopDomainSnapshot {
-  const parsed = parseDesktopDomainSnapshot(snapshot);
+  const parsed = parseDesktopDomainSnapshotV3(snapshot);
   if (!parsed.ok) {
     throw new DesktopPersistenceError(
       "invalid-snapshot",
@@ -120,7 +123,7 @@ function parseStoredEnvelope(
       "Stored desktop domain envelope has an invalid savedAt value.",
     );
   }
-  const parsed = parseDesktopDomainSnapshot(value.snapshot);
+  const parsed = parseDesktopSnapshotForRuntime(value.snapshot);
   if (!parsed.ok) {
     const storedSchemaVersion =
       isRecord(value.snapshot) &&
@@ -130,7 +133,8 @@ function parseStoredEnvelope(
     const unsupportedDomainVersion =
       storedSchemaVersion !== undefined &&
       storedSchemaVersion !== DESKTOP_DOMAIN_SCHEMA_VERSION &&
-      storedSchemaVersion !== 1;
+      storedSchemaVersion !== DESKTOP_DOMAIN_V1_SCHEMA_VERSION &&
+      storedSchemaVersion !== DESKTOP_DOMAIN_V2_SCHEMA_VERSION;
     throw new DesktopPersistenceError(
       unsupportedDomainVersion ? "unsupported-version" : "corrupt-data",
       unsupportedDomainVersion

@@ -3,8 +3,10 @@ import fixture from "./fixtures/desktop-domain-snapshot-v1.json";
 import v2Fixture from "./fixtures/desktop-domain-snapshot-v2.json";
 import {
   createDesktopDomainSnapshot,
+  normalizeDesktopDomainSnapshot,
   parseDesktopDomainSnapshot,
 } from "@/prototype/persistence/domain-snapshot";
+import { getLinkedTaskIdsForDocument } from "@/prototype/state/selectors";
 import { parseDesktopCloudSnapshotRow } from "@/prototype/persistence/cloud-snapshot-bridge";
 import {
   desktopPrototypeReducer,
@@ -24,9 +26,12 @@ describe("desktop snapshot v1 compatibility fixture", () => {
 
     const hydrated = desktopPrototypeReducer(initialDesktopPrototypeState, {
       type: "hydrate-domain",
-      snapshot: parsed.snapshot,
+      snapshot: normalizeDesktopDomainSnapshot(parsed.snapshot),
     });
-    expect(createDesktopDomainSnapshot(hydrated)).toEqual(parsed.snapshot);
+    expect(createDesktopDomainSnapshot(hydrated)).toMatchObject({
+      schemaVersion: 3,
+      tasks: parsed.snapshot.tasks,
+    });
   });
 
   it("takes the identical domain contract through the cloud bridge", () => {
@@ -48,8 +53,8 @@ describe("desktop snapshot v1 compatibility fixture", () => {
       expect.objectContaining({
         kind: "ready",
         bootstrap: expect.objectContaining({
-          schemaVersion: 2,
-          snapshot: parsed.snapshot,
+          schemaVersion: 3,
+          snapshot: expect.objectContaining({ schemaVersion: 3 }),
         }),
       }),
     );
@@ -61,5 +66,42 @@ describe("desktop snapshot v1 compatibility fixture", () => {
     expect(parsed).toMatchObject({ ok: true, warnings: [] });
     if (!parsed.ok) return;
     expect(parsed.snapshot).toEqual(v2Fixture);
+  });
+
+  it("keeps the V2 task-owned relation when the reverse side is empty", () => {
+    const snapshot = structuredClone(v2Fixture);
+    snapshot.documents[0]!.linkedTaskIds = [];
+
+    const parsed = parseDesktopDomainSnapshot(snapshot);
+    expect(parsed).toMatchObject({ ok: true, warnings: [] });
+    if (!parsed.ok) return;
+
+    const hydrated = desktopPrototypeReducer(initialDesktopPrototypeState, {
+      type: "hydrate-domain",
+      snapshot: normalizeDesktopDomainSnapshot(parsed.snapshot),
+    });
+
+    expect(hydrated.tasks[0]?.linkedDocumentIds).toEqual(["document-v2"]);
+    expect(getLinkedTaskIdsForDocument(hydrated, "document-v2")).toEqual([
+      "task-v2",
+    ]);
+  });
+
+  it("does not resurrect a V2 reverse-only relation", () => {
+    const snapshot = structuredClone(v2Fixture);
+    snapshot.tasks[0]!.linkedDocumentIds = [];
+
+    const parsed = parseDesktopDomainSnapshot(snapshot);
+    expect(parsed).toMatchObject({ ok: true, warnings: [] });
+    if (!parsed.ok) return;
+
+    const hydrated = desktopPrototypeReducer(initialDesktopPrototypeState, {
+      type: "hydrate-domain",
+      snapshot: normalizeDesktopDomainSnapshot(parsed.snapshot),
+    });
+
+    expect(hydrated.tasks[0]?.linkedDocumentIds).toEqual([]);
+    expect(getLinkedTaskIdsForDocument(hydrated, "document-v2")).toEqual([]);
+    expect(hydrated.documents[0]).not.toHaveProperty("linkedTaskIds");
   });
 });

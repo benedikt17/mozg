@@ -13,7 +13,7 @@ const { CloudDesktopPersistenceAdapter } =
 const bootstrap = {
   workspaceId: "workspace-1",
   workspaceName: "Workspace",
-  schemaVersion: 2,
+  schemaVersion: 3,
   revision: 4,
   updatedAt: "2026-07-29T00:00:00.000Z",
   snapshot: createDesktopDomainSnapshot(initialDesktopPrototypeState),
@@ -35,7 +35,7 @@ describe("CloudDesktopPersistenceAdapter", () => {
     expect(rpc).toHaveBeenCalledWith("save_workspace_snapshot", {
       target_workspace_id: "workspace-1",
       target_expected_revision: 4,
-      target_schema_version: 2,
+      target_schema_version: 3,
       target_snapshot: bootstrap.snapshot,
     });
   });

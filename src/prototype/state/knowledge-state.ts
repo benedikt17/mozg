@@ -503,7 +503,6 @@ export function createKnowledgeDocument(
     title: "Без названия",
     excerpt: "",
     content: [],
-    linkedTaskIds: [],
     backlinks: [],
   };
   const nextState = {
@@ -1033,7 +1032,6 @@ function cloneDocument(document: PrototypeDocument): PrototypeDocument {
     backlinks: [...document.backlinks],
     content: [...document.content],
     folderPath: document.folderPath ? [...document.folderPath] : undefined,
-    linkedTaskIds: [...document.linkedTaskIds],
   };
 }
 

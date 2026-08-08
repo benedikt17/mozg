@@ -449,14 +449,14 @@ describe("IndexedDbDesktopPersistenceAdapter", () => {
       storageKey: STORAGE_KEY,
       revision: 1,
       savedAt: SAVED_AT,
-      snapshot: { ...snapshot(), schemaVersion: 3 },
+      snapshot: { ...snapshot(), schemaVersion: 4 },
     });
     await expect(adapter.loadWorkspace(STORAGE_KEY)).rejects.toSatisfy(
       (error: unknown) => expectPersistenceError(error, "unsupported-version"),
     );
   });
 
-  it("loads a v1 envelope as v2 and writes the next save in v2", async () => {
+  it("loads a v1 envelope as v3 and writes the next save in v3", async () => {
     await adapter.loadWorkspace(STORAGE_KEY);
     factory.seed(DATABASE_NAME, STORAGE_KEY, {
       storageVersion: MOZG_DESKTOP_STORAGE_VERSION,
@@ -469,14 +469,14 @@ describe("IndexedDbDesktopPersistenceAdapter", () => {
     const loaded = await adapter.loadWorkspace(STORAGE_KEY);
     expect(loaded).toMatchObject({ kind: "loaded", revision: 1 });
     if (loaded.kind !== "loaded") return;
-    expect(loaded.snapshot.schemaVersion).toBe(2);
+    expect(loaded.snapshot.schemaVersion).toBe(3);
     expect(loaded.snapshot.tasks[0]?.subtasks[0]?.detailsMarkdown).toBe("");
 
     await adapter.saveWorkspace(STORAGE_KEY, loaded.snapshot, 1);
     expect(factory.raw(DATABASE_NAME, STORAGE_KEY)).toMatchObject({
       revision: 2,
       snapshot: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         tasks: [{ subtasks: [{ detailsMarkdown: "" }] }],
       },
     });
@@ -577,7 +577,7 @@ describe("IndexedDbDesktopPersistenceAdapter", () => {
       storageKey: STORAGE_KEY,
       revision: 1,
       savedAt: SAVED_AT,
-      snapshot: { schemaVersion: 2 },
+      snapshot: { schemaVersion: 3 },
     });
   });
 });
