@@ -1,47 +1,41 @@
+import type { DesktopPrototypeState } from "@/prototype/state/types";
 import type {
-  PrototypeDocument,
-  PrototypeOverviewDirection,
-  PrototypeProject,
-  PrototypeSubtask,
-  PrototypeTask,
-  PrototypeTaskGroup,
-  PrototypeTaskLink,
-  PrototypeTaskList,
-} from "@/prototype/desktop-mock-data";
-import type {
-  DesktopPrototypeState,
-  PrototypeKnowledgeFolder,
-} from "@/prototype/state/types";
+  DesktopDomainSnapshotV1,
+  DesktopDomainSnapshotV2,
+  DesktopSnapshotDocument,
+  DesktopSnapshotKnowledgeFolder,
+  DesktopSnapshotOverviewDirection,
+  DesktopSnapshotProject,
+  DesktopSnapshotSubtaskV1,
+  DesktopSnapshotSubtaskV2,
+  DesktopSnapshotTaskGroup,
+  DesktopSnapshotTaskLink,
+  DesktopSnapshotTaskList,
+  DesktopSnapshotTaskV1,
+  DesktopSnapshotTaskV2,
+} from "@/prototype/persistence/desktop-snapshot-contracts";
+
+export type {
+  DesktopDomainSnapshotV1,
+  DesktopDomainSnapshotV2,
+  DesktopSnapshotDocument,
+  DesktopSnapshotKnowledgeFolder,
+  DesktopSnapshotOverviewDirection,
+  DesktopSnapshotProject,
+  DesktopSnapshotSubtaskV1,
+  DesktopSnapshotSubtaskV2,
+  DesktopSnapshotTaskGroup,
+  DesktopSnapshotTaskLink,
+  DesktopSnapshotTaskList,
+  DesktopSnapshotTaskV1,
+  DesktopSnapshotTaskV2,
+} from "@/prototype/persistence/desktop-snapshot-contracts";
 
 export const DESKTOP_DOMAIN_V1_SCHEMA_VERSION = 1 as const;
 export const DESKTOP_DOMAIN_SCHEMA_VERSION = 2 as const;
 
-export type PrototypeSubtaskV1 = Omit<PrototypeSubtask, "detailsMarkdown">;
-
-export type PrototypeTaskV1 = Omit<PrototypeTask, "subtasks"> & {
-  subtasks: PrototypeSubtaskV1[];
-};
-
-export type DesktopDomainSnapshotV1 = Omit<
-  DesktopDomainSnapshot,
-  "schemaVersion" | "tasks"
-> & {
-  schemaVersion: typeof DESKTOP_DOMAIN_V1_SCHEMA_VERSION;
-  tasks: PrototypeTaskV1[];
-};
-
-export type DesktopDomainSnapshot = {
-  schemaVersion: typeof DESKTOP_DOMAIN_SCHEMA_VERSION;
-  projects: PrototypeProject[];
-  overviewDirections: PrototypeOverviewDirection[];
-  taskGroups: PrototypeTaskGroup[];
-  taskLists: PrototypeTaskList[];
-  tasks: PrototypeTask[];
-  knowledgeFolders: PrototypeKnowledgeFolder[];
-  documents: PrototypeDocument[];
-};
-
-export type DesktopDomainSnapshotV2 = DesktopDomainSnapshot;
+/** Runtime persistence uses the frozen V2 wire shape. */
+export type DesktopDomainSnapshot = DesktopDomainSnapshotV2;
 
 export type DesktopDomainCollections = Omit<
   DesktopDomainSnapshot,
@@ -74,19 +68,23 @@ export type DerivedPrototypeCounters = Pick<
 
 type UnknownRecord = Record<string, unknown>;
 
-function cloneTaskLink(link: PrototypeTaskLink): PrototypeTaskLink {
+function cloneTaskLink(link: DesktopSnapshotTaskLink): DesktopSnapshotTaskLink {
   return { ...link };
 }
 
-function cloneSubtask(subtask: PrototypeSubtask): PrototypeSubtask {
+function cloneSubtask(
+  subtask: DesktopSnapshotSubtaskV2,
+): DesktopSnapshotSubtaskV2 {
   return { ...subtask };
 }
 
-function cloneSubtaskV1(subtask: PrototypeSubtaskV1): PrototypeSubtaskV1 {
+function cloneSubtaskV1(
+  subtask: DesktopSnapshotSubtaskV1,
+): DesktopSnapshotSubtaskV1 {
   return { ...subtask };
 }
 
-function cloneTask(task: PrototypeTask): PrototypeTask {
+function cloneTask(task: DesktopSnapshotTaskV2): DesktopSnapshotTaskV2 {
   return {
     ...task,
     links: task.links.map(cloneTaskLink),
@@ -95,7 +93,7 @@ function cloneTask(task: PrototypeTask): PrototypeTask {
   };
 }
 
-function cloneTaskV1(task: PrototypeTaskV1): PrototypeTaskV1 {
+function cloneTaskV1(task: DesktopSnapshotTaskV1): DesktopSnapshotTaskV1 {
   return {
     ...task,
     links: task.links.map(cloneTaskLink),
@@ -104,7 +102,9 @@ function cloneTaskV1(task: PrototypeTaskV1): PrototypeTaskV1 {
   };
 }
 
-function cloneDocument(document: PrototypeDocument): PrototypeDocument {
+function cloneDocument(
+  document: DesktopSnapshotDocument,
+): DesktopSnapshotDocument {
   return {
     ...document,
     ...(document.folderPath === undefined
@@ -117,8 +117,8 @@ function cloneDocument(document: PrototypeDocument): PrototypeDocument {
 }
 
 function cloneKnowledgeFolder(
-  folder: PrototypeKnowledgeFolder,
-): PrototypeKnowledgeFolder {
+  folder: DesktopSnapshotKnowledgeFolder,
+): DesktopSnapshotKnowledgeFolder {
   return { ...folder, path: [...folder.path] };
 }
 
@@ -330,7 +330,7 @@ function parseProject(
   value: unknown,
   path: string,
   issues: DesktopDomainValidationIssue[],
-): PrototypeProject | undefined {
+): DesktopSnapshotProject | undefined {
   if (!isRecord(value)) {
     addIssue(issues, "invalid-record", path, "Expected an object.");
     return undefined;
@@ -357,7 +357,7 @@ function parseDirection(
   value: unknown,
   path: string,
   issues: DesktopDomainValidationIssue[],
-): PrototypeOverviewDirection | undefined {
+): DesktopSnapshotOverviewDirection | undefined {
   if (!isRecord(value)) {
     addIssue(issues, "invalid-record", path, "Expected an object.");
     return undefined;
@@ -398,7 +398,7 @@ function parseTaskGroup(
   value: unknown,
   path: string,
   issues: DesktopDomainValidationIssue[],
-): PrototypeTaskGroup | undefined {
+): DesktopSnapshotTaskGroup | undefined {
   if (!isRecord(value)) {
     addIssue(issues, "invalid-record", path, "Expected an object.");
     return undefined;
@@ -429,7 +429,7 @@ function parseTaskList(
   value: unknown,
   path: string,
   issues: DesktopDomainValidationIssue[],
-): PrototypeTaskList | undefined {
+): DesktopSnapshotTaskList | undefined {
   if (!isRecord(value)) {
     addIssue(issues, "invalid-record", path, "Expected an object.");
     return undefined;
@@ -487,7 +487,7 @@ function parseTaskLinks(
   value: unknown,
   path: string,
   issues: DesktopDomainValidationIssue[],
-): PrototypeTaskLink[] | undefined {
+): DesktopSnapshotTaskLink[] | undefined {
   if (!Array.isArray(value)) {
     addIssue(issues, "invalid-array", path, "Expected an array.");
     return undefined;
@@ -507,11 +507,11 @@ function parseTaskLinks(
       : undefined;
   });
   return links.every((link) => link !== undefined)
-    ? (links as PrototypeTaskLink[])
+    ? (links as DesktopSnapshotTaskLink[])
     : undefined;
 }
 
-function parseSubtasks<Subtask extends PrototypeSubtaskV1>(
+function parseSubtasks<Subtask extends DesktopSnapshotSubtaskV1>(
   value: unknown,
   path: string,
   issues: DesktopDomainValidationIssue[],
@@ -566,22 +566,24 @@ function parseSignal(
   value: unknown,
   path: string,
   issues: DesktopDomainValidationIssue[],
-): PrototypeTask["signal"] | undefined {
+): DesktopSnapshotTaskV2["signal"] | undefined {
   if (!["none", "green", "yellow", "red"].includes(String(value))) {
     addIssue(issues, "invalid-enum", path, "Expected a valid task signal.");
     return undefined;
   }
-  return value as PrototypeTask["signal"];
+  return value as DesktopSnapshotTaskV2["signal"];
 }
 
-function parseTask<Subtask extends PrototypeSubtaskV1>(
+function parseTask<Subtask extends DesktopSnapshotSubtaskV1>(
   value: unknown,
   path: string,
   issues: DesktopDomainValidationIssue[],
   schemaVersion:
     | typeof DESKTOP_DOMAIN_V1_SCHEMA_VERSION
     | typeof DESKTOP_DOMAIN_SCHEMA_VERSION,
-): (Omit<PrototypeTask, "subtasks"> & { subtasks: Subtask[] }) | undefined {
+):
+  | (Omit<DesktopSnapshotTaskV2, "subtasks"> & { subtasks: Subtask[] })
+  | undefined {
   if (!isRecord(value)) {
     addIssue(issues, "invalid-record", path, "Expected an object.");
     return undefined;
@@ -706,7 +708,7 @@ function parseKnowledgeFolder(
   value: unknown,
   path: string,
   issues: DesktopDomainValidationIssue[],
-): PrototypeKnowledgeFolder | undefined {
+): DesktopSnapshotKnowledgeFolder | undefined {
   if (!isRecord(value)) {
     addIssue(issues, "invalid-record", path, "Expected an object.");
     return undefined;
@@ -729,7 +731,7 @@ function parseDocument(
   value: unknown,
   path: string,
   issues: DesktopDomainValidationIssue[],
-): PrototypeDocument | undefined {
+): DesktopSnapshotDocument | undefined {
   if (!isRecord(value)) {
     addIssue(issues, "invalid-record", path, "Expected an object.");
     return undefined;
@@ -843,7 +845,7 @@ function validateUniqueIds<T extends { id: string }>(
 }
 
 function validateNestedIds(
-  task: PrototypeTask,
+  task: DesktopSnapshotTaskV2,
   index: number,
   issues: DesktopDomainValidationIssue[],
 ): void {
@@ -864,7 +866,7 @@ function validateNestedIds(
 }
 
 function validateIntegrity(
-  snapshot: DesktopDomainSnapshot,
+  snapshot: DesktopDomainSnapshotV2,
 ): DesktopDomainValidationIssue[] {
   const issues: DesktopDomainValidationIssue[] = [];
   validateUniqueIds(snapshot.projects, "projects", issues);
@@ -1164,7 +1166,7 @@ export function parseDesktopDomainSnapshot(
   const tasks =
     sourceSchemaVersion === DESKTOP_DOMAIN_V1_SCHEMA_VERSION
       ? parseCollection(value, "tasks", errors, (item, path, issues) =>
-          parseTask<PrototypeSubtaskV1>(
+          parseTask<DesktopSnapshotSubtaskV1>(
             item,
             path,
             issues,
@@ -1172,7 +1174,7 @@ export function parseDesktopDomainSnapshot(
           ),
         )
       : parseCollection(value, "tasks", errors, (item, path, issues) =>
-          parseTask<PrototypeSubtask>(
+          parseTask<DesktopSnapshotSubtaskV2>(
             item,
             path,
             issues,
@@ -1205,7 +1207,7 @@ export function parseDesktopDomainSnapshot(
       overviewDirections,
       taskGroups,
       taskLists,
-      tasks: tasks as PrototypeTaskV1[],
+      tasks: tasks as DesktopSnapshotTaskV1[],
       knowledgeFolders,
       documents,
     };
@@ -1233,7 +1235,7 @@ export function parseDesktopDomainSnapshot(
     overviewDirections,
     taskGroups,
     taskLists,
-    tasks: tasks as PrototypeTask[],
+    tasks: tasks as DesktopSnapshotTaskV2[],
     knowledgeFolders,
     documents,
   };
