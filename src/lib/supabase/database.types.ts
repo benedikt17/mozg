@@ -506,6 +506,41 @@ export type Database = {
         }
         Returns: undefined
       }
+      assert_desktop_snapshot_v3_keys: {
+        Args: {
+          allowed_keys: string[]
+          record_value: Json
+          required_keys: string[]
+        }
+        Returns: undefined
+      }
+      assert_desktop_snapshot_v3_order: {
+        Args: {
+          field_name: string
+          record_value: Json
+          required_value?: boolean
+        }
+        Returns: undefined
+      }
+      assert_desktop_snapshot_v3_string: {
+        Args: {
+          field_name: string
+          non_empty?: boolean
+          record_value: Json
+          required_value?: boolean
+        }
+        Returns: undefined
+      }
+      assert_desktop_snapshot_v3_string_array: {
+        Args: {
+          field_name: string
+          non_empty_array?: boolean
+          non_empty_items?: boolean
+          record_value: Json
+          required_value?: boolean
+        }
+        Returns: undefined
+      }
       create_canvas:
         | {
             Args: { target_title: string; target_workspace_id: string }
