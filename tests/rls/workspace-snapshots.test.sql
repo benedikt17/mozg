@@ -129,6 +129,14 @@ as $$
   select '{"schemaVersion":2,"projects":[{"id":"project-1","name":"","shortName":"","description":""}],"overviewDirections":[{"id":"direction-1","projectId":"project-1","title":"","order":0}],"taskGroups":[{"id":"user-group-1","projectId":"project-1","title":"","order":0,"kind":"user"}],"taskLists":[{"id":"user-list-1","projectId":"project-1","groupId":"user-group-1","title":"","order":0,"kind":"user"}],"tasks":[{"id":"user-task-1","projectId":"project-1","title":"","overviewDirectionId":"","overviewOrder":0,"taskListOrder":0,"listId":"user-list-1","showOnOverview":false,"completedAt":null,"signal":"none","starred":false,"myDay":false,"links":[],"linkedDocumentIds":[],"subtasks":[]}],"knowledgeFolders":[],"documents":[]}'::jsonb
 $$;
 
+create function public.test_valid_desktop_snapshot_v3()
+returns jsonb
+language sql
+immutable
+as $$
+  select '{"schemaVersion":3,"projects":[{"id":"project-1","name":"","shortName":"","description":""}],"overviewDirections":[{"id":"direction-1","projectId":"project-1","title":"","order":0}],"taskGroups":[{"id":"group-1","projectId":"project-1","title":"","order":0,"kind":"system"}],"taskLists":[{"id":"list-1","projectId":"project-1","groupId":"group-1","title":"","order":0,"kind":"system","overviewDirectionId":"direction-1"}],"tasks":[{"id":"task-1","projectId":"project-1","title":"","overviewDirectionId":"direction-1","overviewOrder":0,"taskListOrder":0,"listId":"list-1","showOnOverview":false,"completedAt":null,"signal":"none","starred":false,"myDay":false,"links":[],"linkedDocumentIds":["document-1"],"subtasks":[{"id":"subtask-1","title":"Duplicate titles are valid","done":false,"detailsMarkdown":"- First point\\n\\n[Reference](https://example.test/details)"}]}],"knowledgeFolders":[],"documents":[{"id":"document-1","projectId":"project-1","folder":"","folderPath":[],"isKeyDocument":false,"title":"","excerpt":"","content":[],"backlinks":[]}]}'::jsonb
+$$;
+
 create function public.test_reject_desktop_snapshot_v2(target jsonb, version smallint default 2)
 returns void
 language plpgsql
@@ -137,6 +145,23 @@ begin
   perform * from public.save_workspace_snapshot(
     '22000000-0000-0000-0000-000000000001'::uuid,
     2::bigint,
+    version,
+    target
+  );
+  raise exception 'expected desktop snapshot validation failure';
+exception when sqlstate '22023' then
+  null;
+end;
+$$;
+
+create function public.test_reject_desktop_snapshot_v3(target jsonb, version smallint default 3)
+returns void
+language plpgsql
+as $$
+begin
+  perform * from public.save_workspace_snapshot(
+    '22000000-0000-0000-0000-000000000001'::uuid,
+    4::bigint,
     version,
     target
   );
@@ -158,6 +183,17 @@ select has_function(
   'initialize_workspace_snapshot',
   array['uuid', 'smallint', 'jsonb'],
   'owner-only snapshot initializer exists'
+);
+select has_function(
+  'public',
+  'validate_desktop_snapshot_v3',
+  array['smallint', 'jsonb'],
+  'desktop snapshot v3 validator exists'
+);
+select ok(
+  pg_get_functiondef('public.validate_desktop_snapshot_v3(smallint,jsonb)'::regprocedure) not ilike '%validate_desktop_snapshot_v1%'
+    and pg_get_functiondef('public.validate_desktop_snapshot_v3(smallint,jsonb)'::regprocedure) not ilike '%validate_desktop_snapshot_v2%',
+  'desktop snapshot v3 validator is isolated from historical validators'
 );
 select has_trigger(
   'public',
@@ -232,7 +268,8 @@ values
   ('22000000-0000-0000-0000-000000000001', 'Snapshot workspace'),
   ('22000000-0000-0000-0000-000000000002', 'Disposable workspace'),
   ('22000000-0000-0000-0000-000000000003', 'Initializer workspace'),
-  ('22000000-0000-0000-0000-000000000004', 'Deleted article workspace');
+  ('22000000-0000-0000-0000-000000000004', 'Deleted article workspace'),
+  ('22000000-0000-0000-0000-000000000005', 'V3 initializer workspace');
 
 insert into public.workspace_members (workspace_id, user_id, role)
 values
@@ -241,7 +278,8 @@ values
   ('22000000-0000-0000-0000-000000000001', '12000000-0000-0000-0000-000000000003', 'viewer'),
   ('22000000-0000-0000-0000-000000000002', '12000000-0000-0000-0000-000000000001', 'owner'),
   ('22000000-0000-0000-0000-000000000003', '12000000-0000-0000-0000-000000000001', 'owner'),
-  ('22000000-0000-0000-0000-000000000004', '12000000-0000-0000-0000-000000000001', 'owner');
+  ('22000000-0000-0000-0000-000000000004', '12000000-0000-0000-0000-000000000001', 'owner'),
+  ('22000000-0000-0000-0000-000000000005', '12000000-0000-0000-0000-000000000001', 'owner');
 
 insert into public.workspace_snapshots (workspace_id, snapshot)
 values
@@ -325,6 +363,30 @@ select is(
   (select revision from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000003'),
   1::bigint,
   'idempotent initializer does not overwrite the existing snapshot'
+);
+select lives_ok(
+  $$ select public.initialize_workspace_snapshot('22000000-0000-0000-0000-000000000005'::uuid, 3::smallint, public.test_valid_desktop_snapshot_v3()) $$,
+  'owner initializes a validated v3 snapshot through the RPC'
+);
+select is(
+  (select schema_version from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000005'),
+  3::smallint,
+  'v3 initializer stores schema version three'
+);
+select lives_ok(
+  $$ select public.initialize_workspace_snapshot('22000000-0000-0000-0000-000000000003'::uuid, 3::smallint, public.test_valid_desktop_snapshot_v3()) $$,
+  'initializer does not overwrite an existing v2 snapshot with v3'
+);
+select is(
+  (select schema_version from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000003'),
+  2::smallint,
+  'existing initializer snapshot remains at its original schema version'
+);
+select throws_ok(
+  $$ select public.initialize_workspace_snapshot('22000000-0000-0000-0000-000000000002'::uuid, 1::smallint, public.test_valid_desktop_snapshot_v1()) $$,
+  '22023',
+  'desktop snapshot schema version is not supported',
+  'initializer preserves the previous unsupported v1 behavior'
 );
 select is(
   (select revision from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'),
@@ -542,6 +604,75 @@ select is(
   (select revision from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'),
   4::bigint,
   'v2 validation and stale save attempts leave revision unchanged'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v3(jsonb_set(public.test_valid_desktop_snapshot_v3(), '{documents,0,linkedTaskIds}', '["task-1"]'::jsonb)) $$,
+  'v3 rejects the obsolete reverse document relation field'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v3(jsonb_set(public.test_valid_desktop_snapshot_v3(), '{tasks,0,linkedDocumentIds}', '["missing-document"]'::jsonb)) $$,
+  'v3 rejects dangling task-owned document relations'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v3(jsonb_set(jsonb_set(public.test_valid_desktop_snapshot_v3(), '{projects}', '[{"id":"project-1","name":"","shortName":"","description":""},{"id":"project-2","name":"","shortName":"","description":""}]'::jsonb), '{documents,0,projectId}', '"project-2"'::jsonb)) $$,
+  'v3 rejects task-owned relations that cross project boundaries'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v3(jsonb_set(public.test_valid_desktop_snapshot_v3(), '{tasks,0,linkedDocumentIds}', '["document-1","document-1"]'::jsonb)) $$,
+  'v3 rejects duplicate task-owned document relations'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v3(jsonb_set(public.test_valid_desktop_snapshot_v3(), '{schemaVersion}', '"3"'::jsonb)) $$,
+  'v3 rejects string schema version three'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v3(jsonb_set(public.test_valid_desktop_snapshot_v3(), '{schemaVersion}', '4.0'::jsonb)) $$,
+  'v3 rejects other numeric schema versions'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v3(jsonb_set(public.test_valid_desktop_snapshot_v3(), '{knowledgeFolders}', '[{"id":"project-2:folder","projectId":"project-1","path":["Folder"]}]'::jsonb)) $$,
+  'v3 rejects a knowledge folder with an inconsistent derived project prefix'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v3(jsonb_set(public.test_valid_desktop_snapshot_v3(), '{knowledgeFolders}', '[{"id":"project-1:folder-one","projectId":"project-1","path":["Folder"]},{"id":"project-1:folder-two","projectId":"project-1","path":["Folder"]}]'::jsonb)) $$,
+  'v3 rejects duplicate materialized knowledge folder paths'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v3(jsonb_set(public.test_valid_desktop_snapshot_v3(), '{tasks,0,links}', '[{"id":"link-1","title":"","url":""},{"id":"link-1","title":"","url":""}]'::jsonb)) $$,
+  'v3 rejects duplicate task link IDs'
+);
+select lives_ok(
+  $$ select public.test_reject_desktop_snapshot_v3(jsonb_set(public.test_valid_desktop_snapshot_v3(), '{tasks,0,subtasks}', '[{"id":"subtask-1","title":"Duplicate titles are valid","done":false,"detailsMarkdown":""},{"id":"subtask-1","title":"Duplicate titles are valid","done":false,"detailsMarkdown":""}]'::jsonb)) $$,
+  'v3 rejects duplicate subtask IDs'
+);
+select results_eq(
+  $$ select status || ':' || revision::text from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000001'::uuid, 4::bigint, 3::smallint, jsonb_set(jsonb_set(public.test_valid_desktop_snapshot_v3(), '{schemaVersion}', '3.0'::jsonb), '{documents,0,deletedAt}', '""'::jsonb)) $$,
+  array['saved:5'::text],
+  'owner CAS accepts numeric schema version three and application-compatible deletedAt'
+);
+select is(
+  (select schema_version from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'),
+  3::smallint,
+  'v2 to v3 upgrade stores schema version three'
+);
+select is(
+  (select snapshot->'tasks'->0->'linkedDocumentIds' from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'),
+  '["document-1"]'::jsonb,
+  'v3 upgrade preserves task-owned document relations'
+);
+select ok(
+  not (select snapshot->'documents'->0 ? 'linkedTaskIds' from public.workspace_snapshots where workspace_id = '22000000-0000-0000-0000-000000000001'),
+  'v3 upgrade does not persist the obsolete reverse relation field'
+);
+select results_eq(
+  $$ select status || ':' || revision::text from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000001'::uuid, 5::bigint, 3::smallint, public.test_valid_desktop_snapshot_v3()) $$,
+  array['saved:6'::text],
+  'repeated v3 save is accepted after upgrade'
+);
+select results_eq(
+  $$ select status || ':' || revision::text from public.save_workspace_snapshot('22000000-0000-0000-0000-000000000001'::uuid, 5::bigint, 3::smallint, public.test_valid_desktop_snapshot_v3()) $$,
+  array['conflict:6'::text],
+  'stale v3 CAS save returns a typed conflict'
 );
 select throws_ok(
   $$ select * from public.save_workspace_snapshot('33000000-0000-0000-0000-000000000001'::uuid, 1::bigint, 1::smallint, '{"projects":[]}'::jsonb) $$,

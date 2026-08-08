@@ -848,6 +848,10 @@ export type Database = {
         Args: { target_schema_version: number; target_snapshot: Json }
         Returns: undefined
       }
+      validate_desktop_snapshot_v3: {
+        Args: { target_schema_version: number; target_snapshot: Json }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
