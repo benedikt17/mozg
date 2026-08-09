@@ -11,6 +11,11 @@ import {
   getDocumentById,
   getDocumentFolderPath,
 } from "@/prototype/state/knowledge-state";
+import {
+  getOverviewTaskAttachedDocuments,
+  getOverviewTaskDetailMaterial,
+  getOverviewTaskDetailSplitDocument,
+} from "@/prototype/state/overview-state";
 import { evaluateKnowledgeStructuralTransition } from "@/prototype/knowledge/knowledge-content-history-runtime";
 import {
   desktopPrototypeReducer,
@@ -92,6 +97,24 @@ describe("Knowledge structural history", () => {
         type: "commit-knowledge-structural-transition",
       }),
     ).toBe(transition.nextState);
+  });
+
+  it("rejects an invalid precomputed structural transition before raw state commit", () => {
+    const initial = freshState();
+    const transition = evaluateKnowledgeStructuralTransition(
+      initial,
+      { type: "create-knowledge-folder" },
+      (state) => ({
+        ...state,
+        tasks: state.tasks.map((task, index) =>
+          index === 0 ? { ...task, listId: "missing-list" } : task,
+        ),
+      }),
+    );
+
+    expect(transition.nextState).toBe(initial);
+    expect(transition.entry).toBeNull();
+    expectPersistentStateValid(transition.nextState);
   });
 
   it("creates a document, removes it without Trash on undo, and restores its stable id on redo", () => {
@@ -300,9 +323,19 @@ describe("Knowledge structural history", () => {
     expect(history.canUndo()).toBe(canUndo);
   });
 
-  it("keeps trashed linked documents persisted but excludes them from active projections", () => {
+  it("keeps trashed linked documents persisted but excludes them from all active projections", () => {
     const initial = freshState();
-    const trashed = desktopPrototypeReducer(initial, {
+    const focused = desktopPrototypeReducer(initial, {
+      documentId: "doc-l-nastenka",
+      taskId: "luko-characters-map",
+      type: "open-overview-task-focus",
+    });
+    const split = desktopPrototypeReducer(focused, {
+      documentId: "doc-l-nastenka",
+      taskId: "luko-characters-map",
+      type: "open-overview-task-split",
+    });
+    const trashed = desktopPrototypeReducer(split, {
       deletedAt: "2026-08-08T00:00:00.000Z",
       documentId: "doc-l-nastenka",
       type: "soft-delete-knowledge-document",
@@ -315,6 +348,17 @@ describe("Knowledge structural history", () => {
         (document) => document.id === "doc-l-nastenka",
       ),
     ).toBe(false);
+    expect(
+      getOverviewTaskAttachedDocuments(trashed, "luko-characters-map").some(
+        (document) => document.id === "doc-l-nastenka",
+      ),
+    ).toBe(false);
+    expect(
+      getOverviewTaskDetailMaterial(trashed, "luko-characters-map"),
+    ).toEqual({ kind: "subtasks" });
+    expect(
+      getOverviewTaskDetailSplitDocument(trashed, "luko-characters-map"),
+    ).toBeUndefined();
     expectPersistentStateValid(trashed);
 
     const restored = desktopPrototypeReducer(trashed, {
