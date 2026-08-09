@@ -21,13 +21,25 @@ describe("desktop snapshot V3 application/SQL parity corpus", () => {
       },
     },
     {
-      name: "whitespace-only folder path segment",
+      name: "ASCII whitespace-only folder path segment",
       mutate: (snapshot: ReturnType<typeof createDesktopDomainSnapshot>) => {
         snapshot.knowledgeFolders.push({
           id: "mock-knowledge-folder-whitespace",
           projectId: snapshot.projects[0]!.id,
           path: ["\r\t"],
         });
+      },
+    },
+    {
+      name: "non-breaking-space-only required identifier",
+      mutate: (snapshot: ReturnType<typeof createDesktopDomainSnapshot>) => {
+        snapshot.projects[0]!.id = "\u00a0";
+      },
+    },
+    {
+      name: "ideographic-space-only required identifier",
+      mutate: (snapshot: ReturnType<typeof createDesktopDomainSnapshot>) => {
+        snapshot.projects[0]!.id = "\u3000";
       },
     },
   ];
