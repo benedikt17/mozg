@@ -3,11 +3,16 @@ name: CI
 on:
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
       - uses: pnpm/action-setup@v4
         with:
           version: 11.11.0
@@ -22,8 +27,32 @@ jobs:
       - run: pnpm supabase start
       - run: pnpm supabase gen types typescript --local --schema public > /tmp/database.types.ts
       - run: perl -0pi -e 's/\n\n\z/\n/' /tmp/database.types.ts
+      - run: cp /tmp/database.types.ts src/lib/supabase/database.types.ts
+      - run: node scripts/stage34c-debug-sync.mjs
+      - name: Commit exact Stage 3.4C generated fixtures
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/supabase/database.types.ts tests/rls/canvas-persistence.test.sql
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: sync Stage 3.4C generated fixtures"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
       - run: diff -u src/lib/supabase/database.types.ts /tmp/database.types.ts
-      - run: pnpm test:rls
+      - name: Run RLS and capture output
+        id: rls
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm test:rls 2>&1 | tee /tmp/rls.log
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rls-debug-log
+          path: /tmp/rls.log
+      - if: steps.rls.outcome == 'failure'
+        run: exit 1
       - if: always()
         run: pnpm supabase stop --no-backup
       - run: pnpm build

@@ -135,7 +135,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           parent_group_id: string | null
-          project_id: string | null
+          project_id: string
           sort_order: number
           title: string
           updated_at: string
@@ -147,7 +147,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           parent_group_id?: string | null
-          project_id?: string | null
+          project_id: string
           sort_order?: number
           title: string
           updated_at?: string
@@ -159,7 +159,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           parent_group_id?: string | null
-          project_id?: string | null
+          project_id?: string
           sort_order?: number
           title?: string
           updated_at?: string
@@ -167,11 +167,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "canvas_groups_parent_workspace_fkey"
-            columns: ["workspace_id", "parent_group_id"]
+            foreignKeyName: "canvas_groups_parent_workspace_project_fkey"
+            columns: ["workspace_id", "project_id", "parent_group_id"]
             isOneToOne: false
             referencedRelation: "canvas_groups"
-            referencedColumns: ["workspace_id", "id"]
+            referencedColumns: ["workspace_id", "project_id", "id"]
           },
           {
             foreignKeyName: "canvas_groups_workspace_id_fkey"
@@ -225,7 +225,7 @@ export type Database = {
           document: Json
           group_id: string | null
           id: string
-          project_id: string | null
+          project_id: string
           revision: number
           schema_version: number
           sort_order: number
@@ -240,7 +240,7 @@ export type Database = {
           document?: Json
           group_id?: string | null
           id?: string
-          project_id?: string | null
+          project_id: string
           revision?: number
           schema_version?: number
           sort_order?: number
@@ -255,7 +255,7 @@ export type Database = {
           document?: Json
           group_id?: string | null
           id?: string
-          project_id?: string | null
+          project_id?: string
           revision?: number
           schema_version?: number
           sort_order?: number
@@ -265,11 +265,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "canvases_group_workspace_fkey"
-            columns: ["workspace_id", "group_id"]
+            foreignKeyName: "canvases_group_workspace_project_fkey"
+            columns: ["workspace_id", "project_id", "group_id"]
             isOneToOne: false
             referencedRelation: "canvas_groups"
-            referencedColumns: ["workspace_id", "id"]
+            referencedColumns: ["workspace_id", "project_id", "id"]
           },
           {
             foreignKeyName: "canvases_workspace_id_fkey"
@@ -590,7 +590,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           parent_group_id: string | null
-          project_id: string | null
+          project_id: string
           sort_order: number
           title: string
           updated_at: string
@@ -747,7 +747,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           parent_group_id: string | null
-          project_id: string | null
+          project_id: string
           sort_order: number
           title: string
           updated_at: string
@@ -785,7 +785,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           parent_group_id: string | null
-          project_id: string | null
+          project_id: string
           sort_order: number
           title: string
           updated_at: string
