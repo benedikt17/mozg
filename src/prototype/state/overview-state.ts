@@ -21,7 +21,9 @@ export function getOverviewTaskAttachedDocuments(
     )
     .filter(
       (document): document is PrototypeDocument =>
-        document !== undefined && document.projectId === task.projectId,
+        document !== undefined &&
+        document.deletedAt === undefined &&
+        document.projectId === task.projectId,
     );
 }
 
@@ -63,6 +65,7 @@ export function getOverviewTaskDetailMaterial(
     : undefined;
   if (
     document &&
+    document.deletedAt === undefined &&
     document.projectId === task.projectId &&
     task.linkedDocumentIds.includes(document.id)
   ) {
