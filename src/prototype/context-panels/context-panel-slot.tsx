@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import {
-  getCanvasObjectById,
   getActiveDocumentById,
   getInboxItemById,
   getTaskById,
@@ -17,11 +16,7 @@ import {
   KnowledgeTaskReferencePanel,
 } from "./knowledge-context-panels";
 import { TaskDetailsPanel } from "./task-details-panel";
-import {
-  AiPanel,
-  CanvasInspectorPanel,
-  InboxContextPanel,
-} from "./utility-context-panels";
+import { AiPanel, InboxContextPanel } from "./utility-context-panels";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 
@@ -185,7 +180,6 @@ function contextTitle(
   >,
 ): string {
   if (contextPanel.kind === "document-context") return "Документ";
-  if (contextPanel.kind === "canvas-inspector") return "Инспектор";
   if (contextPanel.kind === "inbox-item") return "Захват";
   return "AI";
 }
@@ -254,21 +248,6 @@ function renderContextPanelContent(
       />
     ) : (
       <p>Документ не найден.</p>
-    );
-  }
-  if (contextPanel.kind === "canvas-inspector") {
-    const object = getCanvasObjectById(
-      state,
-      contextPanel.canvasId,
-      contextPanel.objectId,
-    );
-    return object ? (
-      <CanvasInspectorPanel
-        objectTitle={object.title}
-        objectBody={object.body}
-      />
-    ) : (
-      <p>Объект не выбран.</p>
     );
   }
   if (contextPanel.kind === "inbox-item") {
