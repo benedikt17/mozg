@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { publicProjectSections } from "@/prototype/desktop-mock-data";
 import {
-  getCanvasById,
   getActiveProject,
   getProjectOverviewDirections,
   type DesktopPrototypeAction,
@@ -90,25 +89,13 @@ function ApplicationSectionActions({
   state: DesktopPrototypeState;
   dispatch: Dispatch;
 }): React.JSX.Element | null {
-  if (state.activeSection === "overview") {
-    return (
-      <OverviewHeaderControls
-        directions={getProjectOverviewDirections(state)}
-        dispatch={dispatch}
-        hiddenDirectionIds={state.overviewHiddenDirectionIds}
-      />
-    );
-  }
-
-  if (state.activeSection !== "canvases") return null;
-  const canvas = getCanvasById(state, state.selectedCanvasId);
-  if (!canvas) return null;
+  if (state.activeSection !== "overview") return null;
   return (
-    <div className="application-section-actions canvas-header-actions">
-      <button type="button">−</button>
-      <button type="button">100%</button>
-      <button type="button">+</button>
-    </div>
+    <OverviewHeaderControls
+      directions={getProjectOverviewDirections(state)}
+      dispatch={dispatch}
+      hiddenDirectionIds={state.overviewHiddenDirectionIds}
+    />
   );
 }
 
