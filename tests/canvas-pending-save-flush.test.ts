@@ -343,7 +343,7 @@ describe("Stage 3.1 Canvas pending-save lifecycle", () => {
     expect(edgeProjection).toBeGreaterThan(nodeProjection);
     expect(close).toBeGreaterThan(edgeProjection);
     expect(adapter).toContain("registerPendingSaveFlush(");
-    expect(adapter).toContain("cloudCanvasRuntimeCache.get(scope, state.canvasId)");
-    expect(adapter).toContain("cloudCanvasRuntimeCache.set({");
+    expect(adapter).toContain("this.runtimeCache.get(scope, state.canvasId)");
+    expect(adapter).toContain("this.runtimeCache.set({");
   });
 });
