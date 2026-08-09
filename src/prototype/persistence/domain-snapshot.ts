@@ -198,15 +198,6 @@ export function snapshotToDomainCollections(
   };
 }
 
-function deriveLinkedTaskIdsForDocument(
-  tasks: readonly DesktopSnapshotTaskV3[],
-  documentId: string,
-): string[] {
-  return tasks
-    .filter((task) => task.linkedDocumentIds.includes(documentId))
-    .map((task) => task.id);
-}
-
 export function normalizeDesktopDomainSnapshot(
   snapshot:
     DesktopDomainSnapshotV1 | DesktopDomainSnapshotV2 | DesktopDomainSnapshot,
@@ -268,7 +259,7 @@ function rejectUnknownFields(
       issues,
       "unknown-field",
       path === "$" ? key : `${path}.${key}`,
-      "Field is not part of the desktop snapshot v1 contract.",
+      "Field is not part of the desktop snapshot contract.",
     );
   });
 }
@@ -998,7 +989,7 @@ function validateNestedIds(
   });
 }
 
-function validateIntegrity(
+function validateHistoricalIntegrity(
   snapshot: DesktopDomainSnapshotV2,
 ): DesktopDomainValidationIssue[] {
   const issues: DesktopDomainValidationIssue[] = [];
@@ -1241,23 +1232,213 @@ function validateIntegrity(
 function validateIntegrityV3(
   snapshot: DesktopDomainSnapshotV3,
 ): DesktopDomainValidationIssue[] {
-  const historicalProjection: DesktopDomainSnapshotV2 = {
-    schemaVersion: DESKTOP_DOMAIN_V2_SCHEMA_VERSION,
-    projects: snapshot.projects,
-    overviewDirections: snapshot.overviewDirections,
-    taskGroups: snapshot.taskGroups,
-    taskLists: snapshot.taskLists,
-    tasks: snapshot.tasks,
-    knowledgeFolders: snapshot.knowledgeFolders,
-    documents: snapshot.documents.map((document) => ({
-      ...document,
-      linkedTaskIds: deriveLinkedTaskIdsForDocument(
-        snapshot.tasks,
-        document.id,
-      ),
-    })),
+  const issues: DesktopDomainValidationIssue[] = [];
+  validateUniqueIds(snapshot.projects, "projects", issues);
+  validateUniqueIds(snapshot.overviewDirections, "overviewDirections", issues);
+  validateUniqueIds(snapshot.taskGroups, "taskGroups", issues);
+  validateUniqueIds(snapshot.taskLists, "taskLists", issues);
+  validateUniqueIds(snapshot.tasks, "tasks", issues);
+  validateUniqueIds(snapshot.knowledgeFolders, "knowledgeFolders", issues);
+  validateUniqueIds(snapshot.documents, "documents", issues);
+
+  const projects = new Set(snapshot.projects.map((project) => project.id));
+  const directions = new Map(
+    snapshot.overviewDirections.map((direction) => [direction.id, direction]),
+  );
+  const groups = new Map(snapshot.taskGroups.map((group) => [group.id, group]));
+  const lists = new Map(snapshot.taskLists.map((list) => [list.id, list]));
+  const documents = new Map(
+    snapshot.documents.map((document) => [document.id, document]),
+  );
+
+  const requireProject = (projectId: string, path: string): void => {
+    if (!projects.has(projectId)) {
+      addIssue(
+        issues,
+        "missing-project",
+        path,
+        `Missing project: ${projectId}.`,
+      );
+    }
   };
-  return validateIntegrity(historicalProjection);
+
+  snapshot.overviewDirections.forEach((direction, index) =>
+    requireProject(
+      direction.projectId,
+      `overviewDirections[${index}].projectId`,
+    ),
+  );
+  snapshot.taskGroups.forEach((group, index) =>
+    requireProject(group.projectId, `taskGroups[${index}].projectId`),
+  );
+  snapshot.taskLists.forEach((list, index) => {
+    requireProject(list.projectId, `taskLists[${index}].projectId`);
+    const group = groups.get(list.groupId);
+    if (!group) {
+      addIssue(
+        issues,
+        "missing-group",
+        `taskLists[${index}].groupId`,
+        `Missing group: ${list.groupId}.`,
+      );
+    } else if (group.projectId !== list.projectId || group.kind !== list.kind) {
+      addIssue(
+        issues,
+        "invalid-list-group",
+        `taskLists[${index}].groupId`,
+        "List and group must have the same project and kind.",
+      );
+    }
+    const direction = list.overviewDirectionId
+      ? directions.get(list.overviewDirectionId)
+      : undefined;
+    if (list.kind === "system" && !direction) {
+      addIssue(
+        issues,
+        "invalid-overview-link",
+        `taskLists[${index}].overviewDirectionId`,
+        "System lists require an existing Overview direction.",
+      );
+    }
+    if (list.kind === "user" && list.overviewDirectionId !== undefined) {
+      addIssue(
+        issues,
+        "invalid-overview-link",
+        `taskLists[${index}].overviewDirectionId`,
+        "User lists cannot reference an Overview direction.",
+      );
+    }
+    if (direction && direction.projectId !== list.projectId) {
+      addIssue(
+        issues,
+        "cross-project-relation",
+        `taskLists[${index}].overviewDirectionId`,
+        "List and direction must belong to the same project.",
+      );
+    }
+  });
+
+  snapshot.tasks.forEach((task, index) => {
+    requireProject(task.projectId, `tasks[${index}].projectId`);
+    validateNestedIds(task, index, issues);
+    const list = lists.get(task.listId);
+    if (!list) {
+      addIssue(
+        issues,
+        "missing-list",
+        `tasks[${index}].listId`,
+        `Missing list: ${task.listId}.`,
+      );
+    } else if (list.projectId !== task.projectId) {
+      addIssue(
+        issues,
+        "cross-project-relation",
+        `tasks[${index}].listId`,
+        "Task and list must belong to the same project.",
+      );
+    }
+    const direction = task.overviewDirectionId
+      ? directions.get(task.overviewDirectionId)
+      : undefined;
+    if (task.overviewDirectionId && !direction) {
+      addIssue(
+        issues,
+        "invalid-overview-link",
+        `tasks[${index}].overviewDirectionId`,
+        "Task references a missing Overview direction.",
+      );
+    } else if (direction && direction.projectId !== task.projectId) {
+      addIssue(
+        issues,
+        "cross-project-relation",
+        `tasks[${index}].overviewDirectionId`,
+        "Task and direction must belong to the same project.",
+      );
+    }
+    if (list?.kind === "system" && !direction) {
+      addIssue(
+        issues,
+        "invalid-overview-link",
+        `tasks[${index}].overviewDirectionId`,
+        "System-list tasks require an existing Overview direction.",
+      );
+    }
+    if (
+      list?.kind === "user" &&
+      (task.overviewDirectionId !== "" || task.showOnOverview)
+    ) {
+      addIssue(
+        issues,
+        "invalid-overview-link",
+        `tasks[${index}].overviewDirectionId`,
+        "User-list tasks must stay outside Overview.",
+      );
+    }
+    if (
+      task.showOnOverview &&
+      (!list ||
+        list.kind !== "system" ||
+        !direction ||
+        list.overviewDirectionId !== direction.id)
+    ) {
+      addIssue(
+        issues,
+        "invalid-overview-link",
+        `tasks[${index}].showOnOverview`,
+        "Overview tasks require a matching system list and direction.",
+      );
+    }
+    task.linkedDocumentIds.forEach((documentId, documentIndex) => {
+      const document = documents.get(documentId);
+      if (!document) {
+        addIssue(
+          issues,
+          "missing-document",
+          `tasks[${index}].linkedDocumentIds[${documentIndex}]`,
+          `Missing document: ${documentId}.`,
+        );
+      } else if (document.projectId !== task.projectId) {
+        addIssue(
+          issues,
+          "cross-project-relation",
+          `tasks[${index}].linkedDocumentIds[${documentIndex}]`,
+          "Task and document must belong to the same project.",
+        );
+      }
+    });
+  });
+
+  const folderPaths = new Set<string>();
+  snapshot.knowledgeFolders.forEach((folder, index) => {
+    requireProject(folder.projectId, `knowledgeFolders[${index}].projectId`);
+    const pathKey = `${folder.projectId}\u0000${folder.path.join("\u0000")}`;
+    if (folderPaths.has(pathKey)) {
+      addIssue(
+        issues,
+        "duplicate-folder-path",
+        `knowledgeFolders[${index}].path`,
+        "Materialized folder path must be unique within a project.",
+      );
+    }
+    folderPaths.add(pathKey);
+    if (
+      folder.id.includes(":") &&
+      !folder.id.startsWith(`${folder.projectId}:`)
+    ) {
+      addIssue(
+        issues,
+        "cross-project-relation",
+        `knowledgeFolders[${index}].id`,
+        "Derived folder ID must match its project.",
+      );
+    }
+  });
+
+  snapshot.documents.forEach((document, index) =>
+    requireProject(document.projectId, `documents[${index}].projectId`),
+  );
+
+  return issues;
 }
 
 export function parseDesktopDomainSnapshot(
@@ -1379,7 +1560,7 @@ export function parseDesktopDomainSnapshot(
       documents,
     };
     const snapshot = migrateDesktopDomainSnapshotV1ToV2(v1Snapshot);
-    const integrityErrors = validateIntegrity(snapshot);
+    const integrityErrors = validateHistoricalIntegrity(snapshot);
     return integrityErrors.length > 0
       ? { ok: false, errors: integrityErrors }
       : {
@@ -1406,7 +1587,7 @@ export function parseDesktopDomainSnapshot(
     knowledgeFolders,
     documents,
   };
-  const integrityErrors = validateIntegrity(snapshot);
+  const integrityErrors = validateHistoricalIntegrity(snapshot);
   return integrityErrors.length > 0
     ? { ok: false, errors: integrityErrors }
     : { ok: true, snapshot, warnings: [] };
