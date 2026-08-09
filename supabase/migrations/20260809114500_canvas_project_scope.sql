@@ -142,6 +142,11 @@ security definer
 set search_path = pg_catalog, public, private
 as $$
 begin
+  if tg_op = 'UPDATE'
+     and new.project_id is distinct from old.project_id
+     and auth.uid() is not null then
+    raise exception using errcode = '22023', message = 'Canvas group project is immutable';
+  end if;
   if new.project_id is null and new.parent_group_id is not null then
     select group_row.project_id
       into new.project_id
@@ -172,6 +177,11 @@ security definer
 set search_path = pg_catalog, public, private
 as $$
 begin
+  if tg_op = 'UPDATE'
+     and new.project_id is distinct from old.project_id
+     and auth.uid() is not null then
+    raise exception using errcode = '22023', message = 'Canvas project is immutable';
+  end if;
   if new.project_id is null and new.group_id is not null then
     select group_row.project_id
       into new.project_id
