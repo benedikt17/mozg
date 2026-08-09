@@ -566,6 +566,18 @@ export type Database = {
               revision: number
             }[]
           }
+      create_canvas_for_project: {
+        Args: {
+          target_group_id?: string
+          target_project_id: string
+          target_title: string
+          target_workspace_id: string
+        }
+        Returns: {
+          id: string
+          revision: number
+        }[]
+      }
       create_canvas_group: {
         Args: {
           target_parent_group_id: string
@@ -590,6 +602,17 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      create_canvas_group_for_project: {
+        Args: {
+          target_parent_group_id?: string
+          target_project_id: string
+          target_title: string
+          target_workspace_id: string
+        }
+        Returns: {
+          id: string
+        }[]
       }
       delete_canvas: {
         Args: { target_canvas_id: string }
