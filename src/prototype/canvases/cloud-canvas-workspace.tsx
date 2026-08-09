@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createCloudCanvasAssetRepository } from "@/lib/canvas/cloud-canvas-asset-repository";
 import { createCloudCanvasRepository } from "@/lib/canvas/cloud-canvas-repository";
 import { createProjectScopedCloudCanvasRepository } from "@/lib/canvas/project-scoped-cloud-canvas-repository";
 import { CloudCanvasShellRepository } from "@/lib/canvas/cloud-canvas-shell-adapter";
-import { cloudCanvasRuntimeCache } from "@/lib/canvas/cloud-canvas-runtime-cache";
+import { CloudCanvasRuntimeCache } from "@/lib/canvas/cloud-canvas-runtime-cache";
 import { createClient } from "@/lib/supabase/browser";
 import {
   InfiniteCanvasLocalShell,
@@ -45,23 +45,15 @@ export function CloudCanvasWorkspace({
   const { taskBridge, taskWorkspaceId } = useDesktopTaskRuntime();
   const projectId = taskWorkspaceId;
   const supabase = useMemo(() => createClient(), []);
+  const runtimeCache = useMemo(
+    () => new CloudCanvasRuntimeCache(),
+    [projectId, workspaceId],
+  );
   const cloudAssetRepository = useMemo(
     () => createCloudCanvasAssetRepository({ supabase }),
     [supabase],
   );
   const [userId, setUserId] = useState<string | null>(null);
-  const previousScope = useRef<string | null>(null);
-  useEffect(() => {
-    const scope = `${workspaceId}:${projectId}`;
-    const previous = previousScope.current;
-    if (previous && previous !== scope && userId) {
-      // The runtime cache predates project partitioning. Clear the workspace
-      // cache on project navigation so an active Canvas from Project A cannot
-      // hydrate Project B. Stage 3.4 can reintroduce per-project warm caching.
-      cloudCanvasRuntimeCache.clearScope({ workspaceId, userId });
-    }
-    previousScope.current = scope;
-  }, [projectId, userId, workspaceId]);
   useEffect(() => {
     let active = true;
     void supabase.auth.getUser().then(({ data }) => {
@@ -69,14 +61,14 @@ export function CloudCanvasWorkspace({
     });
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       cloudAssetRepository.invalidateAuthentication();
-      cloudCanvasRuntimeCache.clearAllExcept(session?.user.id ?? null);
+      runtimeCache.clearAllExcept(session?.user.id ?? null);
       if (active) setUserId(session?.user.id ?? null);
     });
     return () => {
       active = false;
       data.subscription.unsubscribe();
     };
-  }, [cloudAssetRepository, supabase]);
+  }, [cloudAssetRepository, runtimeCache, supabase]);
   const dependencies = useMemo(() => {
     try {
       const baseCanvasRepository = createCloudCanvasRepository({ supabase });
@@ -137,7 +129,7 @@ export function CloudCanvasWorkspace({
       key={`${workspaceId}:${projectId}`}
       repository={dependencies.repository}
       groupRepository={dependencies.repository}
-      runtimeCache={cloudCanvasRuntimeCache}
+      runtimeCache={runtimeCache}
       showDiagnostics={false}
       taskBridge={taskBridge}
       taskWorkspaceId={projectId}
