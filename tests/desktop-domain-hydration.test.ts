@@ -30,14 +30,10 @@ describe("desktop domain hydration", () => {
   it("replaces only persisted domain collections and preserves frozen state", () => {
     const state = freshState();
     state.projects[0]!.name = "Old project name";
-    state.selectedCanvasId = "canvas-l-characters";
-    state.selectedCanvasObjectId = "character-nastenka";
     state.selectedInboxItemId = "inbox-l-text";
     state.selectedAiProposalIds = ["proposal-1"];
     state.aiActivityLog = ["Existing AI activity"];
     const frozen = {
-      canvases: state.canvases,
-      canvasGroups: state.canvasGroups,
       inboxItems: state.inboxItems,
       selectedAiProposalIds: state.selectedAiProposalIds,
       aiActivityLog: state.aiActivityLog,
@@ -55,11 +51,7 @@ describe("desktop domain hydration", () => {
     expect(next.tasks).toEqual(snapshot.tasks);
     expect(next.knowledgeFolders).toEqual(snapshot.knowledgeFolders);
     expect(next.documents).toEqual(snapshot.documents);
-    expect(next.canvases).toBe(frozen.canvases);
-    expect(next.canvasGroups).toBe(frozen.canvasGroups);
     expect(next.inboxItems).toBe(frozen.inboxItems);
-    expect(next.selectedCanvasId).toBe("canvas-l-characters");
-    expect(next.selectedCanvasObjectId).toBe("character-nastenka");
     expect(next.selectedInboxItemId).toBe("inbox-l-text");
     expect(next.selectedAiProposalIds).toBe(frozen.selectedAiProposalIds);
     expect(next.aiActivityLog).toBe(frozen.aiActivityLog);
@@ -235,8 +227,6 @@ describe("desktop domain hydration", () => {
   it("restores persisted counters without changing frozen counters", () => {
     const state = {
       ...freshState(),
-      nextCanvasGroupNumber: 41,
-      nextCanvasNumber: 42,
       nextInboxItemNumber: 43,
     };
     const snapshot = validSnapshot();
@@ -273,8 +263,6 @@ describe("desktop domain hydration", () => {
       nextTaskListNumber: 7,
       nextDocumentNumber: 9,
       nextKnowledgeFolderNumber: 4,
-      nextCanvasGroupNumber: 41,
-      nextCanvasNumber: 42,
       nextInboxItemNumber: 43,
     });
 

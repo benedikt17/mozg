@@ -2,7 +2,6 @@ import {
   isPublicProjectSection,
   aiProposals,
   createCanonicalOverviewDirections,
-  initialCanvases,
   initialDocuments,
   initialInboxItems,
   initialOverviewDirections,
@@ -20,20 +19,6 @@ import {
   snapshotToDomainCollections,
 } from "@/prototype/persistence/domain-snapshot";
 import type { DesktopDomainSnapshot } from "@/prototype/persistence/domain-snapshot";
-import {
-  createCanvas,
-  createCanvasGroup,
-  deleteCanvasGroup,
-  deleteCanvas,
-  firstCanvasForProject,
-  getCanvasById,
-  moveCanvasToGroup,
-  renameCanvasGroup,
-  renameCanvas,
-  toggleCanvasGroup,
-  selectCanvas,
-  selectCanvasObject,
-} from "@/prototype/state/canvases-state";
 import {
   firstInboxItemForProject,
   getInboxItemById,
@@ -167,8 +152,6 @@ export const initialDesktopPrototypeState: DesktopPrototypeState = {
   selectedTaskId: null,
   taskDetailViewTaskId: null,
   selectedDocumentId: initialDocumentId,
-  selectedCanvasId: "canvas-l-characters",
-  selectedCanvasObjectId: null,
   selectedInboxItemId: "inbox-l-text",
   selectedDocumentFolder: "Персонажи",
   selectedKnowledgeFolderPath: ["Персонажи"],
@@ -195,7 +178,6 @@ export const initialDesktopPrototypeState: DesktopPrototypeState = {
   taskSelection: { kind: "system", view: "all" },
   taskSearchQuery: "",
   expandedTaskGroupIds: [],
-  expandedCanvasGroupIds: [],
   inboxFilter: "all",
   inboxSearchQuery: "",
   contextPanel: null,
@@ -208,8 +190,6 @@ export const initialDesktopPrototypeState: DesktopPrototypeState = {
   taskLists: initialTaskLists,
   knowledgeFolders: [],
   documents: initialDocuments,
-  canvases: initialCanvases,
-  canvasGroups: [],
   inboxItems: initialInboxItems,
   selectedAiProposalIds: [],
   aiActivityLog: [],
@@ -219,8 +199,6 @@ export const initialDesktopPrototypeState: DesktopPrototypeState = {
   nextTaskListNumber: 1,
   nextDocumentNumber: 1,
   nextKnowledgeFolderNumber: 1,
-  nextCanvasGroupNumber: 1,
-  nextCanvasNumber: 1,
 };
 
 function firstDocumentForProject(
@@ -367,7 +345,6 @@ function switchToProject(
   projectId: string,
 ): DesktopPrototypeState {
   const document = firstDocumentForProject(state, projectId);
-  const canvas = firstCanvasForProject(state, projectId);
   const inboxItem = firstInboxItemForProject(state, projectId);
   return {
     ...state,
@@ -407,8 +384,6 @@ function switchToProject(
     splitViewDocumentId: null,
     activeKnowledgePane: "primary",
     editingKnowledgeDocumentId: null,
-    selectedCanvasId: canvas?.id ?? null,
-    selectedCanvasObjectId: null,
     selectedInboxItemId: inboxItem?.id ?? null,
     contextPanel: null,
     contextPanelBeforeAi: null,
@@ -714,25 +689,6 @@ function activateCommandResult(
       contextPanel: { kind: "document-context", documentId: document.id },
     });
   }
-  if (result.kind === "canvas") {
-    const canvas = getCanvasById(state, result.id);
-    if (!canvas) return state;
-    return {
-      ...switchToProject(state, canvas.projectId),
-      activeSection: "canvases",
-      selectedCanvasId: canvas.id,
-      selectedCanvasObjectId: canvas.objects[0]?.id ?? null,
-      contextPanel: canvas.objects[0]
-        ? {
-            kind: "canvas-inspector",
-            canvasId: canvas.id,
-            objectId: canvas.objects[0].id,
-          }
-        : null,
-      contextPanelBeforeAi: null,
-      commandPaletteOpen: false,
-    };
-  }
   const item = getInboxItemById(state, result.id);
   if (!item) return state;
   return {
@@ -807,8 +763,6 @@ export function desktopPrototypeReducer(
         splitViewDocumentId: null,
         activeKnowledgePane: "primary",
         editingKnowledgeDocumentId: null,
-        selectedCanvasId: null,
-        selectedCanvasObjectId: null,
         selectedInboxItemId: null,
         contextPanel: null,
         contextPanelBeforeAi: null,
@@ -1522,26 +1476,6 @@ export function desktopPrototypeReducer(
         contextPanelBeforeAi: null,
       };
     }
-    case "select-canvas":
-      return selectCanvas(state, action.canvasId);
-    case "select-canvas-object":
-      return selectCanvasObject(state, action.canvasId, action.objectId);
-    case "create-canvas-group":
-      return createCanvasGroup(state, action.title);
-    case "toggle-canvas-group":
-      return toggleCanvasGroup(state, action.groupId);
-    case "rename-canvas-group":
-      return renameCanvasGroup(state, action.groupId, action.title);
-    case "delete-canvas-group":
-      return deleteCanvasGroup(state, action.groupId);
-    case "rename-canvas":
-      return renameCanvas(state, action.canvasId, action.title);
-    case "delete-canvas":
-      return deleteCanvas(state, action.canvasId);
-    case "create-canvas":
-      return createCanvas(state, action.title, action.groupId);
-    case "move-canvas-to-group":
-      return moveCanvasToGroup(state, action.canvasId, action.groupId);
     case "select-inbox-item":
       return selectInboxItem(state, action.itemId);
     case "open-ai-panel":

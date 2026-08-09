@@ -2,8 +2,6 @@ import type {
   InboxFilter,
   OverviewDirectionId,
   ProjectSection,
-  PrototypeCanvas,
-  PrototypeCanvasGroup,
   PrototypeDocument,
   PrototypeInboxItem,
   PrototypeOverviewDirection,
@@ -37,7 +35,6 @@ export type ContextPanelState =
   | { kind: "knowledge-task-reference"; taskId: string }
   | { kind: "knowledge-task-attach"; taskId: string }
   | { kind: "document-context"; documentId: string }
-  | { kind: "canvas-inspector"; canvasId: string; objectId: string }
   | { kind: "inbox-item"; itemId: string }
   | { kind: "ai" }
   | null;
@@ -99,7 +96,6 @@ export type CommandResult =
   | { kind: "section"; id: ProjectSection; title: string; subtitle: string }
   | { kind: "task"; id: string; title: string; subtitle: string }
   | { kind: "document"; id: string; title: string; subtitle: string }
-  | { kind: "canvas"; id: string; title: string; subtitle: string }
   | { kind: "inbox"; id: string; title: string; subtitle: string };
 
 export type DesktopPrototypeState = {
@@ -118,8 +114,6 @@ export type DesktopPrototypeState = {
   selectedTaskId: string | null;
   taskDetailViewTaskId: string | null;
   selectedDocumentId: string | null;
-  selectedCanvasId: string | null;
-  selectedCanvasObjectId: string | null;
   selectedInboxItemId: string | null;
   selectedDocumentFolder: string | null;
   selectedKnowledgeFolderPath: string[] | null;
@@ -141,7 +135,6 @@ export type DesktopPrototypeState = {
   taskSelection: TaskSelection;
   taskSearchQuery: string;
   expandedTaskGroupIds: string[];
-  expandedCanvasGroupIds: string[];
   inboxFilter: InboxFilter;
   inboxSearchQuery: string;
   contextPanel: ContextPanelState;
@@ -155,8 +148,6 @@ export type DesktopPrototypeState = {
   taskLists: PrototypeTaskList[];
   knowledgeFolders: PrototypeKnowledgeFolder[];
   documents: PrototypeDocument[];
-  canvases: PrototypeCanvas[];
-  canvasGroups: PrototypeCanvasGroup[];
   inboxItems: PrototypeInboxItem[];
   selectedAiProposalIds: string[];
   aiActivityLog: string[];
@@ -166,8 +157,6 @@ export type DesktopPrototypeState = {
   nextTaskListNumber: number;
   nextDocumentNumber: number;
   nextKnowledgeFolderNumber: number;
-  nextCanvasGroupNumber: number;
-  nextCanvasNumber: number;
 };
 
 export type DesktopPrototypeAction =
@@ -371,16 +360,6 @@ export type DesktopPrototypeAction =
   | { type: "open-overview-task-article-linker"; taskId: string }
   | { type: "return-to-overview-from-task-article" }
   | { type: "open-document-context"; documentId?: string }
-  | { type: "select-canvas"; canvasId: string }
-  | { type: "select-canvas-object"; canvasId: string; objectId: string }
-  | { type: "create-canvas-group"; title: string }
-  | { type: "rename-canvas-group"; groupId: string; title: string }
-  | { type: "delete-canvas-group"; groupId: string }
-  | { type: "toggle-canvas-group"; groupId: string }
-  | { type: "create-canvas"; title: string; groupId: string | null }
-  | { type: "rename-canvas"; canvasId: string; title: string }
-  | { type: "delete-canvas"; canvasId: string }
-  | { type: "move-canvas-to-group"; canvasId: string; groupId: string }
   | { type: "select-inbox-item"; itemId: string }
   | { type: "open-ai-panel" }
   | { type: "close-ai-panel" }
