@@ -34,7 +34,7 @@ select is(
   'project-scoped Canvas create remains executable'
 );
 select is(
-  has_function_privilege('authenticated', 'public.create_canvas_group_for_project(uuid,text,text,uuid,uuid)', 'EXECUTE'),
+  has_function_privilege('authenticated', 'public.create_canvas_group_for_project(uuid,text,text,uuid)', 'EXECUTE'),
   true,
   'project-scoped Canvas group create remains executable'
 );
