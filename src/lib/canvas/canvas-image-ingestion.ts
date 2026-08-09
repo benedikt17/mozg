@@ -113,6 +113,41 @@ export type CanvasImageLabRestoredEntry = {
   objectUrl: string;
 };
 
+type CanvasAssetOperationScope = CanvasAssetRepository & {
+  isCurrent?: () => boolean;
+};
+
+type CanvasAssetScopeProvider = CanvasAssetRepository & {
+  beginAssetScope?: () => CanvasAssetOperationScope;
+};
+
+function beginAssetOperationScope(
+  repository: CanvasAssetRepository,
+): CanvasAssetOperationScope {
+  return (
+    repository as CanvasAssetScopeProvider
+  ).beginAssetScope?.() ?? repository;
+}
+
+function assetOperationScopeIsCurrent(
+  repository: CanvasAssetOperationScope,
+): boolean {
+  return repository.isCurrent?.() ?? true;
+}
+
+async function discardStaleAsset(
+  repository: CanvasAssetRepository,
+  workspaceId: string,
+  assetId: string,
+): Promise<void> {
+  try {
+    await repository.markAssetDeleted({ workspaceId, assetId });
+  } catch {
+    // The stale result is never exposed to the active Canvas even if cleanup
+    // itself fails; storage cleanup can be retried independently.
+  }
+}
+
 function isSupportedMime(value: unknown): value is CanvasImageMimeType {
   return (
     typeof value === "string" &&
@@ -251,10 +286,16 @@ export async function ingestCanvasImageCandidates(
   const rejected: RejectedCanvasImage[] = [];
   const decode =
     options.decodeImageDimensions ?? defaultDecodeImageDimensions();
+  const repository = beginAssetOperationScope(options.repository);
+  const workspaceId = options.workspaceId ?? CANVAS_IMAGE_LAB_WORKSPACE_ID;
 
   for (const [index, candidate] of candidates.entries()) {
     if (index >= CANVAS_IMAGE_INPUT_MAX_FILES) {
       rejected.push(rejection(candidate, "too-many-images"));
+      continue;
+    }
+    if (!assetOperationScopeIsCurrent(repository)) {
+      rejected.push(rejection(candidate, "repository-failure"));
       continue;
     }
     const file = candidate.file;
@@ -277,6 +318,10 @@ export async function ingestCanvasImageCandidates(
       rejected.push(rejection(candidate, "decode-failed"));
       continue;
     }
+    if (!assetOperationScopeIsCurrent(repository)) {
+      rejected.push(rejection(candidate, "repository-failure"));
+      continue;
+    }
     if (
       !Number.isSafeInteger(dimensions.width) ||
       !Number.isSafeInteger(dimensions.height) ||
@@ -288,9 +333,14 @@ export async function ingestCanvasImageCandidates(
       continue;
     }
     try {
-      const record = await options.repository.storeImage(
+      const record = await repository.storeImage(
         inputForRepository(candidate, dimensions, options),
       );
+      if (!assetOperationScopeIsCurrent(repository)) {
+        await discardStaleAsset(repository, workspaceId, record.id);
+        rejected.push(rejection(candidate, "repository-failure"));
+        continue;
+      }
       accepted.push({
         assetId: record.id,
         mimeType: record.mimeType,
