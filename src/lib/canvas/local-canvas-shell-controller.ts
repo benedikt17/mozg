@@ -463,12 +463,7 @@ export class LocalCanvasShellController {
   }
 
   async save(): Promise<CanvasSaveResult | null> {
-    if (
-      !this.stateValue.canvasId ||
-      this.stateValue.autosaveBlocked ||
-      !this.hasPendingSave
-    )
-      return null;
+    if (!this.stateValue.canvasId || this.stateValue.autosaveBlocked) return null;
 
     while (this.saveInFlight) {
       const inFlight = this.saveInFlight;
@@ -500,8 +495,7 @@ export class LocalCanvasShellController {
 
   private async performSave(): Promise<CanvasSaveResult | null> {
     const current = this.stateValue;
-    if (!current.canvasId || current.autosaveBlocked || !this.hasPendingSave)
-      return null;
+    if (!current.canvasId || current.autosaveBlocked) return null;
     const saveMutationVersion = this.mutationVersion;
     this.stateValue = { ...current, status: "saving", error: null };
     try {
