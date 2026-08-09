@@ -2,25 +2,6 @@ import React from "react";
 import type { PrototypeInboxItem } from "@/prototype/desktop-mock-data";
 import { ContextPanelSection } from "@/prototype/desktop-ui";
 
-export function CanvasInspectorPanel({
-  objectTitle,
-  objectBody,
-}: {
-  objectTitle: string;
-  objectBody: string;
-}): React.JSX.Element {
-  return (
-    <div className="panel-stack">
-      <ContextPanelSection title={objectTitle}>
-        <p>{objectBody}</p>
-      </ContextPanelSection>
-      <ContextPanelSection title="Свойства">
-        <p>Тип, позиция и связи показаны как mock-инспектор.</p>
-      </ContextPanelSection>
-    </div>
-  );
-}
-
 export function InboxContextPanel({
   item,
 }: {
