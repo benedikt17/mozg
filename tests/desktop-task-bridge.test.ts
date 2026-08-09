@@ -30,7 +30,7 @@ function createHarness(): {
 }
 
 describe("desktop task bridge", () => {
-  it("projects only the stable task summary for the owning project", async () => {
+  it("projects stable task references independently of current project scope", async () => {
     const harness = createHarness();
     const task = harness.getState().tasks[0]!;
     const bridge = createDesktopTaskBridge({
@@ -38,9 +38,8 @@ describe("desktop task bridge", () => {
       dispatch: harness.dispatch,
       onStateChange: harness.onStateChange,
     });
-
-    expect(await bridge.resolveTask(task.projectId, task.id)).toEqual({
-      status: "resolved",
+    const expected = {
+      status: "resolved" as const,
       task: {
         id: task.id,
         title: task.title,
@@ -54,16 +53,16 @@ describe("desktop task bridge", () => {
         })),
         detailsOpen: false,
       },
-    });
-    expect(await bridge.resolveTask("another-project", task.id)).toEqual({
-      status: "workspace-mismatch",
-    });
+    };
+
+    expect(await bridge.resolveTask(task.projectId, task.id)).toEqual(expected);
+    expect(await bridge.resolveTask("another-project", task.id)).toEqual(expected);
     expect(await bridge.resolveTask(task.projectId, "missing-task")).toEqual({
       status: "missing",
     });
   });
 
-  it("searches and toggles tasks through the existing reducer contract", async () => {
+  it("keeps picker search project-scoped while stable references remain mutable", async () => {
     const harness = createHarness();
     const task = harness.getState().tasks[0]!;
     const bridge = createDesktopTaskBridge({
@@ -80,7 +79,7 @@ describe("desktop task bridge", () => {
     bridge.toggleTaskCompleted(task.projectId, task.id);
     expect(harness.getState().tasks[0]!.completedAt).not.toBeNull();
     bridge.toggleTaskCompleted("another-project", task.id);
-    expect(harness.getState().tasks[0]!.completedAt).not.toBeNull();
+    expect(harness.getState().tasks[0]!.completedAt).toBeNull();
   });
 
   it("emits initial and subsequent task projection updates", () => {
@@ -108,7 +107,7 @@ describe("desktop task bridge", () => {
     expect(harness.subscribeCount()).toBe(0);
   });
 
-  it("does not leak task references across project workspace switches", async () => {
+  it("keeps persisted task cards live across active project switches", async () => {
     const harness = createHarness();
     const firstTask = harness.getState().tasks[0]!;
     const otherTask = harness
@@ -119,27 +118,40 @@ describe("desktop task bridge", () => {
       dispatch: harness.dispatch,
       onStateChange: harness.onStateChange,
     });
+    const updates: Array<string | null> = [];
+    const unsubscribe = bridge.subscribeToTask(
+      firstTask.projectId,
+      firstTask.id,
+      (projection) => updates.push(projection?.id ?? null),
+    );
 
-    expect(await bridge.resolveTask(firstTask.projectId, otherTask.id)).toEqual(
-      {
-        status: "workspace-mismatch",
-      },
+    expect(await bridge.resolveTask(otherTask.projectId, firstTask.id)).toEqual(
+      expect.objectContaining({ status: "resolved" }),
     );
     harness.dispatch({
       type: "switch-project",
       projectId: otherTask.projectId,
     });
-    expect(await bridge.resolveTask(otherTask.projectId, otherTask.id)).toEqual(
+    expect(updates.at(-1)).toBe(firstTask.id);
+    expect(await bridge.resolveTask(otherTask.projectId, firstTask.id)).toEqual(
       expect.objectContaining({ status: "resolved" }),
     );
-    expect(await bridge.searchTasks(firstTask.projectId, "")).toEqual(
+
+    const firstProjectResults = await bridge.searchTasks(firstTask.projectId, "");
+    const otherProjectResults = await bridge.searchTasks(otherTask.projectId, "");
+    expect(firstProjectResults).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: firstTask.id })]),
     );
-    expect(
-      (await bridge.searchTasks(firstTask.projectId, "")).some(
-        (task) => task.id === otherTask.id,
-      ),
-    ).toBe(false);
+    expect(firstProjectResults.some((task) => task.id === otherTask.id)).toBe(
+      false,
+    );
+    expect(otherProjectResults).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: otherTask.id })]),
+    );
+    expect(otherProjectResults.some((task) => task.id === firstTask.id)).toBe(
+      false,
+    );
+    unsubscribe();
   });
 
   it("opens the existing task-details lifecycle", () => {
@@ -233,7 +245,7 @@ describe("desktop task bridge", () => {
         .getState()
         .tasks.find((item) => item.id === task.id)
         ?.subtasks.find((item) => item.id === subtask.id)?.done,
-    ).toBe(!subtask.done);
+    ).toBe(subtask.done);
     unsubscribe();
   });
 
