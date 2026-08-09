@@ -41,12 +41,12 @@ export function resolveDesktopTask(
   projectId: string,
   taskId: string,
 ): CanvasTaskResolveResult {
-  // Canvas persists taskId as a stable workspace-level reference. The project
-  // argument is retained by the bridge contract for picker/search context, but
-  // must not re-scope an already persisted task reference after project switch.
-  void projectId;
   const task = state.tasks.find((item) => item.id === taskId);
   if (!task) return { status: "missing" };
+  // The Canvas shell historically calls this scope "workspaceId". In Desktop
+  // it is the active Project id. A task card is only live inside its Canvas'
+  // owning Project; cross-project references must remain unavailable.
+  if (task.projectId !== projectId) return { status: "workspace-mismatch" };
   return { status: "resolved", task: projectTask(state, task) };
 }
 
