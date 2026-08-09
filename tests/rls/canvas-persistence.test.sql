@@ -8,9 +8,9 @@ select has_table('public', 'canvas_assets', 'canvas_assets table exists');
 select has_table('public', 'canvas_asset_variants', 'canvas_asset_variants table exists');
 select has_function(
   'public',
-  'create_canvas',
-  array['uuid', 'text'],
-  'Canvas create function exists'
+  'create_canvas_for_project',
+  array['uuid', 'text', 'text', 'uuid'],
+  'Project-scoped Canvas create function exists'
 );
 select has_function(
   'public',
@@ -186,7 +186,7 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '12000000-0000-0000-0000-000000000001', true);
 
 select throws_ok(
-  $$ select * from public.create_canvas('22000000-0000-0000-0000-000000000099'::uuid, 'Denied') $$,
+  $$ select * from public.create_canvas_for_project('22000000-0000-0000-0000-000000000099'::uuid, 'project-denied', 'Denied', null) $$,
   '42501',
   'workspace access denied',
   'non-member cannot create a Canvas'
@@ -194,7 +194,7 @@ select throws_ok(
 
 select set_config(
   'test.canvas_id',
-  (select id::text from public.create_canvas('22000000-0000-0000-0000-000000000001'::uuid, ' First Canvas ')),
+  (select id::text from public.create_canvas_for_project('22000000-0000-0000-0000-000000000001'::uuid, 'project-a', ' First Canvas ', null)),
   true
 );
 
@@ -495,8 +495,8 @@ select is(
   'Canvas row remains available to the database owner'
 );
 select throws_ok(
-  $$ insert into public.canvases (id, workspace_id, title, schema_version, document, revision, created_by)
-     values ('62000000-0000-0000-0000-000000000099'::uuid, '22000000-0000-0000-0000-000000000001'::uuid, 'V1 row', 1, '{"schemaVersion":2,"nodes":[],"edges":[]}'::jsonb, 1, '12000000-0000-0000-0000-000000000001'::uuid) $$,
+  $$ insert into public.canvases (id, workspace_id, project_id, title, schema_version, document, revision, created_by)
+     values ('62000000-0000-0000-0000-000000000099'::uuid, '22000000-0000-0000-0000-000000000001'::uuid, 'project-a', 'V1 row', 1, '{"schemaVersion":2,"nodes":[],"edges":[]}'::jsonb, 1, '12000000-0000-0000-0000-000000000001'::uuid) $$,
   '22023',
   'CanvasDocumentV2 validation failed',
   'rows with schema_version one are rejected'
@@ -564,12 +564,12 @@ reset role;
 select set_config('request.jwt.claim.sub', '12000000-0000-0000-0000-000000000001', true);
 select set_config(
   'test.active_canvas_id',
-  (select id::text from public.create_canvas('22000000-0000-0000-0000-000000000001'::uuid, 'View State Canvas')),
+  (select id::text from public.create_canvas_for_project('22000000-0000-0000-0000-000000000001'::uuid, 'project-a', 'View State Canvas', null)),
   true
 );
 select set_config(
   'test.other_canvas_id',
-  (select id::text from public.create_canvas('22000000-0000-0000-0000-000000000002'::uuid, 'Other Workspace Canvas')),
+  (select id::text from public.create_canvas_for_project('22000000-0000-0000-0000-000000000002'::uuid, 'project-b', 'Other Workspace Canvas', null)),
   true
 );
 
@@ -780,7 +780,7 @@ select throws_ok(
 
 select set_config(
   'test.same_workspace_canvas_id',
-  (select id::text from public.create_canvas('22000000-0000-0000-0000-000000000001'::uuid, 'Second Canvas')),
+  (select id::text from public.create_canvas_for_project('22000000-0000-0000-0000-000000000001'::uuid, 'project-a', 'Second Canvas', null)),
   true
 );
 select results_eq(
@@ -956,7 +956,7 @@ select throws_ok(
   'anonymous cannot read Canvases'
 );
 select throws_ok(
-  $$ select * from public.create_canvas('22000000-0000-0000-0000-000000000001'::uuid, 'Anonymous') $$,
+  $$ select * from public.create_canvas_for_project('22000000-0000-0000-0000-000000000001'::uuid, 'project-a', 'Anonymous', null) $$,
   '42501',
   'permission denied for function create_canvas',
   'anonymous cannot create a Canvas'
