@@ -7,10 +7,6 @@ import type {
   DesktopPrototypeState,
 } from "@/prototype/state/types";
 import { publicProjectSections } from "@/prototype/desktop-mock-data";
-import {
-  getCanvasById,
-  getCanvasObjectById,
-} from "@/prototype/state/canvases-state";
 import { getInboxItemById } from "@/prototype/state/inbox-state";
 import {
   getDocumentBreadcrumb,
@@ -54,13 +50,7 @@ export function getAiContextLabel(state: DesktopPrototypeState): string {
     return `Проект: ${project} · Раздел: Задачи · Задача: ${task?.title ?? "не выбрана"}`;
   }
   if (state.activeSection === "canvases") {
-    const canvas = getCanvasById(state, state.selectedCanvasId);
-    const object = getCanvasObjectById(
-      state,
-      state.selectedCanvasId,
-      state.selectedCanvasObjectId,
-    );
-    return `Проект: ${project} · Раздел: Холсты · Холст: ${canvas?.title ?? "не выбран"}${object ? ` · Объект: ${object.title}` : ""}`;
+    return `Проект: ${project} · Раздел: Холсты`;
   }
   if (state.activeSection === "inbox") {
     const item = getInboxItemById(state, state.selectedInboxItemId);
@@ -130,15 +120,6 @@ export function getCommandResults(
       subtitle: `Документ · ${getProjectName(state, document.projectId)} · ${getDocumentBreadcrumb(document)}`,
     }));
 
-  const canvasResults: CommandResult[] = state.canvases
-    .filter((canvas) => matches(canvas.title))
-    .map((canvas) => ({
-      kind: "canvas",
-      id: canvas.id,
-      title: canvas.title,
-      subtitle: `Холст · ${getProjectName(state, canvas.projectId)}`,
-    }));
-
   const inboxResults: CommandResult[] = state.inboxItems
     .filter((item) => matches(item.title) || matches(item.preview))
     .map((item) => ({
@@ -154,9 +135,8 @@ export function getCommandResults(
       ...sectionResults,
       ...taskResults,
       ...documentResults,
-      ...canvasResults,
       ...inboxResults,
-    ].filter((result) => result.kind !== "canvas" && result.kind !== "inbox"),
+    ].filter((result) => result.kind !== "inbox"),
   );
 }
 
