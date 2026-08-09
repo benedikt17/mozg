@@ -56,10 +56,6 @@ function freshState(): DesktopPrototypeState {
       content: [...document.content],
       backlinks: [...document.backlinks],
     })),
-    canvases: initialDesktopPrototypeState.canvases.map((canvas) => ({
-      ...canvas,
-      objects: canvas.objects.map((object) => ({ ...object })),
-    })),
     inboxItems: initialDesktopPrototypeState.inboxItems.map((item) => ({
       ...item,
     })),
@@ -546,14 +542,12 @@ describe("desktop structural prototype state", () => {
     expect(state.contextPanel).toEqual({ kind: "ai" });
 
     state = desktopPrototypeReducer(state, {
-      type: "select-canvas-object",
-      canvasId: "canvas-l-characters",
-      objectId: "obj-nastenka",
+      type: "open-document-context",
+      documentId: "doc-l-magic",
     });
     expect(state.contextPanel).toEqual({
-      kind: "canvas-inspector",
-      canvasId: "canvas-l-characters",
-      objectId: "obj-nastenka",
+      kind: "document-context",
+      documentId: "doc-l-magic",
     });
   });
 
@@ -795,111 +789,6 @@ describe("desktop structural prototype state", () => {
     expect(
       getVisibleTaskList(state).some((task) => task.id === "luko-first-scene"),
     ).toBe(true);
-  });
-
-  it("selects a canvas and opens a mock object inspector", () => {
-    let state = freshState();
-    state = desktopPrototypeReducer(state, {
-      type: "select-canvas",
-      canvasId: "canvas-l-plot",
-    });
-    state = desktopPrototypeReducer(state, {
-      type: "select-canvas-object",
-      canvasId: "canvas-l-plot",
-      objectId: "obj-choice",
-    });
-
-    expect(state.activeSection).toBe("canvases");
-    expect(state.selectedCanvasId).toBe("canvas-l-plot");
-    expect(state.selectedCanvasObjectId).toBe("obj-choice");
-    expect(state.contextPanel).toEqual({
-      kind: "canvas-inspector",
-      canvasId: "canvas-l-plot",
-      objectId: "obj-choice",
-    });
-  });
-
-  it("creates standalone and grouped canvases", () => {
-    let state = freshState();
-    state = desktopPrototypeReducer(state, {
-      type: "create-canvas-group",
-      title: "Новые карты",
-    });
-    const group = state.canvasGroups[0];
-    if (!group) return;
-    expect(group?.title).toBe("Новые карты");
-    expect(state.expandedCanvasGroupIds).toContain(group?.id);
-
-    state = desktopPrototypeReducer(state, {
-      type: "create-canvas",
-      title: "Свободный холст",
-      groupId: null,
-    });
-    expect(state.canvases.at(-1)).toMatchObject({
-      title: "Свободный холст",
-      groupId: null,
-    });
-
-    state = desktopPrototypeReducer(state, {
-      type: "create-canvas",
-      title: "Холст группы",
-      groupId: group.id,
-    });
-    expect(state.canvases.at(-1)).toMatchObject({
-      title: "Холст группы",
-      groupId: group.id,
-    });
-    expect(state.selectedCanvasId).toBe(state.canvases.at(-1)?.id);
-  });
-
-  it("moves a canvas into a project group", () => {
-    let state = freshState();
-    state = desktopPrototypeReducer(state, {
-      type: "create-canvas-group",
-      title: "Рабочая группа",
-    });
-    const group = state.canvasGroups[0];
-    if (!group) return;
-
-    state = desktopPrototypeReducer(state, {
-      type: "move-canvas-to-group",
-      canvasId: "canvas-l-plot",
-      groupId: group.id,
-    });
-
-    const movedCanvas = state.canvases.find(
-      (canvas) => canvas.id === "canvas-l-plot",
-    );
-    expect(movedCanvas?.groupId).toBe(group.id);
-  });
-
-  it("renames and deletes canvas groups without deleting their canvases", () => {
-    let state = freshState();
-    state = desktopPrototypeReducer(state, {
-      type: "create-canvas-group",
-      title: "Рабочая группа",
-    });
-    const group = state.canvasGroups[0];
-    if (!group) return;
-    state = desktopPrototypeReducer(state, {
-      type: "move-canvas-to-group",
-      canvasId: "canvas-l-plot",
-      groupId: group.id,
-    });
-    state = desktopPrototypeReducer(state, {
-      type: "rename-canvas-group",
-      groupId: group.id,
-      title: "Переименованная группа",
-    });
-    expect(state.canvasGroups[0]?.title).toBe("Переименованная группа");
-    state = desktopPrototypeReducer(state, {
-      type: "delete-canvas-group",
-      groupId: group.id,
-    });
-    expect(state.canvasGroups).toHaveLength(0);
-    expect(
-      state.canvases.find((canvas) => canvas.id === "canvas-l-plot")?.groupId,
-    ).toBeNull();
   });
 
   it("selects an Inbox item and opens item details", () => {
