@@ -12,6 +12,10 @@ import {
 } from "react";
 import { useDesktopTaskRuntime } from "@/prototype/tasks/desktop-task-runtime";
 import { desktopPrototypeReducer } from "@/prototype/desktop-state";
+import {
+  createDesktopDomainSnapshot,
+  parseDesktopDomainSnapshotV3,
+} from "@/prototype/persistence/domain-snapshot";
 import type {
   DesktopPrototypeAction,
   DesktopPrototypeState,
@@ -105,6 +109,12 @@ function isStructuralAction(
   ].includes(action.type);
 }
 
+export function isPersistentlyValidKnowledgeTransition(
+  state: DesktopPrototypeState,
+): boolean {
+  return parseDesktopDomainSnapshotV3(createDesktopDomainSnapshot(state)).ok;
+}
+
 export function evaluateKnowledgeStructuralTransition(
   state: DesktopPrototypeState,
   action: KnowledgeStructuralAction,
@@ -116,10 +126,16 @@ export function evaluateKnowledgeStructuralTransition(
   nextState: DesktopPrototypeState;
   entry: KnowledgeStructuralHistoryEntry | null;
 } {
-  const nextState = reducer(state, action);
+  const candidateState = reducer(state, action);
+  if (
+    candidateState !== state &&
+    !isPersistentlyValidKnowledgeTransition(candidateState)
+  ) {
+    return { entry: null, nextState: state };
+  }
   return {
-    entry: createKnowledgeStructuralHistoryEntry(state, nextState, action),
-    nextState,
+    entry: createKnowledgeStructuralHistoryEntry(state, candidateState, action),
+    nextState: candidateState,
   };
 }
 
