@@ -48,6 +48,10 @@ export type CanvasShellRepository = CanvasRepository &
   CanvasViewStateRepository &
   CanvasGroupRepository;
 
+type CanvasAssetOperationScope = CanvasAssetRepository & {
+  isCurrent: () => boolean;
+};
+
 function summary(canvas: CloudCanvasSummary): CanvasSummary {
   return {
     id: canvas.id,
@@ -90,10 +94,38 @@ function assetRecord(
   };
 }
 
+function assetMetadata(metadata: CloudCanvasAssetMetadata): CanvasAssetMetadata {
+  const {
+    id,
+    workspaceId,
+    mimeType,
+    byteSize,
+    width,
+    height,
+    checksum,
+    createdAt,
+    readyAt,
+    deletedAt,
+  } = metadata;
+  return {
+    id,
+    workspaceId,
+    mimeType,
+    byteSize,
+    width,
+    height,
+    checksum,
+    createdAt,
+    readyAt,
+    deletedAt,
+  };
+}
+
 export class CloudCanvasShellRepository
   implements CanvasShellRepository, CanvasAssetRepository
 {
   private activeCanvasId: string | null = null;
+  private assetScopeEpoch = 0;
   private pendingSaveFlush: CanvasPendingSaveFlushRegistration | null = null;
 
   constructor(
@@ -106,6 +138,25 @@ export class CloudCanvasShellRepository
     registration: CanvasPendingSaveFlushRegistration,
   ): void {
     this.pendingSaveFlush = registration;
+  }
+
+  beginCanvasNavigation(_canvasId: string | null): void {
+    this.invalidateAssetScopes();
+  }
+
+  beginAssetScope(): CanvasAssetOperationScope {
+    const canvasId = this.canvasIdForAssetLookup();
+    const epoch = this.assetScopeEpoch;
+    return {
+      storeImage: (input) => this.storeImageForCanvas(canvasId, input),
+      loadAsset: (input) => this.loadAssetForCanvas(canvasId, input),
+      getAssetMetadata: (input) =>
+        this.getAssetMetadataForCanvas(canvasId, input),
+      markAssetDeleted: (input) =>
+        this.markAssetDeletedForCanvas(canvasId, input),
+      isCurrent: () =>
+        this.assetScopeEpoch === epoch && this.activeCanvasId === canvasId,
+    };
   }
 
   async listCanvases(workspaceId: string): Promise<CanvasSummary[]> {
@@ -179,6 +230,7 @@ export class CloudCanvasShellRepository
     workspaceId: string;
     canvasId: string;
   }): Promise<{ status: "deleted" | "already-deleted" }> {
+    if (input.canvasId === this.activeCanvasId) this.invalidateAssetScopes();
     await this.canvasRepository.deleteCanvas(input.workspaceId, input.canvasId);
     return { status: "deleted" };
   }
@@ -216,91 +268,39 @@ export class CloudCanvasShellRepository
     // Cloud view state is intentionally user-scoped and has no delete RPC in V2.
   }
 
-  async storeImage(
-    input: StoreLocalCanvasImageInput,
-  ): Promise<CanvasAssetRecord> {
-    const metadata = await this.assetRepository.uploadAsset({
-      workspaceId: input.workspaceId,
-      canvasId: this.canvasIdForAssetUpload(input.workspaceId),
-      ...(input.id === undefined ? {} : { assetId: input.id }),
-      blob: input.blob,
-      mimeType: input.mimeType,
-      byteSize: input.byteSize,
-      width: input.width,
-      height: input.height,
-      checksum: input.checksum,
-    });
-    return assetRecord(metadata, input.blob);
+  storeImage(input: StoreLocalCanvasImageInput): Promise<CanvasAssetRecord> {
+    return this.storeImageForCanvas(
+      this.canvasIdForAssetUpload(input.workspaceId),
+      input,
+    );
   }
 
-  async loadAsset(input: {
+  loadAsset(input: {
     workspaceId: string;
     assetId: string;
     reason?: CanvasOriginalLoadReason;
   }): Promise<CanvasAssetRecord | null> {
-    const canvasId = this.canvasIdForAssetLookup();
-    try {
-      const asset = await this.assetRepository.downloadAsset({
-        workspaceId: input.workspaceId,
-        canvasId,
-        assetId: input.assetId,
-      });
-      return assetRecord(asset, asset.blob);
-    } catch (error) {
-      if (isNotFound(error)) return null;
-      throw error;
-    }
+    return this.loadAssetForCanvas(this.canvasIdForAssetLookup(), input);
   }
 
-  async getAssetMetadata(input: {
+  getAssetMetadata(input: {
     workspaceId: string;
     assetId: string;
   }): Promise<CanvasAssetMetadata | null> {
-    try {
-      const metadata = await this.assetRepository.getAssetMetadata({
-        workspaceId: input.workspaceId,
-        canvasId: this.canvasIdForAssetLookup(),
-        assetId: input.assetId,
-      });
-      const {
-        id,
-        workspaceId,
-        mimeType,
-        byteSize,
-        width,
-        height,
-        checksum,
-        createdAt,
-        readyAt,
-        deletedAt,
-      } = metadata;
-      return {
-        id,
-        workspaceId,
-        mimeType,
-        byteSize,
-        width,
-        height,
-        checksum,
-        createdAt,
-        readyAt,
-        deletedAt,
-      };
-    } catch (error) {
-      if (isNotFound(error)) return null;
-      throw error;
-    }
+    return this.getAssetMetadataForCanvas(
+      this.canvasIdForAssetLookup(),
+      input,
+    );
   }
 
-  async markAssetDeleted(input: {
+  markAssetDeleted(input: {
     workspaceId: string;
     assetId: string;
   }): Promise<void> {
-    await this.assetRepository.deleteAsset({
-      workspaceId: input.workspaceId,
-      canvasId: this.canvasIdForAssetLookup(),
-      assetId: input.assetId,
-    });
+    return this.markAssetDeletedForCanvas(
+      this.canvasIdForAssetLookup(),
+      input,
+    );
   }
 
   listVariants(input: {
@@ -394,6 +394,8 @@ export class CloudCanvasShellRepository
   }
 
   close(): void {
+    this.invalidateAssetScopes();
+    this.activeCanvasId = null;
     const registration = this.pendingSaveFlush;
     if (!registration) return;
     void registration
@@ -433,7 +435,103 @@ export class CloudCanvasShellRepository
   }
 
   setActiveCanvas(canvasId: string | null): void {
+    if (canvasId !== this.activeCanvasId) this.invalidateAssetScopes();
     this.activeCanvasId = canvasId;
+  }
+
+  private async storeImageForCanvas(
+    canvasId: string,
+    input: StoreLocalCanvasImageInput,
+  ): Promise<CanvasAssetRecord> {
+    const scopedCanvasId = this.canvasIdForAssetScope(
+      input.workspaceId,
+      canvasId,
+    );
+    const metadata = await this.assetRepository.uploadAsset({
+      workspaceId: input.workspaceId,
+      canvasId: scopedCanvasId,
+      ...(input.id === undefined ? {} : { assetId: input.id }),
+      blob: input.blob,
+      mimeType: input.mimeType,
+      byteSize: input.byteSize,
+      width: input.width,
+      height: input.height,
+      checksum: input.checksum,
+    });
+    return assetRecord(metadata, input.blob);
+  }
+
+  private async loadAssetForCanvas(
+    canvasId: string,
+    input: {
+      workspaceId: string;
+      assetId: string;
+      reason?: CanvasOriginalLoadReason;
+    },
+  ): Promise<CanvasAssetRecord | null> {
+    const scopedCanvasId = this.canvasIdForAssetScope(
+      input.workspaceId,
+      canvasId,
+    );
+    try {
+      const asset = await this.assetRepository.downloadAsset({
+        workspaceId: input.workspaceId,
+        canvasId: scopedCanvasId,
+        assetId: input.assetId,
+      });
+      return assetRecord(asset, asset.blob);
+    } catch (error) {
+      if (isNotFound(error)) return null;
+      throw error;
+    }
+  }
+
+  private async getAssetMetadataForCanvas(
+    canvasId: string,
+    input: { workspaceId: string; assetId: string },
+  ): Promise<CanvasAssetMetadata | null> {
+    const scopedCanvasId = this.canvasIdForAssetScope(
+      input.workspaceId,
+      canvasId,
+    );
+    try {
+      return assetMetadata(
+        await this.assetRepository.getAssetMetadata({
+          workspaceId: input.workspaceId,
+          canvasId: scopedCanvasId,
+          assetId: input.assetId,
+        }),
+      );
+    } catch (error) {
+      if (isNotFound(error)) return null;
+      throw error;
+    }
+  }
+
+  private async markAssetDeletedForCanvas(
+    canvasId: string,
+    input: { workspaceId: string; assetId: string },
+  ): Promise<void> {
+    await this.assetRepository.deleteAsset({
+      workspaceId: input.workspaceId,
+      canvasId: this.canvasIdForAssetScope(input.workspaceId, canvasId),
+      assetId: input.assetId,
+    });
+  }
+
+  private invalidateAssetScopes(): void {
+    this.assetScopeEpoch += 1;
+  }
+
+  private canvasIdForAssetScope(workspaceId: string, canvasId: string): string {
+    if (
+      workspaceId !== this.workspaceId ||
+      typeof canvasId !== "string" ||
+      canvasId.trim().length === 0
+    ) {
+      throw new Error("Cloud Canvas asset operation requires a Canvas scope.");
+    }
+    return canvasId;
   }
 
   private canvasIdForAssetUpload(workspaceId: string): string {
