@@ -8,31 +8,21 @@ import { emptyShellState } from "@/lib/canvas/local-canvas-shell-controller";
 
 const userId = "user-a";
 
-function scope(
-  workspaceId: string,
-  projectId = "project-a",
-): CloudCanvasRuntimeScope {
-  return { workspaceId, projectId, userId };
+function scope(workspaceId: string): CloudCanvasRuntimeScope {
+  return { workspaceId, userId };
 }
 
-function snapshot(
-  workspaceId: string,
-  projectId = "project-a",
-  revoke = vi.fn(),
-) {
+function snapshot(workspaceId: string, revoke = vi.fn()) {
   const objectUrls = createObjectUrlRegistry({
-    createObjectURL: () => `blob:${workspaceId}:${projectId}`,
+    createObjectURL: () => `blob:${workspaceId}`,
     revokeObjectURL: revoke,
   });
-  objectUrls.create(new Blob([`${workspaceId}:${projectId}`]));
+  objectUrls.create(new Blob([workspaceId]));
   return {
-    ...scope(workspaceId, projectId),
+    ...scope(workspaceId),
     summaries: [],
-    canvasId: `canvas-${workspaceId}-${projectId}`,
-    shellState: {
-      ...emptyShellState(),
-      canvasId: `canvas-${workspaceId}-${projectId}`,
-    },
+    canvasId: `canvas-${workspaceId}`,
+    shellState: { ...emptyShellState(), canvasId: `canvas-${workspaceId}` },
     assetPayloads: new Map(),
     objectUrls,
   };
@@ -42,43 +32,24 @@ describe("CloudCanvasRuntimeCache", () => {
   it("keeps runtime state in bounded memory and revokes URLs on eviction", () => {
     const cache = new CloudCanvasRuntimeCache(1);
     const firstRevoke = vi.fn();
-    const first = snapshot("workspace-a", "project-a", firstRevoke);
+    const first = snapshot("workspace-a", firstRevoke);
     cache.set(first);
     cache.set(snapshot("workspace-b"));
 
-    expect(
-      cache.get(scope("workspace-a"), "canvas-workspace-a-project-a"),
-    ).toBeNull();
-    expect(firstRevoke).toHaveBeenCalledWith("blob:workspace-a:project-a");
+    expect(cache.get(scope("workspace-a"), "canvas-workspace-a")).toBeNull();
+    expect(firstRevoke).toHaveBeenCalledWith("blob:workspace-a");
   });
 
   it("keeps cache ownership isolated by workspace and user lifecycle", () => {
     const cache = new CloudCanvasRuntimeCache();
     const revoke = vi.fn();
-    const entry = snapshot("workspace-a", "project-a", revoke);
+    const entry = snapshot("workspace-a", revoke);
     cache.set(entry);
 
     expect(cache.getActive(scope("workspace-a"))).toBe(entry);
     cache.clearAllExcept("user-b");
 
     expect(cache.getActive(scope("workspace-a"))).toBeNull();
-    expect(revoke).toHaveBeenCalledWith("blob:workspace-a:project-a");
-  });
-
-  it("never exposes a cached Canvas from another Project in the same workspace", () => {
-    const cache = new CloudCanvasRuntimeCache();
-    const projectA = snapshot("workspace-a", "project-a");
-    const projectB = snapshot("workspace-a", "project-b");
-    cache.set(projectA);
-    cache.set(projectB);
-
-    expect(cache.getActive(scope("workspace-a", "project-a"))).toBe(projectA);
-    expect(cache.getActive(scope("workspace-a", "project-b"))).toBe(projectB);
-    expect(
-      cache.get(
-        scope("workspace-a", "project-b"),
-        "canvas-workspace-a-project-a",
-      ),
-    ).toBeNull();
+    expect(revoke).toHaveBeenCalledWith("blob:workspace-a");
   });
 });
