@@ -21,6 +21,7 @@ jobs:
       - run: pnpm test
       - run: pnpm supabase start
       - run: pnpm supabase gen types typescript --local --schema public > /tmp/database.types.ts
+      - run: perl -0pi -e 's/\n\n\z/\n/' /tmp/database.types.ts
       - run: diff -u src/lib/supabase/database.types.ts /tmp/database.types.ts
       - run: pnpm test:rls
       - if: always()
