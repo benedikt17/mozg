@@ -5,7 +5,6 @@ const commandKindLabels: Record<CommandResult["kind"], string> = {
   section: "Раздел",
   task: "Задача",
   document: "Документ",
-  canvas: "Холст",
   inbox: "Входящее",
 };
 
@@ -63,7 +62,7 @@ export function CommandPalette({
                 onClose();
               }
             }}
-            placeholder={`${activeProjectName}: проект, раздел, задача, документ или холст`}
+            placeholder={`${activeProjectName}: проект, раздел, задача или документ`}
             value={query}
           />
           <button onClick={onClose} type="button">
