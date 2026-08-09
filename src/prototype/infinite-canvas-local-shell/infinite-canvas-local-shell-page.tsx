@@ -44,23 +44,23 @@ const localCanvasShellCopy: CanvasShellCopy = {
 
 export function getCanvasTaskBridgeProps({
   taskBridge,
-  taskWorkspaceId,
+  taskProjectId,
   workspaceAvailable,
 }: {
   taskBridge: CanvasTaskBridge;
-  taskWorkspaceId: string;
+  taskProjectId: string;
   workspaceAvailable: boolean;
 }): {
   taskBridge: CanvasTaskBridge | undefined;
   taskWorkspaceId: string | undefined;
 } {
   return workspaceAvailable
-    ? { taskBridge, taskWorkspaceId }
+    ? { taskBridge, taskWorkspaceId: taskProjectId }
     : { taskBridge: undefined, taskWorkspaceId: undefined };
 }
 
 function InfiniteCanvasLocalShellComposition(): React.JSX.Element {
-  const { dispatch, state, taskBridge, taskWorkspaceId, workspaceAvailable } =
+  const { dispatch, state, taskBridge, taskProjectId, workspaceAvailable } =
     useDesktopTaskRuntime();
   const repository = useMemo(() => createLocalInfiniteCanvasRepository(), []);
   const activeTaskDetailsTaskId =
@@ -85,7 +85,7 @@ function InfiniteCanvasLocalShellComposition(): React.JSX.Element {
             <InfiniteCanvasLocalShell
               {...getCanvasTaskBridgeProps({
                 taskBridge,
-                taskWorkspaceId,
+                taskProjectId,
                 workspaceAvailable,
               })}
               activeTaskDetailsTaskId={activeTaskDetailsTaskId}
