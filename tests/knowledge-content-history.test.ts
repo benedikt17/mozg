@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getKnowledgeHistoryShortcutAction,
   KnowledgeContentHistory,
   KNOWLEDGE_CONTENT_HISTORY_LIMIT,
 } from "@/prototype/knowledge/knowledge-content-history";
@@ -139,6 +140,97 @@ describe("KnowledgeContentHistory", () => {
     history.redo("doc-a");
     expect(history.getEntries("doc-a")).toHaveLength(length);
     expect(history.getCurrentEntry("doc-a")?.markdown).toBe("two");
+  });
+
+  it("normalizes undo and redo shortcuts across keyboard layouts", () => {
+    const baseEvent = {
+      altKey: false,
+      ctrlKey: true,
+      metaKey: false,
+      shiftKey: false,
+    };
+
+    expect(
+      getKnowledgeHistoryShortcutAction({
+        ...baseEvent,
+        code: "KeyZ",
+        key: "я",
+      }),
+    ).toBe("undo");
+    expect(
+      getKnowledgeHistoryShortcutAction({
+        ...baseEvent,
+        code: "KeyZ",
+        key: "я",
+        shiftKey: true,
+      }),
+    ).toBe("redo");
+    expect(
+      getKnowledgeHistoryShortcutAction({
+        ...baseEvent,
+        code: "KeyY",
+        key: "н",
+      }),
+    ).toBe("redo");
+    expect(
+      getKnowledgeHistoryShortcutAction({
+        ...baseEvent,
+        code: "",
+        key: "z",
+      }),
+    ).toBe("undo");
+    expect(
+      getKnowledgeHistoryShortcutAction({
+        ...baseEvent,
+        code: "KeyZ",
+        key: "я",
+        ctrlKey: false,
+        metaKey: false,
+      }),
+    ).toBeNull();
+  });
+
+  it("routes title and body history through the same shortcut actions", () => {
+    const history = new KnowledgeContentHistory();
+    history.ensureDocument("title-doc", "# Old title\n\nBody");
+    history.commit({
+      documentId: "title-doc",
+      markdown: "# New title\n\nBody",
+      origin: "toolbar",
+    });
+
+    expect(
+      getKnowledgeHistoryShortcutAction({
+        altKey: false,
+        code: "KeyZ",
+        ctrlKey: true,
+        key: "я",
+        metaKey: false,
+        shiftKey: false,
+      }),
+    ).toBe("undo");
+    expect(history.undo("title-doc")?.markdown).toBe("# Old title\n\nBody");
+
+    expect(
+      getKnowledgeHistoryShortcutAction({
+        altKey: false,
+        code: "KeyY",
+        ctrlKey: true,
+        key: "н",
+        metaKey: false,
+        shiftKey: false,
+      }),
+    ).toBe("redo");
+    expect(history.redo("title-doc")?.markdown).toBe("# New title\n\nBody");
+
+    history.ensureDocument("body-doc", "# Title\n\nOld body");
+    history.commit({
+      documentId: "body-doc",
+      markdown: "# Title\n\nNew body",
+      origin: "typing",
+    });
+    history.undo("body-doc");
+    expect(history.redo("body-doc")?.markdown).toBe("# Title\n\nNew body");
   });
 });
 

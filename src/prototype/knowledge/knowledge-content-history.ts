@@ -1,6 +1,27 @@
 export const KNOWLEDGE_CONTENT_HISTORY_LIMIT = 100;
 export const KNOWLEDGE_CONTENT_HISTORY_COALESCE_MS = 800;
 
+export type KnowledgeHistoryShortcutAction = "undo" | "redo" | null;
+
+export function getKnowledgeHistoryShortcutAction(
+  event: Pick<
+    KeyboardEvent,
+    "altKey" | "code" | "ctrlKey" | "key" | "metaKey" | "shiftKey"
+  >,
+): KnowledgeHistoryShortcutAction {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey) return null;
+
+  const key =
+    event.code === "KeyZ"
+      ? "z"
+      : event.code === "KeyY"
+        ? "y"
+        : event.key.toLowerCase();
+  if (key === "z") return event.shiftKey ? "redo" : "undo";
+  if (key === "y" && !event.shiftKey) return "redo";
+  return null;
+}
+
 export type KnowledgeContentHistoryOrigin =
   | "baseline"
   | "typing"

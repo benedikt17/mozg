@@ -18,8 +18,7 @@ describe("Knowledge content history integration contract", () => {
     expect(workspace).toContain("contentHistory.canUndo");
     expect(workspace).toContain("contentHistory.canRedo");
     expect(editor).not.toContain("historyRef");
-    expect(editor).toContain('event.key.toLowerCase() === "z"');
-    expect(editor).toContain('event.key.toLowerCase() === "y"');
+    expect(editor).toContain("getKnowledgeHistoryShortcutAction(event)");
     expect(editor).toContain("event.preventDefault()");
   });
 
@@ -51,9 +50,11 @@ describe("Knowledge content history integration contract", () => {
     expect(runtime).toContain("apply-knowledge-structural-history");
     expect(sidebar).toContain("contentHistory.undoActive(undefined)");
     expect(sidebar).toContain("isEditableTarget(event.target)");
+    expect(sidebar).toContain("getKnowledgeHistoryShortcutAction(event)");
     expect(workspace).toContain(
       "contentHistory.undoActive(activeDocument?.id)",
     );
+    expect(workspace).toContain("getKnowledgeHistoryShortcutAction(event)");
     expect(workspace).toContain("contentHistory.canUndoActive");
   });
 });

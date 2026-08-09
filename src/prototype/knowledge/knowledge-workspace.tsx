@@ -16,6 +16,7 @@ import { UiIcon } from "@/prototype/desktop-icons";
 import { EmptySection } from "@/prototype/empty-section";
 import { MarkdownSourceEditor } from "./markdown-source-editor";
 import { KnowledgeTrashView } from "./knowledge-trash-view";
+import { getKnowledgeHistoryShortcutAction } from "./knowledge-content-history";
 import { useKnowledgeContentHistory } from "./knowledge-content-history-runtime";
 import {
   getDocumentHeadings,
@@ -824,16 +825,11 @@ function DocumentArticle({
       onFocusCapture={onActivate}
       onKeyDown={(event) => {
         if (!active || isEditableTarget(event.target)) return;
-        const modifier = event.ctrlKey || event.metaKey;
-        if (!modifier || event.altKey) return;
-        if (event.key.toLowerCase() === "z") {
-          event.preventDefault();
-          if (event.shiftKey) contentHistory.redoActive(document?.id);
-          else contentHistory.undoActive(document?.id);
-        } else if (event.key.toLowerCase() === "y" && !event.shiftKey) {
-          event.preventDefault();
-          contentHistory.redoActive(document?.id);
-        }
+        const shortcut = getKnowledgeHistoryShortcutAction(event);
+        if (!shortcut) return;
+        event.preventDefault();
+        if (shortcut === "undo") contentHistory.undoActive(document?.id);
+        else contentHistory.redoActive(document?.id);
       }}
       onPointerDown={onActivate}
       tabIndex={0}

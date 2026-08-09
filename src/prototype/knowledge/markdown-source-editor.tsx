@@ -7,7 +7,10 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
-import type { KnowledgeContentHistoryOrigin } from "./knowledge-content-history";
+import {
+  getKnowledgeHistoryShortcutAction,
+  type KnowledgeContentHistoryOrigin,
+} from "./knowledge-content-history";
 import { useKnowledgeContentHistory } from "./knowledge-content-history-runtime";
 import {
   adjustListIndent,
@@ -278,23 +281,12 @@ export function MarkdownSourceEditor({
     event: React.KeyboardEvent<HTMLTextAreaElement>,
   ): void => {
     const textarea = event.currentTarget;
-    const modifier = event.ctrlKey || event.metaKey;
-    if (modifier && !event.altKey && event.key.toLowerCase() === "z") {
+    const shortcut = getKnowledgeHistoryShortcutAction(event);
+    if (shortcut) {
       event.preventDefault();
       event.stopPropagation();
-      if (event.shiftKey) contentHistory.redo(document.id);
-      else contentHistory.undo(document.id);
-      return;
-    }
-    if (
-      modifier &&
-      !event.altKey &&
-      event.key.toLowerCase() === "y" &&
-      !event.shiftKey
-    ) {
-      event.preventDefault();
-      event.stopPropagation();
-      contentHistory.redo(document.id);
+      if (shortcut === "undo") contentHistory.undo(document.id);
+      else contentHistory.redo(document.id);
       return;
     }
     const lineStart =

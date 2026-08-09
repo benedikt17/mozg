@@ -12,6 +12,7 @@ import {
 } from "@/prototype/desktop-state";
 import { UiIcon } from "@/prototype/desktop-icons";
 import { IconButton } from "@/prototype/desktop-ui";
+import { getKnowledgeHistoryShortcutAction } from "./knowledge-content-history";
 import { useKnowledgeContentHistory } from "./knowledge-content-history-runtime";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
@@ -89,16 +90,11 @@ export function KnowledgeSidebar({
       className="tool-sidebar knowledge-sidebar"
       onKeyDown={(event) => {
         if (isEditableTarget(event.target)) return;
-        const modifier = event.ctrlKey || event.metaKey;
-        if (!modifier || event.altKey) return;
-        if (event.key.toLowerCase() === "z") {
-          event.preventDefault();
-          if (event.shiftKey) contentHistory.redoActive(undefined);
-          else contentHistory.undoActive(undefined);
-        } else if (event.key.toLowerCase() === "y" && !event.shiftKey) {
-          event.preventDefault();
-          contentHistory.redoActive(undefined);
-        }
+        const shortcut = getKnowledgeHistoryShortcutAction(event);
+        if (!shortcut) return;
+        event.preventDefault();
+        if (shortcut === "undo") contentHistory.undoActive(undefined);
+        else contentHistory.redoActive(undefined);
       }}
       onPointerDownCapture={(event) => {
         if (!isEditableTarget(event.target)) {
