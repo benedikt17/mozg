@@ -15,6 +15,7 @@ import {
   desktopPrototypeReducer,
   initialDesktopPrototypeState,
 } from "@/prototype/desktop-state";
+import { desktopRuntimeReducer } from "@/prototype/state/desktop-runtime-reducer";
 import {
   useDesktopPersistence,
   type UseDesktopPersistenceResult,
@@ -80,7 +81,7 @@ export function DesktopTaskRuntimeProvider({
   runtimeMode: DesktopRuntimeMode;
 }): React.JSX.Element {
   const [state, dispatch] = useReducer(
-    desktopPrototypeReducer,
+    desktopRuntimeReducer,
     cloudBootstrap?.snapshot,
     initializeDesktopPrototypeState,
   );
