@@ -41,12 +41,9 @@ export function resolveDesktopTask(
   projectId: string,
   taskId: string,
 ): CanvasTaskResolveResult {
-  // Canvas persists taskId as a stable workspace-level reference. The project
-  // argument is retained by the bridge contract for picker/search context, but
-  // must not re-scope an already persisted task reference after project switch.
-  void projectId;
   const task = state.tasks.find((item) => item.id === taskId);
   if (!task) return { status: "missing" };
+  if (task.projectId !== projectId) return { status: "workspace-mismatch" };
   return { status: "resolved", task: projectTask(state, task) };
 }
 
@@ -96,7 +93,8 @@ export function createDesktopTaskBridge(
     },
     openTask: (taskId) => {
       const state = options.getState();
-      if (!state.tasks.some((task) => task.id === taskId)) return;
+      const task = state.tasks.find((item) => item.id === taskId);
+      if (!task || task.projectId !== state.activeProjectId) return;
       options.dispatch({
         type:
           state.activeSection === "canvases"
