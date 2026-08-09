@@ -135,6 +135,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           parent_group_id: string | null
+          project_id: string
           sort_order: number
           title: string
           updated_at: string
@@ -146,6 +147,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           parent_group_id?: string | null
+          project_id: string
           sort_order?: number
           title: string
           updated_at?: string
@@ -157,6 +159,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           parent_group_id?: string | null
+          project_id?: string
           sort_order?: number
           title?: string
           updated_at?: string
@@ -169,6 +172,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "canvas_groups"
             referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "canvas_groups_parent_workspace_project_fkey"
+            columns: ["workspace_id", "project_id", "parent_group_id"]
+            isOneToOne: false
+            referencedRelation: "canvas_groups"
+            referencedColumns: ["workspace_id", "project_id", "id"]
           },
           {
             foreignKeyName: "canvas_groups_workspace_id_fkey"
@@ -222,6 +232,7 @@ export type Database = {
           document: Json
           group_id: string | null
           id: string
+          project_id: string
           revision: number
           schema_version: number
           sort_order: number
@@ -236,6 +247,7 @@ export type Database = {
           document?: Json
           group_id?: string | null
           id?: string
+          project_id: string
           revision?: number
           schema_version?: number
           sort_order?: number
@@ -250,6 +262,7 @@ export type Database = {
           document?: Json
           group_id?: string | null
           id?: string
+          project_id?: string
           revision?: number
           schema_version?: number
           sort_order?: number
@@ -264,6 +277,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "canvas_groups"
             referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "canvases_group_workspace_project_fkey"
+            columns: ["workspace_id", "project_id", "group_id"]
+            isOneToOne: false
+            referencedRelation: "canvas_groups"
+            referencedColumns: ["workspace_id", "project_id", "id"]
           },
           {
             foreignKeyName: "canvases_workspace_id_fkey"
@@ -560,6 +580,18 @@ export type Database = {
               revision: number
             }[]
           }
+      create_canvas_for_project: {
+        Args: {
+          target_group_id?: string
+          target_project_id: string
+          target_title: string
+          target_workspace_id: string
+        }
+        Returns: {
+          id: string
+          revision: number
+        }[]
+      }
       create_canvas_group: {
         Args: {
           target_parent_group_id: string
@@ -572,6 +604,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           parent_group_id: string | null
+          project_id: string
           sort_order: number
           title: string
           updated_at: string
@@ -583,6 +616,17 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      create_canvas_group_for_project: {
+        Args: {
+          target_parent_group_id?: string
+          target_project_id: string
+          target_title: string
+          target_workspace_id: string
+        }
+        Returns: {
+          id: string
+        }[]
       }
       delete_canvas: {
         Args: { target_canvas_id: string }
@@ -717,6 +761,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           parent_group_id: string | null
+          project_id: string
           sort_order: number
           title: string
           updated_at: string
@@ -754,6 +799,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           parent_group_id: string | null
+          project_id: string
           sort_order: number
           title: string
           updated_at: string
@@ -924,8 +970,8 @@ export type Tables<
         DefaultSchema["Views"])
     ? (DefaultSchema["Tables"] &
         DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-        Row: infer R
-      }
+      Row: infer R
+    }
       ? R
       : never
     : never
