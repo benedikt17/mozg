@@ -36,7 +36,7 @@ type DesktopTaskRuntimeContextValue = {
   persistence: UseDesktopPersistenceResult;
   workspaceAvailable: boolean;
   taskBridge: CanvasTaskBridge;
-  taskWorkspaceId: string;
+  taskProjectId: string;
   workspaceId?: string;
 };
 
@@ -119,7 +119,7 @@ export function DesktopTaskRuntimeProvider({
         persistence.lifecycle.status !== "loading" &&
         persistence.lifecycle.status !== "load-error",
       taskBridge,
-      taskWorkspaceId: state.activeProjectId,
+      taskProjectId: state.activeProjectId,
       workspaceId: cloudBootstrap?.workspaceId,
     }),
     [cloudBootstrap, dispatch, persistence, state, taskBridge],
