@@ -8,25 +8,30 @@ import {
   parseDesktopDomainSnapshotV3,
 } from "@/prototype/persistence/domain-snapshot";
 
+function persistentlyValid(state: DesktopPrototypeState): boolean {
+  return parseDesktopDomainSnapshotV3(createDesktopDomainSnapshot(state)).ok;
+}
+
 /**
  * Production runtime boundary around the pure prototype reducer.
  *
  * Most actions are validated by their domain transition guards and again by the
- * persistence adapters before a write. The structural-history commit action is
- * intentionally different: it carries a precomputed state so the underlying
- * transition is not evaluated twice. Because that shape can otherwise bypass
- * reducer-level domain guards, validate its persisted projection here before it
- * can become the runtime state root.
+ * persistence adapters before a write. Knowledge structural history has two
+ * intentionally privileged paths: committing a precomputed transition and
+ * replaying an undo/redo entry. Validate their persisted projection here before
+ * either can become the runtime state root.
  */
 export function desktopRuntimeReducer(
   state: DesktopPrototypeState,
   action: DesktopPrototypeAction,
 ): DesktopPrototypeState {
   if (action.type === "commit-knowledge-structural-transition") {
-    const parsed = parseDesktopDomainSnapshotV3(
-      createDesktopDomainSnapshot(action.nextState),
-    );
-    return parsed.ok ? action.nextState : state;
+    return persistentlyValid(action.nextState) ? action.nextState : state;
+  }
+
+  if (action.type === "apply-knowledge-structural-history") {
+    const candidateState = desktopPrototypeReducer(state, action);
+    return persistentlyValid(candidateState) ? candidateState : state;
   }
 
   return desktopPrototypeReducer(state, action);
