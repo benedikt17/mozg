@@ -30,7 +30,7 @@ function createHarness(): {
 }
 
 describe("desktop task bridge", () => {
-  it("projects stable task references independently of current project scope", async () => {
+  it("resolves task references only inside the owning project", async () => {
     const harness = createHarness();
     const task = harness.getState().tasks[0]!;
     const bridge = createDesktopTaskBridge({
@@ -38,8 +38,9 @@ describe("desktop task bridge", () => {
       dispatch: harness.dispatch,
       onStateChange: harness.onStateChange,
     });
-    const expected = {
-      status: "resolved" as const,
+
+    expect(await bridge.resolveTask(task.projectId, task.id)).toEqual({
+      status: "resolved",
       task: {
         id: task.id,
         title: task.title,
@@ -53,16 +54,16 @@ describe("desktop task bridge", () => {
         })),
         detailsOpen: false,
       },
-    };
-
-    expect(await bridge.resolveTask(task.projectId, task.id)).toEqual(expected);
-    expect(await bridge.resolveTask("another-project", task.id)).toEqual(expected);
+    });
+    expect(await bridge.resolveTask("another-project", task.id)).toEqual({
+      status: "workspace-mismatch",
+    });
     expect(await bridge.resolveTask(task.projectId, "missing-task")).toEqual({
       status: "missing",
     });
   });
 
-  it("keeps picker search project-scoped while stable references remain mutable", async () => {
+  it("keeps picker search and task mutations project-scoped", async () => {
     const harness = createHarness();
     const task = harness.getState().tasks[0]!;
     const bridge = createDesktopTaskBridge({
@@ -79,7 +80,7 @@ describe("desktop task bridge", () => {
     bridge.toggleTaskCompleted(task.projectId, task.id);
     expect(harness.getState().tasks[0]!.completedAt).not.toBeNull();
     bridge.toggleTaskCompleted("another-project", task.id);
-    expect(harness.getState().tasks[0]!.completedAt).toBeNull();
+    expect(harness.getState().tasks[0]!.completedAt).not.toBeNull();
   });
 
   it("emits initial and subsequent task projection updates", () => {
@@ -107,7 +108,7 @@ describe("desktop task bridge", () => {
     expect(harness.subscribeCount()).toBe(0);
   });
 
-  it("keeps persisted task cards live across active project switches", async () => {
+  it("rejects cross-project task cards while each picker stays isolated", async () => {
     const harness = createHarness();
     const firstTask = harness.getState().tasks[0]!;
     const otherTask = harness
@@ -118,24 +119,13 @@ describe("desktop task bridge", () => {
       dispatch: harness.dispatch,
       onStateChange: harness.onStateChange,
     });
-    const updates: Array<string | null> = [];
-    const unsubscribe = bridge.subscribeToTask(
-      firstTask.projectId,
-      firstTask.id,
-      (projection) => updates.push(projection?.id ?? null),
-    );
 
-    expect(await bridge.resolveTask(otherTask.projectId, firstTask.id)).toEqual(
-      expect.objectContaining({ status: "resolved" }),
-    );
-    harness.dispatch({
-      type: "switch-project",
-      projectId: otherTask.projectId,
+    expect(await bridge.resolveTask(otherTask.projectId, firstTask.id)).toEqual({
+      status: "workspace-mismatch",
     });
-    expect(updates.at(-1)).toBe(firstTask.id);
-    expect(await bridge.resolveTask(otherTask.projectId, firstTask.id)).toEqual(
-      expect.objectContaining({ status: "resolved" }),
-    );
+    expect(await bridge.resolveTask(firstTask.projectId, otherTask.id)).toEqual({
+      status: "workspace-mismatch",
+    });
 
     const firstProjectResults = await bridge.searchTasks(firstTask.projectId, "");
     const otherProjectResults = await bridge.searchTasks(otherTask.projectId, "");
@@ -151,41 +141,50 @@ describe("desktop task bridge", () => {
     expect(otherProjectResults.some((task) => task.id === firstTask.id)).toBe(
       false,
     );
-    unsubscribe();
   });
 
-  it("opens the existing task-details lifecycle", () => {
+  it("opens task details only for the active Project", () => {
     const harness = createHarness();
-    const task = harness.getState().tasks[0]!;
-    const otherTask = harness
-      .getState()
-      .tasks.find((candidate) => candidate.id !== task.id)!;
+    const state = harness.getState();
+    const activeTask = state.tasks.find(
+      (task) => task.projectId === state.activeProjectId,
+    )!;
+    const foreignTask = state.tasks.find(
+      (task) => task.projectId !== state.activeProjectId,
+    )!;
     const bridge = createDesktopTaskBridge({
       getState: harness.getState,
       dispatch: harness.dispatch,
       onStateChange: harness.onStateChange,
     });
 
-    bridge.openTask(task.id);
-
+    bridge.openTask(activeTask.id);
     expect(harness.getState().contextPanel).toEqual({
       kind: "task",
-      taskId: task.id,
+      taskId: activeTask.id,
     });
-    expect(harness.getState().taskDetailViewTaskId).toBe(task.id);
 
-    bridge.openTask(otherTask.id);
-
+    bridge.openTask(foreignTask.id);
     expect(harness.getState().contextPanel).toEqual({
       kind: "task",
-      taskId: otherTask.id,
+      taskId: activeTask.id,
     });
-    expect(harness.getState().taskDetailViewTaskId).toBe(otherTask.id);
+
+    harness.dispatch({
+      type: "switch-project",
+      projectId: foreignTask.projectId,
+    });
+    bridge.openTask(foreignTask.id);
+    expect(harness.getState().contextPanel).toEqual({
+      kind: "task",
+      taskId: foreignTask.id,
+    });
   });
 
   it("opens Canvas task details without changing the top-level section", () => {
     const harness = createHarness();
-    const task = harness.getState().tasks[0]!;
+    const state = harness.getState();
+    const task = state.tasks.find((item) => item.projectId === state.activeProjectId)!;
     const bridge = createDesktopTaskBridge({
       getState: harness.getState,
       dispatch: harness.dispatch,
@@ -245,7 +244,7 @@ describe("desktop task bridge", () => {
         .getState()
         .tasks.find((item) => item.id === task.id)
         ?.subtasks.find((item) => item.id === subtask.id)?.done,
-    ).toBe(subtask.done);
+    ).toBe(!subtask.done);
     unsubscribe();
   });
 
@@ -296,40 +295,26 @@ describe("desktop task bridge", () => {
 
   it("projects canonical details-open state and closes through the existing action", () => {
     const harness = createHarness();
-    const task = harness.getState().tasks[0]!;
-    const otherTask = harness
-      .getState()
-      .tasks.find((item) => item.id !== task.id)!;
+    const state = harness.getState();
+    const task = state.tasks.find((item) => item.projectId === state.activeProjectId)!;
     const bridge = createDesktopTaskBridge({
       getState: harness.getState,
       dispatch: harness.dispatch,
       onStateChange: harness.onStateChange,
     });
-    const taskUpdates: Array<CanvasTaskProjectionLike | null> = [];
-    const otherUpdates: Array<CanvasTaskProjectionLike | null> = [];
-    const stopTask = bridge.subscribeToTask(
+    const updates: Array<CanvasTaskProjectionLike | null> = [];
+    const stop = bridge.subscribeToTask(
       task.projectId,
       task.id,
-      (projection) => taskUpdates.push(projection),
-    );
-    const stopOther = bridge.subscribeToTask(
-      otherTask.projectId,
-      otherTask.id,
-      (projection) => otherUpdates.push(projection),
+      (projection) => updates.push(projection),
     );
 
-    expect(taskUpdates.at(-1)?.detailsOpen).toBe(false);
+    expect(updates.at(-1)?.detailsOpen).toBe(false);
     bridge.openTask(task.id);
-    expect(taskUpdates.at(-1)?.detailsOpen).toBe(true);
+    expect(updates.at(-1)?.detailsOpen).toBe(true);
     bridge.closeTaskDetails(task.id);
-    expect(taskUpdates.at(-1)?.detailsOpen).toBe(false);
-    bridge.openTask(otherTask.id);
-    expect(taskUpdates.at(-1)?.detailsOpen).toBe(false);
-    expect(otherUpdates.at(-1)?.detailsOpen).toBe(true);
-    harness.dispatch({ type: "close-context-panel" });
-    expect(otherUpdates.at(-1)?.detailsOpen).toBe(false);
-    stopTask();
-    stopOther();
+    expect(updates.at(-1)?.detailsOpen).toBe(false);
+    stop();
   });
 });
 
