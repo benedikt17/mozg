@@ -5,6 +5,7 @@ import type { LocalCanvasShellState } from "@/lib/canvas/local-canvas-shell-cont
 
 export type CloudCanvasRuntimeScope = {
   workspaceId: string;
+  projectId?: string;
   userId: string;
 };
 
@@ -29,7 +30,7 @@ export type CanvasImageRuntimePayload = Pick<
 >;
 
 function scopeKey(scope: CloudCanvasRuntimeScope): string {
-  return `${scope.userId}:${scope.workspaceId}`;
+  return `${scope.userId}:${scope.workspaceId}:${scope.projectId ?? ""}`;
 }
 
 function keyOf(scope: CloudCanvasRuntimeScope, canvasId: string): string {
@@ -37,7 +38,7 @@ function keyOf(scope: CloudCanvasRuntimeScope, canvasId: string): string {
 }
 
 /**
- * Browser-memory-only cache for the last active cloud Canvas in each workspace.
+ * Browser-memory-only cache for the last active cloud Canvas in each Project.
  * It deliberately holds runtime projections and object URLs, never canonical data.
  */
 export class CloudCanvasRuntimeCache {
@@ -90,6 +91,7 @@ export class CloudCanvasRuntimeCache {
     for (const [key, entry] of this.entries) {
       if (
         entry.workspaceId !== scope.workspaceId ||
+        entry.projectId !== scope.projectId ||
         entry.userId !== scope.userId
       )
         continue;
