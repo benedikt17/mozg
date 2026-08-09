@@ -38,12 +38,15 @@ function projectTask(
 
 export function resolveDesktopTask(
   state: DesktopPrototypeState,
-  workspaceId: string,
+  projectId: string,
   taskId: string,
 ): CanvasTaskResolveResult {
+  // Canvas persists taskId as a stable workspace-level reference. The project
+  // argument is retained by the bridge contract for picker/search context, but
+  // must not re-scope an already persisted task reference after project switch.
+  void projectId;
   const task = state.tasks.find((item) => item.id === taskId);
   if (!task) return { status: "missing" };
-  if (task.projectId !== workspaceId) return { status: "workspace-mismatch" };
   return { status: "resolved", task: projectTask(state, task) };
 }
 
@@ -51,25 +54,23 @@ export function createDesktopTaskBridge(
   options: DesktopTaskBridgeOptions,
 ): CanvasTaskBridge {
   return {
-    resolveTask: (workspaceId, taskId) =>
-      resolveDesktopTask(options.getState(), workspaceId, taskId),
-    searchTasks: (workspaceId, query) => {
+    resolveTask: (projectId, taskId) =>
+      resolveDesktopTask(options.getState(), projectId, taskId),
+    searchTasks: (projectId, query) => {
       const normalizedQuery = query.trim().toLocaleLowerCase("ru");
       const state = options.getState();
       return state.tasks
         .filter(
           (task) =>
-            task.projectId === workspaceId &&
+            task.projectId === projectId &&
             (normalizedQuery.length === 0 ||
               task.title.toLocaleLowerCase("ru").includes(normalizedQuery)),
         )
         .map((task) => projectTask(state, task));
     },
-    toggleTaskCompleted: (workspaceId, taskId) => {
+    toggleTaskCompleted: (projectId, taskId) => {
       const state = options.getState();
-      if (
-        resolveDesktopTask(state, workspaceId, taskId).status !== "resolved"
-      ) {
+      if (resolveDesktopTask(state, projectId, taskId).status !== "resolved") {
         return;
       }
       const task = state.tasks.find((item) => item.id === taskId);
@@ -81,9 +82,9 @@ export function createDesktopTaskBridge(
           task.completedAt === null ? new Date().toISOString() : null,
       });
     },
-    toggleSubtaskCompleted: (workspaceId, taskId, subtaskId) => {
+    toggleSubtaskCompleted: (projectId, taskId, subtaskId) => {
       const state = options.getState();
-      const result = resolveDesktopTask(state, workspaceId, taskId);
+      const result = resolveDesktopTask(state, projectId, taskId);
       const task = state.tasks.find((item) => item.id === taskId);
       if (
         result.status !== "resolved" ||
@@ -115,11 +116,11 @@ export function createDesktopTaskBridge(
         options.dispatch({ type: "close-task-detail-view" });
       }
     },
-    subscribeToTask: (workspaceId, taskId, listener) => {
+    subscribeToTask: (projectId, taskId, listener) => {
       const emit = (): void => {
         const result = resolveDesktopTask(
           options.getState(),
-          workspaceId,
+          projectId,
           taskId,
         );
         listener(result.status === "resolved" ? result.task : null);
