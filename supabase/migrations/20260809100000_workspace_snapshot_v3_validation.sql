@@ -398,7 +398,7 @@ as $$
 declare
   current_revision bigint;
   current_schema_version smallint;
-  payload_schema_version integer;
+  payload_schema_version numeric;
 begin
   if target_expected_revision is null or target_expected_revision <= 0 then
     raise exception using errcode = '22023', message = 'expected revision must be positive';
@@ -418,7 +418,7 @@ begin
      ) then
     raise exception using errcode = '22023', message = 'desktop snapshot validation failed';
   end if;
-  payload_schema_version := (target_snapshot ->> 'schemaVersion')::integer;
+  payload_schema_version := (target_snapshot ->> 'schemaVersion')::numeric;
   if payload_schema_version <> target_schema_version then
     raise exception using errcode = '22023', message = 'desktop snapshot schema version mismatch';
   end if;
