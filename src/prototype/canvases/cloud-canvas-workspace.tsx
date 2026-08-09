@@ -13,6 +13,39 @@ import {
 } from "@/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell";
 import { useDesktopTaskRuntime } from "@/prototype/tasks/desktop-task-runtime";
 
+const PROJECT_RUNTIME_CACHE_LIMIT = 8;
+const projectRuntimeCaches = new Map<string, CloudCanvasRuntimeCache>();
+
+function projectRuntimeCache(
+  workspaceId: string,
+  projectId: string,
+): CloudCanvasRuntimeCache {
+  const key = `${workspaceId}:${projectId}`;
+  const existing = projectRuntimeCaches.get(key);
+  if (existing) {
+    projectRuntimeCaches.delete(key);
+    projectRuntimeCaches.set(key, existing);
+    return existing;
+  }
+  const created = new CloudCanvasRuntimeCache();
+  projectRuntimeCaches.set(key, created);
+  while (projectRuntimeCaches.size > PROJECT_RUNTIME_CACHE_LIMIT) {
+    const oldest = projectRuntimeCaches.entries().next().value as
+      | [string, CloudCanvasRuntimeCache]
+      | undefined;
+    if (!oldest) break;
+    projectRuntimeCaches.delete(oldest[0]);
+    oldest[1].clearAllExcept(null);
+  }
+  return created;
+}
+
+function clearProjectRuntimeCachesExcept(userId: string | null): void {
+  for (const cache of projectRuntimeCaches.values()) {
+    cache.clearAllExcept(userId);
+  }
+}
+
 const cloudCanvasShellCopy: CanvasShellCopy = {
   eyebrow: "Холсты",
   defaultTitle: "Новый холст",
@@ -46,7 +79,7 @@ export function CloudCanvasWorkspace({
   const projectId = taskWorkspaceId;
   const supabase = useMemo(() => createClient(), []);
   const runtimeCache = useMemo(
-    () => new CloudCanvasRuntimeCache(),
+    () => projectRuntimeCache(workspaceId, projectId),
     [projectId, workspaceId],
   );
   const cloudAssetRepository = useMemo(
@@ -61,14 +94,14 @@ export function CloudCanvasWorkspace({
     });
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       cloudAssetRepository.invalidateAuthentication();
-      runtimeCache.clearAllExcept(session?.user.id ?? null);
+      clearProjectRuntimeCachesExcept(session?.user.id ?? null);
       if (active) setUserId(session?.user.id ?? null);
     });
     return () => {
       active = false;
       data.subscription.unsubscribe();
     };
-  }, [cloudAssetRepository, runtimeCache, supabase]);
+  }, [cloudAssetRepository, supabase]);
   const dependencies = useMemo(() => {
     try {
       const baseCanvasRepository = createCloudCanvasRepository({ supabase });
