@@ -29,6 +29,10 @@ import type {
   LoadedCanvas,
 } from "@/lib/canvas/local-canvas-repository";
 
+type CanvasNavigationLifecycleRepository = {
+  beginCanvasNavigation?: (canvasId: string | null) => void;
+};
+
 export type LocalCanvasShellStatus =
   | "loading"
   | "saved"
@@ -145,10 +149,11 @@ export class LocalCanvasShellController {
     title: string,
     groupId: string | null = null,
   ): Promise<LocalCanvasShellState> {
+    if (this.stateValue.canvasId && this.stateValue.autosaveBlocked) {
+      throw new Error("Resolve the current Canvas save conflict before leaving it.");
+    }
+    this.beginCanvasNavigation(null);
     if (this.stateValue.canvasId) {
-      if (this.stateValue.autosaveBlocked) {
-        throw new Error("Resolve the current Canvas save conflict before leaving it.");
-      }
       await this.flushPendingSave();
       if (this.stateValue.autosaveBlocked) {
         throw new Error("Resolve the current Canvas save conflict before leaving it.");
@@ -164,10 +169,15 @@ export class LocalCanvasShellController {
 
   async openCanvas(canvasId: string): Promise<LocalCanvasShellState> {
     const currentCanvasId = this.stateValue.canvasId;
+    if (
+      currentCanvasId &&
+      currentCanvasId !== canvasId &&
+      this.stateValue.autosaveBlocked
+    ) {
+      throw new Error("Resolve the current Canvas save conflict before leaving it.");
+    }
+    this.beginCanvasNavigation(canvasId);
     if (currentCanvasId) {
-      if (currentCanvasId !== canvasId && this.stateValue.autosaveBlocked) {
-        throw new Error("Resolve the current Canvas save conflict before leaving it.");
-      }
       if (!this.stateValue.autosaveBlocked) {
         await this.flushPendingSave();
       }
@@ -194,6 +204,12 @@ export class LocalCanvasShellController {
       userId: this.userId,
     });
     return this.hydrate(canvas, viewState);
+  }
+
+  private beginCanvasNavigation(canvasId: string | null): void {
+    const lifecycleRepository = this.repository as typeof this.repository &
+      CanvasNavigationLifecycleRepository;
+    lifecycleRepository.beginCanvasNavigation?.(canvasId);
   }
 
   private hydrate(
