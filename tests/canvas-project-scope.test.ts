@@ -270,7 +270,7 @@ describe("Canvas project scope", () => {
       {
         name: "create_canvas_group_for_project",
         args: {
-          target_parent_group_id: null,
+          target_parent_group_id: undefined,
           target_project_id: PROJECT_A,
           target_title: "Project A group",
           target_workspace_id: WORKSPACE,
