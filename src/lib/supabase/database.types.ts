@@ -135,6 +135,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           parent_group_id: string | null
+          project_id: string | null
           sort_order: number
           title: string
           updated_at: string
@@ -146,6 +147,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           parent_group_id?: string | null
+          project_id?: string | null
           sort_order?: number
           title: string
           updated_at?: string
@@ -157,6 +159,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           parent_group_id?: string | null
+          project_id?: string | null
           sort_order?: number
           title?: string
           updated_at?: string
@@ -222,6 +225,7 @@ export type Database = {
           document: Json
           group_id: string | null
           id: string
+          project_id: string | null
           revision: number
           schema_version: number
           sort_order: number
@@ -236,6 +240,7 @@ export type Database = {
           document?: Json
           group_id?: string | null
           id?: string
+          project_id?: string | null
           revision?: number
           schema_version?: number
           sort_order?: number
@@ -250,6 +255,7 @@ export type Database = {
           document?: Json
           group_id?: string | null
           id?: string
+          project_id?: string | null
           revision?: number
           schema_version?: number
           sort_order?: number
@@ -572,6 +578,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           parent_group_id: string | null
+          project_id: string | null
           sort_order: number
           title: string
           updated_at: string
@@ -717,6 +724,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           parent_group_id: string | null
+          project_id: string | null
           sort_order: number
           title: string
           updated_at: string
@@ -754,6 +762,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           parent_group_id: string | null
+          project_id: string | null
           sort_order: number
           title: string
           updated_at: string
