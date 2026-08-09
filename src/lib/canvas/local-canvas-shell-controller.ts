@@ -7,6 +7,10 @@ import {
   type CanvasViewport,
   type CanvasTextNode,
 } from "@/lib/canvas/canvas-document";
+import type {
+  CanvasPendingSaveFlushState,
+  CanvasPendingSaveLifecycleRepository,
+} from "@/lib/canvas/canvas-pending-save-lifecycle";
 import {
   imageNodesToCanvasDocument,
   runtimeEdgesToCanvasDocument,
@@ -26,7 +30,11 @@ import type {
 } from "@/lib/canvas/local-canvas-repository";
 
 export type LocalCanvasShellStatus =
-  "loading" | "saved" | "saving" | "conflict" | "error";
+  | "loading"
+  | "saved"
+  | "saving"
+  | "conflict"
+  | "error";
 
 export type LocalCanvasShellState = {
   canvasId: string | null;
@@ -81,20 +89,51 @@ export class LocalCanvasShellController {
   private readonly userId: string;
   private readonly clock: () => Date | string;
   private stateValue: LocalCanvasShellState = emptyShellState();
+  private mutationVersion = 0;
+  private savedMutationVersion = 0;
+  private saveInFlight: Promise<CanvasSaveResult | null> | null = null;
 
   constructor(options: LocalCanvasShellControllerOptions) {
     this.repository = options.repository;
     this.workspaceId = options.workspaceId;
     this.userId = options.userId;
     this.clock = options.clock ?? (() => new Date());
+
+    const lifecycleRepository = this.repository as typeof this.repository &
+      Partial<CanvasPendingSaveLifecycleRepository>;
+    lifecycleRepository.registerPendingSaveFlush?.({
+      userId: this.userId,
+      flush: async () => {
+        if (!this.hasPendingSave && !this.stateValue.autosaveBlocked) return null;
+        try {
+          await this.flushPendingSave();
+        } catch {
+          // The controller keeps the failed save state so the runtime cache can
+          // preserve the unsaved scene and expose a retryable error on return.
+        }
+        return this.pendingSaveFlushState();
+      },
+    });
   }
 
   get state(): LocalCanvasShellState {
     return clone(this.stateValue);
   }
 
+  get hasPendingSave(): boolean {
+    return this.mutationVersion > this.savedMutationVersion;
+  }
+
   restoreRuntimeState(state: LocalCanvasShellState): LocalCanvasShellState {
     this.stateValue = clone(state);
+    this.saveInFlight = null;
+    this.savedMutationVersion = 0;
+    this.mutationVersion =
+      state.status === "saving" ||
+      state.status === "error" ||
+      state.status === "conflict"
+        ? 1
+        : 0;
     return this.state;
   }
 
@@ -106,6 +145,15 @@ export class LocalCanvasShellController {
     title: string,
     groupId: string | null = null,
   ): Promise<LocalCanvasShellState> {
+    if (this.stateValue.canvasId) {
+      if (this.stateValue.autosaveBlocked) {
+        throw new Error("Resolve the current Canvas save conflict before leaving it.");
+      }
+      await this.flushPendingSave();
+      if (this.stateValue.autosaveBlocked) {
+        throw new Error("Resolve the current Canvas save conflict before leaving it.");
+      }
+    }
     const canvas = await this.repository.createCanvas({
       workspaceId: this.workspaceId,
       title,
@@ -115,6 +163,19 @@ export class LocalCanvasShellController {
   }
 
   async openCanvas(canvasId: string): Promise<LocalCanvasShellState> {
+    const currentCanvasId = this.stateValue.canvasId;
+    if (currentCanvasId) {
+      if (currentCanvasId !== canvasId && this.stateValue.autosaveBlocked) {
+        throw new Error("Resolve the current Canvas save conflict before leaving it.");
+      }
+      if (!this.stateValue.autosaveBlocked) {
+        await this.flushPendingSave();
+      }
+      if (currentCanvasId !== canvasId && this.stateValue.autosaveBlocked) {
+        throw new Error("Resolve the current Canvas save conflict before leaving it.");
+      }
+    }
+
     this.stateValue = { ...this.stateValue, status: "loading", error: null };
     const canvas = await this.repository.loadCanvas({
       workspaceId: this.workspaceId,
@@ -157,40 +218,60 @@ export class LocalCanvasShellController {
       conflictRevision: null,
       autosaveBlocked: false,
     };
+    this.mutationVersion = 0;
+    this.savedMutationVersion = 0;
+    this.saveInFlight = null;
     return this.state;
+  }
+
+  private markPendingSave(
+    nextState: LocalCanvasShellState,
+  ): LocalCanvasShellState {
+    this.mutationVersion += 1;
+    this.stateValue = {
+      ...nextState,
+      status: "saving",
+      error: null,
+    };
+    return this.state;
+  }
+
+  private pendingSaveFlushState(): CanvasPendingSaveFlushState | null {
+    const current = this.stateValue;
+    if (!current.canvasId) return null;
+    return {
+      canvasId: current.canvasId,
+      title: current.title,
+      revision: current.revision,
+      status: current.status,
+      error: current.error,
+      conflictRevision: current.conflictRevision,
+      autosaveBlocked: current.autosaveBlocked,
+    };
   }
 
   setImageNodes(nodes: readonly CanvasImageFlowNode[]): LocalCanvasShellState {
     if (!this.stateValue.canvasId) return this.state;
-    this.stateValue = {
+    return this.markPendingSave({
       ...this.stateValue,
       document: imageNodesToCanvasDocument(this.stateValue.document, nodes),
-      status: "saving",
-      error: null,
-    };
-    return this.state;
+    });
   }
 
   setRuntimeNodes(nodes: readonly CanvasFlowNode[]): LocalCanvasShellState {
     if (!this.stateValue.canvasId) return this.state;
-    this.stateValue = {
+    return this.markPendingSave({
       ...this.stateValue,
       document: runtimeNodesToCanvasDocument(this.stateValue.document, nodes),
-      status: "saving",
-      error: null,
-    };
-    return this.state;
+    });
   }
 
   setRuntimeEdges(edges: readonly CanvasEdgeFlow[]): LocalCanvasShellState {
     if (!this.stateValue.canvasId) return this.state;
-    this.stateValue = {
+    return this.markPendingSave({
       ...this.stateValue,
       document: runtimeEdgesToCanvasDocument(this.stateValue.document, edges),
-      status: "saving",
-      error: null,
-    };
-    return this.state;
+    });
   }
 
   removeImageNodes(nodeIds: readonly string[]): LocalCanvasShellState {
@@ -200,7 +281,7 @@ export class LocalCanvasShellController {
   removeCanvasNodes(nodeIds: readonly string[]): LocalCanvasShellState {
     if (nodeIds.length === 0) return this.state;
     const removed = new Set(nodeIds);
-    this.stateValue = {
+    return this.markPendingSave({
       ...this.stateValue,
       document: parseCanvasDocumentV2({
         ...this.stateValue.document,
@@ -212,10 +293,7 @@ export class LocalCanvasShellController {
             !removed.has(edge.sourceNodeId) && !removed.has(edge.targetNodeId),
         ),
       }),
-      status: "saving",
-      error: null,
-    };
-    return this.state;
+    });
   }
 
   insertTextNode(node: CanvasTextFlowNode): LocalCanvasShellState {
@@ -243,16 +321,13 @@ export class LocalCanvasShellController {
               0,
             ) + 1,
     };
-    this.stateValue = {
+    return this.markPendingSave({
       ...this.stateValue,
       document: parseCanvasDocumentV2({
         ...this.stateValue.document,
         nodes: [...this.stateValue.document.nodes, textNode],
       }),
-      status: "saving",
-      error: null,
-    };
-    return this.state;
+    });
   }
 
   insertTaskNode(node: CanvasTaskFlowNode): LocalCanvasShellState {
@@ -283,16 +358,13 @@ export class LocalCanvasShellController {
               0,
             ) + 1,
     };
-    this.stateValue = {
+    return this.markPendingSave({
       ...this.stateValue,
       document: parseCanvasDocumentV2({
         ...this.stateValue.document,
         nodes: [...this.stateValue.document.nodes, taskNode],
       }),
-      status: "saving",
-      error: null,
-    };
-    return this.state;
+    });
   }
 
   insertImageNodes(
@@ -321,16 +393,13 @@ export class LocalCanvasShellController {
         zIndex: ++nextZIndex,
         aspectRatioLocked: true,
       }));
-    this.stateValue = {
+    return this.markPendingSave({
       ...this.stateValue,
       document: parseCanvasDocumentV2({
         ...this.stateValue.document,
         nodes: [...this.stateValue.document.nodes, ...additions],
       }),
-      status: "saving",
-      error: null,
-    };
-    return this.state;
+    });
   }
 
   insertCanvasEdge(edge: CanvasEdgeV2): LocalCanvasShellState {
@@ -339,16 +408,13 @@ export class LocalCanvasShellController {
       this.stateValue.document.edges.some((current) => current.id === edge.id)
     )
       return this.state;
-    this.stateValue = {
+    return this.markPendingSave({
       ...this.stateValue,
       document: parseCanvasDocumentV2({
         ...this.stateValue.document,
         edges: [...this.stateValue.document.edges, edge],
       }),
-      status: "saving",
-      error: null,
-    };
-    return this.state;
+    });
   }
 
   updateCanvasEdge(
@@ -360,7 +426,7 @@ export class LocalCanvasShellController {
       (current) => current.id === edgeId,
     );
     if (!edge) return this.state;
-    this.stateValue = {
+    return this.markPendingSave({
       ...this.stateValue,
       document: parseCanvasDocumentV2({
         ...this.stateValue.document,
@@ -368,16 +434,13 @@ export class LocalCanvasShellController {
           current.id === edgeId ? { ...current, ...update } : current,
         ),
       }),
-      status: "saving",
-      error: null,
-    };
-    return this.state;
+    });
   }
 
   removeCanvasEdges(edgeIds: readonly string[]): LocalCanvasShellState {
     if (edgeIds.length === 0) return this.state;
     const removed = new Set(edgeIds);
-    this.stateValue = {
+    return this.markPendingSave({
       ...this.stateValue,
       document: parseCanvasDocumentV2({
         ...this.stateValue.document,
@@ -385,30 +448,61 @@ export class LocalCanvasShellController {
           (edge) => !removed.has(edge.id),
         ),
       }),
-      status: "saving",
-      error: null,
-    };
-    return this.state;
+    });
   }
 
   setDocument(document: CanvasDocument): LocalCanvasShellState {
-    this.stateValue = {
+    return this.markPendingSave({
       ...this.stateValue,
       document: parseCanvasDocumentV2(document),
-      status: "saving",
-      error: null,
-    };
-    return this.state;
+    });
   }
 
   setTitle(title: string): LocalCanvasShellState {
-    this.stateValue = { ...this.stateValue, title, status: "saving" };
-    return this.state;
+    return this.markPendingSave({ ...this.stateValue, title });
   }
 
   async save(): Promise<CanvasSaveResult | null> {
+    if (
+      !this.stateValue.canvasId ||
+      this.stateValue.autosaveBlocked ||
+      !this.hasPendingSave
+    )
+      return null;
+
+    while (this.saveInFlight) {
+      const inFlight = this.saveInFlight;
+      const result = await inFlight;
+      if (!this.hasPendingSave || this.stateValue.autosaveBlocked) return result;
+    }
+
+    const operation = this.performSave();
+    this.saveInFlight = operation;
+    try {
+      return await operation;
+    } finally {
+      if (this.saveInFlight === operation) this.saveInFlight = null;
+    }
+  }
+
+  async flushPendingSave(): Promise<CanvasSaveResult | null> {
+    let result: CanvasSaveResult | null = null;
+    while (
+      this.stateValue.canvasId &&
+      !this.stateValue.autosaveBlocked &&
+      this.hasPendingSave
+    ) {
+      result = await this.save();
+      if (!result || result.status === "conflict") break;
+    }
+    return result;
+  }
+
+  private async performSave(): Promise<CanvasSaveResult | null> {
     const current = this.stateValue;
-    if (!current.canvasId || current.autosaveBlocked) return null;
+    if (!current.canvasId || current.autosaveBlocked || !this.hasPendingSave)
+      return null;
+    const saveMutationVersion = this.mutationVersion;
     this.stateValue = { ...current, status: "saving", error: null };
     try {
       const result = await this.repository.saveCanvas({
@@ -428,10 +522,14 @@ export class LocalCanvasShellController {
         };
         return result;
       }
+      this.savedMutationVersion = Math.max(
+        this.savedMutationVersion,
+        saveMutationVersion,
+      );
       this.stateValue = {
         ...this.stateValue,
         revision: result.revision,
-        status: "saved",
+        status: this.hasPendingSave ? "saving" : "saved",
         conflictRevision: null,
         autosaveBlocked: false,
         error: null,
