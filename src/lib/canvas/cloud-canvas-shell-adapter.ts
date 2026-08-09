@@ -33,7 +33,10 @@ import {
   parseCanvasDocumentV2,
 } from "@/lib/canvas/canvas-document";
 import type { CanvasPendingSaveFlushRegistration } from "@/lib/canvas/canvas-pending-save-lifecycle";
-import { cloudCanvasRuntimeCache } from "@/lib/canvas/cloud-canvas-runtime-cache";
+import {
+  cloudCanvasRuntimeCache,
+  type CloudCanvasRuntimeCache,
+} from "@/lib/canvas/cloud-canvas-runtime-cache";
 import type {
   CanvasAssetVariantKind,
   CanvasAssetVariantMetadata,
@@ -132,6 +135,7 @@ export class CloudCanvasShellRepository
     private readonly workspaceId: string,
     private readonly canvasRepository: CloudCanvasRepository,
     private readonly assetRepository: CloudCanvasAssetRepository,
+    private readonly runtimeCache: CloudCanvasRuntimeCache = cloudCanvasRuntimeCache,
   ) {}
 
   registerPendingSaveFlush(
@@ -407,9 +411,9 @@ export class CloudCanvasShellRepository
           workspaceId: this.workspaceId,
           userId: registration.userId,
         };
-        const cached = cloudCanvasRuntimeCache.get(scope, state.canvasId);
+        const cached = this.runtimeCache.get(scope, state.canvasId);
         if (!cached) return;
-        cloudCanvasRuntimeCache.set({
+        this.runtimeCache.set({
           ...cached,
           shellState: {
             ...cached.shellState,
