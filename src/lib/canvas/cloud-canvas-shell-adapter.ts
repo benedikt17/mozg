@@ -32,6 +32,8 @@ import {
   CANVAS_DOCUMENT_SCHEMA_VERSION,
   parseCanvasDocumentV2,
 } from "@/lib/canvas/canvas-document";
+import type { CanvasPendingSaveFlushRegistration } from "@/lib/canvas/canvas-pending-save-lifecycle";
+import { cloudCanvasRuntimeCache } from "@/lib/canvas/cloud-canvas-runtime-cache";
 import type {
   CanvasAssetVariantKind,
   CanvasAssetVariantMetadata,
@@ -91,11 +93,20 @@ function assetRecord(
 export class CloudCanvasShellRepository
   implements CanvasShellRepository, CanvasAssetRepository
 {
+  private activeCanvasId: string | null = null;
+  private pendingSaveFlush: CanvasPendingSaveFlushRegistration | null = null;
+
   constructor(
     private readonly workspaceId: string,
     private readonly canvasRepository: CloudCanvasRepository,
     private readonly assetRepository: CloudCanvasAssetRepository,
   ) {}
+
+  registerPendingSaveFlush(
+    registration: CanvasPendingSaveFlushRegistration,
+  ): void {
+    this.pendingSaveFlush = registration;
+  }
 
   async listCanvases(workspaceId: string): Promise<CanvasSummary[]> {
     return (await this.canvasRepository.listCanvases(workspaceId)).map(summary);
@@ -383,10 +394,43 @@ export class CloudCanvasShellRepository
   }
 
   close(): void {
-    // The browser Supabase client owns its lifecycle; no local connection to close.
+    const registration = this.pendingSaveFlush;
+    if (!registration) return;
+    void registration
+      .flush()
+      .then((state) => {
+        if (!state) return;
+        const scope = {
+          workspaceId: this.workspaceId,
+          userId: registration.userId,
+        };
+        const cached = cloudCanvasRuntimeCache.get(scope, state.canvasId);
+        if (!cached) return;
+        cloudCanvasRuntimeCache.set({
+          ...cached,
+          shellState: {
+            ...cached.shellState,
+            canvasId: state.canvasId,
+            title: state.title,
+            revision: state.revision,
+            status: state.status,
+            error: state.error,
+            conflictRevision: state.conflictRevision,
+            autosaveBlocked: state.autosaveBlocked,
+          },
+          summaries: cached.summaries.map((canvas) =>
+            canvas.id === state.canvasId
+              ? {
+                  ...canvas,
+                  title: state.title,
+                  revision: state.revision,
+                }
+              : canvas,
+          ),
+        });
+      })
+      .catch(() => undefined);
   }
-
-  private activeCanvasId: string | null = null;
 
   setActiveCanvas(canvasId: string | null): void {
     this.activeCanvasId = canvasId;
