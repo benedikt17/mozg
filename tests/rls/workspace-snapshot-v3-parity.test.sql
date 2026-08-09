@@ -33,7 +33,21 @@ select throws_ok(
   $$ select public.validate_desktop_snapshot_v3(3::smallint, jsonb_set(pg_temp.valid_desktop_snapshot_v3(), '{knowledgeFolders,0,path,0}', to_jsonb(E'\r\t'::text))) $$,
   '22023',
   'desktop snapshot validation failed',
-  'V3 rejects a whitespace-only folder path segment'
+  'V3 rejects an ASCII-whitespace-only folder path segment'
+);
+
+select throws_ok(
+  $$ select public.validate_desktop_snapshot_v3(3::smallint, jsonb_set(pg_temp.valid_desktop_snapshot_v3(), '{projects,0,id}', to_jsonb(U&'\00A0'::text))) $$,
+  '22023',
+  'desktop snapshot validation failed',
+  'V3 rejects a non-breaking-space-only required identifier'
+);
+
+select throws_ok(
+  $$ select public.validate_desktop_snapshot_v3(3::smallint, jsonb_set(pg_temp.valid_desktop_snapshot_v3(), '{projects,0,id}', to_jsonb(U&'\3000'::text))) $$,
+  '22023',
+  'desktop snapshot validation failed',
+  'V3 rejects an ideographic-space-only required identifier'
 );
 
 select * from finish();
