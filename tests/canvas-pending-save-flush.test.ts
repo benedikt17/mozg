@@ -55,7 +55,10 @@ class PendingSaveRepository
   registration: CanvasPendingSaveFlushRegistration | null = null;
   private nextId = 1;
   private nextSaveGate:
-    | { started: ReturnType<typeof deferred<void>>; release: ReturnType<typeof deferred<void>> }
+    | {
+        started: ReturnType<typeof deferred<void>>;
+        release: ReturnType<typeof deferred<void>>;
+      }
     | null = null;
 
   registerPendingSaveFlush(
@@ -96,8 +99,18 @@ class PendingSaveRepository
         (canvas) =>
           canvas.workspaceId === workspaceId && canvas.deletedAt === null,
       )
-      .map(({ schemaVersion: _schemaVersion, document: _document, ...summary }) =>
-        clone(summary),
+      .map((canvas) =>
+        clone({
+          id: canvas.id,
+          workspaceId: canvas.workspaceId,
+          title: canvas.title,
+          groupId: canvas.groupId,
+          sortOrder: canvas.sortOrder,
+          revision: canvas.revision,
+          createdAt: canvas.createdAt,
+          updatedAt: canvas.updatedAt,
+          deletedAt: canvas.deletedAt,
+        }),
       );
   }
 
