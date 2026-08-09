@@ -140,7 +140,8 @@ export class CloudCanvasShellRepository
     this.pendingSaveFlush = registration;
   }
 
-  beginCanvasNavigation(_canvasId: string | null): void {
+  beginCanvasNavigation(canvasId: string | null): void {
+    void canvasId;
     this.invalidateAssetScopes();
   }
 
