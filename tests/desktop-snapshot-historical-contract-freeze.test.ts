@@ -73,8 +73,8 @@ describe("frozen historical Desktop snapshot contracts", () => {
     }
   });
 
-  it("does not let V3-only schemaVersion values enter the historical parser", () => {
-    const snapshot = { ...structuredClone(v2Fixture), schemaVersion: 3 };
+  it("does not widen the historical parser to unknown schema versions", () => {
+    const snapshot = { ...structuredClone(v2Fixture), schemaVersion: 4 };
 
     const parsed = parseDesktopDomainSnapshot(snapshot);
 
