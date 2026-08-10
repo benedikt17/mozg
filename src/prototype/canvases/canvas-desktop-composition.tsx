@@ -308,6 +308,7 @@ export function CanvasDesktopToolbar({
   canUndo,
   copy,
   error,
+  interactive,
   onAddImage,
   onAddText,
   onCloseTaskPicker,
@@ -331,6 +332,7 @@ export function CanvasDesktopToolbar({
   canUndo: boolean;
   copy: CanvasShellCopy;
   error: string | null;
+  interactive: boolean;
   onAddImage: (files: File[]) => void;
   onAddText: () => void;
   onCloseTaskPicker: () => void;
@@ -357,7 +359,7 @@ export function CanvasDesktopToolbar({
     top: number;
     left: number;
   } | null>(null);
-  const isReady = status === "saved" || status === "saving";
+  const isReady = interactive && status !== "conflict" && status !== "error";
   const statusLabel =
     status === "saved"
       ? copy.saved

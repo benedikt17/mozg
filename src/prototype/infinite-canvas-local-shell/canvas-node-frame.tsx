@@ -12,7 +12,6 @@ import {
   cloneElement,
   isValidElement,
   type CSSProperties,
-  type ReactElement,
   type ReactNode,
 } from "react";
 import type { CanvasTextAlignment } from "@/lib/canvas/canvas-text-style";
@@ -186,7 +185,7 @@ function dispatchCanvasTextAlignment(
   );
 }
 
-function TextAlignmentControls({
+export function TextAlignmentControls({
   id,
   value,
 }: {
@@ -214,24 +213,6 @@ function TextAlignmentControls({
         </button>
       ))}
     </>
-  );
-}
-
-function withTextAlignmentToolbar(
-  toolbar: ReactNode,
-  id: string,
-  textAlign: CanvasTextAlignment,
-): ReactNode {
-  if (!isValidElement<{ children?: ReactNode }>(toolbar)) return toolbar;
-  const element = toolbar as ReactElement<{ children?: ReactNode }>;
-  return cloneElement(
-    element,
-    undefined,
-    <>
-      {element.props.children}
-      <span className={styles.textToolbarDivider} aria-hidden="true" />
-      <TextAlignmentControls id={id} value={textAlign} />
-    </>,
   );
 }
 
@@ -311,10 +292,7 @@ export function CanvasNodeFrame({
         style?: { textAlign?: CanvasTextAlignment };
       }
     )?.style?.textAlign ?? "center";
-  const renderedToolbar =
-    isTextFrame && toolbar && nodeId
-      ? withTextAlignmentToolbar(toolbar, nodeId, textAlign)
-      : toolbar;
+  const renderedToolbar = toolbar;
   const renderedChildren = isTextFrame
     ? withCenteredTextContent(children, textAlign)
     : children;

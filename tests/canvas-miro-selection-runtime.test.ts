@@ -6,6 +6,10 @@ const shellPath = path.resolve(
   process.cwd(),
   "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
 );
+const shellCssPath = path.resolve(
+  process.cwd(),
+  "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css",
+);
 
 function readShell(): string {
   return fs.readFileSync(shellPath, "utf8");
@@ -21,6 +25,13 @@ describe("Canvas Miro-style selection interaction", () => {
     expect(
       source.match(/selectionMode=\{SelectionMode\.Partial\}/g),
     ).toHaveLength(2);
+  });
+
+  it("keeps the arrow cursor while dragging a multi-selection", () => {
+    const css = fs.readFileSync(shellCssPath, "utf8");
+
+    expect(css).toContain(".react-flow__nodesselection-rect");
+    expect(css).toContain("cursor: default !important");
   });
 
   it("does not re-enable generic pointer-drag panning", () => {

@@ -23,6 +23,10 @@ describe("Miro-style Canvas text toolbar", () => {
     expect(shell).toContain('aria-label="Перечеркнутый"');
     expect(shell.match(/type="color"/g)).toHaveLength(2);
     expect(shell).toContain(
+      "<TextAlignmentControls id={id} value={style.textAlign} />",
+    );
+    expect(shell).toContain("textAlign: style.textAlign");
+    expect(shell).toContain(
       "toolbar={<TextSelectionToolbar id={id} style={data.style} />}",
     );
   });

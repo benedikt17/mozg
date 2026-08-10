@@ -46,6 +46,12 @@ describe("Canvas undo redo runtime", () => {
     expect(toolbar).toContain('icon={<UiIcon name="arrow-right" />}');
     expect(toolbar).toContain('label="Отменить"');
     expect(toolbar).toContain('label="Повторить"');
+    expect(shell).toContain(
+      'interactive={Boolean(shellState.canvasId) && loadingLifecycle === "ready"}',
+    );
+    expect(toolbar).toContain(
+      'interactive && status !== "conflict" && status !== "error"',
+    );
   });
 
   it("keeps viewport state outside canonical document history", () => {
