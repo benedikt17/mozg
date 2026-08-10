@@ -48,7 +48,36 @@ export function useDesktopPersistence(
   const enabled = options.enabled ?? true;
   const cloudBootstrap = options.cloudBootstrap;
   const runtimeMode = options.runtimeMode;
-  const snapshot = useMemo(() => createDesktopDomainSnapshot(state), [state]);
+  const {
+    documents,
+    knowledgeFolders,
+    overviewDirections,
+    projects,
+    taskGroups,
+    taskLists,
+    tasks,
+  } = state;
+  const snapshot = useMemo(
+    () =>
+      createDesktopDomainSnapshot({
+        projects,
+        overviewDirections,
+        taskGroups,
+        taskLists,
+        tasks,
+        knowledgeFolders,
+        documents,
+      }),
+    [
+      documents,
+      knowledgeFolders,
+      overviewDirections,
+      projects,
+      taskGroups,
+      taskLists,
+      tasks,
+    ],
+  );
   const initialSnapshot = useRef(snapshot);
   const runtime = useRef<DesktopPersistenceRuntime | null>(null);
   const [lifecycle, setLifecycle] = useState<DesktopPersistenceLifecycle>(() =>
