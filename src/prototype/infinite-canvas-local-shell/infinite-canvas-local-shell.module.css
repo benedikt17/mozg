@@ -331,6 +331,96 @@
   font-weight: 400;
   text-decoration: none;
 }
+.textSelectionToolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid #d6d3d1;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(28, 25, 23, 0.16);
+  color: #292524;
+  pointer-events: all;
+  white-space: nowrap;
+}
+.textToolbarButton,
+.textToolbarSelect {
+  height: 30px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #292524;
+  font: inherit;
+  font-size: 12px;
+}
+.textToolbarButton {
+  min-width: 30px;
+  padding: 0 7px;
+  cursor: pointer;
+}
+.textToolbarButton:hover:not(:disabled),
+.textToolbarButton:focus-visible,
+.textToolbarButton[aria-pressed="true"] {
+  background: #e7e5e4;
+  color: #0f766e;
+}
+.textToolbarButton:disabled {
+  color: #a8a29e;
+  cursor: default;
+}
+.textToolbarSelect {
+  padding: 0 7px;
+  outline: none;
+  cursor: pointer;
+}
+.textToolbarSelect:hover,
+.textToolbarSelect:focus-visible {
+  background: #f5f5f4;
+}
+.textToolbarFontSelect {
+  width: 122px;
+}
+.textToolbarSizeSelect {
+  width: 58px;
+}
+.textToolbarDivider {
+  width: 1px;
+  height: 20px;
+  margin: 0 2px;
+  background: #e7e5e4;
+}
+.textToolbarColorControl {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  cursor: pointer;
+  overflow: hidden;
+}
+.textToolbarColorControl:hover {
+  background: #f5f5f4;
+}
+.textToolbarColorControl input {
+  position: absolute;
+  inset: auto 4px 2px;
+  width: 22px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.textToolbarColorGlyph,
+.textToolbarBackgroundGlyph {
+  margin-bottom: 5px;
+  pointer-events: none;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
 .taskNodeFrame {
   --node-visual-border: 1px solid rgba(15, 118, 110, 0.32);
   --node-visual-radius: 0;

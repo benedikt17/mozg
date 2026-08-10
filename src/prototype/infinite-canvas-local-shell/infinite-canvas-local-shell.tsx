@@ -70,7 +70,13 @@ import {
 } from "@/lib/canvas/canvas-pan-inertia";
 import { canvasMiniMapNodeColor } from "@/lib/canvas/canvas-minimap";
 import {
+  CANVAS_TEXT_FONT_FAMILIES,
+  CANVAS_TEXT_FONT_SIZES,
   canvasTextFontFamilyCss,
+  nextCanvasTextFontSize,
+  previousCanvasTextFontSize,
+  type CanvasTextFontFamily,
+  type CanvasTextFontSize,
   type CanvasTextStyle,
 } from "@/lib/canvas/canvas-text-style";
 import {
@@ -396,6 +402,179 @@ function ImageNodeBody({
   );
 }
 
+const CANVAS_TEXT_FONT_LABELS: Record<CanvasTextFontFamily, string> = {
+  system: "System",
+  arial: "Arial",
+  georgia: "Georgia",
+  "times-new-roman": "Times New Roman",
+  "courier-new": "Courier New",
+  verdana: "Verdana",
+};
+
+function dispatchCanvasTextStyle(id: string, style: CanvasTextStyle): void {
+  window.dispatchEvent(
+    new CustomEvent("mozg:canvas-text-style", { detail: { id, style } }),
+  );
+}
+
+function TextSelectionToolbar({
+  id,
+  style,
+}: {
+  id: string;
+  style: CanvasTextStyle;
+}): React.JSX.Element {
+  const patchStyle = (patch: Partial<CanvasTextStyle>) =>
+    dispatchCanvasTextStyle(id, { ...style, ...patch });
+  return (
+    <div
+      className={`${styles.textSelectionToolbar} nodrag nopan nowheel`}
+      aria-label="Панель форматирования текста"
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <button
+        type="button"
+        className={styles.textToolbarButton}
+        aria-label="Текст"
+        title="Текст"
+        disabled
+      >
+        T
+      </button>
+      <span className={styles.textToolbarDivider} aria-hidden="true" />
+      <select
+        className={`${styles.textToolbarSelect} ${styles.textToolbarFontSelect}`}
+        aria-label="Шрифт"
+        value={style.fontFamily}
+        onChange={(event) =>
+          patchStyle({ fontFamily: event.target.value as CanvasTextFontFamily })
+        }
+      >
+        {CANVAS_TEXT_FONT_FAMILIES.map((fontFamily) => (
+          <option key={fontFamily} value={fontFamily}>
+            {CANVAS_TEXT_FONT_LABELS[fontFamily]}
+          </option>
+        ))}
+      </select>
+      <span className={styles.textToolbarDivider} aria-hidden="true" />
+      <button
+        type="button"
+        className={styles.textToolbarButton}
+        aria-label="Уменьшить размер шрифта"
+        title="Уменьшить размер"
+        onClick={() =>
+          patchStyle({ fontSize: previousCanvasTextFontSize(style.fontSize) })
+        }
+      >
+        −
+      </button>
+      <select
+        className={`${styles.textToolbarSelect} ${styles.textToolbarSizeSelect}`}
+        aria-label="Размер шрифта"
+        value={style.fontSize}
+        onChange={(event) =>
+          patchStyle({
+            fontSize: Number(event.target.value) as CanvasTextFontSize,
+          })
+        }
+      >
+        {CANVAS_TEXT_FONT_SIZES.map((fontSize) => (
+          <option key={fontSize} value={fontSize}>
+            {fontSize}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        className={styles.textToolbarButton}
+        aria-label="Увеличить размер шрифта"
+        title="Увеличить размер"
+        onClick={() =>
+          patchStyle({ fontSize: nextCanvasTextFontSize(style.fontSize) })
+        }
+      >
+        +
+      </button>
+      <span className={styles.textToolbarDivider} aria-hidden="true" />
+      <button
+        type="button"
+        className={styles.textToolbarButton}
+        aria-label="Полужирный"
+        aria-pressed={style.bold}
+        title="Полужирный"
+        onClick={() => patchStyle({ bold: !style.bold })}
+      >
+        <strong>B</strong>
+      </button>
+      <button
+        type="button"
+        className={styles.textToolbarButton}
+        aria-label="Курсив"
+        aria-pressed={style.italic}
+        title="Курсив"
+        onClick={() => patchStyle({ italic: !style.italic })}
+      >
+        <em>I</em>
+      </button>
+      <button
+        type="button"
+        className={styles.textToolbarButton}
+        aria-label="Подчеркнутый"
+        aria-pressed={style.underline}
+        title="Подчеркнутый"
+        onClick={() => patchStyle({ underline: !style.underline })}
+      >
+        <u>U</u>
+      </button>
+      <button
+        type="button"
+        className={styles.textToolbarButton}
+        aria-label="Перечеркнутый"
+        aria-pressed={style.strikethrough}
+        title="Перечеркнутый"
+        onClick={() => patchStyle({ strikethrough: !style.strikethrough })}
+      >
+        <s>S</s>
+      </button>
+      <span className={styles.textToolbarDivider} aria-hidden="true" />
+      <label className={styles.textToolbarColorControl} title="Цвет текста">
+        <span className={styles.textToolbarColorGlyph}>A</span>
+        <input
+          type="color"
+          aria-label="Цвет текста"
+          value={style.color}
+          onChange={(event) => patchStyle({ color: event.target.value })}
+        />
+      </label>
+      <label className={styles.textToolbarColorControl} title="Цвет фона">
+        <span className={styles.textToolbarBackgroundGlyph}>▣</span>
+        <input
+          type="color"
+          aria-label="Цвет фона"
+          value={
+            style.backgroundColor === "transparent"
+              ? "#ffffff"
+              : style.backgroundColor
+          }
+          onChange={(event) =>
+            patchStyle({ backgroundColor: event.target.value })
+          }
+        />
+      </label>
+      <button
+        type="button"
+        className={styles.textToolbarButton}
+        aria-label="Убрать цвет фона"
+        title="Убрать фон"
+        disabled={style.backgroundColor === "transparent"}
+        onClick={() => patchStyle({ backgroundColor: "transparent" })}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 function canvasTextCss(style: CanvasTextStyle): CSSProperties {
   const decorations = [
     style.underline ? "underline" : "",
@@ -484,6 +663,7 @@ function TextNodeBody({
       minWidth={120}
       minHeight={32}
       className={styles.textNodeFrame}
+      toolbar={<TextSelectionToolbar id={id} style={data.style} />}
       connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
     >
       <div
@@ -1986,6 +2166,27 @@ function InfiniteCanvasLocalShellSurface({
     [controller, scheduleSave, setNodes, syncState],
   );
 
+  const updateTextStyle = useCallback(
+    (id: string, style: CanvasTextStyle) => {
+      let found = false;
+      const nextNodes = nodesRef.current.map((node) => {
+        if (node.id !== id || node.type !== CANVAS_TEXT_NODE_TYPE) return node;
+        found = true;
+        return {
+          ...node,
+          data: { ...node.data, style: { ...style } },
+        };
+      });
+      if (!found) return;
+      nodesRef.current = nextNodes;
+      setNodes(nextNodes);
+      controller.setRuntimeNodes(nextNodes);
+      syncState();
+      scheduleSave();
+    },
+    [controller, scheduleSave, setNodes, syncState],
+  );
+
   const createTextNode = useCallback(
     (client: FlowPosition | null, markdown: string, editing = true) => {
       if (!shellState.canvasId) return;
@@ -2076,15 +2277,23 @@ function InfiniteCanvasLocalShellSurface({
       const id = (event as CustomEvent<{ id?: string }>).detail?.id;
       if (id) setTextEditing(id, false);
     };
+    const onStyle = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ id?: string; style?: CanvasTextStyle }>
+      ).detail;
+      if (detail.id && detail.style) updateTextStyle(detail.id, detail.style);
+    };
     window.addEventListener("mozg:canvas-text-edit", onEdit);
     window.addEventListener("mozg:canvas-text-commit", onCommit);
     window.addEventListener("mozg:canvas-text-cancel", onCancel);
+    window.addEventListener("mozg:canvas-text-style", onStyle);
     return () => {
       window.removeEventListener("mozg:canvas-text-edit", onEdit);
       window.removeEventListener("mozg:canvas-text-commit", onCommit);
       window.removeEventListener("mozg:canvas-text-cancel", onCancel);
+      window.removeEventListener("mozg:canvas-text-style", onStyle);
     };
-  }, [commitTextNode, setTextEditing]);
+  }, [commitTextNode, setTextEditing, updateTextStyle]);
 
   const ingest = useCallback(
     async (
