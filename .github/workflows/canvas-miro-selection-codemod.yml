@@ -1,0 +1,51 @@
+name: Canvas Miro selection codemod
+
+on:
+  push:
+    branches:
+      - agent/canvas-miro-selection
+    paths:
+      - .github/workflows/canvas-miro-selection-codemod.yml
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply exact Canvas interaction changes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx')
+          source = path.read_text()
+
+          import_anchor = '  ConnectionMode,\n  Controls,'
+          import_replacement = '  ConnectionMode,\n  Controls,\n  SelectionMode,'
+          assert source.count(import_anchor) == 1, source.count(import_anchor)
+          source = source.replace(import_anchor, import_replacement, 1)
+
+          props_anchor = '''            connectionMode={ConnectionMode.Loose}\n            connectionLineComponent={CanvasConnectionLine}\n            onMoveEnd={onMoveEnd}'''
+          props_replacement = '''            connectionMode={ConnectionMode.Loose}\n            connectionLineComponent={CanvasConnectionLine}\n            panOnDrag={[1]}\n            selectionOnDrag\n            selectionMode={SelectionMode.Partial}\n            onMoveEnd={onMoveEnd}'''
+          assert source.count(props_anchor) == 2, source.count(props_anchor)
+          source = source.replace(props_anchor, props_replacement)
+
+          path.write_text(source)
+
+          test = Path('tests/canvas-miro-selection-runtime.test.ts')
+          test.write_text('''import fs from "node:fs";\nimport path from "node:path";\nimport { describe, expect, it } from "vitest";\n\nconst shellPath = path.resolve(\n  process.cwd(),\n  "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",\n);\n\nfunction readShell(): string {\n  return fs.readFileSync(shellPath, "utf8");\n}\n\ndescribe("Canvas Miro-style selection interaction", () => {\n  it("uses left-button drag for partial marquee selection and middle-button drag for pan", () => {\n    const source = readShell();\n\n    expect(source).toContain("SelectionMode,");\n    expect(source.match(/panOnDrag=\\{\\[1\\]\\}/g)).toHaveLength(2);\n    expect(source.match(/selectionOnDrag/g)).toHaveLength(2);\n    expect(source.match(/selectionMode=\\{SelectionMode\\.Partial\\}/g)).toHaveLength(2);\n  });\n\n  it("does not re-enable generic pointer-drag panning", () => {\n    const source = readShell();\n\n    expect(source).not.toContain("panOnDrag={true}");\n    expect(source).not.toContain("panOnDrag={false}");\n  });\n});\n''')
+          PY
+      - name: Format changed files
+        run: pnpm exec prettier --write src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx tests/canvas-miro-selection-runtime.test.ts
+      - name: Commit materialized change
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx tests/canvas-miro-selection-runtime.test.ts
+          git commit -m "Canvas: make left drag select and middle drag pan"
+          git push
