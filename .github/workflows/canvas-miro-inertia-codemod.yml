@@ -1,0 +1,80 @@
+name: Canvas Miro inertia codemod
+
+on:
+  push:
+    branches:
+      - agent/canvas-miro-inertia
+    paths:
+      - .github/workflows/canvas-miro-inertia-codemod.yml
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply exact Canvas inertia integration
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx')
+          source = path.read_text()
+
+          react_type_anchor = '''  type ChangeEvent,\n  type DragEvent as ReactDragEvent,\n} from "react";'''
+          react_type_replacement = '''  type ChangeEvent,\n  type DragEvent as ReactDragEvent,\n  type PointerEvent as ReactPointerEvent,\n} from "react";'''
+          assert source.count(react_type_anchor) == 1, source.count(react_type_anchor)
+          source = source.replace(react_type_anchor, react_type_replacement, 1)
+
+          viewport_import_anchor = '''import {\n  isExplicitCanvasResize,\n  projectExplicitCanvasResizes,\n} from "@/lib/canvas/canvas-runtime-projection";'''
+          viewport_import_replacement = '''import {\n  isExplicitCanvasResize,\n  projectExplicitCanvasResizes,\n} from "@/lib/canvas/canvas-runtime-projection";\nimport {\n  advanceCanvasPanInertia,\n  canvasPanReleaseVelocity,\n  type CanvasPanSample,\n  type CanvasPanVelocity,\n  type CanvasPanViewport,\n} from "@/lib/canvas/canvas-pan-inertia";'''
+          assert source.count(viewport_import_anchor) == 1, source.count(viewport_import_anchor)
+          source = source.replace(viewport_import_anchor, viewport_import_replacement, 1)
+
+          refs_anchor = '''  const nodeDragActiveRef = useRef(false);\n  const edgeRemovalSuppressionUntilRef = useRef(0);'''
+          refs_replacement = '''  const nodeDragActiveRef = useRef(false);\n  const middlePanActiveRef = useRef(false);\n  const panSamplesRef = useRef<CanvasPanSample[]>([]);\n  const panInertiaFrameRef = useRef<number | null>(null);\n  const panInertiaActiveRef = useRef(false);\n  const panInertiaVelocityRef = useRef<CanvasPanVelocity | null>(null);\n  const panInertiaViewportRef = useRef<CanvasPanViewport | null>(null);\n  const panInertiaLastFrameRef = useRef<number | null>(null);\n  const edgeRemovalSuppressionUntilRef = useRef(0);'''
+          assert source.count(refs_anchor) == 1, source.count(refs_anchor)
+          source = source.replace(refs_anchor, refs_replacement, 1)
+
+          start = source.index('  const onMoveEnd = useCallback(')
+          end = source.index('  const desktopListState =', start)
+          assert start >= 0 and end > start
+          block = '''  const commitViewportMove = useCallback(\n    (viewport: CanvasPanViewport) => {\n      if (!shellState.canvasId || !viewportVisible) return;\n      if (\n        isProgrammaticViewportMove({\n          canvasId: shellState.canvasId,\n          initialization: programmaticViewportRef.current,\n          viewport,\n        })\n      ) {\n        programmaticViewportRef.current = null;\n        return;\n      }\n      programmaticViewportRef.current = null;\n      setShellState((current) => ({ ...current, viewport: { ...viewport } }));\n      // Upgrades must begin immediately. A lower-resolution source is only\n      // considered after the zoom has remained still for one debounce window.\n      scheduleImageVariantRefresh(viewport.zoom, false);\n      if (variantDowngradeTimerRef.current !== null)\n        clearTimeout(variantDowngradeTimerRef.current);\n      variantDowngradeTimerRef.current = window.setTimeout(() => {\n        variantDowngradeTimerRef.current = null;\n        scheduleImageVariantRefresh(viewport.zoom, true);\n      }, 900);\n      if (viewportTimerRef.current) clearTimeout(viewportTimerRef.current);\n      viewportTimerRef.current = setTimeout(() => {\n        viewportTimerRef.current = null;\n        void controller.saveViewport(viewport).catch((error: unknown) =>\n          setShellState((current) => ({\n            ...current,\n            status: "error",\n            error:\n              error instanceof Error ? error.message : "Viewport save failed.",\n          })),\n        );\n      }, 240);\n    },\n    [\n      controller,\n      scheduleImageVariantRefresh,\n      shellState.canvasId,\n      viewportVisible,\n    ],\n  );\n\n  const cancelPanInertia = useCallback(\n    (commitCurrentViewport: boolean) => {\n      const wasActive = panInertiaActiveRef.current;\n      if (panInertiaFrameRef.current !== null) {\n        cancelAnimationFrame(panInertiaFrameRef.current);\n        panInertiaFrameRef.current = null;\n      }\n      panInertiaActiveRef.current = false;\n      panInertiaVelocityRef.current = null;\n      panInertiaViewportRef.current = null;\n      panInertiaLastFrameRef.current = null;\n      if (wasActive && commitCurrentViewport)\n        commitViewportMove(reactFlow.getViewport());\n    },\n    [commitViewportMove, reactFlow],\n  );\n\n  const startPanInertia = useCallback(\n    (initialVelocity: CanvasPanVelocity) => {\n      cancelPanInertia(false);\n      panInertiaActiveRef.current = true;\n      panInertiaVelocityRef.current = initialVelocity;\n      panInertiaViewportRef.current = reactFlow.getViewport();\n      panInertiaLastFrameRef.current = performance.now();\n\n      const tick = (now: number): void => {\n        const velocity = panInertiaVelocityRef.current;\n        const viewport = panInertiaViewportRef.current;\n        const lastFrameAt = panInertiaLastFrameRef.current;\n        if (!panInertiaActiveRef.current || !velocity || !viewport || lastFrameAt === null)\n          return;\n        const step = advanceCanvasPanInertia({\n          viewport,\n          velocity,\n          elapsedMs: now - lastFrameAt,\n        });\n        panInertiaVelocityRef.current = step.velocity;\n        panInertiaViewportRef.current = step.viewport;\n        panInertiaLastFrameRef.current = now;\n        void reactFlow.setViewport(step.viewport, { duration: 0 });\n\n        if (step.done) {\n          panInertiaFrameRef.current = requestAnimationFrame(() => {\n            panInertiaFrameRef.current = null;\n            panInertiaActiveRef.current = false;\n            panInertiaVelocityRef.current = null;\n            panInertiaViewportRef.current = null;\n            panInertiaLastFrameRef.current = null;\n            commitViewportMove(reactFlow.getViewport());\n          });\n          return;\n        }\n        panInertiaFrameRef.current = requestAnimationFrame(tick);\n      };\n\n      panInertiaFrameRef.current = requestAnimationFrame(tick);\n    },\n    [cancelPanInertia, commitViewportMove, reactFlow],\n  );\n\n  const handleViewportMove = useCallback(\n    (_: unknown, viewport: CanvasPanViewport) => {\n      if (!middlePanActiveRef.current || panInertiaActiveRef.current) return;\n      const now = performance.now();\n      panSamplesRef.current = [\n        ...panSamplesRef.current.filter((sample) => now - sample.at <= 120),\n        { x: viewport.x, y: viewport.y, at: now },\n      ].slice(-8);\n    },\n    [],\n  );\n\n  const handleCanvasPointerDown = useCallback(\n    (event: ReactPointerEvent<HTMLDivElement>) => {\n      cancelPanInertia(true);\n      if (event.button !== 1) return;\n      middlePanActiveRef.current = true;\n      const viewport = reactFlow.getViewport();\n      panSamplesRef.current = [\n        { x: viewport.x, y: viewport.y, at: performance.now() },\n      ];\n    },\n    [cancelPanInertia, reactFlow],\n  );\n\n  const handleCanvasWheel = useCallback(() => {\n    cancelPanInertia(true);\n  }, [cancelPanInertia]);\n\n  useEffect(() => {\n    const onPointerUp = (event: PointerEvent): void => {\n      if (event.button !== 1 || !middlePanActiveRef.current) return;\n      middlePanActiveRef.current = false;\n      const velocity = canvasPanReleaseVelocity(panSamplesRef.current);\n      panSamplesRef.current = [];\n      if (velocity) startPanInertia(velocity);\n    };\n    const onPointerCancel = (): void => {\n      if (!middlePanActiveRef.current) return;\n      middlePanActiveRef.current = false;\n      panSamplesRef.current = [];\n      commitViewportMove(reactFlow.getViewport());\n    };\n    window.addEventListener("pointerup", onPointerUp, true);\n    window.addEventListener("pointercancel", onPointerCancel, true);\n    return () => {\n      window.removeEventListener("pointerup", onPointerUp, true);\n      window.removeEventListener("pointercancel", onPointerCancel, true);\n    };\n  }, [commitViewportMove, reactFlow, startPanInertia]);\n\n  useEffect(\n    () => () => {\n      if (panInertiaFrameRef.current !== null)\n        cancelAnimationFrame(panInertiaFrameRef.current);\n    },\n    [],\n  );\n\n  const onMoveEnd = useCallback(\n    (_: unknown, viewport: CanvasPanViewport) => {\n      if (middlePanActiveRef.current || panInertiaActiveRef.current) return;\n      commitViewportMove(viewport);\n    },\n    [commitViewportMove],\n  );\n\n'''
+          source = source[:start] + block + source[end:]
+
+          wrapper_anchor = '''          onDrop={onDrop}\n        >\n          <ReactFlow'''
+          wrapper_replacement = '''          onDrop={onDrop}\n          onPointerDownCapture={handleCanvasPointerDown}\n          onWheelCapture={handleCanvasWheel}\n        >\n          <ReactFlow'''
+          assert source.count(wrapper_anchor) == 2, source.count(wrapper_anchor)
+          source = source.replace(wrapper_anchor, wrapper_replacement)
+
+          move_anchor = '''            selectionMode={SelectionMode.Partial}\n            onMoveEnd={onMoveEnd}'''
+          move_replacement = '''            selectionMode={SelectionMode.Partial}\n            onMove={handleViewportMove}\n            onMoveEnd={onMoveEnd}'''
+          assert source.count(move_anchor) == 2, source.count(move_anchor)
+          source = source.replace(move_anchor, move_replacement)
+
+          path.write_text(source)
+
+          runtime_test = Path('tests/canvas-pan-inertia-runtime.test.ts')
+          runtime_test.write_text('''import fs from "node:fs";\nimport path from "node:path";\nimport { describe, expect, it } from "vitest";\n\nconst shellPath = path.resolve(\n  process.cwd(),\n  "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",\n);\n\nfunction readShell(): string {\n  return fs.readFileSync(shellPath, "utf8");\n}\n\ndescribe("Canvas middle-button pan inertia runtime", () => {\n  it("tracks middle-button viewport movement in both Canvas render paths", () => {\n    const source = readShell();\n\n    expect(source.match(/onMove=\\{handleViewportMove\\}/g)).toHaveLength(2);\n    expect(source.match(/onPointerDownCapture=\\{handleCanvasPointerDown\\}/g)).toHaveLength(2);\n    expect(source.match(/onWheelCapture=\\{handleCanvasWheel\\}/g)).toHaveLength(2);\n    expect(source).toContain("canvasPanReleaseVelocity");\n    expect(source).toContain("advanceCanvasPanInertia");\n  });\n\n  it("keeps inertia transient and commits only when the glide stops or is interrupted", () => {\n    const source = readShell();\n\n    expect(source).toContain("panInertiaActiveRef");\n    expect(source).toContain("commitViewportMove(reactFlow.getViewport())");\n    expect(source).toContain("if (middlePanActiveRef.current || panInertiaActiveRef.current) return;");\n  });\n});\n''')
+          PY
+      - name: Format changed files
+        run: pnpm exec prettier --write src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx tests/canvas-pan-inertia-runtime.test.ts
+      - name: Commit materialized change
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx tests/canvas-pan-inertia-runtime.test.ts
+          git commit -m "Canvas: add middle-button pan inertia"
+          git push
