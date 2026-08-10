@@ -412,17 +412,15 @@ function canvasTextCss(style: CanvasTextStyle): CSSProperties {
   };
 }
 
-function TextNodeBody({
-  data,
-  selected,
+function CanvasTextEditor({
   id,
-}: NodeProps<CanvasTextFlowNode>): React.JSX.Element {
-  const [draft, setDraft] = useState(data.markdown);
+  markdown,
+}: {
+  id: string;
+  markdown: string;
+}): React.JSX.Element {
+  const [draft, setDraft] = useState(markdown);
   const skipNextBlurCommitRef = useRef(false);
-  useEffect(() => {
-    if (!data.isEditing) setDraft(data.markdown);
-    else skipNextBlurCommitRef.current = false;
-  }, [data.isEditing, data.markdown]);
   const update = (value: string) => {
     setDraft(value);
     window.dispatchEvent(
@@ -440,11 +438,45 @@ function TextNodeBody({
   };
   const cancel = () => {
     skipNextBlurCommitRef.current = true;
-    setDraft(data.markdown);
     window.dispatchEvent(
       new CustomEvent("mozg:canvas-text-cancel", { detail: { id } }),
     );
   };
+  return (
+    <textarea
+      autoFocus
+      value={draft}
+      placeholder="Type something"
+      aria-label="Canvas text"
+      className={`${styles.textEditorInput} nodrag nopan nowheel`}
+      onBlur={() => {
+        if (skipNextBlurCommitRef.current) {
+          skipNextBlurCommitRef.current = false;
+          return;
+        }
+        commit();
+      }}
+      onChange={(event) => update(event.target.value)}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        if (event.key === "Escape") {
+          event.preventDefault();
+          cancel();
+        } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+          event.preventDefault();
+          event.currentTarget.blur();
+        }
+      }}
+      onPaste={(event) => event.stopPropagation()}
+    />
+  );
+}
+
+function TextNodeBody({
+  data,
+  selected,
+  id,
+}: NodeProps<CanvasTextFlowNode>): React.JSX.Element {
   const textStyle = canvasTextCss(data.style);
   return (
     <CanvasNodeFrame
@@ -465,35 +497,7 @@ function TextNodeBody({
         }}
       >
         {data.isEditing ? (
-          <textarea
-            autoFocus
-            value={draft}
-            placeholder="Type something"
-            aria-label="Canvas text"
-            className={`${styles.textEditorInput} nodrag nopan nowheel`}
-            onBlur={() => {
-              if (skipNextBlurCommitRef.current) {
-                skipNextBlurCommitRef.current = false;
-                return;
-              }
-              commit();
-            }}
-            onChange={(event) => update(event.target.value)}
-            onKeyDown={(event) => {
-              event.stopPropagation();
-              if (event.key === "Escape") {
-                event.preventDefault();
-                cancel();
-              } else if (
-                event.key === "Enter" &&
-                (event.ctrlKey || event.metaKey)
-              ) {
-                event.preventDefault();
-                event.currentTarget.blur();
-              }
-            }}
-            onPaste={(event) => event.stopPropagation()}
-          />
+          <CanvasTextEditor id={id} markdown={data.markdown} />
         ) : data.markdown.trim() ? (
           <div className={styles.textPreview}>
             <MarkdownStringPreview contentId={id} markdown={data.markdown} />
