@@ -6,7 +6,8 @@ import {
   type CanvasNode,
 } from "@/lib/canvas/canvas-document";
 
-export const CANVAS_NODE_CLIPBOARD_MIME = "application/x-mozg-canvas-nodes+json";
+export const CANVAS_NODE_CLIPBOARD_MIME =
+  "application/x-mozg-canvas-nodes+json";
 const CANVAS_NODE_CLIPBOARD_VERSION = 1 as const;
 
 export type CanvasNodeClipboardPayload = {
@@ -56,7 +57,8 @@ export function parseCanvasNodeClipboardPayload(
       edges: [],
     });
     const nodes = validated.nodes.filter(copyableNode).map(cloneNode);
-    if (nodes.length !== validated.nodes.length || nodes.length === 0) return null;
+    if (nodes.length !== validated.nodes.length || nodes.length === 0)
+      return null;
     return { version: CANVAS_NODE_CLIPBOARD_VERSION, nodes };
   } catch {
     return null;
