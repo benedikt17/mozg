@@ -67,7 +67,7 @@ describe("Canvas node clipboard", () => {
     ).toBeNull();
   });
 
-  it("creates fresh ids, keeps task/asset references and offsets the group equally", () => {
+  it("creates fresh ids, keeps task/asset references and supports fallback offsets", () => {
     const payload = createCanvasNodeClipboardPayload(
       document,
       new Set(document.nodes.map((node) => node.id)),
@@ -92,5 +92,31 @@ describe("Canvas node clipboard", () => {
     expect(pasted.map((node) => node.zIndex)).toEqual([10, 11, 12]);
     expect(pasted[1]).toMatchObject({ kind: "task", taskId: "task-source" });
     expect(pasted[2]).toMatchObject({ kind: "image", assetId: "asset-1" });
+  });
+
+  it("centers the copied group on the requested Canvas cursor target", () => {
+    const payload = createCanvasNodeClipboardPayload(
+      document,
+      new Set(document.nodes.map((node) => node.id)),
+    )!;
+    const pasted = materializeCanvasNodeClipboardPaste(payload, {
+      target: { x: 1000, y: 800 },
+      zIndexStart: 10,
+      idGenerator: () => "copy",
+    });
+
+    const minX = Math.min(...pasted.map((node) => node.position.x));
+    const minY = Math.min(...pasted.map((node) => node.position.y));
+    const maxX = Math.max(
+      ...pasted.map((node) => node.position.x + node.size.width),
+    );
+    const maxY = Math.max(
+      ...pasted.map((node) => node.position.y + node.size.height),
+    );
+
+    expect((minX + maxX) / 2).toBe(1000);
+    expect((minY + maxY) / 2).toBe(800);
+    expect(pasted[1]!.position.x - pasted[0]!.position.x).toBe(40);
+    expect(pasted[2]!.position.y - pasted[0]!.position.y).toBe(90);
   });
 });
