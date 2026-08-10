@@ -29,6 +29,32 @@ type MarkdownSourceLine = {
   startOffset: number;
 };
 
+const MARKDOWN_STRUCTURE_CACHE_LIMIT = 4;
+const markdownStructureCache = new Map<string, MarkdownDocumentStructure>();
+
+function getCachedMarkdownStructure(
+  markdown: string,
+): MarkdownDocumentStructure | undefined {
+  const cached = markdownStructureCache.get(markdown);
+  if (!cached) return undefined;
+  markdownStructureCache.delete(markdown);
+  markdownStructureCache.set(markdown, cached);
+  return cached;
+}
+
+function cacheMarkdownStructure(
+  markdown: string,
+  structure: MarkdownDocumentStructure,
+): MarkdownDocumentStructure {
+  markdownStructureCache.set(markdown, structure);
+  while (markdownStructureCache.size > MARKDOWN_STRUCTURE_CACHE_LIMIT) {
+    const oldestKey = markdownStructureCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    markdownStructureCache.delete(oldestKey);
+  }
+  return structure;
+}
+
 function getPhrasingText(node: PhrasingContent): string {
   if ("children" in node) {
     return node.children.map((child) => getPhrasingText(child)).join("");
@@ -68,6 +94,9 @@ function getMarkdownSourceLines(markdown: string): MarkdownSourceLine[] {
 export function analyzeMarkdownStructure(
   markdown: string,
 ): MarkdownDocumentStructure {
+  const cached = getCachedMarkdownStructure(markdown);
+  if (cached) return cached;
+
   const document = parseMarkdown(markdown);
   const sourceLines = getMarkdownSourceLines(markdown);
   const headings: MarkdownHeadingStructure[] = [];
@@ -102,7 +131,7 @@ export function analyzeMarkdownStructure(
     }
   }
 
-  return { document, headings, tables };
+  return cacheMarkdownStructure(markdown, { document, headings, tables });
 }
 
 export function getFirstMarkdownHeading(
