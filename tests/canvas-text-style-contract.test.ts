@@ -20,6 +20,7 @@ const styledText: CanvasTextStyle = {
   italic: true,
   color: "#123456",
   backgroundColor: "#fedcba",
+  textAlign: "right",
 };
 
 function document(style?: CanvasTextStyle): CanvasDocumentV2 {
@@ -49,6 +50,23 @@ describe("Canvas text style contract", () => {
     expect(runtime.data.style).toEqual(DEFAULT_CANVAS_TEXT_STYLE);
   });
 
+  it("accepts pre-alignment styled text and defaults it to centered alignment", () => {
+    const { textAlign: _textAlign, ...legacyStyle } = styledText;
+    const parsed = parseCanvasDocumentV2({
+      ...document(),
+      nodes: [
+        {
+          ...document().nodes[0],
+          style: legacyStyle,
+        },
+      ],
+    });
+
+    expect(parsed.nodes[0]).toMatchObject({
+      style: { ...legacyStyle, textAlign: "center" },
+    });
+  });
+
   it("round-trips a styled text node through runtime projection", () => {
     const parsed = parseCanvasDocumentV2(document(styledText));
     const [runtime] = canvasDocumentToTextNodes(parsed);
@@ -66,6 +84,20 @@ describe("Canvas text style contract", () => {
           {
             ...document(styledText).nodes[0],
             style: { ...styledText, fontSize: 13 },
+          },
+        ],
+      }),
+    ).toThrow();
+  });
+
+  it("rejects unsupported text alignment", () => {
+    expect(() =>
+      parseCanvasDocumentV2({
+        ...document(styledText),
+        nodes: [
+          {
+            ...document(styledText).nodes[0],
+            style: { ...styledText, textAlign: "justify" },
           },
         ],
       }),
