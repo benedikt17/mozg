@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   isPublicProjectSection,
   publicProjectSections,
@@ -30,7 +31,6 @@ import { InboxSidebar } from "@/prototype/inbox/inbox-sidebar";
 import { InboxWorkspace } from "@/prototype/inbox/inbox-workspace";
 import { DesktopCanvasWorkspace } from "@/prototype/canvases/desktop-canvas-workspace";
 import { ApplicationHeader } from "@/prototype/shell/application-header";
-import { CommandPalette } from "@/prototype/shell/command-palette";
 import { SectionRail } from "@/prototype/shell/section-rail";
 import type { UseDesktopPersistenceResult } from "@/prototype/persistence/use-desktop-persistence";
 import type { DesktopPersistenceErrorCode } from "@/prototype/persistence/persistence-adapter";
@@ -43,6 +43,14 @@ import {
 import "./desktop-shell.css";
 import "./desktop-workspaces.css";
 import "./desktop-knowledge.css";
+
+const CommandPalette = dynamic(
+  () =>
+    import("@/prototype/shell/command-palette").then(
+      ({ CommandPalette }) => CommandPalette,
+    ),
+  { ssr: false },
+);
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 

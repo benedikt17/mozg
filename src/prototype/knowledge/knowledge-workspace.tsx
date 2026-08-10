@@ -666,7 +666,7 @@ function KnowledgeDocumentWorkspace({
         </div>
         {aiPanel}
       </div>
-      {currentDocument ? (
+      {currentDocument && shareMenuOpen ? (
         <article
           className="knowledge-print-document"
           data-print-document-id={currentDocument.id}
