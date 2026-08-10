@@ -4,9 +4,24 @@ import { getDesktopRuntimeMode } from "@/lib/local-development-mode";
 import type { Database } from "@/lib/supabase/database.types";
 import { getPublicEnv } from "@/lib/env";
 
-export async function middleware(request: NextRequest) {
+const LOCAL_ONLY_PROTOTYPE_PATHS = new Set([
+  "/prototype/canvas-image-ingestion-lab",
+  "/prototype/canvas-react-flow-ingestion-spike",
+  "/prototype/infinite-canvas-local-shell",
+]);
+
+export async function proxy(request: NextRequest) {
   const response = NextResponse.next({ request });
-  if (getDesktopRuntimeMode() === "local") {
+  const runtimeMode = getDesktopRuntimeMode();
+
+  if (
+    runtimeMode === "cloud" &&
+    LOCAL_ONLY_PROTOTYPE_PATHS.has(request.nextUrl.pathname)
+  ) {
+    return new NextResponse(null, { status: 404 });
+  }
+
+  if (runtimeMode === "local") {
     if (request.nextUrl.pathname === "/auth/local-development") return response;
     const env = getPublicEnv();
     const supabase = createServerClient<Database>(
@@ -33,6 +48,7 @@ export async function middleware(request: NextRequest) {
     );
     return NextResponse.redirect(bootstrapUrl);
   }
+
   const env = getPublicEnv();
   const supabase = createServerClient<Database>(
     env.NEXT_PUBLIC_SUPABASE_URL,
