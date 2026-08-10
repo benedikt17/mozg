@@ -1,21 +1,37 @@
 import { describe, expect, it } from "vitest";
 import {
-  CANVAS_TEXT_NODE_TYPE,
-  canvasDocumentToTextNodes,
-  createCanvasTextFlowNode,
-  createCanvasTextId,
-} from "@/lib/canvas/react-flow-canvas-adapter";
-import {
+  createEmptyCanvasDocumentV1,
+  createEmptyCanvasDocumentV2,
   parseCanvasDocumentV1,
+  type CanvasEdgeV2,
   type CanvasDocumentV1,
 } from "@/lib/canvas/canvas-document";
 import {
-  commitTextMarkdown,
+  canvasDocumentToTextNodes,
+  createCanvasTextFlowNode,
+  runtimeNodesToCanvasDocument,
+} from "@/lib/canvas/react-flow-canvas-adapter";
+import {
+  createCanvasTextId,
+  extractCanvasPlainText,
   hasMeaningfulPlainText,
   plainTextFromClipboard,
+  commitTextMarkdown,
 } from "@/lib/canvas/text-canvas-interactions";
+import {
+  LocalCanvasShellController,
+  type LocalCanvasShellControllerOptions,
+} from "@/lib/canvas/local-canvas-shell-controller";
+import type {
+  CanvasRepository,
+  CanvasSaveResult,
+  CanvasSummary,
+  CanvasViewState,
+  CanvasViewStateRepository,
+  LoadedCanvas,
+} from "@/lib/canvas/local-canvas-repository";
 
-function textDocument(markdown = "Hello"): CanvasDocumentV1 {
+function textDocument(markdown = "# Привет\n\nМир"): CanvasDocumentV1 {
   return parseCanvasDocumentV1({
     schemaVersion: 1,
     nodes: [
@@ -23,7 +39,7 @@ function textDocument(markdown = "Hello"): CanvasDocumentV1 {
         id: "text-1",
         kind: "text",
         markdown,
-        position: { x: 12, y: 24 },
+        position: { x: 10, y: 20 },
         size: { width: 320, height: 220 },
         zIndex: 1,
       },
@@ -32,50 +48,133 @@ function textDocument(markdown = "Hello"): CanvasDocumentV1 {
   });
 }
 
+class MemoryRepository implements CanvasRepository, CanvasViewStateRepository {
+  canvas: LoadedCanvas | null = null;
+  view: CanvasViewState | null = null;
+  saves = 0;
+  nextRevision = 1;
+  async listCanvases(): Promise<CanvasSummary[]> {
+    return this.canvas ? [this.canvas] : [];
+  }
+  async createCanvas(input: {
+    workspaceId: string;
+    title: string;
+  }): Promise<LoadedCanvas> {
+    const now = "2026-08-01T00:00:00.000Z";
+    this.canvas = {
+      id: "canvas-1",
+      workspaceId: input.workspaceId,
+      title: input.title,
+      schemaVersion: 1,
+      document: createEmptyCanvasDocumentV1(),
+      revision: 1,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    };
+    return structuredClone(this.canvas);
+  }
+  async loadCanvas(input: {
+    workspaceId: string;
+    canvasId: string;
+  }): Promise<LoadedCanvas | null> {
+    if (
+      !this.canvas ||
+      this.canvas.workspaceId !== input.workspaceId ||
+      this.canvas.id !== input.canvasId
+    )
+      return null;
+    return structuredClone(this.canvas);
+  }
+  async saveCanvas(input: {
+    workspaceId: string;
+    canvasId: string;
+    expectedRevision: number;
+    title: string;
+    document: CanvasDocumentV1;
+  }): Promise<CanvasSaveResult> {
+    this.saves += 1;
+    if (
+      !this.canvas ||
+      this.canvas.workspaceId !== input.workspaceId ||
+      this.canvas.id !== input.canvasId
+    )
+      throw new Error("not found");
+    if (this.canvas.revision !== input.expectedRevision)
+      return { status: "conflict", revision: this.canvas.revision };
+    this.canvas = {
+      ...this.canvas,
+      title: input.title,
+      document: structuredClone(input.document),
+      revision: ++this.nextRevision,
+    };
+    return { status: "saved", revision: this.canvas.revision };
+  }
+  async softDeleteCanvas(): Promise<{ status: "deleted" | "already-deleted" }> {
+    return { status: "deleted" };
+  }
+  async loadViewState(): Promise<CanvasViewState | null> {
+    return this.view ? structuredClone(this.view) : null;
+  }
+  async saveViewState(input: CanvasViewState): Promise<void> {
+    this.view = structuredClone(input);
+  }
+  async deleteViewState(): Promise<void> {
+    this.view = null;
+  }
+}
+
+function controllerOptions(
+  repository: MemoryRepository,
+): LocalCanvasShellControllerOptions {
+  return {
+    repository,
+    workspaceId: "workspace",
+    userId: "user",
+    clock: () => "2026-08-01T00:00:00.000Z",
+  };
+}
+
+const emptyPayload = { items: [], files: [], types: [] };
+
 describe("canonical text nodes", () => {
   it("uses the exact text node discriminator", () =>
-    expect(createCanvasTextFlowNode({ id: "x", markdown: "" }).type).toBe(
-      CANVAS_TEXT_NODE_TYPE,
+    expect(textDocument().nodes[0]?.kind).toBe("text"));
+  it("round-trips multiline Markdown exactly", () =>
+    expect(canvasDocumentToTextNodes(textDocument())[0]?.data.markdown).toBe(
+      "# Привет\n\nМир",
     ));
-
-  it("round-trips multiline Markdown exactly", () => {
-    const markdown = "# Heading\n\n- one\n- two\n\n**bold** and `code`";
-    const [node] = canvasDocumentToTextNodes(textDocument(markdown));
-    expect(node?.data.markdown).toBe(markdown);
-  });
-
-  it("preserves Cyrillic and punctuation", () => {
-    const markdown = "Привет, мир! — «кавычки»\n\n1. Один\n2. Два";
-    const [node] = canvasDocumentToTextNodes(textDocument(markdown));
-    expect(node?.data.markdown).toBe(markdown);
-  });
-
-  it("does not add runtime editing fields to canonical data", () => {
-    const document = textDocument();
-    expect(document.nodes[0]).not.toHaveProperty("isEditing");
-  });
-
-  it("updates canonical layout from runtime text nodes", async () => {
-    const { runtimeNodesToCanvasDocument } = await import(
-      "@/lib/canvas/react-flow-canvas-adapter"
-    );
-    const source = textDocument();
-    const [runtime] = canvasDocumentToTextNodes(source);
-    expect(runtime).toBeDefined();
-    const result = runtimeNodesToCanvasDocument(source, [
-      {
-        ...runtime!,
-        position: { x: 99, y: 77 },
-        width: 444,
-        height: 222,
-      },
+  it("preserves Cyrillic and punctuation", () =>
+    expect(
+      canvasDocumentToTextNodes(textDocument("Ёжик — [[ссылка]]")).at(0)?.data
+        .markdown,
+    ).toBe("Ёжик — [[ссылка]]"));
+  it("does not add runtime editing fields to canonical data", () =>
+    expect(
+      runtimeNodesToCanvasDocument(textDocument(), [
+        createCanvasTextFlowNode({
+          id: "text-1",
+          markdown: "draft",
+          position: { x: 1, y: 2 },
+          isEditing: true,
+        }),
+      ]).nodes[0],
+    ).not.toHaveProperty("isEditing"));
+  it("updates canonical layout from runtime text nodes", () => {
+    const next = runtimeNodesToCanvasDocument(textDocument(), [
+      createCanvasTextFlowNode({
+        id: "text-1",
+        markdown: "next",
+        position: { x: 80, y: 90 },
+        size: { width: 400, height: 240 },
+      }),
     ]);
-    expect(result.nodes[0]).toMatchObject({
-      position: { x: 99, y: 77 },
-      size: { width: 444, height: 222 },
+    expect(next.nodes[0]).toMatchObject({
+      markdown: "next",
+      position: { x: 80, y: 90 },
+      size: { width: 400, height: 240 },
     });
   });
-
   it("hydrates text nodes immediately", () =>
     expect(canvasDocumentToTextNodes(textDocument())).toHaveLength(1));
   it("keeps exact node id on hydration", () =>
@@ -115,191 +214,205 @@ describe("canonical text nodes", () => {
   it("clips editor input at the canonical limit", () =>
     expect(commitTextMarkdown("x".repeat(250_001))).toHaveLength(250_000));
   it("ignores whitespace-only plain text", () =>
-    expect(hasMeaningfulPlainText(" \n\t ")).toBe(false));
+    expect(hasMeaningfulPlainText(" \n\t")).toBe(false));
   it("accepts meaningful plain text", () =>
-    expect(hasMeaningfulPlainText(" text ")).toBe(true));
-
-  it("extracts plain text when no image candidate exists", () => {
+    expect(hasMeaningfulPlainText("hello")).toBe(true));
+  it("extracts plain text when no image candidate exists", () =>
+    expect(extractCanvasPlainText(emptyPayload, "hello\nworld")).toBe(
+      "hello\nworld",
+    ));
+  it("keeps empty transfer payload inert", () =>
+    expect(extractCanvasPlainText(emptyPayload, "")).toBe(""));
+  it("does not synthesize text from unsupported transfer metadata", () =>
+    expect(
+      extractCanvasPlainText({ ...emptyPayload, types: ["text/plain"] }, ""),
+    ).toBe(""));
+  it("reads text from a clipboard event", () => {
     const event = {
       clipboardData: {
-        getData: (type: string) => (type === "text/plain" ? "clipboard" : ""),
+        items: [],
+        files: [],
+        types: ["text/plain"],
+        getData: () => "clipboard",
       },
     } as unknown as ClipboardEvent;
     expect(plainTextFromClipboard(event)).toBe("clipboard");
   });
-
-  it("keeps empty transfer payload inert", async () => {
-    const { transferPayload } = await import(
-      "@/lib/canvas/react-flow-canvas-adapter"
-    );
-    const event = {
-      dataTransfer: {
-        items: [],
-        files: [],
-      },
-    } as unknown as DragEvent;
-    expect(transferPayload(event).items).toHaveLength(0);
-  });
-
-  it("does not synthesize text from unsupported transfer metadata", async () => {
-    const { transferPayload } = await import(
-      "@/lib/canvas/react-flow-canvas-adapter"
-    );
-    const event = {
-      dataTransfer: {
-        items: [],
-        files: [],
-      },
-    } as unknown as DragEvent;
-    const payload = transferPayload(event);
-    expect(payload.files).toHaveLength(0);
-  });
-
-  it("reads text from a clipboard event", () => {
-    const event = {
-      clipboardData: {
-        getData: () => "hello",
-      },
-    } as unknown as ClipboardEvent;
-    expect(plainTextFromClipboard(event)).toBe("hello");
-  });
-
   it("does not create text from blank clipboard content", () =>
-    expect(hasMeaningfulPlainText("   ")).toBe(false));
-
+    expect(
+      hasMeaningfulPlainText(
+        plainTextFromClipboard({
+          clipboardData: {
+            items: [],
+            files: [],
+            types: [],
+            getData: () => "   ",
+          },
+        } as unknown as ClipboardEvent),
+      ),
+    ).toBe(false));
   it("creates one controller text node", async () => {
-    const { LocalCanvasShellController, emptyShellState } = await import(
-      "@/lib/canvas/local-canvas-shell-controller"
+    const repository = new MemoryRepository();
+    const controller = new LocalCanvasShellController(
+      controllerOptions(repository),
     );
-    const repository = {
-      saveCanvasDocument: async () => undefined,
-    };
-    const controller = new LocalCanvasShellController({
-      repository: repository as never,
-      workspaceId: "workspace-1",
-      userId: "user-1",
-    });
-    controller.restoreRuntimeState({
-      ...emptyShellState(),
-      canvasId: "canvas-1",
-      title: "Canvas",
-      status: "saved",
-    });
+    const canvas = await controller.createCanvas("Canvas");
     controller.insertTextNode(
-      createCanvasTextFlowNode({ id: "text-1", markdown: "hello" }),
+      createCanvasTextFlowNode({
+        id: "text-1",
+        markdown: "one",
+        position: { x: 1, y: 2 },
+      }),
     );
     expect(controller.state.document.nodes).toHaveLength(1);
+    expect(canvas.canvasId).toBe("canvas-1");
   });
-
   it("saves text through CAS", async () => {
-    const { LocalCanvasShellController, emptyShellState } = await import(
-      "@/lib/canvas/local-canvas-shell-controller"
+    const repository = new MemoryRepository();
+    const controller = new LocalCanvasShellController(
+      controllerOptions(repository),
     );
-    const saved: unknown[] = [];
-    const repository = {
-      saveCanvasDocument: async (_canvasId: string, document: unknown) => {
-        saved.push(document);
-      },
-    };
-    const controller = new LocalCanvasShellController({
-      repository: repository as never,
-      workspaceId: "workspace-1",
-      userId: "user-1",
-    });
-    controller.restoreRuntimeState({
-      ...emptyShellState(),
-      canvasId: "canvas-1",
-      title: "Canvas",
-      status: "saved",
-    });
+    await controller.createCanvas("Canvas");
     controller.insertTextNode(
-      createCanvasTextFlowNode({ id: "text-1", markdown: "hello" }),
+      createCanvasTextFlowNode({
+        id: "text-1",
+        markdown: "one",
+        position: { x: 1, y: 2 },
+      }),
     );
-    await controller.savePendingDocument();
-    expect(saved).toHaveLength(1);
+    expect((await controller.save())?.status).toBe("saved");
   });
-
-  it("preserves exact text after reload", () => {
-    const markdown = "one\n\ntwo";
-    expect(canvasDocumentToTextNodes(textDocument(markdown))[0]?.data.markdown).toBe(
-      markdown,
+  it("preserves exact text after reload", async () => {
+    const repository = new MemoryRepository();
+    const controller = new LocalCanvasShellController(
+      controllerOptions(repository),
     );
+    await controller.createCanvas("Canvas");
+    controller.insertTextNode(
+      createCanvasTextFlowNode({
+        id: "text-1",
+        markdown: "Привет\n\n# Заголовок",
+        position: { x: 1, y: 2 },
+      }),
+    );
+    await controller.save();
+    const reloaded = await controller.reloadAfterConflict();
+    expect(reloaded.document.nodes[0]).toMatchObject({
+      kind: "text",
+      markdown: "Привет\n\n# Заголовок",
+    });
   });
-
   it("deletes only the selected text node", async () => {
-    const { LocalCanvasShellController, emptyShellState } = await import(
-      "@/lib/canvas/local-canvas-shell-controller"
+    const repository = new MemoryRepository();
+    const controller = new LocalCanvasShellController(
+      controllerOptions(repository),
     );
-    const repository = {};
-    const controller = new LocalCanvasShellController({
-      repository: repository as never,
-      workspaceId: "workspace-1",
-      userId: "user-1",
-    });
-    controller.restoreRuntimeState({
-      ...emptyShellState(),
-      canvasId: "canvas-1",
-      title: "Canvas",
-      document: textDocument(),
-      status: "saved",
-    });
-    controller.deleteNodes(["text-1"]);
-    expect(controller.state.document.nodes).toHaveLength(0);
+    await controller.createCanvas("Canvas");
+    controller.insertTextNode(
+      createCanvasTextFlowNode({
+        id: "text-1",
+        markdown: "one",
+        position: { x: 1, y: 2 },
+      }),
+    );
+    controller.insertTextNode(
+      createCanvasTextFlowNode({
+        id: "text-2",
+        markdown: "two",
+        position: { x: 3, y: 4 },
+      }),
+    );
+    controller.removeCanvasNodes(["text-1"]);
+    expect(controller.state.document.nodes.map((node) => node.id)).toEqual([
+      "text-2",
+    ]);
   });
-
   it("blocks a stale CAS retry", async () => {
-    const { LocalCanvasShellController, emptyShellState } = await import(
-      "@/lib/canvas/local-canvas-shell-controller"
+    const repository = new MemoryRepository();
+    const controller = new LocalCanvasShellController(
+      controllerOptions(repository),
     );
-    const repository = {};
-    const controller = new LocalCanvasShellController({
-      repository: repository as never,
-      workspaceId: "workspace-1",
-      userId: "user-1",
-    });
-    controller.restoreRuntimeState({
-      ...emptyShellState(),
-      canvasId: "canvas-1",
-      title: "Canvas",
-      status: "saved",
-    });
-    expect(controller.hasPendingSave).toBe(false);
+    await controller.createCanvas("Canvas");
+    repository.canvas!.revision = 2;
+    const result = await controller.save();
+    expect(result).toEqual({ status: "conflict", revision: 2 });
+    expect(await controller.save()).toBeNull();
   });
-
-  it("stores viewport outside the document", () => {
-    const document = textDocument();
-    expect(document).not.toHaveProperty("viewport");
+  it("stores viewport outside the document", async () => {
+    const repository = new MemoryRepository();
+    const controller = new LocalCanvasShellController(
+      controllerOptions(repository),
+    );
+    await controller.createCanvas("Canvas");
+    await controller.saveViewport({ x: 10, y: 20, zoom: 1.5 });
+    expect(repository.view).toMatchObject({
+      viewportX: 10,
+      viewportY: 20,
+      zoom: 1.5,
+    });
+    expect(controller.state.document).toEqual(createEmptyCanvasDocumentV2());
   });
 
   it("persists V2 edges through controller save, reload, and node deletion", async () => {
-    const { parseCanvasDocumentV2 } = await import(
-      "@/lib/canvas/canvas-document"
+    const repository = new MemoryRepository();
+    const controller = new LocalCanvasShellController(
+      controllerOptions(repository),
     );
-    const document = parseCanvasDocumentV2({
-      schemaVersion: 2,
-      nodes: [
-        textDocument().nodes[0],
-        {
-          id: "text-2",
-          kind: "text",
-          markdown: "Two",
-          position: { x: 400, y: 24 },
-          size: { width: 320, height: 220 },
-          zIndex: 2,
-        },
-      ],
-      edges: [
-        {
-          id: "edge-1",
-          sourceNodeId: "text-1",
-          sourceHandle: "right",
-          targetNodeId: "text-2",
-          targetHandle: "left",
-          routing: "curved",
-          arrows: "end",
-        },
-      ],
+    const created = await controller.createCanvas("Connections");
+    const first = createCanvasTextFlowNode({
+      id: "text-node-1",
+      markdown: "Source",
+      position: { x: 0, y: 0 },
     });
-    expect(document.edges).toHaveLength(1);
+    const second = createCanvasTextFlowNode({
+      id: "text-node-2",
+      markdown: "Target",
+      position: { x: 320, y: 0 },
+    });
+    controller.insertTextNode(first);
+    controller.insertTextNode(second);
+    const edge: CanvasEdgeV2 = {
+      id: "edge-persistent",
+      sourceNodeId: first.id,
+      sourceHandle: "right",
+      targetNodeId: second.id,
+      targetHandle: "left",
+      routing: "straight",
+      arrows: "both",
+    };
+    controller.insertCanvasEdge(edge);
+    await controller.save();
+
+    const reloaded = new LocalCanvasShellController(
+      controllerOptions(repository),
+    );
+    await reloaded.openCanvas(created.canvasId!);
+    expect(reloaded.state.document.schemaVersion).toBe(2);
+    expect(reloaded.state.document.edges).toEqual([edge]);
+
+    reloaded.updateCanvasEdge(edge.id, {
+      routing: "orthogonal",
+      arrows: "end",
+    });
+    await reloaded.save();
+    const afterUpdate = new LocalCanvasShellController(
+      controllerOptions(repository),
+    );
+    await afterUpdate.openCanvas(created.canvasId!);
+    expect(afterUpdate.state.document.edges[0]).toMatchObject({
+      routing: "orthogonal",
+      arrows: "end",
+    });
+
+    afterUpdate.removeCanvasNodes([first.id]);
+    await afterUpdate.save();
+    const afterDelete = new LocalCanvasShellController(
+      controllerOptions(repository),
+    );
+    await afterDelete.openCanvas(created.canvasId!);
+    expect(afterDelete.state.document.nodes.map((node) => node.id)).toEqual([
+      second.id,
+    ]);
+    expect(afterDelete.state.document.edges).toEqual([]);
   });
 });
