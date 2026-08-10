@@ -25,10 +25,15 @@ test("authenticates and navigates the four primary Desktop sections", async ({
     name: "Разделы приложения",
   });
   for (const section of ["Обзор", "Знания", "Задачи", "Холсты"] as const) {
-    const button = navigation.getByRole("button", { name: section, exact: true });
+    const button = navigation.getByRole("button", {
+      name: section,
+      exact: true,
+    });
     await button.click();
     await expect(button).toHaveAttribute("aria-current", "page");
-    await expect(page.getByRole("region", { name: "Рабочая область" })).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Рабочая область" }),
+    ).toBeVisible();
   }
 
   await page.getByRole("button", { name: "Выйти" }).click();
@@ -39,9 +44,7 @@ test("persists a Knowledge Markdown edit through cloud snapshot reload", async (
   page,
 }) => {
   await signIn(page);
-  await page.goto(
-    "/prototype/desktop?section=knowledge&document=doc-l-routes",
-  );
+  await page.goto("/prototype/desktop?section=knowledge&document=doc-l-routes");
 
   const navigation = page.getByRole("navigation", {
     name: "Разделы приложения",

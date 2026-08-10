@@ -8,7 +8,8 @@ import { E2E_USER_EMAIL, E2E_USER_PASSWORD } from "./test-user";
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
-  if (!value) throw new Error(`Missing required E2E environment variable: ${name}`);
+  if (!value)
+    throw new Error(`Missing required E2E environment variable: ${name}`);
   return value;
 }
 
