@@ -33,6 +33,18 @@ jobs:
           else
             echo "DIFF_BASE_SHA=$PUSH_BEFORE_SHA" >> "$GITHUB_ENV"
           fi
+      - name: Show exact Canvas formatting diff
+        shell: bash
+        run: |
+          pnpm exec prettier --write \
+            src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx \
+            tests/canvas-undo-redo-runtime.test.ts
+          git diff -- \
+            src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx \
+            tests/canvas-undo-redo-runtime.test.ts
+          git checkout -- \
+            src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx \
+            tests/canvas-undo-redo-runtime.test.ts
       - name: Check formatting of changed files
         shell: bash
         run: |
