@@ -548,7 +548,7 @@ export function updateKnowledgeDocumentMarkdown(
   if (!document || document.projectId !== state.activeProjectId) return state;
   const normalizedMarkdown = markdown.replace(/\r\n?/g, "\n");
   const nextTitle =
-    getFirstMarkdownHeading(normalizedMarkdown) ?? "Без названия";
+    getFirstMarkdownHeading(normalizedMarkdown)?.text ?? "Без названия";
   return {
     ...state,
     documents: state.documents.map((item) =>
