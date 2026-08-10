@@ -3038,6 +3038,7 @@ function InfiniteCanvasLocalShellSurface({
       const velocity = canvasPanReleaseVelocity(panSamplesRef.current);
       panSamplesRef.current = [];
       if (velocity) startPanInertia(velocity);
+      else commitViewportMove(reactFlow.getViewport());
     };
     const onPointerCancel = (): void => {
       if (!middlePanActiveRef.current) return;
