@@ -37,7 +37,9 @@ export const DEFAULT_CANVAS_TEXT_STYLE: CanvasTextStyle = {
   backgroundColor: "transparent",
 };
 
-export function canvasTextFontFamilyCss(fontFamily: CanvasTextFontFamily): string {
+export function canvasTextFontFamilyCss(
+  fontFamily: CanvasTextFontFamily,
+): string {
   switch (fontFamily) {
     case "arial":
       return "Arial, Helvetica, sans-serif";

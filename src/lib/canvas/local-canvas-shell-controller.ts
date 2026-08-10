@@ -347,11 +347,11 @@ export class LocalCanvasShellController {
       id: node.id,
       kind: "text",
       markdown: node.data.markdown,
+      style: { ...node.data.style },
       position: { ...node.position },
       size: {
-        width: typeof node.style?.width === "number" ? node.style.width : 320,
-        height:
-          typeof node.style?.height === "number" ? node.style.height : 220,
+        width: typeof node.style?.width === "number" ? node.style.width : 240,
+        height: typeof node.style?.height === "number" ? node.style.height : 56,
       },
       zIndex:
         typeof node.zIndex === "number"
