@@ -23,6 +23,9 @@ describe("Canvas middle-button pan inertia runtime", () => {
       2,
     );
     expect(source).toContain("canvasPanReleaseVelocity");
+    expect(source).toContain(
+      "else commitViewportMove(reactFlow.getViewport())",
+    );
     expect(source).toContain("advanceCanvasPanInertia");
   });
 
