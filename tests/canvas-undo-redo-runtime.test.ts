@@ -25,9 +25,12 @@ describe("Canvas undo redo runtime", () => {
   it("routes toolbar actions and keyboard shortcuts through canonical history", () => {
     expect(shell).toContain('applyCanvasHistory("undo")');
     expect(shell).toContain('applyCanvasHistory("redo")');
-    expect(shell).toContain('window.addEventListener("keydown", onHistoryKeyDown, true)');
-    expect(shell).toContain('key === "y" || (key === "z" && event.shiftKey)');
-    expect(controller).toContain("controller.undoDocument").not;
+    expect(shell).toContain(
+      'window.addEventListener("keydown", onHistoryKeyDown, true)',
+    );
+    expect(shell).toContain(
+      'key === "y" || (key === "z" && event.shiftKey)',
+    );
     expect(controller).toContain("undoDocument(): LocalCanvasShellState | null");
     expect(controller).toContain("redoDocument(): LocalCanvasShellState | null");
   });
@@ -42,6 +45,8 @@ describe("Canvas undo redo runtime", () => {
 
   it("keeps viewport state outside canonical document history", () => {
     expect(controller).toContain("saveViewport(viewport: CanvasViewport)");
-    expect(controller).not.toContain("documentHistory.commit(this.stateValue.viewport");
+    expect(controller).not.toContain(
+      "documentHistory.commit(this.stateValue.viewport",
+    );
   });
 });
