@@ -239,12 +239,16 @@ type TextInnerStyle = CSSProperties & {
   fieldSizing?: "content";
 };
 
+type CenteredTextElementProps = {
+  children?: ReactNode;
+  style?: CSSProperties;
+};
+
 function withCenteredTextContent(
   children: ReactNode,
   textAlign: CanvasTextAlignment,
 ): ReactNode {
-  if (!isValidElement<{ children?: ReactNode; style?: CSSProperties }>(children))
-    return children;
+  if (!isValidElement<CenteredTextElementProps>(children)) return children;
 
   const content = children.props.children;
   let centeredContent = content;
@@ -302,10 +306,11 @@ export function CanvasNodeFrame({
   const internalNode = useInternalNode(nodeId ?? "");
   const isTextFrame = Boolean(className?.includes(styles.textNodeFrame));
   const textAlign =
-    ((internalNode?.data as
-      | { style?: { textAlign?: CanvasTextAlignment } }
-      | undefined)?.style?.textAlign as CanvasTextAlignment | undefined) ??
-    "center";
+    (
+      internalNode?.data as {
+        style?: { textAlign?: CanvasTextAlignment };
+      }
+    )?.style?.textAlign ?? "center";
   const renderedToolbar =
     isTextFrame && toolbar && nodeId
       ? withTextAlignmentToolbar(toolbar, nodeId, textAlign)
