@@ -1802,7 +1802,10 @@ function InfiniteCanvasLocalShellSurface({
 
   useEffect(() => {
     const onHistoryKeyDown = (event: KeyboardEvent): void => {
-      if (eventTouchesEditingSurface(event) || !(event.ctrlKey || event.metaKey))
+      if (
+        eventTouchesEditingSurface(event) ||
+        !(event.ctrlKey || event.metaKey)
+      )
         return;
       const key = event.key.toLowerCase();
       const direction =
