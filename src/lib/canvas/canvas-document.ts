@@ -1,6 +1,8 @@
 import {
+  CANVAS_TEXT_ALIGNMENTS,
   CANVAS_TEXT_FONT_FAMILIES,
   CANVAS_TEXT_FONT_SIZES,
+  type CanvasTextAlignment,
   type CanvasTextFontFamily,
   type CanvasTextFontSize,
   type CanvasTextStyle,
@@ -184,6 +186,7 @@ const TEXT_STYLE_KEYS = [
   "color",
   "backgroundColor",
 ];
+const TEXT_STYLE_OPTIONAL_KEYS = ["textAlign"];
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -337,7 +340,7 @@ function requireCanvasTextColor(value: unknown, path: string): string {
 
 function requireCanvasTextStyle(value: unknown, path: string): CanvasTextStyle {
   const style = requireRecord(value, path);
-  requireExactKeys(style, TEXT_STYLE_KEYS, [], path);
+  requireExactKeys(style, TEXT_STYLE_KEYS, TEXT_STYLE_OPTIONAL_KEYS, path);
   const fontFamily = requireString(style.fontFamily, `${path}.fontFamily`);
   if (!CANVAS_TEXT_FONT_FAMILIES.includes(fontFamily as CanvasTextFontFamily)) {
     fail(
@@ -354,6 +357,16 @@ function requireCanvasTextStyle(value: unknown, path: string): CanvasTextStyle {
       "Unsupported Canvas text size",
     );
   }
+  const textAlign = Object.prototype.hasOwnProperty.call(style, "textAlign")
+    ? requireString(style.textAlign, `${path}.textAlign`)
+    : "center";
+  if (!CANVAS_TEXT_ALIGNMENTS.includes(textAlign as CanvasTextAlignment)) {
+    fail(
+      "invalid_text_alignment",
+      `${path}.textAlign`,
+      "Unsupported Canvas text alignment",
+    );
+  }
   return {
     fontFamily: fontFamily as CanvasTextFontFamily,
     fontSize: fontSize as CanvasTextFontSize,
@@ -366,6 +379,7 @@ function requireCanvasTextStyle(value: unknown, path: string): CanvasTextStyle {
       style.backgroundColor,
       `${path}.backgroundColor`,
     ),
+    textAlign: textAlign as CanvasTextAlignment,
   };
 }
 
