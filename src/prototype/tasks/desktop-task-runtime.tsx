@@ -67,6 +67,20 @@ class TaskBridgeListenerRegistry {
   }
 }
 
+function openTaskContextId(state: DesktopPrototypeState): string | null {
+  return state.contextPanel?.kind === "task" ? state.contextPanel.taskId : null;
+}
+
+export function taskBridgeSubscriptionsChanged(
+  previous: DesktopPrototypeState,
+  next: DesktopPrototypeState,
+): boolean {
+  return (
+    previous.tasks !== next.tasks ||
+    openTaskContextId(previous) !== openTaskContextId(next)
+  );
+}
+
 class TaskBridgeStateSource {
   private state: DesktopPrototypeState;
 
@@ -76,8 +90,10 @@ class TaskBridgeStateSource {
 
   getState = (): DesktopPrototypeState => this.state;
 
-  update(state: DesktopPrototypeState): void {
+  update(state: DesktopPrototypeState): boolean {
+    const previous = this.state;
     this.state = state;
+    return taskBridgeSubscriptionsChanged(previous, state);
   }
 }
 
@@ -110,7 +126,9 @@ export function DesktopTaskRuntimeProvider({
     cloudBootstrap,
     runtimeMode,
   });
-  const [taskBridgeStateSource] = useState(() => new TaskBridgeStateSource(state));
+  const [taskBridgeStateSource] = useState(
+    () => new TaskBridgeStateSource(state),
+  );
   const [stateChangeListeners] = useState(
     () => new TaskBridgeListenerRegistry(),
   );
@@ -126,8 +144,8 @@ export function DesktopTaskRuntimeProvider({
   );
 
   useEffect(() => {
-    taskBridgeStateSource.update(state);
-    stateChangeListeners.notify();
+    const subscriptionsChanged = taskBridgeStateSource.update(state);
+    if (subscriptionsChanged) stateChangeListeners.notify();
   }, [state, stateChangeListeners, taskBridgeStateSource]);
 
   useEffect(() => () => stateChangeListeners.clear(), [stateChangeListeners]);
