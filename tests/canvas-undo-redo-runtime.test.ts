@@ -17,7 +17,10 @@ const toolbar = fs.readFileSync(
   "utf8",
 );
 const controller = fs.readFileSync(
-  path.resolve(process.cwd(), "src/lib/canvas/local-canvas-shell-controller.ts"),
+  path.resolve(
+    process.cwd(),
+    "src/lib/canvas/local-canvas-shell-controller.ts",
+  ),
   "utf8",
 );
 
@@ -31,8 +34,12 @@ describe("Canvas undo redo runtime", () => {
     expect(shell).toContain(
       'key === "y" || (key === "z" && event.shiftKey)',
     );
-    expect(controller).toContain("undoDocument(): LocalCanvasShellState | null");
-    expect(controller).toContain("redoDocument(): LocalCanvasShellState | null");
+    expect(controller).toContain(
+      "undoDocument(): LocalCanvasShellState | null",
+    );
+    expect(controller).toContain(
+      "redoDocument(): LocalCanvasShellState | null",
+    );
   });
 
   it("reuses the accepted Knowledge history button treatment", () => {
