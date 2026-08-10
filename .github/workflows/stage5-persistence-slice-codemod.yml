@@ -1,0 +1,41 @@
+name: Stage 5 persistence slice codemod
+
+on:
+  push:
+    branches:
+      - agent/stage5-whole-root-lazy-work
+    paths:
+      - .github/workflows/stage5-persistence-slice-codemod.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/stage5-whole-root-lazy-work
+      - name: Narrow desktop snapshot state contract
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'src/prototype/persistence/domain-snapshot.ts';
+          let source = fs.readFileSync(path, 'utf8');
+          const anchor = `export type DesktopDomainCollections = Omit<\n  DesktopDomainSnapshot,\n  "schemaVersion"\n>;\n`;
+          if (source.split(anchor).length !== 2) throw new Error('DesktopDomainCollections anchor mismatch');
+          source = source.replace(anchor, `${anchor}\nexport type DesktopPersistentState = Pick<\n  DesktopPrototypeState,\n  | "projects"\n  | "overviewDirections"\n  | "taskGroups"\n  | "taskLists"\n  | "tasks"\n  | "knowledgeFolders"\n  | "documents"\n>;\n`);
+          const signature = `export function createDesktopDomainSnapshot(\n  state: DesktopPrototypeState,\n): DesktopDomainSnapshot {`;
+          if (source.split(signature).length !== 2) throw new Error('createDesktopDomainSnapshot signature mismatch');
+          source = source.replace(signature, `export function createDesktopDomainSnapshot(\n  state: DesktopPersistentState,\n): DesktopDomainSnapshot {`);
+          fs.writeFileSync(path, source);
+          NODE
+      - name: Commit materialized contract
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/prototype/persistence/domain-snapshot.ts
+          git diff --cached --quiet && exit 0
+          git commit -m "refactor: scope desktop snapshot to persisted slices"
+          git push origin HEAD:agent/stage5-whole-root-lazy-work
