@@ -179,7 +179,11 @@ import {
   CanvasEdgeMarkerDefinitions,
   CanvasVisibleEdge,
 } from "@/lib/canvas/canvas-visible-edge";
-import { CanvasNodeFrame, ConnectionHandleLayer } from "./canvas-node-frame";
+import {
+  CanvasNodeFrame,
+  ConnectionHandleLayer,
+  TextAlignmentControls,
+} from "./canvas-node-frame";
 import styles from "./infinite-canvas-local-shell.module.css";
 
 type RestoreStats = {
@@ -565,6 +569,8 @@ function TextSelectionToolbar({
           }
         />
       </label>
+      <span className={styles.textToolbarDivider} aria-hidden="true" />
+      <TextAlignmentControls id={id} value={style.textAlign} />
       <button
         type="button"
         className={styles.textToolbarButton}
@@ -592,6 +598,7 @@ function canvasTextCss(style: CanvasTextStyle): CSSProperties {
     textDecoration: decorations.length > 0 ? decorations.join(" ") : "none",
     color: style.color,
     backgroundColor: style.backgroundColor,
+    textAlign: style.textAlign,
   };
 }
 
@@ -2456,6 +2463,7 @@ function InfiniteCanvasLocalShellSurface({
                 markdown: node.markdown,
                 position: node.position,
                 size: node.size,
+                style: node.style,
                 zIndex: node.zIndex,
               }),
             );
@@ -3196,6 +3204,7 @@ function InfiniteCanvasLocalShellSurface({
     <CanvasDesktopToolbar
       canRedo={controller.canRedo}
       canUndo={controller.canUndo}
+      interactive={Boolean(shellState.canvasId) && loadingLifecycle === "ready"}
       copy={copy}
       error={shellState.error}
       onAddImage={(files) =>

@@ -32,6 +32,7 @@ describe("Canvas selection clipboard runtime", () => {
     expect(source).toContain("target,");
     expect(source).toContain("onPointerMoveCapture={handleCanvasPointerMove}");
     expect(source).toContain("selected: true");
+    expect(source).toContain("style: node.style,");
   });
 
   it("persists pasted nodes as one canonical controller mutation", () => {
