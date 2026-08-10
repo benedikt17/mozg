@@ -11,6 +11,10 @@ export {
   analyzeMarkdownStructure,
   getFirstMarkdownHeading,
 } from "@/lib/markdown/structure";
+export {
+  replaceMarkdownTableBlock,
+  serializeMarkdownTableBlock,
+} from "@/lib/markdown/table-block";
 export type {
   MarkdownDocumentStructure,
   MarkdownHeadingStructure,

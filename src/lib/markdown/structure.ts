@@ -11,7 +11,10 @@ export type MarkdownHeadingStructure = {
 
 export type MarkdownTableStructure = {
   endLineIndex: number;
+  endOffset: number;
+  source: string;
   startLineIndex: number;
+  startOffset: number;
   table: Table;
 };
 
@@ -19,6 +22,11 @@ export type MarkdownDocumentStructure = {
   document: MarkdownDocument;
   headings: MarkdownHeadingStructure[];
   tables: MarkdownTableStructure[];
+};
+
+type MarkdownSourceLine = {
+  endOffset: number;
+  startOffset: number;
 };
 
 function getPhrasingText(node: PhrasingContent): string {
@@ -42,10 +50,26 @@ function getSourceLineRange(
   };
 }
 
+function getMarkdownSourceLines(markdown: string): MarkdownSourceLine[] {
+  const lines: MarkdownSourceLine[] = [];
+  const lineBreakPattern = /\r\n|\n|\r/g;
+  let startOffset = 0;
+  let match = lineBreakPattern.exec(markdown);
+
+  while (match) {
+    lines.push({ startOffset, endOffset: match.index });
+    startOffset = match.index + match[0].length;
+    match = lineBreakPattern.exec(markdown);
+  }
+  lines.push({ startOffset, endOffset: markdown.length });
+  return lines;
+}
+
 export function analyzeMarkdownStructure(
   markdown: string,
 ): MarkdownDocumentStructure {
   const document = parseMarkdown(markdown);
+  const sourceLines = getMarkdownSourceLines(markdown);
   const headings: MarkdownHeadingStructure[] = [];
   const tables: MarkdownTableStructure[] = [];
 
@@ -63,7 +87,18 @@ export function analyzeMarkdownStructure(
     if (node.type === "table") {
       const range = getSourceLineRange(node);
       if (!range) continue;
-      tables.push({ table: node, ...range });
+      const startLine = sourceLines[range.startLineIndex];
+      const endLine = sourceLines[range.endLineIndex];
+      if (!startLine || !endLine) continue;
+      const startOffset = startLine.startOffset;
+      const endOffset = endLine.endOffset;
+      tables.push({
+        table: node,
+        source: markdown.slice(startOffset, endOffset),
+        startOffset,
+        endOffset,
+        ...range,
+      });
     }
   }
 
