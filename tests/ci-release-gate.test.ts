@@ -17,11 +17,12 @@ describe("Production CI release gate", () => {
     expect(workflow).toContain("refactor/prototype-state-root");
   });
 
-  it("keeps formatting and changed-range whitespace checks mandatory", () => {
+  it("keeps changed-range formatting and whitespace checks mandatory", () => {
     const workflow = readWorkflow();
 
-    expect(workflow).toContain("pnpm format:check");
     expect(workflow).toContain("fetch-depth: 0");
+    expect(workflow).toContain("DIFF_BASE_SHA");
+    expect(workflow).toContain("prettier --check");
     expect(workflow).toContain("git diff --check");
     expect(workflow).toContain("PR_BASE_SHA");
     expect(workflow).toContain("PUSH_BEFORE_SHA");
