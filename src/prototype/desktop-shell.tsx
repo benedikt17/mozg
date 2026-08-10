@@ -75,9 +75,16 @@ function DesktopPrototypeShellContent({
   const [commandQuery, setCommandQuery] = useState(getInitialCommandQuery);
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
   const seededFromUrl = useRef(false);
+  const { commandPaletteOpen, documents, inboxItems, projects, tasks } = state;
   const commandResults = useMemo(
-    () => getCommandResults(state, commandQuery),
-    [state, commandQuery],
+    () =>
+      commandPaletteOpen
+        ? getCommandResults(
+            { projects, tasks, documents, inboxItems },
+            commandQuery,
+          )
+        : [],
+    [commandPaletteOpen, documents, inboxItems, projects, tasks, commandQuery],
   );
 
   useEffect(() => {
