@@ -38,6 +38,7 @@ import {
   useState,
   type ChangeEvent,
   type DragEvent as ReactDragEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
   attachCanvasImagePasteListener,
@@ -59,6 +60,13 @@ import {
   isExplicitCanvasResize,
   projectExplicitCanvasResizes,
 } from "@/lib/canvas/canvas-runtime-projection";
+import {
+  advanceCanvasPanInertia,
+  canvasPanReleaseVelocity,
+  type CanvasPanSample,
+  type CanvasPanVelocity,
+  type CanvasPanViewport,
+} from "@/lib/canvas/canvas-pan-inertia";
 import { canvasMiniMapNodeColor } from "@/lib/canvas/canvas-minimap";
 import {
   CANVAS_IMAGE_NODE_TYPE,
@@ -1085,6 +1093,13 @@ function InfiniteCanvasLocalShellSurface({
   const pendingContentHeightSaveRef = useRef(false);
   const nodeGeometrySignatureRef = useRef("");
   const nodeDragActiveRef = useRef(false);
+  const middlePanActiveRef = useRef(false);
+  const panSamplesRef = useRef<CanvasPanSample[]>([]);
+  const panInertiaFrameRef = useRef<number | null>(null);
+  const panInertiaActiveRef = useRef(false);
+  const panInertiaVelocityRef = useRef<CanvasPanVelocity | null>(null);
+  const panInertiaViewportRef = useRef<CanvasPanViewport | null>(null);
+  const panInertiaLastFrameRef = useRef<number | null>(null);
   const edgeRemovalSuppressionUntilRef = useRef(0);
   const hydratingRef = useRef(true);
   const canvasGenerationRef = useRef(0);
@@ -2456,8 +2471,8 @@ function InfiniteCanvasLocalShellSurface({
     [controller, openCanvas, syncState],
   );
 
-  const onMoveEnd = useCallback(
-    (_: unknown, viewport: { x: number; y: number; zoom: number }) => {
+  const commitViewportMove = useCallback(
+    (viewport: CanvasPanViewport) => {
       if (!shellState.canvasId || !viewportVisible) return;
       if (
         isProgrammaticViewportMove({
@@ -2499,6 +2514,138 @@ function InfiniteCanvasLocalShellSurface({
       shellState.canvasId,
       viewportVisible,
     ],
+  );
+
+  const cancelPanInertia = useCallback(
+    (commitCurrentViewport: boolean) => {
+      const wasActive = panInertiaActiveRef.current;
+      if (panInertiaFrameRef.current !== null) {
+        cancelAnimationFrame(panInertiaFrameRef.current);
+        panInertiaFrameRef.current = null;
+      }
+      panInertiaActiveRef.current = false;
+      panInertiaVelocityRef.current = null;
+      panInertiaViewportRef.current = null;
+      panInertiaLastFrameRef.current = null;
+      if (wasActive && commitCurrentViewport)
+        commitViewportMove(reactFlow.getViewport());
+    },
+    [commitViewportMove, reactFlow],
+  );
+
+  const startPanInertia = useCallback(
+    (initialVelocity: CanvasPanVelocity) => {
+      cancelPanInertia(false);
+      panInertiaActiveRef.current = true;
+      panInertiaVelocityRef.current = initialVelocity;
+      panInertiaViewportRef.current = reactFlow.getViewport();
+      panInertiaLastFrameRef.current = performance.now();
+
+      const tick = (now: number): void => {
+        const velocity = panInertiaVelocityRef.current;
+        const viewport = panInertiaViewportRef.current;
+        const lastFrameAt = panInertiaLastFrameRef.current;
+        if (
+          !panInertiaActiveRef.current ||
+          !velocity ||
+          !viewport ||
+          lastFrameAt === null
+        )
+          return;
+        const step = advanceCanvasPanInertia({
+          viewport,
+          velocity,
+          elapsedMs: now - lastFrameAt,
+        });
+        panInertiaVelocityRef.current = step.velocity;
+        panInertiaViewportRef.current = step.viewport;
+        panInertiaLastFrameRef.current = now;
+        void reactFlow.setViewport(step.viewport, { duration: 0 });
+
+        if (step.done) {
+          panInertiaFrameRef.current = requestAnimationFrame(() => {
+            panInertiaFrameRef.current = null;
+            panInertiaActiveRef.current = false;
+            panInertiaVelocityRef.current = null;
+            panInertiaViewportRef.current = null;
+            panInertiaLastFrameRef.current = null;
+            commitViewportMove(reactFlow.getViewport());
+          });
+          return;
+        }
+        panInertiaFrameRef.current = requestAnimationFrame(tick);
+      };
+
+      panInertiaFrameRef.current = requestAnimationFrame(tick);
+    },
+    [cancelPanInertia, commitViewportMove, reactFlow],
+  );
+
+  const handleViewportMove = useCallback(
+    (_: unknown, viewport: CanvasPanViewport) => {
+      if (!middlePanActiveRef.current || panInertiaActiveRef.current) return;
+      const now = performance.now();
+      panSamplesRef.current = [
+        ...panSamplesRef.current.filter((sample) => now - sample.at <= 120),
+        { x: viewport.x, y: viewport.y, at: now },
+      ].slice(-8);
+    },
+    [],
+  );
+
+  const handleCanvasPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      cancelPanInertia(true);
+      if (event.button !== 1) return;
+      middlePanActiveRef.current = true;
+      const viewport = reactFlow.getViewport();
+      panSamplesRef.current = [
+        { x: viewport.x, y: viewport.y, at: performance.now() },
+      ];
+    },
+    [cancelPanInertia, reactFlow],
+  );
+
+  const handleCanvasWheel = useCallback(() => {
+    cancelPanInertia(true);
+  }, [cancelPanInertia]);
+
+  useEffect(() => {
+    const onPointerUp = (event: PointerEvent): void => {
+      if (event.button !== 1 || !middlePanActiveRef.current) return;
+      middlePanActiveRef.current = false;
+      const velocity = canvasPanReleaseVelocity(panSamplesRef.current);
+      panSamplesRef.current = [];
+      if (velocity) startPanInertia(velocity);
+    };
+    const onPointerCancel = (): void => {
+      if (!middlePanActiveRef.current) return;
+      middlePanActiveRef.current = false;
+      panSamplesRef.current = [];
+      commitViewportMove(reactFlow.getViewport());
+    };
+    window.addEventListener("pointerup", onPointerUp, true);
+    window.addEventListener("pointercancel", onPointerCancel, true);
+    return () => {
+      window.removeEventListener("pointerup", onPointerUp, true);
+      window.removeEventListener("pointercancel", onPointerCancel, true);
+    };
+  }, [commitViewportMove, reactFlow, startPanInertia]);
+
+  useEffect(
+    () => () => {
+      if (panInertiaFrameRef.current !== null)
+        cancelAnimationFrame(panInertiaFrameRef.current);
+    },
+    [],
+  );
+
+  const onMoveEnd = useCallback(
+    (_: unknown, viewport: CanvasPanViewport) => {
+      if (middlePanActiveRef.current || panInertiaActiveRef.current) return;
+      commitViewportMove(viewport);
+    },
+    [commitViewportMove],
   );
 
   const desktopListState =
@@ -2716,6 +2863,8 @@ function InfiniteCanvasLocalShellSurface({
               event.preventDefault();
           }}
           onDrop={onDrop}
+          onPointerDownCapture={handleCanvasPointerDown}
+          onWheelCapture={handleCanvasWheel}
         >
           <ReactFlow
             className={`${styles.canvasViewport} ${viewportVisible ? "" : styles.canvasViewportHidden}`}
@@ -2733,6 +2882,7 @@ function InfiniteCanvasLocalShellSurface({
             panOnDrag={[1]}
             selectionOnDrag
             selectionMode={SelectionMode.Partial}
+            onMove={handleViewportMove}
             onMoveEnd={onMoveEnd}
             onInit={() => setFlowInstanceEpoch((current) => current + 1)}
             onPaneClick={(event) => {
@@ -2939,6 +3089,8 @@ function InfiniteCanvasLocalShellSurface({
               event.preventDefault();
           }}
           onDrop={onDrop}
+          onPointerDownCapture={handleCanvasPointerDown}
+          onWheelCapture={handleCanvasWheel}
         >
           <ReactFlow
             className={`${styles.canvasViewport} ${viewportVisible ? "" : styles.canvasViewportHidden}`}
@@ -2956,6 +3108,7 @@ function InfiniteCanvasLocalShellSurface({
             panOnDrag={[1]}
             selectionOnDrag
             selectionMode={SelectionMode.Partial}
+            onMove={handleViewportMove}
             onMoveEnd={onMoveEnd}
             onInit={() => setFlowInstanceEpoch((current) => current + 1)}
             onPaneClick={(event) => {
