@@ -14,6 +14,7 @@ import type { CanvasTaskBridge } from "@/lib/canvas/canvas-task-bridge";
 import { ContextPanelSlot } from "@/prototype/context-panels/context-panel-slot";
 import {
   DesktopTaskRuntimeProvider,
+  useDesktopCanvasTaskRuntime,
   useDesktopTaskRuntime,
 } from "@/prototype/tasks/desktop-task-runtime";
 import styles from "./infinite-canvas-local-shell.module.css";
@@ -60,8 +61,8 @@ export function getCanvasTaskBridgeProps({
 }
 
 function InfiniteCanvasLocalShellComposition(): React.JSX.Element {
-  const { dispatch, state, taskBridge, taskProjectId, workspaceAvailable } =
-    useDesktopTaskRuntime();
+  const { dispatch, state, workspaceAvailable } = useDesktopTaskRuntime();
+  const { taskBridge, taskProjectId } = useDesktopCanvasTaskRuntime();
   const repository = useMemo(() => createLocalInfiniteCanvasRepository(), []);
   const activeTaskDetailsTaskId =
     workspaceAvailable && state.contextPanel?.kind === "task"

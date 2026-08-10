@@ -35,13 +35,19 @@ type DesktopTaskRuntimeContextValue = {
   dispatch: React.Dispatch<DesktopPrototypeAction>;
   persistence: UseDesktopPersistenceResult;
   workspaceAvailable: boolean;
+  workspaceId?: string;
+};
+
+type DesktopCanvasTaskRuntimeContextValue = {
   taskBridge: CanvasTaskBridge;
   taskProjectId: string;
-  workspaceId?: string;
 };
 
 const DesktopTaskRuntimeContext = createContext<
   DesktopTaskRuntimeContextValue | undefined
+>(undefined);
+const DesktopCanvasTaskRuntimeContext = createContext<
+  DesktopCanvasTaskRuntimeContextValue | undefined
 >(undefined);
 
 class TaskBridgeListenerRegistry {
@@ -58,6 +64,20 @@ class TaskBridgeListenerRegistry {
 
   clear(): void {
     this.listeners.clear();
+  }
+}
+
+class TaskBridgeStateSource {
+  private state: DesktopPrototypeState;
+
+  constructor(initialState: DesktopPrototypeState) {
+    this.state = initialState;
+  }
+
+  getState = (): DesktopPrototypeState => this.state;
+
+  update(state: DesktopPrototypeState): void {
+    this.state = state;
   }
 }
 
@@ -90,23 +110,25 @@ export function DesktopTaskRuntimeProvider({
     cloudBootstrap,
     runtimeMode,
   });
+  const [taskBridgeStateSource] = useState(() => new TaskBridgeStateSource(state));
   const [stateChangeListeners] = useState(
     () => new TaskBridgeListenerRegistry(),
   );
   const taskBridge = useMemo<CanvasTaskBridge>(
     () =>
       createDesktopTaskBridge({
-        getState: () => state,
+        getState: taskBridgeStateSource.getState,
         dispatch,
         onStateChange: (listener: () => void) =>
           stateChangeListeners.subscribe(listener),
       } satisfies DesktopTaskBridgeOptions),
-    [dispatch, state, stateChangeListeners],
+    [dispatch, stateChangeListeners, taskBridgeStateSource],
   );
 
   useEffect(() => {
+    taskBridgeStateSource.update(state);
     stateChangeListeners.notify();
-  }, [state, stateChangeListeners]);
+  }, [state, stateChangeListeners, taskBridgeStateSource]);
 
   useEffect(() => () => stateChangeListeners.clear(), [stateChangeListeners]);
 
@@ -118,16 +140,23 @@ export function DesktopTaskRuntimeProvider({
       workspaceAvailable:
         persistence.lifecycle.status !== "loading" &&
         persistence.lifecycle.status !== "load-error",
-      taskBridge,
-      taskProjectId: state.activeProjectId,
       workspaceId: cloudBootstrap?.workspaceId,
     }),
-    [cloudBootstrap, dispatch, persistence, state, taskBridge],
+    [cloudBootstrap, dispatch, persistence, state],
+  );
+  const canvasTaskRuntimeValue = useMemo(
+    () => ({
+      taskBridge,
+      taskProjectId: state.activeProjectId,
+    }),
+    [state.activeProjectId, taskBridge],
   );
 
   return (
     <DesktopTaskRuntimeContext.Provider value={value}>
-      {children}
+      <DesktopCanvasTaskRuntimeContext.Provider value={canvasTaskRuntimeValue}>
+        {children}
+      </DesktopCanvasTaskRuntimeContext.Provider>
     </DesktopTaskRuntimeContext.Provider>
   );
 }
@@ -137,6 +166,16 @@ export function useDesktopTaskRuntime(): DesktopTaskRuntimeContextValue {
   if (!value) {
     throw new Error(
       "useDesktopTaskRuntime must be used within DesktopTaskRuntimeProvider.",
+    );
+  }
+  return value;
+}
+
+export function useDesktopCanvasTaskRuntime(): DesktopCanvasTaskRuntimeContextValue {
+  const value = useContext(DesktopCanvasTaskRuntimeContext);
+  if (!value) {
+    throw new Error(
+      "useDesktopCanvasTaskRuntime must be used within DesktopTaskRuntimeProvider.",
     );
   }
   return value;
