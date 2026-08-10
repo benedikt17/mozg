@@ -9,9 +9,12 @@ describe("Desktop Canvas task runtime boundary", () => {
       "utf8",
     );
 
-    expect(source).toContain("getState: () => stateRef.current");
-    expect(source).toContain("[dispatch, stateChangeListeners]");
+    expect(source).toContain("getState: taskBridgeStateSource.getState");
+    expect(source).toContain(
+      "[dispatch, stateChangeListeners, taskBridgeStateSource]",
+    );
     expect(source).not.toContain("[dispatch, state, stateChangeListeners]");
+    expect(source).toContain("taskBridgeStateSource.update(state)");
   });
 
   it("gives Cloud Canvas a narrow task runtime context instead of the full Desktop state context", () => {
