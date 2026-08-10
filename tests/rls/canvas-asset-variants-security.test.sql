@@ -87,11 +87,11 @@ values ('canvas-assets', 'canvas-assets', false)
 on conflict (id) do nothing;
 
 insert into public.canvases (
-  id, workspace_id, title, schema_version, document, revision, created_by
+  id, workspace_id, project_id, title, schema_version, document, revision, created_by
 )
 values
-  ('82000000-0000-0000-0000-000000000011', '82000000-0000-0000-0000-000000000001', 'Variant canvas', 2, '{"schemaVersion":2,"nodes":[],"edges":[]}', 1, '72000000-0000-0000-0000-000000000001'),
-  ('82000000-0000-0000-0000-000000000012', '82000000-0000-0000-0000-000000000002', 'Other canvas', 2, '{"schemaVersion":2,"nodes":[],"edges":[]}', 1, '72000000-0000-0000-0000-000000000004');
+  ('82000000-0000-0000-0000-000000000011', '82000000-0000-0000-0000-000000000001', 'project-a', 'Variant canvas', 2, '{"schemaVersion":2,"nodes":[],"edges":[]}', 1, '72000000-0000-0000-0000-000000000001'),
+  ('82000000-0000-0000-0000-000000000012', '82000000-0000-0000-0000-000000000002', 'project-b', 'Other canvas', 2, '{"schemaVersion":2,"nodes":[],"edges":[]}', 1, '72000000-0000-0000-0000-000000000004');
 
 insert into public.canvas_assets (
   id, workspace_id, canvas_id, storage_key, mime_type, byte_size,

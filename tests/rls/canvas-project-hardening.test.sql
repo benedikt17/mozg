@@ -3,12 +3,12 @@ begin;
 select no_plan();
 
 select is(
-  (select is_nullable from information_schema.columns where table_schema = 'public' and table_name = 'canvases' and column_name = 'project_id'),
+  (select is_nullable::text from information_schema.columns where table_schema = 'public' and table_name = 'canvases' and column_name = 'project_id'),
   'NO'::text,
   'canvases.project_id is required'
 );
 select is(
-  (select is_nullable from information_schema.columns where table_schema = 'public' and table_name = 'canvas_groups' and column_name = 'project_id'),
+  (select is_nullable::text from information_schema.columns where table_schema = 'public' and table_name = 'canvas_groups' and column_name = 'project_id'),
   'NO'::text,
   'canvas_groups.project_id is required'
 );
