@@ -22,7 +22,9 @@ async function signIn(page: Page): Promise<void> {
   await expect(page.getByRole("button", { name: "Выйти" })).toBeVisible();
 }
 
-test("blocks local-only prototype labs in cloud runtime", async ({ request }) => {
+test("blocks local-only prototype labs in cloud runtime", async ({
+  request,
+}) => {
   for (const pathname of LOCAL_ONLY_PROTOTYPE_PATHS) {
     const response = await request.get(pathname, { maxRedirects: 0 });
     expect(response.status(), pathname).toBe(404);
