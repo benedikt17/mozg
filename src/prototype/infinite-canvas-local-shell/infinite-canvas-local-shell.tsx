@@ -4,6 +4,7 @@ import {
   Background,
   ConnectionMode,
   Controls,
+  SelectionMode,
   EdgeToolbar,
   MiniMap,
   ReactFlow,
@@ -2729,6 +2730,9 @@ function InfiniteCanvasLocalShellSurface({
             onConnect={handleConnect}
             connectionMode={ConnectionMode.Loose}
             connectionLineComponent={CanvasConnectionLine}
+            panOnDrag={[1]}
+            selectionOnDrag
+            selectionMode={SelectionMode.Partial}
             onMoveEnd={onMoveEnd}
             onInit={() => setFlowInstanceEpoch((current) => current + 1)}
             onPaneClick={(event) => {
@@ -2949,6 +2953,9 @@ function InfiniteCanvasLocalShellSurface({
             onConnect={handleConnect}
             connectionMode={ConnectionMode.Loose}
             connectionLineComponent={CanvasConnectionLine}
+            panOnDrag={[1]}
+            selectionOnDrag
+            selectionMode={SelectionMode.Partial}
             onMoveEnd={onMoveEnd}
             onInit={() => setFlowInstanceEpoch((current) => current + 1)}
             onPaneClick={(event) => {
