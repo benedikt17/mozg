@@ -15,6 +15,11 @@ export type CanvasNodeClipboardPayload = {
   nodes: CanvasNode[];
 };
 
+export type CanvasClipboardPasteTarget = {
+  x: number;
+  y: number;
+};
+
 function cloneNode(node: CanvasNode): CanvasNode {
   return structuredClone(node);
 }
@@ -70,10 +75,35 @@ function shiftedCoordinate(value: number, offset: number): number {
   return Math.max(-limit, Math.min(limit, value + offset));
 }
 
+function pasteTranslation(
+  nodes: readonly CanvasNode[],
+  target: CanvasClipboardPasteTarget | undefined,
+  fallbackOffset: number,
+): CanvasClipboardPasteTarget {
+  if (!target || nodes.length === 0)
+    return { x: fallbackOffset, y: fallbackOffset };
+
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const node of nodes) {
+    minX = Math.min(minX, node.position.x);
+    minY = Math.min(minY, node.position.y);
+    maxX = Math.max(maxX, node.position.x + node.size.width);
+    maxY = Math.max(maxY, node.position.y + node.size.height);
+  }
+  return {
+    x: target.x - (minX + maxX) / 2,
+    y: target.y - (minY + maxY) / 2,
+  };
+}
+
 export function materializeCanvasNodeClipboardPaste(
   payload: CanvasNodeClipboardPayload,
   options: {
-    offset: number;
+    offset?: number;
+    target?: CanvasClipboardPasteTarget;
     zIndexStart: number;
     idGenerator?: () => string;
   },
@@ -83,12 +113,17 @@ export function materializeCanvasNodeClipboardPaste(
     (() =>
       globalThis.crypto?.randomUUID?.() ??
       `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const translation = pasteTranslation(
+    payload.nodes,
+    options.target,
+    options.offset ?? 0,
+  );
   return payload.nodes.map((node, index) => ({
     ...cloneNode(node),
     id: `${node.kind}-${idGenerator()}`,
     position: {
-      x: shiftedCoordinate(node.position.x, options.offset),
-      y: shiftedCoordinate(node.position.y, options.offset),
+      x: shiftedCoordinate(node.position.x, translation.x),
+      y: shiftedCoordinate(node.position.y, translation.y),
     },
     zIndex: Math.min(
       CANVAS_DOCUMENT_LIMITS.maxZIndex,
