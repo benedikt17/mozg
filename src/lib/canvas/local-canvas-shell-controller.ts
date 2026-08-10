@@ -519,7 +519,8 @@ export class LocalCanvasShellController {
   }
 
   undoDocument(): LocalCanvasShellState | null {
-    if (!this.stateValue.canvasId || this.stateValue.autosaveBlocked) return null;
+    if (!this.stateValue.canvasId || this.stateValue.autosaveBlocked)
+      return null;
     const previous = this.documentHistory.undo(this.stateValue.document);
     if (!previous) return null;
     return this.markPendingSave({
@@ -529,7 +530,8 @@ export class LocalCanvasShellController {
   }
 
   redoDocument(): LocalCanvasShellState | null {
-    if (!this.stateValue.canvasId || this.stateValue.autosaveBlocked) return null;
+    if (!this.stateValue.canvasId || this.stateValue.autosaveBlocked)
+      return null;
     const next = this.documentHistory.redo(this.stateValue.document);
     if (!next) return null;
     return this.markPendingSave({
