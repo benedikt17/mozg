@@ -1,0 +1,116 @@
+name: Stage 4.3 materialize renderer fixes
+
+on:
+  push:
+    branches:
+      - agent/stage4-3-canonical-reading-table-splice
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/stage4-3-canonical-reading-table-splice
+      - name: Apply exact renderer fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/prototype/knowledge/markdown-document-preview.tsx')
+          text = path.read_text(encoding='utf-8')
+
+          old_bullet = '              • {renderMdastInline(node.children, context, `${key}-inline`)}'
+          new_bullet = '              • {renderLegacyInlineMarkdown(legacyBullet.text, context.onInternalLink)}'
+          if text.count(old_bullet) != 1:
+              raise RuntimeError(f'expected one legacy bullet render, found {text.count(old_bullet)}')
+          text = text.replace(old_bullet, new_bullet, 1)
+
+          old_fallback = '''        if ("children" in node)\n          return renderMdastInline(node.children, context, key);'''
+          new_fallback = '''        if ("children" in node && Array.isArray(node.children))\n          return renderMdastInline(\n            node.children as PhrasingContent[],\n            context,\n            key,\n          );'''
+          if text.count(old_fallback) != 1:
+              raise RuntimeError(f'expected one inline fallback, found {text.count(old_fallback)}')
+          text = text.replace(old_fallback, new_fallback, 1)
+
+          insert_before = '\nfunction ListExpander({'
+          legacy = r'''
+function renderLegacyInlineMarkdown(
+  text: string,
+  onInternalLink?: (documentId: string) => void,
+): React.ReactNode[] {
+  const tokenPattern =
+    /(\[\[[^\]\n]+\]\]|\[[^\]\n]+\]\(https?:\/\/[^)\s]+\)|https?:\/\/[^\s<>]+|\*\*[^*\n]+\*\*|~~[^~\n]+~~|`[^`\n]+`|\*[^*\n]+\*)/g;
+  const nodes: React.ReactNode[] = [];
+  let cursor = 0;
+  let match = tokenPattern.exec(text);
+  while (match) {
+    if (match.index > cursor) nodes.push(text.slice(cursor, match.index));
+    const token = match[0];
+    const key = `${match.index}-${token}`;
+    if (token.startsWith("[[")) {
+      const internal = parseInternalLinkToken(token);
+      nodes.push(
+        internal ? (
+          <button
+            className="document-internal-link"
+            key={key}
+            onClick={() => onInternalLink?.(internal.documentId)}
+            type="button"
+          >
+            {internal.label}
+          </button>
+        ) : (
+          token
+        ),
+      );
+    } else if (token.startsWith("**")) {
+      nodes.push(<strong key={key}>{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith("~~")) {
+      nodes.push(<del key={key}>{token.slice(2, -2)}</del>);
+    } else if (token.startsWith("`")) {
+      nodes.push(<code key={key}>{token.slice(1, -1)}</code>);
+    } else if (token.startsWith("[") || /^https?:\/\//.test(token)) {
+      const link = parseExternalLinkToken(token);
+      nodes.push(
+        link ? (
+          <React.Fragment key={key}>
+            <a
+              className="document-external-link"
+              href={link.href}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              {link.label}
+            </a>
+            {link.trailing}
+          </React.Fragment>
+        ) : (
+          token
+        ),
+      );
+    } else {
+      nodes.push(<em key={key}>{token.slice(1, -1)}</em>);
+    }
+    cursor = match.index + token.length;
+    match = tokenPattern.exec(text);
+  }
+  if (cursor < text.length) nodes.push(text.slice(cursor));
+  return nodes;
+}
+'''
+          if text.count(insert_before) != 1:
+              raise RuntimeError(f'expected ListExpander insertion point once, found {text.count(insert_before)}')
+          text = text.replace(insert_before, '\n' + legacy + insert_before, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+      - name: Commit fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/prototype/knowledge/markdown-document-preview.tsx
+          git commit -m "fix: harden canonical Markdown renderer fallbacks"
+          git push
