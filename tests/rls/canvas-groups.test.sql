@@ -5,9 +5,9 @@ select no_plan();
 select has_table('public', 'canvas_groups', 'canvas_groups table exists');
 select has_function(
   'public',
-  'create_canvas_group',
-  array['uuid', 'text', 'uuid'],
-  'Canvas group create function exists'
+  'create_canvas_group_for_project',
+  array['uuid', 'text', 'text', 'uuid'],
+  'Project-scoped Canvas group create function exists'
 );
 select has_function(
   'public',
@@ -32,14 +32,14 @@ select is(
   'authenticated clients cannot insert groups directly'
 );
 select is(
-  has_function_privilege('anon', 'public.create_canvas_group(uuid,text,uuid)', 'EXECUTE'),
+  has_function_privilege('anon', 'public.create_canvas_group_for_project(uuid,text,text,uuid)', 'EXECUTE'),
   false,
   'anonymous clients cannot create groups'
 );
 select is(
-  has_function_privilege('authenticated', 'public.create_canvas_group(uuid,text,uuid)', 'EXECUTE'),
+  has_function_privilege('authenticated', 'public.create_canvas_group_for_project(uuid,text,text,uuid)', 'EXECUTE'),
   true,
-  'authenticated clients can create groups through the RPC'
+  'authenticated clients can create groups through the project-scoped RPC'
 );
 
 insert into auth.users (
@@ -75,8 +75,9 @@ select set_config('request.jwt.claim.sub', '72000000-0000-0000-0000-000000000001
 
 select set_config(
   'test.canvas_group_root_id',
-  (select id::text from public.create_canvas_group(
+  (select id::text from public.create_canvas_group_for_project(
     '82000000-0000-0000-0000-000000000001'::uuid,
+    'project-a',
     'Root group',
     null
   )),
@@ -84,8 +85,9 @@ select set_config(
 );
 select set_config(
   'test.canvas_group_child_id',
-  (select id::text from public.create_canvas_group(
+  (select id::text from public.create_canvas_group_for_project(
     '82000000-0000-0000-0000-000000000001'::uuid,
+    'project-a',
     'Child group',
     current_setting('test.canvas_group_root_id')::uuid
   )),
@@ -93,8 +95,9 @@ select set_config(
 );
 select set_config(
   'test.canvas_id',
-  (select id::text from public.create_canvas(
+  (select id::text from public.create_canvas_for_project(
     '82000000-0000-0000-0000-000000000001'::uuid,
+    'project-a',
     'Grouped canvas',
     current_setting('test.canvas_group_child_id')::uuid
   )),
