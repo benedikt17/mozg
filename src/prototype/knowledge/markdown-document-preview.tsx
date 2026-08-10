@@ -331,7 +331,7 @@ function renderMarkdownBlock(
             </span>
             <span className="markdown-task-checkbox-slot" aria-hidden="true" />
             <span className="markdown-task-content">
-              • {renderMdastInline(node.children, context, `${key}-inline`)}
+              • {renderLegacyInlineMarkdown(legacyBullet.text, context.onInternalLink)}
             </span>
           </p>
         );
@@ -723,8 +723,12 @@ function renderMdastInline(
         return node.value;
       default:
         if ("value" in node && typeof node.value === "string") return node.value;
-        if ("children" in node)
-          return renderMdastInline(node.children, context, key);
+        if ("children" in node && Array.isArray(node.children))
+          return renderMdastInline(
+            node.children as PhrasingContent[],
+            context,
+            key,
+          );
         if ("label" in node && typeof node.label === "string") return node.label;
         return node.type;
     }
@@ -761,14 +765,75 @@ function getPhrasingText(nodes: PhrasingContent[]): string {
     .join("");
 }
 
-function getBlockSource(
-  node: RootContent,
-  lines: string[],
-): string {
+function getBlockSource(node: RootContent, lines: string[]): string {
   const startLine = node.position?.start.line;
   const endLine = node.position?.end.line;
   if (startLine === undefined || endLine === undefined) return "";
   return lines.slice(startLine - 1, endLine).join("\n");
+}
+
+function renderLegacyInlineMarkdown(
+  text: string,
+  onInternalLink?: (documentId: string) => void,
+): React.ReactNode[] {
+  const tokenPattern =
+    /(\[\[[^\]\n]+\]\]|\[[^\]\n]+\]\(https?:\/\/[^)\s]+\)|https?:\/\/[^\s<>]+|\*\*[^*\n]+\*\*|~~[^~\n]+~~|`[^`\n]+`|\*[^*\n]+\*)/g;
+  const nodes: React.ReactNode[] = [];
+  let cursor = 0;
+  let match = tokenPattern.exec(text);
+  while (match) {
+    if (match.index > cursor) nodes.push(text.slice(cursor, match.index));
+    const token = match[0];
+    const key = `${match.index}-${token}`;
+    if (token.startsWith("[[")) {
+      const internal = parseInternalLinkToken(token);
+      nodes.push(
+        internal ? (
+          <button
+            className="document-internal-link"
+            key={key}
+            onClick={() => onInternalLink?.(internal.documentId)}
+            type="button"
+          >
+            {internal.label}
+          </button>
+        ) : (
+          token
+        ),
+      );
+    } else if (token.startsWith("**")) {
+      nodes.push(<strong key={key}>{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith("~~")) {
+      nodes.push(<del key={key}>{token.slice(2, -2)}</del>);
+    } else if (token.startsWith("`")) {
+      nodes.push(<code key={key}>{token.slice(1, -1)}</code>);
+    } else if (token.startsWith("[") || /^https?:\/\//.test(token)) {
+      const link = parseExternalLinkToken(token);
+      nodes.push(
+        link ? (
+          <React.Fragment key={key}>
+            <a
+              className="document-external-link"
+              href={link.href}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              {link.label}
+            </a>
+            {link.trailing}
+          </React.Fragment>
+        ) : (
+          token
+        ),
+      );
+    } else {
+      nodes.push(<em key={key}>{token.slice(1, -1)}</em>);
+    }
+    cursor = match.index + token.length;
+    match = tokenPattern.exec(text);
+  }
+  if (cursor < text.length) nodes.push(text.slice(cursor));
+  return nodes;
 }
 
 function ListExpander({
