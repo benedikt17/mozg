@@ -5,6 +5,9 @@ on:
     branches:
       - agent/canvas-miro-ux-corrections
 
+permissions:
+  contents: write
+
 jobs:
   format-diff:
     runs-on: ubuntu-latest
@@ -18,12 +21,19 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Show exact Prettier diff
+      - name: Apply exact Prettier output
         shell: bash
         run: |
           pnpm exec prettier --write \
             src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx \
             tests/canvas-undo-redo-runtime.test.ts
-          git diff -- \
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
             src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx \
             tests/canvas-undo-redo-runtime.test.ts
+          git commit -m "Canvas: apply exact Prettier output"
+          git push origin HEAD:agent/canvas-miro-ux-corrections
