@@ -2,12 +2,17 @@ name: CI
 
 on:
   pull_request:
+  push:
+    branches:
+      - refactor/prototype-state-root
 
 jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
         with:
           version: 11.11.0
@@ -16,6 +21,26 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Resolve changed range
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            echo "DIFF_BASE_SHA=$PR_BASE_SHA" >> "$GITHUB_ENV"
+          else
+            echo "DIFF_BASE_SHA=$PUSH_BEFORE_SHA" >> "$GITHUB_ENV"
+          fi
+      - name: Check formatting of changed files
+        shell: bash
+        run: |
+          git diff --name-only -z --diff-filter=ACMR "$DIFF_BASE_SHA...HEAD" -- \
+            '*.js' '*.jsx' '*.ts' '*.tsx' '*.json' '*.css' '*.md' '*.yml' '*.yaml' \
+            | xargs -0 -r pnpm exec prettier --check
+      - name: Check changed-file whitespace
+        run: git diff --check "$DIFF_BASE_SHA...HEAD"
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
