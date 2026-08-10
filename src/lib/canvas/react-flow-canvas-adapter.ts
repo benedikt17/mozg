@@ -26,6 +26,10 @@ import type {
   CanvasAssetRepository,
 } from "@/lib/canvas/local-canvas-repository";
 import type { ObjectUrlRegistry } from "@/lib/canvas/canvas-image-ingestion";
+import {
+  DEFAULT_CANVAS_TEXT_STYLE,
+  type CanvasTextStyle,
+} from "@/lib/canvas/canvas-text-style";
 import type { CanvasTaskBridge } from "@/lib/canvas/canvas-task-bridge";
 import { CanvasImageLoadCache } from "@/lib/canvas/canvas-image-load-cache";
 import {
@@ -82,6 +86,7 @@ export type CanvasImageFlowNode = Node<
 
 export type CanvasTextNodeData = {
   markdown: string;
+  style: CanvasTextStyle;
   isEditing?: boolean;
 };
 
@@ -522,20 +527,26 @@ export function createCanvasTextFlowNode(input: {
   position?: FlowPosition;
   size?: CanvasSize;
   zIndex?: number;
+  style?: CanvasTextStyle;
   isEditing?: boolean;
 }): CanvasTextFlowNode {
+  const textStyle = input.style ?? DEFAULT_CANVAS_TEXT_STYLE;
   return {
     id: input.id,
     type: CANVAS_TEXT_NODE_TYPE,
     position: { ...(input.position ?? { x: 0, y: 0 }) },
-    width: input.size?.width ?? 320,
-    height: input.size?.height ?? 220,
+    width: input.size?.width ?? 240,
+    height: input.size?.height ?? 56,
     style: {
-      width: input.size?.width ?? 320,
-      height: input.size?.height ?? 220,
+      width: input.size?.width ?? 240,
+      height: input.size?.height ?? 56,
     },
     zIndex: input.zIndex,
-    data: { markdown: input.markdown, isEditing: input.isEditing },
+    data: {
+      markdown: input.markdown,
+      style: { ...textStyle },
+      isEditing: input.isEditing,
+    },
   };
 }
 
@@ -595,6 +606,7 @@ export function canvasDocumentToTextNodes(
         position: node.position,
         size: node.size,
         zIndex: node.zIndex,
+        style: node.style,
       }),
     );
 }
@@ -685,6 +697,7 @@ export function runtimeNodesToCanvasDocument(
       return {
         ...node,
         markdown: runtime.data.markdown,
+        style: { ...runtime.data.style },
         position: { ...runtime.position },
         size: runtimeNodeSize(runtime),
       };

@@ -1,3 +1,11 @@
+import {
+  CANVAS_TEXT_FONT_FAMILIES,
+  CANVAS_TEXT_FONT_SIZES,
+  type CanvasTextFontFamily,
+  type CanvasTextFontSize,
+  type CanvasTextStyle,
+} from "@/lib/canvas/canvas-text-style";
+
 export const CANVAS_DOCUMENT_SCHEMA_VERSION = 1 as const;
 export const CANVAS_DOCUMENT_V2_SCHEMA_VERSION = 2 as const;
 
@@ -51,6 +59,7 @@ export type CanvasArticleNode = CanvasNodeBase & {
 export type CanvasTextNode = CanvasNodeBase & {
   kind: "text";
   markdown: string;
+  style?: CanvasTextStyle;
 };
 
 export type CanvasImageNode = CanvasNodeBase & {
@@ -165,6 +174,16 @@ const EDGE_V2_KEYS = [
 ];
 const POINT_KEYS = ["x", "y"];
 const SIZE_KEYS = ["width", "height"];
+const TEXT_STYLE_KEYS = [
+  "fontFamily",
+  "fontSize",
+  "bold",
+  "italic",
+  "underline",
+  "strikethrough",
+  "color",
+  "backgroundColor",
+];
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -297,11 +316,69 @@ function requireLastKnownTitle(value: unknown, path: string): string {
   return title;
 }
 
+function requireBoolean(value: unknown, path: string): boolean {
+  if (typeof value !== "boolean") {
+    fail("boolean_required", path, "Expected a boolean");
+  }
+  return value;
+}
+
+function requireCanvasTextColor(value: unknown, path: string): string {
+  const color = requireString(value, path);
+  if (color !== "transparent" && !/^#[0-9a-f]{6}$/iu.test(color)) {
+    fail(
+      "invalid_text_color",
+      path,
+      "Expected a six-digit hex color or transparent",
+    );
+  }
+  return color;
+}
+
+function requireCanvasTextStyle(value: unknown, path: string): CanvasTextStyle {
+  const style = requireRecord(value, path);
+  requireExactKeys(style, TEXT_STYLE_KEYS, [], path);
+  const fontFamily = requireString(style.fontFamily, `${path}.fontFamily`);
+  if (!CANVAS_TEXT_FONT_FAMILIES.includes(fontFamily as CanvasTextFontFamily)) {
+    fail(
+      "invalid_text_font_family",
+      `${path}.fontFamily`,
+      "Unsupported Canvas text font",
+    );
+  }
+  const fontSize = requireFiniteNumber(style.fontSize, `${path}.fontSize`);
+  if (!CANVAS_TEXT_FONT_SIZES.includes(fontSize as CanvasTextFontSize)) {
+    fail(
+      "invalid_text_font_size",
+      `${path}.fontSize`,
+      "Unsupported Canvas text size",
+    );
+  }
+  return {
+    fontFamily: fontFamily as CanvasTextFontFamily,
+    fontSize: fontSize as CanvasTextFontSize,
+    bold: requireBoolean(style.bold, `${path}.bold`),
+    italic: requireBoolean(style.italic, `${path}.italic`),
+    underline: requireBoolean(style.underline, `${path}.underline`),
+    strikethrough: requireBoolean(style.strikethrough, `${path}.strikethrough`),
+    color: requireCanvasTextColor(style.color, `${path}.color`),
+    backgroundColor: requireCanvasTextColor(
+      style.backgroundColor,
+      `${path}.backgroundColor`,
+    ),
+  };
+}
+
 function parseNode(value: unknown, path: string): CanvasNode {
   const node = requireRecord(value, path);
   const kind = requireString(node.kind, `${path}.kind`) as CanvasNode["kind"];
   const optionalKeys = ["lastKnownTitle"];
-  const allowedKeys = kind === "task" || kind === "article" ? optionalKeys : [];
+  const allowedKeys =
+    kind === "task" || kind === "article"
+      ? optionalKeys
+      : kind === "text"
+        ? ["style"]
+        : [];
   const specificKey =
     kind === "task"
       ? "taskId"
@@ -374,7 +451,17 @@ function parseNode(value: unknown, path: string): CanvasNode {
         "Markdown exceeds the Canvas limit",
       );
     }
-    return { id, kind, position, size, zIndex, markdown };
+    return {
+      id,
+      kind,
+      position,
+      size,
+      zIndex,
+      markdown,
+      ...(Object.prototype.hasOwnProperty.call(node, "style")
+        ? { style: requireCanvasTextStyle(node.style, `${path}.style`) }
+        : {}),
+    };
   }
 
   const aspectRatioLocked = node.aspectRatioLocked;

@@ -233,8 +233,8 @@
   background: #0f766e;
 }
 .nodeToolbarSlot {
-  top: -34px;
-  left: 0;
+  z-index: 20;
+  pointer-events: all;
 }
 .nodeContextMenuSlot {
   top: 4px;
@@ -261,10 +261,10 @@
   border-radius: 0;
 }
 .textNodeFrame {
-  --node-visual-border: 1px solid rgba(68, 64, 60, 0.25);
+  --node-visual-border: 0;
   --node-visual-radius: 0;
-  --node-visual-background: #fffdf8;
-  --node-visual-shadow: 0 8px 24px rgba(28, 25, 23, 0.1);
+  --node-visual-background: transparent;
+  --node-visual-shadow: none;
 }
 .imageNodeFrame .nodeBody,
 .textNodeFrame .nodeBody,
@@ -275,51 +275,61 @@
   box-shadow: var(--node-visual-shadow);
 }
 .textNodeContent {
+  box-sizing: border-box;
   width: 100%;
   height: 100%;
-  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
+  line-height: 1.25;
+  white-space: pre-wrap;
 }
 .textPreview {
   width: 100%;
   height: 100%;
-  overflow: auto;
-  padding: 16px;
-  color: #292524;
-  font-size: 14px;
-  line-height: 1.5;
+  overflow: visible;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
 }
+.textPreview :global(p),
 .textPreview :global(h1),
 .textPreview :global(h2),
-.textPreview :global(h3) {
-  margin-top: 0;
+.textPreview :global(h3),
+.textPreview :global(h4),
+.textPreview :global(h5),
+.textPreview :global(h6) {
+  margin: 0;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
 }
-.textEditor {
-  display: flex;
-  flex-direction: column;
+.textEditorInput {
+  box-sizing: border-box;
   width: 100%;
   height: 100%;
-  padding: 10px;
-  gap: 8px;
-}
-.textEditor textarea {
-  flex: 1;
+  min-width: 0;
   min-height: 0;
   resize: none;
-  border: 1px solid #d6d3d1;
-  border-radius: 6px;
-  padding: 9px;
-  font:
-    13px/1.5 ui-monospace,
-    SFMono-Regular,
-    Consolas,
-    monospace;
-  color: #292524;
-  background: #fff;
+  overflow: hidden;
+  border: 0;
+  outline: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  line-height: inherit;
+  text-decoration: inherit;
 }
-.textEditorActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
+.textEditorInput::placeholder,
+.textPlaceholder {
+  color: #a8a29e;
+  font: inherit;
+  font-style: normal;
+  font-weight: 400;
+  text-decoration: none;
 }
 .taskNodeFrame {
   --node-visual-border: 1px solid rgba(15, 118, 110, 0.32);

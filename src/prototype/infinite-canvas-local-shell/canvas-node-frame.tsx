@@ -1,6 +1,6 @@
 "use client";
 
-import { Handle, NodeResizer, Position } from "@xyflow/react";
+import { Handle, NodeResizer, NodeToolbar, Position } from "@xyflow/react";
 import type { CSSProperties, ReactNode } from "react";
 import {
   CANVAS_CONNECTION_HANDLE_CENTER_OFFSET,
@@ -102,9 +102,14 @@ function NodeToolbarSlot({
   children: ReactNode;
 }): React.JSX.Element {
   return (
-    <div className={styles.nodeToolbarSlot} data-slot="toolbar">
+    <NodeToolbar
+      className={styles.nodeToolbarSlot}
+      data-slot="toolbar"
+      position={Position.Top}
+      offset={10}
+    >
       {children}
-    </div>
+    </NodeToolbar>
   );
 }
 

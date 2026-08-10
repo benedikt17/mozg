@@ -37,6 +37,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type CSSProperties,
   type DragEvent as ReactDragEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -68,6 +69,10 @@ import {
   type CanvasPanViewport,
 } from "@/lib/canvas/canvas-pan-inertia";
 import { canvasMiniMapNodeColor } from "@/lib/canvas/canvas-minimap";
+import {
+  canvasTextFontFamilyCss,
+  type CanvasTextStyle,
+} from "@/lib/canvas/canvas-text-style";
 import {
   CANVAS_NODE_CLIPBOARD_MIME,
   createCanvasNodeClipboardPayload,
@@ -391,12 +396,31 @@ function ImageNodeBody({
   );
 }
 
-function TextNodeBody({
-  data,
-  selected,
+function canvasTextCss(style: CanvasTextStyle): CSSProperties {
+  const decorations = [
+    style.underline ? "underline" : "",
+    style.strikethrough ? "line-through" : "",
+  ].filter(Boolean);
+  return {
+    fontFamily: canvasTextFontFamilyCss(style.fontFamily),
+    fontSize: `${style.fontSize}px`,
+    fontWeight: style.bold ? 700 : 400,
+    fontStyle: style.italic ? "italic" : "normal",
+    textDecoration: decorations.length > 0 ? decorations.join(" ") : "none",
+    color: style.color,
+    backgroundColor: style.backgroundColor,
+  };
+}
+
+function CanvasTextEditor({
   id,
-}: NodeProps<CanvasTextFlowNode>): React.JSX.Element {
-  const [draft, setDraft] = useState(data.markdown);
+  markdown,
+}: {
+  id: string;
+  markdown: string;
+}): React.JSX.Element {
+  const [draft, setDraft] = useState(markdown);
+  const skipNextBlurCommitRef = useRef(false);
   const update = (value: string) => {
     setDraft(value);
     window.dispatchEvent(
@@ -413,21 +437,58 @@ function TextNodeBody({
     );
   };
   const cancel = () => {
-    setDraft(data.markdown);
+    skipNextBlurCommitRef.current = true;
     window.dispatchEvent(
       new CustomEvent("mozg:canvas-text-cancel", { detail: { id } }),
     );
   };
   return (
+    <textarea
+      autoFocus
+      value={draft}
+      placeholder="Type something"
+      aria-label="Canvas text"
+      className={`${styles.textEditorInput} nodrag nopan nowheel`}
+      onBlur={() => {
+        if (skipNextBlurCommitRef.current) {
+          skipNextBlurCommitRef.current = false;
+          return;
+        }
+        commit();
+      }}
+      onChange={(event) => update(event.target.value)}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        if (event.key === "Escape") {
+          event.preventDefault();
+          cancel();
+        } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+          event.preventDefault();
+          event.currentTarget.blur();
+        }
+      }}
+      onPaste={(event) => event.stopPropagation()}
+    />
+  );
+}
+
+function TextNodeBody({
+  data,
+  selected,
+  id,
+}: NodeProps<CanvasTextFlowNode>): React.JSX.Element {
+  const textStyle = canvasTextCss(data.style);
+  return (
     <CanvasNodeFrame
       selected={selected}
-      minWidth={180}
-      minHeight={100}
+      minWidth={120}
+      minHeight={32}
       className={styles.textNodeFrame}
       connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
     >
       <div
         className={styles.textNodeContent}
+        style={textStyle}
         onDoubleClick={(event) => {
           event.stopPropagation();
           window.dispatchEvent(
@@ -436,45 +497,13 @@ function TextNodeBody({
         }}
       >
         {data.isEditing ? (
-          <div className={styles.textEditor}>
-            <textarea
-              autoFocus
-              value={draft}
-              aria-label="Markdown text"
-              className="nodrag nopan nowheel"
-              onChange={(event) => update(event.target.value)}
-              onKeyDown={(event) => {
-                event.stopPropagation();
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  cancel();
-                } else if (
-                  event.key === "Enter" &&
-                  (event.ctrlKey || event.metaKey)
-                ) {
-                  event.preventDefault();
-                  commit();
-                }
-              }}
-              onPaste={(event) => event.stopPropagation()}
-            />
-            <div className={styles.textEditorActions}>
-              <button type="button" className={styles.button} onClick={cancel}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className={`${styles.button} ${styles.primary}`}
-                onClick={commit}
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        ) : (
+          <CanvasTextEditor id={id} markdown={data.markdown} />
+        ) : data.markdown.trim() ? (
           <div className={styles.textPreview}>
             <MarkdownStringPreview contentId={id} markdown={data.markdown} />
           </div>
+        ) : (
+          <span className={styles.textPlaceholder}>Type something</span>
         )}
       </div>
     </CanvasNodeFrame>
@@ -1920,7 +1949,14 @@ function InfiniteCanvasLocalShellSurface({
       setNodes((current) =>
         current.map((node) =>
           node.id === id && node.type === CANVAS_TEXT_NODE_TYPE
-            ? { ...node, data: { markdown: commitTextMarkdown(markdown) } }
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  markdown: commitTextMarkdown(markdown),
+                  isEditing: false,
+                },
+              }
             : node,
         ),
       );
@@ -1934,7 +1970,11 @@ function InfiniteCanvasLocalShellSurface({
             candidate.id === id && candidate.type === CANVAS_TEXT_NODE_TYPE
               ? {
                   ...candidate,
-                  data: { markdown: commitTextMarkdown(markdown) },
+                  data: {
+                    ...candidate.data,
+                    markdown: commitTextMarkdown(markdown),
+                    isEditing: false,
+                  },
                 }
               : candidate,
           ),
@@ -1958,7 +1998,12 @@ function InfiniteCanvasLocalShellSurface({
         position,
         isEditing: editing,
       });
-      setNodes((current) => [...current, node]);
+      setNodes((current) => [
+        ...current.map((item) =>
+          item.selected ? { ...item, selected: false } : item,
+        ),
+        { ...node, selected: true },
+      ]);
       controller.insertTextNode(node);
       syncState();
       if (!editing) scheduleSave();

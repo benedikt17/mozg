@@ -192,10 +192,10 @@ describe("canonical text nodes", () => {
     expect(() => textDocument("x".repeat(250_000))).not.toThrow());
   it("rejects Markdown beyond the contract limit", () =>
     expect(() => textDocument("x".repeat(250_001))).toThrow());
-  it("uses a default text layout", () =>
+  it("uses a compact default text layout", () =>
     expect(
       createCanvasTextFlowNode({ id: "x", markdown: "" }).style,
-    ).toMatchObject({ width: 320, height: 220 }));
+    ).toMatchObject({ width: 240, height: 56 }));
   it("supports toolbar-style empty text creation", () =>
     expect(
       createCanvasTextFlowNode({ id: "x", markdown: "", isEditing: true }).data
