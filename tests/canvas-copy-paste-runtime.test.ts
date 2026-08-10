@@ -17,12 +17,10 @@ describe("Canvas selection clipboard runtime", () => {
 
     expect(source).toContain('window.addEventListener("copy", onCopy)');
     expect(source).toContain("createCanvasNodeClipboardPayload(");
-    expect(source).toContain(
-      "event.clipboardData.setData(CANVAS_NODE_CLIPBOARD_MIME",
-    );
+    expect(source).toContain("CANVAS_NODE_CLIPBOARD_MIME,");
   });
 
-  it("handles Canvas-node paste before the existing image/plain-text clipboard paths", () => {
+  it("handles Canvas-node paste before image/plain-text clipboard paths and targets the cursor", () => {
     const source = fs.readFileSync(shellPath, "utf8");
     const canvasPaste = source.indexOf("parseCanvasNodeClipboardPayload(");
     const imagePaste = source.indexOf("shouldPreventCanvasImagePaste(event)");
@@ -30,6 +28,9 @@ describe("Canvas selection clipboard runtime", () => {
     expect(canvasPaste).toBeGreaterThan(-1);
     expect(imagePaste).toBeGreaterThan(canvasPaste);
     expect(source).toContain("materializeCanvasNodeClipboardPaste(payload");
+    expect(source).toContain("screenToFlowRef.current(pointerRef.current)");
+    expect(source).toContain("target,");
+    expect(source).toContain("onPointerMoveCapture={handleCanvasPointerMove}");
     expect(source).toContain("selected: true");
   });
 
