@@ -33,6 +33,7 @@ describe("Miro-style Canvas text toolbar", () => {
       'window.addEventListener("mozg:canvas-text-style", onStyle)',
     );
     expect(shell).toContain("controller.setRuntimeNodes(nextNodes)");
+    expect(shell).toContain("style: { ...node.data.style, ...patch }");
     expect(shell).toContain("scheduleSave()");
   });
 

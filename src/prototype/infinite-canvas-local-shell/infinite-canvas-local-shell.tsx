@@ -411,9 +411,12 @@ const CANVAS_TEXT_FONT_LABELS: Record<CanvasTextFontFamily, string> = {
   verdana: "Verdana",
 };
 
-function dispatchCanvasTextStyle(id: string, style: CanvasTextStyle): void {
+function dispatchCanvasTextStylePatch(
+  id: string,
+  patch: Partial<CanvasTextStyle>,
+): void {
   window.dispatchEvent(
-    new CustomEvent("mozg:canvas-text-style", { detail: { id, style } }),
+    new CustomEvent("mozg:canvas-text-style", { detail: { id, patch } }),
   );
 }
 
@@ -425,7 +428,7 @@ function TextSelectionToolbar({
   style: CanvasTextStyle;
 }): React.JSX.Element {
   const patchStyle = (patch: Partial<CanvasTextStyle>) =>
-    dispatchCanvasTextStyle(id, { ...style, ...patch });
+    dispatchCanvasTextStylePatch(id, patch);
   return (
     <div
       className={`${styles.textSelectionToolbar} nodrag nopan nowheel`}
@@ -2167,14 +2170,17 @@ function InfiniteCanvasLocalShellSurface({
   );
 
   const updateTextStyle = useCallback(
-    (id: string, style: CanvasTextStyle) => {
+    (id: string, patch: Partial<CanvasTextStyle>) => {
       let found = false;
       const nextNodes = nodesRef.current.map((node) => {
         if (node.id !== id || node.type !== CANVAS_TEXT_NODE_TYPE) return node;
         found = true;
         return {
           ...node,
-          data: { ...node.data, style: { ...style } },
+          data: {
+            ...node.data,
+            style: { ...node.data.style, ...patch },
+          },
         };
       });
       if (!found) return;
@@ -2279,9 +2285,12 @@ function InfiniteCanvasLocalShellSurface({
     };
     const onStyle = (event: Event) => {
       const detail = (
-        event as CustomEvent<{ id?: string; style?: CanvasTextStyle }>
+        event as CustomEvent<{
+          id?: string;
+          patch?: Partial<CanvasTextStyle>;
+        }>
       ).detail;
-      if (detail.id && detail.style) updateTextStyle(detail.id, detail.style);
+      if (detail.id && detail.patch) updateTextStyle(detail.id, detail.patch);
     };
     window.addEventListener("mozg:canvas-text-edit", onEdit);
     window.addEventListener("mozg:canvas-text-commit", onCommit);
