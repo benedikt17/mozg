@@ -32,7 +32,21 @@ describe("Canvas selection clipboard runtime", () => {
     expect(source).toContain("target,");
     expect(source).toContain("onPointerMoveCapture={handleCanvasPointerMove}");
     expect(source).toContain("selected: true");
-    expect(source).toContain("style: node.style,");
+  });
+
+  it("rebuilds pasted text runtime nodes with the canonical style intact", () => {
+    const source = fs.readFileSync(shellPath, "utf8");
+    const textPasteStart = source.indexOf('if (node.kind === "text")');
+    const textPasteEnd = source.indexOf(
+      '} else if (node.kind === "task")',
+      textPasteStart,
+    );
+    const textPasteRuntime = source.slice(textPasteStart, textPasteEnd);
+
+    expect(textPasteStart).toBeGreaterThan(-1);
+    expect(textPasteEnd).toBeGreaterThan(textPasteStart);
+    expect(textPasteRuntime).toContain("createCanvasTextFlowNode({");
+    expect(textPasteRuntime).toContain("style: node.style,");
   });
 
   it("persists pasted nodes as one canonical controller mutation", () => {
