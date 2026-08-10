@@ -1,0 +1,165 @@
+name: Canvas text foundation codemod
+
+on:
+  push:
+    branches:
+      - agent/canvas-miro-text-foundation
+    paths:
+      - .github/workflows/canvas-text-foundation-codemod.yml
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply exact Canvas text foundation changes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # Canonical document contract: optional style keeps all existing V2 docs valid.
+          path = Path('src/lib/canvas/canvas-document.ts')
+          source = path.read_text()
+          source = '''import {\n  CANVAS_TEXT_FONT_FAMILIES,\n  CANVAS_TEXT_FONT_SIZES,\n  type CanvasTextFontFamily,\n  type CanvasTextFontSize,\n  type CanvasTextStyle,\n} from "@/lib/canvas/canvas-text-style";\n\n''' + source
+          text_type_anchor = '''export type CanvasTextNode = CanvasNodeBase & {\n  kind: "text";\n  markdown: string;\n};'''
+          text_type_replacement = '''export type CanvasTextNode = CanvasNodeBase & {\n  kind: "text";\n  markdown: string;\n  style?: CanvasTextStyle;\n};'''
+          assert source.count(text_type_anchor) == 1
+          source = source.replace(text_type_anchor, text_type_replacement, 1)
+          size_keys_anchor = '''const SIZE_KEYS = ["width", "height"];'''
+          size_keys_replacement = '''const SIZE_KEYS = ["width", "height"];\nconst TEXT_STYLE_KEYS = [\n  "fontFamily",\n  "fontSize",\n  "bold",\n  "italic",\n  "underline",\n  "strikethrough",\n  "color",\n  "backgroundColor",\n];'''
+          assert source.count(size_keys_anchor) == 1
+          source = source.replace(size_keys_anchor, size_keys_replacement, 1)
+          title_anchor = '''function parseNode(value: unknown, path: string): CanvasNode {'''
+          style_helpers = '''function requireBoolean(value: unknown, path: string): boolean {\n  if (typeof value !== "boolean") {\n    fail("boolean_required", path, "Expected a boolean");\n  }\n  return value;\n}\n\nfunction requireCanvasTextColor(value: unknown, path: string): string {\n  const color = requireString(value, path);\n  if (color !== "transparent" && !/^#[0-9a-f]{6}$/iu.test(color)) {\n    fail("invalid_text_color", path, "Expected a six-digit hex color or transparent");\n  }\n  return color;\n}\n\nfunction requireCanvasTextStyle(value: unknown, path: string): CanvasTextStyle {\n  const style = requireRecord(value, path);\n  requireExactKeys(style, TEXT_STYLE_KEYS, [], path);\n  const fontFamily = requireString(style.fontFamily, `${path}.fontFamily`);\n  if (!CANVAS_TEXT_FONT_FAMILIES.includes(fontFamily as CanvasTextFontFamily)) {\n    fail("invalid_text_font_family", `${path}.fontFamily`, "Unsupported Canvas text font");\n  }\n  const fontSize = requireFiniteNumber(style.fontSize, `${path}.fontSize`);\n  if (!CANVAS_TEXT_FONT_SIZES.includes(fontSize as CanvasTextFontSize)) {\n    fail("invalid_text_font_size", `${path}.fontSize`, "Unsupported Canvas text size");\n  }\n  return {\n    fontFamily: fontFamily as CanvasTextFontFamily,\n    fontSize: fontSize as CanvasTextFontSize,\n    bold: requireBoolean(style.bold, `${path}.bold`),\n    italic: requireBoolean(style.italic, `${path}.italic`),\n    underline: requireBoolean(style.underline, `${path}.underline`),\n    strikethrough: requireBoolean(style.strikethrough, `${path}.strikethrough`),\n    color: requireCanvasTextColor(style.color, `${path}.color`),\n    backgroundColor: requireCanvasTextColor(\n      style.backgroundColor,\n      `${path}.backgroundColor`,\n    ),\n  };\n}\n\nfunction parseNode(value: unknown, path: string): CanvasNode {'''
+          assert source.count(title_anchor) == 1
+          source = source.replace(title_anchor, style_helpers, 1)
+          allowed_anchor = '''  const optionalKeys = ["lastKnownTitle"];\n  const allowedKeys = kind === "task" || kind === "article" ? optionalKeys : [];'''
+          allowed_replacement = '''  const optionalKeys = ["lastKnownTitle"];\n  const allowedKeys =\n    kind === "task" || kind === "article"\n      ? optionalKeys\n      : kind === "text"\n        ? ["style"]\n        : [];'''
+          assert source.count(allowed_anchor) == 1
+          source = source.replace(allowed_anchor, allowed_replacement, 1)
+          text_return_anchor = '''    return { id, kind, position, size, zIndex, markdown };'''
+          text_return_replacement = '''    return {\n      id,\n      kind,\n      position,\n      size,\n      zIndex,\n      markdown,\n      ...(Object.prototype.hasOwnProperty.call(node, "style")\n        ? { style: requireCanvasTextStyle(node.style, `${path}.style`) }\n        : {}),\n    };'''
+          assert source.count(text_return_anchor) == 1
+          source = source.replace(text_return_anchor, text_return_replacement, 1)
+          path.write_text(source)
+
+          # Runtime adapter projects defaults for legacy docs and persists runtime style.
+          path = Path('src/lib/canvas/react-flow-canvas-adapter.ts')
+          source = path.read_text()
+          adapter_import_anchor = '''import {\n  parseCanvasDocumentV2,'''
+          adapter_import_replacement = '''import {\n  parseCanvasDocumentV2,'''
+          assert source.count(adapter_import_anchor) == 1
+          style_import_anchor = '''import type { ObjectUrlRegistry } from "@/lib/canvas/canvas-image-ingestion";'''
+          style_import_replacement = '''import type { ObjectUrlRegistry } from "@/lib/canvas/canvas-image-ingestion";\nimport {\n  DEFAULT_CANVAS_TEXT_STYLE,\n  type CanvasTextStyle,\n} from "@/lib/canvas/canvas-text-style";'''
+          assert source.count(style_import_anchor) == 1
+          source = source.replace(style_import_anchor, style_import_replacement, 1)
+          data_anchor = '''export type CanvasTextNodeData = {\n  markdown: string;\n  isEditing?: boolean;\n};'''
+          data_replacement = '''export type CanvasTextNodeData = {\n  markdown: string;\n  style: CanvasTextStyle;\n  isEditing?: boolean;\n};'''
+          assert source.count(data_anchor) == 1
+          source = source.replace(data_anchor, data_replacement, 1)
+          create_anchor = '''export function createCanvasTextFlowNode(input: {\n  id: string;\n  markdown: string;\n  position?: FlowPosition;\n  size?: CanvasSize;\n  zIndex?: number;\n  isEditing?: boolean;\n}): CanvasTextFlowNode {\n  return {\n    id: input.id,\n    type: CANVAS_TEXT_NODE_TYPE,\n    position: { ...(input.position ?? { x: 0, y: 0 }) },\n    width: input.size?.width ?? 320,\n    height: input.size?.height ?? 220,\n    style: {\n      width: input.size?.width ?? 320,\n      height: input.size?.height ?? 220,\n    },\n    zIndex: input.zIndex,\n    data: { markdown: input.markdown, isEditing: input.isEditing },\n  };\n}'''
+          create_replacement = '''export function createCanvasTextFlowNode(input: {\n  id: string;\n  markdown: string;\n  position?: FlowPosition;\n  size?: CanvasSize;\n  zIndex?: number;\n  style?: CanvasTextStyle;\n  isEditing?: boolean;\n}): CanvasTextFlowNode {\n  const textStyle = input.style ?? DEFAULT_CANVAS_TEXT_STYLE;\n  return {\n    id: input.id,\n    type: CANVAS_TEXT_NODE_TYPE,\n    position: { ...(input.position ?? { x: 0, y: 0 }) },\n    width: input.size?.width ?? 240,\n    height: input.size?.height ?? 56,\n    style: {\n      width: input.size?.width ?? 240,\n      height: input.size?.height ?? 56,\n    },\n    zIndex: input.zIndex,\n    data: {\n      markdown: input.markdown,\n      style: { ...textStyle },\n      isEditing: input.isEditing,\n    },\n  };\n}'''
+          assert source.count(create_anchor) == 1
+          source = source.replace(create_anchor, create_replacement, 1)
+          doc_to_text_anchor = '''        size: node.size,\n        zIndex: node.zIndex,\n      }),'''
+          doc_to_text_replacement = '''        size: node.size,\n        zIndex: node.zIndex,\n        style: node.style,\n      }),'''
+          assert source.count(doc_to_text_anchor) >= 1
+          source = source.replace(doc_to_text_anchor, doc_to_text_replacement, 1)
+          runtime_text_anchor = '''        ...node,\n        markdown: runtime.data.markdown,\n        position: { ...runtime.position },'''
+          runtime_text_replacement = '''        ...node,\n        markdown: runtime.data.markdown,\n        style: { ...runtime.data.style },\n        position: { ...runtime.position },'''
+          assert source.count(runtime_text_anchor) == 1
+          source = source.replace(runtime_text_anchor, runtime_text_replacement, 1)
+          path.write_text(source)
+
+          # Controller persists default/new text style.
+          path = Path('src/lib/canvas/local-canvas-shell-controller.ts')
+          source = path.read_text()
+          controller_text_anchor = '''      markdown: node.data.markdown,\n      position: { ...node.position },'''
+          controller_text_replacement = '''      markdown: node.data.markdown,\n      style: { ...node.data.style },\n      position: { ...node.position },'''
+          assert source.count(controller_text_anchor) == 1
+          source = source.replace(controller_text_anchor, controller_text_replacement, 1)
+          source = source.replace('typeof node.style?.width === "number" ? node.style.width : 320', 'typeof node.style?.width === "number" ? node.style.width : 240', 1)
+          source = source.replace('typeof node.style?.height === "number" ? node.style.height : 220', 'typeof node.style?.height === "number" ? node.style.height : 56', 1)
+          path.write_text(source)
+
+          # Generic toolbar host moves from scaled node DOM into React Flow screen space.
+          path = Path('src/prototype/infinite-canvas-local-shell/canvas-node-frame.tsx')
+          source = path.read_text()
+          import_anchor = '''import { Handle, NodeResizer, Position } from "@xyflow/react";'''
+          import_replacement = '''import { Handle, NodeResizer, NodeToolbar, Position } from "@xyflow/react";'''
+          assert source.count(import_anchor) == 1
+          source = source.replace(import_anchor, import_replacement, 1)
+          toolbar_anchor = '''function NodeToolbarSlot({\n  children,\n}: {\n  children: ReactNode;\n}): React.JSX.Element {\n  return (\n    <div className={styles.nodeToolbarSlot} data-slot="toolbar">\n      {children}\n    </div>\n  );\n}'''
+          toolbar_replacement = '''function NodeToolbarSlot({\n  children,\n}: {\n  children: ReactNode;\n}): React.JSX.Element {\n  return (\n    <NodeToolbar\n      className={styles.nodeToolbarSlot}\n      data-slot="toolbar"\n      position={Position.Top}\n      offset={10}\n    >\n      {children}\n    </NodeToolbar>\n  );\n}'''
+          assert source.count(toolbar_anchor) == 1
+          source = source.replace(toolbar_anchor, toolbar_replacement, 1)
+          path.write_text(source)
+
+          # Pure text node: no card, direct editor/preview on Canvas.
+          path = Path('src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx')
+          source = path.read_text()
+          react_type_anchor = '''  type ChangeEvent,\n  type DragEvent as ReactDragEvent,\n  type PointerEvent as ReactPointerEvent,'''
+          react_type_replacement = '''  type ChangeEvent,\n  type CSSProperties,\n  type DragEvent as ReactDragEvent,\n  type PointerEvent as ReactPointerEvent,'''
+          assert source.count(react_type_anchor) == 1
+          source = source.replace(react_type_anchor, react_type_replacement, 1)
+          style_import_anchor = '''import { canvasMiniMapNodeColor } from "@/lib/canvas/canvas-minimap";'''
+          style_import_replacement = '''import { canvasMiniMapNodeColor } from "@/lib/canvas/canvas-minimap";\nimport {\n  canvasTextFontFamilyCss,\n  type CanvasTextStyle,\n} from "@/lib/canvas/canvas-text-style";'''
+          assert source.count(style_import_anchor) == 1
+          source = source.replace(style_import_anchor, style_import_replacement, 1)
+
+          text_start = source.index('function TextNodeBody({')
+          task_start = source.index('function TaskNodeBody({', text_start)
+          assert text_start >= 0 and task_start > text_start
+          text_block = '''function canvasTextCss(style: CanvasTextStyle): CSSProperties {\n  const decorations = [\n    style.underline ? "underline" : "",\n    style.strikethrough ? "line-through" : "",\n  ].filter(Boolean);\n  return {\n    fontFamily: canvasTextFontFamilyCss(style.fontFamily),\n    fontSize: `${style.fontSize}px`,\n    fontWeight: style.bold ? 700 : 400,\n    fontStyle: style.italic ? "italic" : "normal",\n    textDecoration: decorations.length > 0 ? decorations.join(" ") : "none",\n    color: style.color,\n    backgroundColor: style.backgroundColor,\n  };\n}\n\nfunction TextNodeBody({\n  data,\n  selected,\n  id,\n}: NodeProps<CanvasTextFlowNode>): React.JSX.Element {\n  const [draft, setDraft] = useState(data.markdown);\n  useEffect(() => {\n    if (!data.isEditing) setDraft(data.markdown);\n  }, [data.isEditing, data.markdown]);\n  const update = (value: string) => {\n    setDraft(value);\n    window.dispatchEvent(\n      new CustomEvent("mozg:canvas-text-draft", {\n        detail: { id, markdown: value },\n      }),\n    );\n  };\n  const commit = () => {\n    window.dispatchEvent(\n      new CustomEvent("mozg:canvas-text-commit", {\n        detail: { id, markdown: commitTextMarkdown(draft) },\n      }),\n    );\n  };\n  const cancel = () => {\n    setDraft(data.markdown);\n    window.dispatchEvent(\n      new CustomEvent("mozg:canvas-text-cancel", { detail: { id } }),\n    );\n  };\n  const textStyle = canvasTextCss(data.style);\n  return (\n    <CanvasNodeFrame\n      selected={selected}\n      minWidth={120}\n      minHeight={32}\n      className={styles.textNodeFrame}\n      connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}\n    >\n      <div\n        className={styles.textNodeContent}\n        style={textStyle}\n        onDoubleClick={(event) => {\n          event.stopPropagation();\n          window.dispatchEvent(\n            new CustomEvent("mozg:canvas-text-edit", { detail: { id } }),\n          );\n        }}\n      >\n        {data.isEditing ? (\n          <textarea\n            autoFocus\n            value={draft}\n            placeholder="Type something"\n            aria-label="Canvas text"\n            className={`${styles.textEditorInput} nodrag nopan nowheel`}\n            onBlur={commit}\n            onChange={(event) => update(event.target.value)}\n            onKeyDown={(event) => {\n              event.stopPropagation();\n              if (event.key === "Escape") {\n                event.preventDefault();\n                cancel();\n              } else if (\n                event.key === "Enter" &&\n                (event.ctrlKey || event.metaKey)\n              ) {\n                event.preventDefault();\n                commit();\n              }\n            }}\n            onPaste={(event) => event.stopPropagation()}\n          />\n        ) : data.markdown.trim() ? (\n          <div className={styles.textPreview}>\n            <MarkdownStringPreview contentId={id} markdown={data.markdown} />\n          </div>\n        ) : (\n          <span className={styles.textPlaceholder}>Type something</span>\n        )}\n      </div>\n    </CanvasNodeFrame>\n  );\n}\n\n'''
+          source = source[:text_start] + text_block + source[task_start:]
+
+          commit_anchor = '''          node.id === id && node.type === CANVAS_TEXT_NODE_TYPE\n            ? { ...node, data: { markdown: commitTextMarkdown(markdown) } }\n            : node,'''
+          commit_replacement = '''          node.id === id && node.type === CANVAS_TEXT_NODE_TYPE\n            ? {\n                ...node,\n                data: {\n                  ...node.data,\n                  markdown: commitTextMarkdown(markdown),\n                  isEditing: false,\n                },\n              }\n            : node,'''
+          assert source.count(commit_anchor) == 1
+          source = source.replace(commit_anchor, commit_replacement, 1)
+          runtime_commit_anchor = '''                  ...candidate,\n                  data: { markdown: commitTextMarkdown(markdown) },\n                }'''
+          runtime_commit_replacement = '''                  ...candidate,\n                  data: {\n                    ...candidate.data,\n                    markdown: commitTextMarkdown(markdown),\n                    isEditing: false,\n                  },\n                }'''
+          assert source.count(runtime_commit_anchor) == 1
+          source = source.replace(runtime_commit_anchor, runtime_commit_replacement, 1)
+          create_set_anchor = '''      setNodes((current) => [...current, node]);'''
+          create_set_replacement = '''      setNodes((current) => [\n        ...current.map((item) =>\n          item.selected ? { ...item, selected: false } : item,\n        ),\n        { ...node, selected: true },\n      ]);'''
+          assert source.count(create_set_anchor) == 1
+          source = source.replace(create_set_anchor, create_set_replacement, 1)
+          path.write_text(source)
+
+          # Visual reset: transparent text object, lightweight editing outline only.
+          path = Path('src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css')
+          source = path.read_text()
+          css_start = source.index('.textNodeFrame {')
+          css_end = source.index('.taskNodeFrame {', css_start)
+          assert css_start >= 0 and css_end > css_start
+          css_block = '''.textNodeFrame {\n  --node-visual-border: 0;\n  --node-visual-radius: 0;\n  --node-visual-background: transparent;\n  --node-visual-shadow: none;\n}\n.imageNodeFrame .nodeBody,\n.textNodeFrame .nodeBody,\n.taskNodeFrame .nodeBody {\n  border: var(--node-visual-border);\n  border-radius: var(--node-visual-radius);\n  background: var(--node-visual-background);\n  box-shadow: var(--node-visual-shadow);\n}\n.textNodeContent {\n  box-sizing: border-box;\n  width: 100%;\n  height: 100%;\n  min-width: 0;\n  min-height: 0;\n  overflow: visible;\n  line-height: 1.25;\n  white-space: pre-wrap;\n}\n.textPreview {\n  width: 100%;\n  height: 100%;\n  overflow: visible;\n  padding: 0;\n  color: inherit;\n  font: inherit;\n  line-height: inherit;\n}\n.textPreview :global(p),\n.textPreview :global(h1),\n.textPreview :global(h2),\n.textPreview :global(h3),\n.textPreview :global(h4),\n.textPreview :global(h5),\n.textPreview :global(h6) {\n  margin: 0;\n  color: inherit;\n  font-family: inherit;\n  font-size: inherit;\n  line-height: inherit;\n}\n.textEditorInput {\n  box-sizing: border-box;\n  width: 100%;\n  height: 100%;\n  min-width: 0;\n  min-height: 0;\n  resize: none;\n  overflow: hidden;\n  border: 0;\n  outline: 0;\n  padding: 0;\n  color: inherit;\n  background: transparent;\n  font: inherit;\n  line-height: inherit;\n  text-decoration: inherit;\n}\n.textEditorInput::placeholder,\n.textPlaceholder {\n  color: #a8a29e;\n  font: inherit;\n  font-style: normal;\n  font-weight: 400;\n  text-decoration: none;\n}\n'''
+          source = source[:css_start] + css_block + source[css_end:]
+          path.write_text(source)
+
+          # Regression coverage for pure text + screen-space toolbar host.
+          test = Path('tests/canvas-miro-text-foundation-runtime.test.ts')
+          test.write_text('''import fs from "node:fs";\nimport path from "node:path";\nimport { describe, expect, it } from "vitest";\n\nconst shell = fs.readFileSync(\n  path.resolve(process.cwd(), "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx"),\n  "utf8",\n);\nconst frame = fs.readFileSync(\n  path.resolve(process.cwd(), "src/prototype/infinite-canvas-local-shell/canvas-node-frame.tsx"),\n  "utf8",\n);\nconst css = fs.readFileSync(\n  path.resolve(process.cwd(), "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css"),\n  "utf8",\n);\n\ndescribe("Miro-style Canvas text foundation", () => {\n  it("edits text directly on the Canvas with the Miro placeholder and no save/cancel card actions", () => {\n    expect(shell).toContain('placeholder="Type something"');\n    expect(shell).toContain('aria-label="Canvas text"');\n    expect(shell).not.toContain("textEditorActions");\n    expect(css).toContain("--node-visual-background: transparent");\n    expect(css).toContain(".textEditorInput");\n  });\n\n  it("hosts future selection controls in React Flow NodeToolbar screen space", () => {\n    expect(frame).toContain("NodeToolbar");\n    expect(frame).toContain("position={Position.Top}");\n    expect(frame).toContain("offset={10}");\n  });\n\n  it("preserves text style while committing markdown", () => {\n    expect(shell).toContain("...node.data");\n    expect(shell).toContain("isEditing: false");\n  });\n});\n''')
+          PY
+      - name: Format changed files
+        run: pnpm exec prettier --write src/lib/canvas/canvas-text-style.ts src/lib/canvas/canvas-document.ts src/lib/canvas/react-flow-canvas-adapter.ts src/lib/canvas/local-canvas-shell-controller.ts src/prototype/infinite-canvas-local-shell/canvas-node-frame.tsx src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css tests/canvas-text-style-contract.test.ts tests/canvas-miro-text-foundation-runtime.test.ts
+      - name: Commit materialized change
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/canvas/canvas-text-style.ts src/lib/canvas/canvas-document.ts src/lib/canvas/react-flow-canvas-adapter.ts src/lib/canvas/local-canvas-shell-controller.ts src/prototype/infinite-canvas-local-shell/canvas-node-frame.tsx src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css tests/canvas-text-style-contract.test.ts tests/canvas-miro-text-foundation-runtime.test.ts
+          git commit -m "Canvas: replace text card with pure text foundation"
+          git push
