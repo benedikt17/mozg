@@ -1,0 +1,169 @@
+name: Apply Canvas Owner Smoke Fixes
+
+on:
+  push:
+    branches:
+      - agent/canvas-miro-ux-corrections
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/canvas-miro-ux-corrections
+      - name: Apply exact owner-smoke fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str, count: int = 1) -> None:
+              file = Path(path)
+              source = file.read_text()
+              actual = source.count(old)
+              if actual != count:
+                  raise SystemExit(f"{path}: expected {count} occurrence(s), found {actual}: {old[:80]!r}")
+              file.write_text(source.replace(old, new, count))
+
+          shell = "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx"
+          frame = "src/prototype/infinite-canvas-local-shell/canvas-node-frame.tsx"
+          css = "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css"
+          composition = "src/prototype/canvases/canvas-desktop-composition.tsx"
+
+          replace_exact(
+              frame,
+              '  type CSSProperties,\n  type ReactElement,\n  type ReactNode,\n',
+              '  type CSSProperties,\n  type ReactNode,\n',
+          )
+          replace_exact(
+              frame,
+              'function TextAlignmentControls({\n',
+              'export function TextAlignmentControls({\n',
+          )
+          replace_exact(
+              frame,
+              '''function withTextAlignmentToolbar(\n  toolbar: ReactNode,\n  id: string,\n  textAlign: CanvasTextAlignment,\n): ReactNode {\n  if (!isValidElement<{ children?: ReactNode }>(toolbar)) return toolbar;\n  const element = toolbar as ReactElement<{ children?: ReactNode }>;\n  return cloneElement(\n    element,\n    undefined,\n    <>\n      {element.props.children}\n      <span className={styles.textToolbarDivider} aria-hidden="true" />\n      <TextAlignmentControls id={id} value={textAlign} />\n    </>,\n  );\n}\n\n''',
+              '',
+          )
+          replace_exact(
+              frame,
+              '''  const renderedToolbar =\n    isTextFrame && toolbar && nodeId\n      ? withTextAlignmentToolbar(toolbar, nodeId, textAlign)\n      : toolbar;\n''',
+              '  const renderedToolbar = toolbar;\n',
+          )
+
+          replace_exact(
+              shell,
+              'import { CanvasNodeFrame, ConnectionHandleLayer } from "./canvas-node-frame";\n',
+              'import {\n  CanvasNodeFrame,\n  ConnectionHandleLayer,\n  TextAlignmentControls,\n} from "./canvas-node-frame";\n',
+          )
+          replace_exact(
+              shell,
+              '''      </label>\n      <button\n        type="button"\n        className={styles.textToolbarButton}\n        aria-label="Убрать цвет фона"\n''',
+              '''      </label>\n      <span className={styles.textToolbarDivider} aria-hidden="true" />\n      <TextAlignmentControls id={id} value={style.textAlign} />\n      <button\n        type="button"\n        className={styles.textToolbarButton}\n        aria-label="Убрать цвет фона"\n''',
+          )
+          replace_exact(
+              shell,
+              '    backgroundColor: style.backgroundColor,\n  };\n',
+              '    backgroundColor: style.backgroundColor,\n    textAlign: style.textAlign,\n  };\n',
+          )
+          replace_exact(
+              shell,
+              '''                markdown: node.markdown,\n                position: node.position,\n                size: node.size,\n                zIndex: node.zIndex,\n''',
+              '''                markdown: node.markdown,\n                position: node.position,\n                size: node.size,\n                style: node.style,\n                zIndex: node.zIndex,\n''',
+          )
+          replace_exact(
+              shell,
+              '''      canRedo={controller.canRedo}\n      canUndo={controller.canUndo}\n      copy={copy}\n''',
+              '''      canRedo={controller.canRedo}\n      canUndo={controller.canUndo}\n      interactive={Boolean(shellState.canvasId) && loadingLifecycle === "ready"}\n      copy={copy}\n''',
+          )
+
+          replace_exact(
+              composition,
+              '''  copy,\n  error,\n  onAddImage,\n''',
+              '''  copy,\n  error,\n  interactive,\n  onAddImage,\n''',
+          )
+          replace_exact(
+              composition,
+              '''  copy: CanvasShellCopy;\n  error: string | null;\n  onAddImage: (files: File[]) => void;\n''',
+              '''  copy: CanvasShellCopy;\n  error: string | null;\n  interactive: boolean;\n  onAddImage: (files: File[]) => void;\n''',
+          )
+          replace_exact(
+              composition,
+              '  const isReady = status === "saved" || status === "saving";\n',
+              '  const isReady =\n    interactive && status !== "conflict" && status !== "error";\n',
+          )
+
+          replace_exact(
+              css,
+              '''.desktopCanvasToolbar {\n  min-width: 0;\n  min-height: 38px;\n  height: 38px;\n''',
+              '''.desktopCanvasToolbar {\n  min-width: 0;\n  min-height: 38px;\n  height: 38px;\n  position: relative;\n  z-index: 10;\n  flex: 0 0 38px;\n  pointer-events: auto;\n''',
+          )
+          replace_exact(
+              css,
+              '''.canvasViewportHidden {\n  visibility: hidden;\n}\n''',
+              '''.canvasViewport :global(.react-flow__nodesselection-rect),\n.canvasViewport :global(.react-flow__nodesselection-rect:active) {\n  cursor: default !important;\n}\n\n.canvasViewportHidden {\n  visibility: hidden;\n}\n''',
+          )
+
+          copy_test = "tests/canvas-copy-paste-runtime.test.ts"
+          replace_exact(
+              copy_test,
+              '    expect(source).toContain("selected: true");\n',
+              '    expect(source).toContain("selected: true");\n    expect(source).toContain("style: node.style,");\n',
+          )
+
+          toolbar_test = "tests/canvas-miro-text-toolbar-runtime.test.ts"
+          replace_exact(
+              toolbar_test,
+              '''    expect(shell.match(/type="color"/g)).toHaveLength(2);\n''',
+              '''    expect(shell.match(/type="color"/g)).toHaveLength(2);\n    expect(shell).toContain(\n      "<TextAlignmentControls id={id} value={style.textAlign} />",\n    );\n    expect(shell).toContain("textAlign: style.textAlign");\n''',
+          )
+
+          selection_test = "tests/canvas-miro-selection-runtime.test.ts"
+          replace_exact(
+              selection_test,
+              '''const shellPath = path.resolve(\n  process.cwd(),\n  "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",\n);\n''',
+              '''const shellPath = path.resolve(\n  process.cwd(),\n  "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",\n);\nconst shellCssPath = path.resolve(\n  process.cwd(),\n  "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css",\n);\n''',
+          )
+          replace_exact(
+              selection_test,
+              '''  it("does not re-enable generic pointer-drag panning", () => {\n''',
+              '''  it("keeps the arrow cursor while dragging a multi-selection", () => {\n    const css = fs.readFileSync(shellCssPath, "utf8");\n\n    expect(css).toContain(".react-flow__nodesselection-rect");\n    expect(css).toContain("cursor: default !important");\n  });\n\n  it("does not re-enable generic pointer-drag panning", () => {\n''',
+          )
+
+          undo_test = "tests/canvas-undo-redo-runtime.test.ts"
+          replace_exact(
+              undo_test,
+              '''    expect(toolbar).toContain('label="Повторить"');\n''',
+              '''    expect(toolbar).toContain('label="Повторить"');\n    expect(shell).toContain(\n      'interactive={Boolean(shellState.canvasId) && loadingLifecycle === "ready"}',\n    );\n    expect(toolbar).toContain(\n      'interactive && status !== "conflict" && status !== "error"',\n    );\n''',
+          )
+
+          Path(".github/workflows/canvas-owner-smoke-fixes.yml").unlink()
+          PY
+      - name: Format changed files
+        run: |
+          pnpm_version=11.11.0
+          corepack enable
+          corepack prepare pnpm@$pnpm_version --activate
+          pnpm install --frozen-lockfile
+          pnpm exec prettier --write \
+            src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx \
+            src/prototype/infinite-canvas-local-shell/canvas-node-frame.tsx \
+            src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css \
+            src/prototype/canvases/canvas-desktop-composition.tsx \
+            tests/canvas-copy-paste-runtime.test.ts \
+            tests/canvas-miro-text-toolbar-runtime.test.ts \
+            tests/canvas-miro-selection-runtime.test.ts \
+            tests/canvas-undo-redo-runtime.test.ts
+      - name: Commit owner-smoke fixes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Canvas: fix owner Preview smoke regressions"
+          git push origin HEAD:agent/canvas-miro-ux-corrections
