@@ -1,4 +1,5 @@
 import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
+import { getFirstMarkdownHeading } from "@/lib/markdown";
 import type {
   DesktopPrototypeAction,
   DesktopPrototypeState,
@@ -139,16 +140,10 @@ export function getDocumentBreadcrumb(document: PrototypeDocument): string {
   );
 }
 
-function getFirstMarkdownHeading(markdown: string): string | undefined {
-  for (const line of markdown.split("\n")) {
-    const match = line.match(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/);
-    if (match?.[1]) return match[1].trim();
-  }
-  return undefined;
-}
-
 export function getDocumentTitle(document: PrototypeDocument): string {
-  return getFirstMarkdownHeading(document.content.join("\n")) ?? document.title;
+  return (
+    getFirstMarkdownHeading(document.content.join("\n"))?.text ?? document.title
+  );
 }
 
 export function getDocumentAncestorFolderIds(
@@ -553,7 +548,7 @@ export function updateKnowledgeDocumentMarkdown(
   if (!document || document.projectId !== state.activeProjectId) return state;
   const normalizedMarkdown = markdown.replace(/\r\n?/g, "\n");
   const nextTitle =
-    getFirstMarkdownHeading(normalizedMarkdown) ?? "Без названия";
+    getFirstMarkdownHeading(normalizedMarkdown)?.text ?? "Без названия";
   return {
     ...state,
     documents: state.documents.map((item) =>

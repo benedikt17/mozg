@@ -1,7 +1,10 @@
 import React, { useState } from "react";
 import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
 import type { PhrasingContent, Table, TableCell } from "mdast";
-import { parseMarkdown } from "@/lib/markdown/pipeline";
+import {
+  analyzeMarkdownStructure,
+  type MarkdownHeadingStructure,
+} from "@/lib/markdown";
 import { UiIcon } from "@/prototype/desktop-icons";
 
 export type DocumentHeading = {
@@ -137,22 +140,27 @@ export function getDocumentHeadings(
   return getMarkdownHeadings(document.id, document.content);
 }
 
+function toDocumentHeadings(
+  documentId: string,
+  headings: MarkdownHeadingStructure[],
+): DocumentHeading[] {
+  return headings
+    .filter((heading) => heading.depth <= 3)
+    .map((heading) => ({
+      id: `document-${documentId}-heading-${heading.startLineIndex}`,
+      label: heading.text,
+      level: heading.depth === 3 ? 3 : heading.depth === 2 ? 2 : 1,
+    }));
+}
+
 function getMarkdownHeadings(
   documentId: string,
   lines: string[],
 ): DocumentHeading[] {
-  return lines.flatMap((line, index) => {
-    const match = /^(#{1,3})\s+(.+)$/.exec(line);
-    if (!match) return [];
-    const level = match[1]?.length;
-    return [
-      {
-        id: `document-${documentId}-heading-${index}`,
-        label: match[2] ?? line,
-        level: level === 3 ? 3 : level === 2 ? 2 : 1,
-      } satisfies DocumentHeading,
-    ];
-  });
+  return toDocumentHeadings(
+    documentId,
+    analyzeMarkdownStructure(lines.join("\n")).headings,
+  );
 }
 
 export function MarkdownDocumentPreview({
@@ -237,7 +245,11 @@ function MarkdownContentPreview({
       return { documentId: contentId, collapsed: nextCollapsed };
     });
   };
-  const headings = getMarkdownHeadings(contentId, lines);
+  const structure = analyzeMarkdownStructure(lines.join("\n"));
+  const headings = toDocumentHeadings(contentId, structure.headings);
+  const tablesByStartLine = new Map(
+    structure.tables.map((table) => [table.startLineIndex, table]),
+  );
   const blocks: React.ReactNode[] = [];
   const firstContentIndex =
     hideLeadingTitle && lines[0]?.trim() === `# ${title}` ? 1 : 0;
@@ -283,7 +295,7 @@ function MarkdownContentPreview({
       index = codeIndex;
       continue;
     }
-    const table = getMarkdownTable(lines, index);
+    const table = tablesByStartLine.get(index);
     if (table) {
       blocks.push(
         <MarkdownTable
@@ -291,7 +303,7 @@ function MarkdownContentPreview({
           table={table.table}
         />,
       );
-      index = table.endIndex;
+      index = table.endLineIndex;
       continue;
     }
     const heading = headings.find(
@@ -392,55 +404,6 @@ export function isNestedLineHidden(
     childDepth = parent.depth;
   }
   return false;
-}
-
-function splitTableRow(line: string): string[] {
-  const trimmed = line.trim();
-  const withoutOuterPipes = trimmed.startsWith("|")
-    ? trimmed.slice(1)
-    : trimmed;
-  const normalized = withoutOuterPipes.endsWith("|")
-    ? withoutOuterPipes.slice(0, -1)
-    : withoutOuterPipes;
-  return normalized.split("|").map((cell) => cell.trim());
-}
-
-function isTableDelimiter(line: string): boolean {
-  const cells = splitTableRow(line);
-  return (
-    cells.length > 1 && cells.every((cell) => /^:?-{3,}:?$/.test(cell.trim()))
-  );
-}
-
-function getMarkdownTable(
-  lines: string[],
-  startIndex: number,
-): { endIndex: number; table: Table } | null {
-  const header = lines[startIndex];
-  const delimiter = lines[startIndex + 1];
-  if (
-    !header ||
-    !delimiter ||
-    !header.includes("|") ||
-    !isTableDelimiter(delimiter)
-  ) {
-    return null;
-  }
-
-  const tableLines = [header, delimiter];
-  let endIndex = startIndex + 1;
-  while (endIndex + 1 < lines.length) {
-    const row = lines[endIndex + 1];
-    if (!row?.trim() || !row.includes("|")) break;
-    tableLines.push(row);
-    endIndex += 1;
-  }
-
-  const parsed = parseMarkdown(tableLines.join("\n"));
-  const table = parsed.children.find(
-    (node): node is Table => node.type === "table",
-  );
-  return table ? { endIndex, table } : null;
 }
 
 function MarkdownTable({ table }: { table: Table }): React.JSX.Element {
