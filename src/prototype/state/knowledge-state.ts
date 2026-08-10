@@ -141,9 +141,7 @@ export function getDocumentBreadcrumb(document: PrototypeDocument): string {
 }
 
 export function getDocumentTitle(document: PrototypeDocument): string {
-  return (
-    getFirstMarkdownHeading(document.content.join("\n"))?.text ?? document.title
-  );
+  return document.title;
 }
 
 export function getDocumentAncestorFolderIds(
