@@ -11,7 +11,7 @@ import {
   InfiniteCanvasLocalShell,
   type CanvasShellCopy,
 } from "@/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell";
-import { useDesktopTaskRuntime } from "@/prototype/tasks/desktop-task-runtime";
+import { useDesktopCanvasTaskRuntime } from "@/prototype/tasks/desktop-task-runtime";
 
 const PROJECT_RUNTIME_CACHE_LIMIT = 8;
 const projectRuntimeCaches = new Map<string, CloudCanvasRuntimeCache>();
@@ -75,7 +75,8 @@ export function CloudCanvasWorkspace({
   activeTaskDetailsTaskId?: string;
   workspaceId: string;
 }): React.JSX.Element {
-  const { taskBridge, taskProjectId: projectId } = useDesktopTaskRuntime();
+  const { taskBridge, taskProjectId: projectId } =
+    useDesktopCanvasTaskRuntime();
   const supabase = useMemo(() => createClient(), []);
   const runtimeCache = useMemo(
     () => projectRuntimeCache(workspaceId, projectId),
