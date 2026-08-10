@@ -17,6 +17,11 @@ import { getTaskById } from "@/prototype/state/tasks-state";
 
 export const MAX_VISIBLE_COMMAND_RESULTS = 10;
 
+type CommandSearchState = Pick<
+  DesktopPrototypeState,
+  "projects" | "tasks" | "documents" | "inboxItems"
+>;
+
 export function getActiveProject(
   state: DesktopPrototypeState,
 ): PrototypeProject {
@@ -61,7 +66,7 @@ export function getAiContextLabel(state: DesktopPrototypeState): string {
 }
 
 export function getCommandResults(
-  state: DesktopPrototypeState,
+  state: CommandSearchState,
   query: string,
 ): CommandResult[] {
   const normalizedQuery = query.trim().toLocaleLowerCase("ru");
@@ -145,7 +150,7 @@ export function visibleCommandResults<T>(results: T[]): T[] {
 }
 
 function getProjectName(
-  state: DesktopPrototypeState,
+  state: CommandSearchState,
   projectId: string,
 ): string {
   return (
