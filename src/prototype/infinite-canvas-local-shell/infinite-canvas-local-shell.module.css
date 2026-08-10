@@ -233,8 +233,8 @@
   background: #0f766e;
 }
 .nodeToolbarSlot {
-  top: -34px;
-  left: 0;
+  z-index: 20;
+  pointer-events: all;
 }
 .nodeContextMenuSlot {
   top: 4px;

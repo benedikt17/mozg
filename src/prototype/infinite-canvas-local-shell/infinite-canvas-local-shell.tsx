@@ -418,8 +418,10 @@ function TextNodeBody({
   id,
 }: NodeProps<CanvasTextFlowNode>): React.JSX.Element {
   const [draft, setDraft] = useState(data.markdown);
+  const skipNextBlurCommitRef = useRef(false);
   useEffect(() => {
     if (!data.isEditing) setDraft(data.markdown);
+    else skipNextBlurCommitRef.current = false;
   }, [data.isEditing, data.markdown]);
   const update = (value: string) => {
     setDraft(value);
@@ -437,6 +439,7 @@ function TextNodeBody({
     );
   };
   const cancel = () => {
+    skipNextBlurCommitRef.current = true;
     setDraft(data.markdown);
     window.dispatchEvent(
       new CustomEvent("mozg:canvas-text-cancel", { detail: { id } }),
@@ -468,7 +471,13 @@ function TextNodeBody({
             placeholder="Type something"
             aria-label="Canvas text"
             className={`${styles.textEditorInput} nodrag nopan nowheel`}
-            onBlur={commit}
+            onBlur={() => {
+              if (skipNextBlurCommitRef.current) {
+                skipNextBlurCommitRef.current = false;
+                return;
+              }
+              commit();
+            }}
             onChange={(event) => update(event.target.value)}
             onKeyDown={(event) => {
               event.stopPropagation();
@@ -480,7 +489,7 @@ function TextNodeBody({
                 (event.ctrlKey || event.metaKey)
               ) {
                 event.preventDefault();
-                commit();
+                event.currentTarget.blur();
               }
             }}
             onPaste={(event) => event.stopPropagation()}
