@@ -6,7 +6,6 @@ import {
   useEffect,
   useMemo,
   useReducer,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -68,6 +67,20 @@ class TaskBridgeListenerRegistry {
   }
 }
 
+class TaskBridgeStateSource {
+  private state: DesktopPrototypeState;
+
+  constructor(initialState: DesktopPrototypeState) {
+    this.state = initialState;
+  }
+
+  getState = (): DesktopPrototypeState => this.state;
+
+  update(state: DesktopPrototypeState): void {
+    this.state = state;
+  }
+}
+
 function initializeDesktopPrototypeState(
   snapshot: DesktopCloudBootstrap["snapshot"] | undefined,
 ): DesktopPrototypeState {
@@ -97,25 +110,25 @@ export function DesktopTaskRuntimeProvider({
     cloudBootstrap,
     runtimeMode,
   });
-  const stateRef = useRef(state);
+  const [taskBridgeStateSource] = useState(() => new TaskBridgeStateSource(state));
   const [stateChangeListeners] = useState(
     () => new TaskBridgeListenerRegistry(),
   );
   const taskBridge = useMemo<CanvasTaskBridge>(
     () =>
       createDesktopTaskBridge({
-        getState: () => stateRef.current,
+        getState: taskBridgeStateSource.getState,
         dispatch,
         onStateChange: (listener: () => void) =>
           stateChangeListeners.subscribe(listener),
       } satisfies DesktopTaskBridgeOptions),
-    [dispatch, stateChangeListeners],
+    [dispatch, stateChangeListeners, taskBridgeStateSource],
   );
 
   useEffect(() => {
-    stateRef.current = state;
+    taskBridgeStateSource.update(state);
     stateChangeListeners.notify();
-  }, [state, stateChangeListeners]);
+  }, [state, stateChangeListeners, taskBridgeStateSource]);
 
   useEffect(() => () => stateChangeListeners.clear(), [stateChangeListeners]);
 
