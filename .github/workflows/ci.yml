@@ -21,8 +21,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm format:check
-      - name: Check changed-file whitespace
+      - name: Resolve changed range
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -30,10 +29,18 @@ jobs:
           PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: |
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            git diff --check "$PR_BASE_SHA...HEAD"
+            echo "DIFF_BASE_SHA=$PR_BASE_SHA" >> "$GITHUB_ENV"
           else
-            git diff --check "$PUSH_BEFORE_SHA...HEAD"
+            echo "DIFF_BASE_SHA=$PUSH_BEFORE_SHA" >> "$GITHUB_ENV"
           fi
+      - name: Check formatting of changed files
+        shell: bash
+        run: |
+          git diff --name-only -z --diff-filter=ACMR "$DIFF_BASE_SHA...HEAD" -- \
+            '*.js' '*.jsx' '*.ts' '*.tsx' '*.json' '*.css' '*.md' '*.yml' '*.yaml' \
+            | xargs -0 -r pnpm exec prettier --check
+      - name: Check changed-file whitespace
+        run: git diff --check "$DIFF_BASE_SHA...HEAD"
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
