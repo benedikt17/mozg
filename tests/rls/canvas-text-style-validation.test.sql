@@ -4,7 +4,7 @@ select no_plan();
 
 select lives_ok(
   $$ select public.validate_canvas_document_v2(
-    2,
+    2::smallint,
     $json$
     {
       "schemaVersion": 2,
@@ -38,7 +38,7 @@ select lives_ok(
 
 select lives_ok(
   $$ select public.validate_canvas_document_v2(
-    2,
+    2::smallint,
     $json$
     {
       "schemaVersion": 2,
@@ -71,7 +71,7 @@ select lives_ok(
 
 select throws_ok(
   $$ select public.validate_canvas_document_v2(
-    2,
+    2::smallint,
     $json$
     {
       "schemaVersion": 2,
@@ -108,7 +108,7 @@ select throws_ok(
 
 select throws_ok(
   $$ select public.validate_canvas_document_v2(
-    2,
+    2::smallint,
     $json$
     {
       "schemaVersion": 2,
@@ -144,7 +144,7 @@ select throws_ok(
 
 select throws_ok(
   $$ select public.validate_canvas_document_v2(
-    2,
+    2::smallint,
     $json$
     {
       "schemaVersion": 2,
@@ -180,7 +180,7 @@ select throws_ok(
 
 select throws_ok(
   $$ select public.validate_canvas_document_v2(
-    2,
+    2::smallint,
     $json$
     {
       "schemaVersion": 2,
@@ -216,7 +216,7 @@ select throws_ok(
 
 select throws_ok(
   $$ select public.validate_canvas_document_v2(
-    2,
+    2::smallint,
     $json$
     {
       "schemaVersion": 2,
@@ -252,7 +252,7 @@ select throws_ok(
 
 select throws_ok(
   $$ select public.validate_canvas_document_v2(
-    2,
+    2::smallint,
     $json$
     {
       "schemaVersion": 2,
