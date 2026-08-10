@@ -96,4 +96,27 @@ describe("Markdown document structure", () => {
     expect(cellText(table?.children[1]?.children[1])).toBe("bold");
     expect(cellText(table?.children[2]?.children[1])).toBe("Связанная статья");
   });
+
+  it("reuses the same structure for identical immutable Markdown", () => {
+    const markdown = "# Cache identity\n\nParagraph with **formatting**.\n";
+
+    const first = analyzeMarkdownStructure(markdown);
+    const second = analyzeMarkdownStructure(markdown);
+
+    expect(second).toBe(first);
+  });
+
+  it("bounds the recent structure cache instead of retaining every edit", () => {
+    const firstMarkdown = "# LRU unique A 2026-08-10\n";
+    const first = analyzeMarkdownStructure(firstMarkdown);
+
+    analyzeMarkdownStructure("# LRU unique B 2026-08-10\n");
+    analyzeMarkdownStructure("# LRU unique C 2026-08-10\n");
+    analyzeMarkdownStructure("# LRU unique D 2026-08-10\n");
+    analyzeMarkdownStructure("# LRU unique E 2026-08-10\n");
+
+    const afterEviction = analyzeMarkdownStructure(firstMarkdown);
+    expect(afterEviction).not.toBe(first);
+    expect(afterEviction.headings[0]?.text).toBe("LRU unique A 2026-08-10");
+  });
 });
