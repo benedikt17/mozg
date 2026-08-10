@@ -8,6 +8,7 @@ import {
   type CanvasTextNode,
   type CanvasNode,
 } from "@/lib/canvas/canvas-document";
+import { CanvasDocumentHistory } from "@/lib/canvas/canvas-document-history";
 import type {
   CanvasPendingSaveFlushState,
   CanvasPendingSaveLifecycleRepository,
@@ -70,6 +71,13 @@ function now(clock: () => Date | string): string {
   return new Date(clock()).toISOString();
 }
 
+function sameDocument(
+  first: CanvasDocumentV2,
+  second: CanvasDocumentV2,
+): boolean {
+  return JSON.stringify(first) === JSON.stringify(second);
+}
+
 export function emptyShellState(): LocalCanvasShellState {
   return {
     canvasId: null,
@@ -89,6 +97,7 @@ export class LocalCanvasShellController {
   private readonly workspaceId: string;
   private readonly userId: string;
   private readonly clock: () => Date | string;
+  private readonly documentHistory = new CanvasDocumentHistory();
   private stateValue: LocalCanvasShellState = emptyShellState();
   private mutationVersion = 0;
   private savedMutationVersion = 0;
@@ -126,8 +135,17 @@ export class LocalCanvasShellController {
     return this.mutationVersion > this.savedMutationVersion;
   }
 
+  get canUndo(): boolean {
+    return this.documentHistory.canUndo;
+  }
+
+  get canRedo(): boolean {
+    return this.documentHistory.canRedo;
+  }
+
   restoreRuntimeState(state: LocalCanvasShellState): LocalCanvasShellState {
     this.stateValue = clone(state);
+    this.documentHistory.reset();
     this.saveInFlight = null;
     this.savedMutationVersion = 0;
     this.mutationVersion =
@@ -240,6 +258,7 @@ export class LocalCanvasShellController {
       conflictRevision: null,
       autosaveBlocked: false,
     };
+    this.documentHistory.reset();
     this.mutationVersion = 0;
     this.savedMutationVersion = 0;
     this.saveInFlight = null;
@@ -258,6 +277,20 @@ export class LocalCanvasShellController {
     return this.state;
   }
 
+  private markDocumentPendingSave(
+    document: CanvasDocumentV2,
+    recordHistory = true,
+  ): LocalCanvasShellState {
+    const nextDocument = parseCanvasDocumentV2(document);
+    if (sameDocument(this.stateValue.document, nextDocument)) return this.state;
+    if (recordHistory)
+      this.documentHistory.commit(this.stateValue.document, nextDocument);
+    return this.markPendingSave({
+      ...this.stateValue,
+      document: clone(nextDocument),
+    });
+  }
+
   private pendingSaveFlushState(): CanvasPendingSaveFlushState | null {
     const current = this.stateValue;
     if (!current.canvasId) return null;
@@ -274,26 +307,24 @@ export class LocalCanvasShellController {
 
   setImageNodes(nodes: readonly CanvasImageFlowNode[]): LocalCanvasShellState {
     if (!this.stateValue.canvasId) return this.state;
-    return this.markPendingSave({
-      ...this.stateValue,
-      document: imageNodesToCanvasDocument(this.stateValue.document, nodes),
-    });
+    return this.markDocumentPendingSave(
+      imageNodesToCanvasDocument(this.stateValue.document, nodes),
+    );
   }
 
   setRuntimeNodes(nodes: readonly CanvasFlowNode[]): LocalCanvasShellState {
     if (!this.stateValue.canvasId) return this.state;
-    return this.markPendingSave({
-      ...this.stateValue,
-      document: runtimeNodesToCanvasDocument(this.stateValue.document, nodes),
-    });
+    return this.markDocumentPendingSave(
+      runtimeNodesToCanvasDocument(this.stateValue.document, nodes),
+    );
   }
 
   setRuntimeEdges(edges: readonly CanvasEdgeFlow[]): LocalCanvasShellState {
     if (!this.stateValue.canvasId) return this.state;
-    return this.markPendingSave({
-      ...this.stateValue,
-      document: runtimeEdgesToCanvasDocument(this.stateValue.document, edges),
-    });
+    return this.markDocumentPendingSave(
+      runtimeEdgesToCanvasDocument(this.stateValue.document, edges),
+      false,
+    );
   }
 
   removeImageNodes(nodeIds: readonly string[]): LocalCanvasShellState {
@@ -303,9 +334,8 @@ export class LocalCanvasShellController {
   removeCanvasNodes(nodeIds: readonly string[]): LocalCanvasShellState {
     if (nodeIds.length === 0) return this.state;
     const removed = new Set(nodeIds);
-    return this.markPendingSave({
-      ...this.stateValue,
-      document: parseCanvasDocumentV2({
+    return this.markDocumentPendingSave(
+      parseCanvasDocumentV2({
         ...this.stateValue.document,
         nodes: this.stateValue.document.nodes.filter(
           (node) => !removed.has(node.id),
@@ -315,7 +345,7 @@ export class LocalCanvasShellController {
             !removed.has(edge.sourceNodeId) && !removed.has(edge.targetNodeId),
         ),
       }),
-    });
+    );
   }
 
   insertCanvasNodes(nodes: readonly CanvasNode[]): LocalCanvasShellState {
@@ -327,13 +357,12 @@ export class LocalCanvasShellController {
       .filter((node) => !existing.has(node.id))
       .map((node) => clone(node));
     if (additions.length === 0) return this.state;
-    return this.markPendingSave({
-      ...this.stateValue,
-      document: parseCanvasDocumentV2({
+    return this.markDocumentPendingSave(
+      parseCanvasDocumentV2({
         ...this.stateValue.document,
         nodes: [...this.stateValue.document.nodes, ...additions],
       }),
-    });
+    );
   }
 
   insertTextNode(node: CanvasTextFlowNode): LocalCanvasShellState {
@@ -361,13 +390,12 @@ export class LocalCanvasShellController {
               0,
             ) + 1,
     };
-    return this.markPendingSave({
-      ...this.stateValue,
-      document: parseCanvasDocumentV2({
+    return this.markDocumentPendingSave(
+      parseCanvasDocumentV2({
         ...this.stateValue.document,
         nodes: [...this.stateValue.document.nodes, textNode],
       }),
-    });
+    );
   }
 
   insertTaskNode(node: CanvasTaskFlowNode): LocalCanvasShellState {
@@ -398,13 +426,12 @@ export class LocalCanvasShellController {
               0,
             ) + 1,
     };
-    return this.markPendingSave({
-      ...this.stateValue,
-      document: parseCanvasDocumentV2({
+    return this.markDocumentPendingSave(
+      parseCanvasDocumentV2({
         ...this.stateValue.document,
         nodes: [...this.stateValue.document.nodes, taskNode],
       }),
-    });
+    );
   }
 
   insertImageNodes(
@@ -433,13 +460,12 @@ export class LocalCanvasShellController {
         zIndex: ++nextZIndex,
         aspectRatioLocked: true,
       }));
-    return this.markPendingSave({
-      ...this.stateValue,
-      document: parseCanvasDocumentV2({
+    return this.markDocumentPendingSave(
+      parseCanvasDocumentV2({
         ...this.stateValue.document,
         nodes: [...this.stateValue.document.nodes, ...additions],
       }),
-    });
+    );
   }
 
   insertCanvasEdge(edge: CanvasEdgeV2): LocalCanvasShellState {
@@ -448,13 +474,12 @@ export class LocalCanvasShellController {
       this.stateValue.document.edges.some((current) => current.id === edge.id)
     )
       return this.state;
-    return this.markPendingSave({
-      ...this.stateValue,
-      document: parseCanvasDocumentV2({
+    return this.markDocumentPendingSave(
+      parseCanvasDocumentV2({
         ...this.stateValue.document,
         edges: [...this.stateValue.document.edges, edge],
       }),
-    });
+    );
   }
 
   updateCanvasEdge(
@@ -466,35 +491,50 @@ export class LocalCanvasShellController {
       (current) => current.id === edgeId,
     );
     if (!edge) return this.state;
-    return this.markPendingSave({
-      ...this.stateValue,
-      document: parseCanvasDocumentV2({
+    return this.markDocumentPendingSave(
+      parseCanvasDocumentV2({
         ...this.stateValue.document,
         edges: this.stateValue.document.edges.map((current) =>
           current.id === edgeId ? { ...current, ...update } : current,
         ),
       }),
-    });
+    );
   }
 
   removeCanvasEdges(edgeIds: readonly string[]): LocalCanvasShellState {
     if (edgeIds.length === 0) return this.state;
     const removed = new Set(edgeIds);
-    return this.markPendingSave({
-      ...this.stateValue,
-      document: parseCanvasDocumentV2({
+    return this.markDocumentPendingSave(
+      parseCanvasDocumentV2({
         ...this.stateValue.document,
         edges: this.stateValue.document.edges.filter(
           (edge) => !removed.has(edge.id),
         ),
       }),
-    });
+    );
   }
 
   setDocument(document: CanvasDocument): LocalCanvasShellState {
+    return this.markDocumentPendingSave(parseCanvasDocumentV2(document));
+  }
+
+  undoDocument(): LocalCanvasShellState | null {
+    if (!this.stateValue.canvasId || this.stateValue.autosaveBlocked) return null;
+    const previous = this.documentHistory.undo(this.stateValue.document);
+    if (!previous) return null;
     return this.markPendingSave({
       ...this.stateValue,
-      document: parseCanvasDocumentV2(document),
+      document: previous,
+    });
+  }
+
+  redoDocument(): LocalCanvasShellState | null {
+    if (!this.stateValue.canvasId || this.stateValue.autosaveBlocked) return null;
+    const next = this.documentHistory.redo(this.stateValue.document);
+    if (!next) return null;
+    return this.markPendingSave({
+      ...this.stateValue,
+      document: next,
     });
   }
 
