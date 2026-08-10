@@ -55,3 +55,19 @@ export function canvasTextFontFamilyCss(
       return "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
   }
 }
+
+export function previousCanvasTextFontSize(
+  fontSize: CanvasTextFontSize,
+): CanvasTextFontSize {
+  const index = CANVAS_TEXT_FONT_SIZES.indexOf(fontSize);
+  return CANVAS_TEXT_FONT_SIZES[Math.max(0, index - 1)];
+}
+
+export function nextCanvasTextFontSize(
+  fontSize: CanvasTextFontSize,
+): CanvasTextFontSize {
+  const index = CANVAS_TEXT_FONT_SIZES.indexOf(fontSize);
+  return CANVAS_TEXT_FONT_SIZES[
+    Math.min(CANVAS_TEXT_FONT_SIZES.length - 1, index + 1)
+  ];
+}
