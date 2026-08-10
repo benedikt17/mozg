@@ -15,6 +15,10 @@ export const CANVAS_TEXT_FONT_SIZES = [
 
 export type CanvasTextFontSize = (typeof CANVAS_TEXT_FONT_SIZES)[number];
 
+export const CANVAS_TEXT_ALIGNMENTS = ["left", "center", "right"] as const;
+
+export type CanvasTextAlignment = (typeof CANVAS_TEXT_ALIGNMENTS)[number];
+
 export type CanvasTextStyle = {
   fontFamily: CanvasTextFontFamily;
   fontSize: CanvasTextFontSize;
@@ -24,6 +28,7 @@ export type CanvasTextStyle = {
   strikethrough: boolean;
   color: string;
   backgroundColor: string;
+  textAlign: CanvasTextAlignment;
 };
 
 export const DEFAULT_CANVAS_TEXT_STYLE: CanvasTextStyle = {
@@ -35,6 +40,7 @@ export const DEFAULT_CANVAS_TEXT_STYLE: CanvasTextStyle = {
   strikethrough: false,
   color: "#292524",
   backgroundColor: "transparent",
+  textAlign: "center",
 };
 
 export function canvasTextFontFamilyCss(
