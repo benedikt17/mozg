@@ -304,17 +304,21 @@ export function CanvasDesktopSidebar(
 }
 
 export function CanvasDesktopToolbar({
+  canRedo,
+  canUndo,
   copy,
   error,
   onAddImage,
   onAddText,
   onCloseTaskPicker,
+  onRedo,
   onReloadWinner,
   onRetry,
   onSelectTask,
   onTaskQueryChange,
   onToggleSidebar,
   onToggleTaskPicker,
+  onUndo,
   sidebarOpen,
   status,
   taskPickerOpen,
@@ -323,17 +327,21 @@ export function CanvasDesktopToolbar({
   taskSearchStatus,
   taskToolsReady,
 }: {
+  canRedo: boolean;
+  canUndo: boolean;
   copy: CanvasShellCopy;
   error: string | null;
   onAddImage: (files: File[]) => void;
   onAddText: () => void;
   onCloseTaskPicker: () => void;
+  onRedo: () => void;
   onReloadWinner: () => void;
   onRetry: () => void;
   onSelectTask: (task: CanvasTaskProjection) => void;
   onTaskQueryChange: (query: string) => void;
   onToggleSidebar: () => void;
   onToggleTaskPicker: () => void;
+  onUndo: () => void;
   sidebarOpen: boolean;
   status: LocalCanvasShellStatus;
   taskPickerOpen: boolean;
@@ -419,6 +427,26 @@ export function CanvasDesktopToolbar({
               ? "Свернуть список холстов"
               : "Развернуть список холстов"
           }
+          variant="quiet"
+        />
+        <IconButton
+          className="knowledge-content-history-action"
+          disabled={!isReady || !canUndo}
+          icon={<UiIcon name="arrow-left" />}
+          label="Отменить"
+          onClick={onUndo}
+          onMouseDown={(event) => event.preventDefault()}
+          title="Отменить"
+          variant="quiet"
+        />
+        <IconButton
+          className="knowledge-content-history-action"
+          disabled={!isReady || !canRedo}
+          icon={<UiIcon name="arrow-right" />}
+          label="Повторить"
+          onClick={onRedo}
+          onMouseDown={(event) => event.preventDefault()}
+          title="Повторить"
           variant="quiet"
         />
         <IconButton
