@@ -54,10 +54,22 @@ test("persists a Knowledge Markdown edit through cloud snapshot reload", async (
   const editor = page.getByRole("textbox", { name: /^Markdown:/ });
   const marker = `E2E Browser Persistence ${process.env.GITHUB_RUN_ID ?? "local"}`;
   const markdown = `# ${marker}\n\nCloud snapshot browser contract.\n`;
+  const persistenceStatus = page.locator(".desktop-persistence-status");
+  await expect(persistenceStatus).toContainText("Сохранено");
+
+  const saveResponse = page.waitForResponse((response) => {
+    const request = response.request();
+    return (
+      request.method() === "POST" &&
+      response.url().includes("/rest/v1/rpc/save_workspace_snapshot") &&
+      (request.postData()?.includes(marker) ?? false) &&
+      response.status() === 200
+    );
+  });
+
   await editor.fill(markdown);
   await expect(editor).toHaveValue(markdown);
-
-  const persistenceStatus = page.locator(".desktop-persistence-status");
+  await saveResponse;
   await expect(persistenceStatus).toContainText("Сохранено");
 
   await page.reload();
