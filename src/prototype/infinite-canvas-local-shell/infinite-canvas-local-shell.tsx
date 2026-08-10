@@ -115,11 +115,12 @@ import {
   type FlowPosition,
 } from "@/lib/canvas/react-flow-canvas-adapter";
 import { CanvasImageLoadCache } from "@/lib/canvas/canvas-image-load-cache";
-import type {
-  CanvasEdgeArrows,
-  CanvasEdgeV2,
-  CanvasEdgeRouting,
-  CanvasHandleSide,
+import {
+  CANVAS_VIEWPORT_LIMITS,
+  type CanvasEdgeArrows,
+  type CanvasEdgeV2,
+  type CanvasEdgeRouting,
+  type CanvasHandleSide,
 } from "@/lib/canvas/canvas-document";
 import type { CanvasAssetVariantRepository } from "@/lib/canvas/canvas-image-variants";
 import {
@@ -1286,10 +1287,6 @@ function InfiniteCanvasLocalShellSurface({
   taskBridgeRef.current = taskBridge;
   taskWorkspaceIdRef.current = taskWorkspaceId;
   const pointerRef = useRef<FlowPosition | null>(null);
-  const canvasClipboardRef = useRef<{
-    signature: string;
-    pasteCount: number;
-  } | null>(null);
   const nodesRef = useRef<CanvasFlowNode[]>([]);
   const edgesRef = useRef<CanvasEdgeFlow[]>([]);
   const summariesRef = useRef<CanvasSummary[]>([]);
@@ -1774,6 +1771,56 @@ function InfiniteCanvasLocalShellSurface({
     ],
   );
 
+  const applyCanvasHistory = useCallback(
+    (direction: "undo" | "redo") => {
+      const nextState =
+        direction === "undo"
+          ? controller.undoDocument()
+          : controller.redoDocument();
+      if (!nextState) return;
+      setShellState(nextState);
+      void restoreForCanvas(nextState)
+        .then(() => {
+          syncState();
+          scheduleSave();
+        })
+        .catch((error: unknown) => {
+          hydratingRef.current = false;
+          setLoadingLifecycle("error");
+          setShellState({
+            ...controller.state,
+            status: "error",
+            error:
+              error instanceof Error
+                ? error.message
+                : "Canvas history restore failed.",
+          });
+        });
+    },
+    [controller, restoreForCanvas, scheduleSave, syncState],
+  );
+
+  useEffect(() => {
+    const onHistoryKeyDown = (event: KeyboardEvent): void => {
+      if (eventTouchesEditingSurface(event) || !(event.ctrlKey || event.metaKey))
+        return;
+      const key = event.key.toLowerCase();
+      const direction =
+        key === "y" || (key === "z" && event.shiftKey)
+          ? "redo"
+          : key === "z"
+            ? "undo"
+            : null;
+      if (!direction) return;
+      if (direction === "undo" ? !controller.canUndo : !controller.canRedo)
+        return;
+      event.preventDefault();
+      applyCanvasHistory(direction);
+    };
+    window.addEventListener("keydown", onHistoryKeyDown, true);
+    return () => window.removeEventListener("keydown", onHistoryKeyDown, true);
+  }, [applyCanvasHistory, controller]);
+
   const openCanvas = useCallback(
     async (canvasId: string) => {
       const generation = ++canvasGenerationRef.current;
@@ -2106,6 +2153,35 @@ function InfiniteCanvasLocalShellSurface({
     };
   }, [flowInstanceEpoch, reactFlow, viewportInitialization]);
 
+  useEffect(() => {
+    const root = wrapperRef.current;
+    const viewport = root?.querySelector<HTMLElement>(".react-flow__viewport");
+    if (!root || !viewport) return;
+    let settleTimer: ReturnType<typeof setTimeout> | null = null;
+    let previousTransition = viewport.style.transition;
+    const clearSmoothing = (): void => {
+      if (settleTimer) {
+        clearTimeout(settleTimer);
+        settleTimer = null;
+      }
+      viewport.style.transition = previousTransition;
+    };
+    const onWheel = (): void => {
+      if (settleTimer === null) previousTransition = viewport.style.transition;
+      viewport.style.transition = "transform 55ms linear";
+      if (settleTimer) clearTimeout(settleTimer);
+      settleTimer = setTimeout(clearSmoothing, 75);
+    };
+    const onPointerDown = (): void => clearSmoothing();
+    root.addEventListener("wheel", onWheel, { capture: true, passive: true });
+    root.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      clearSmoothing();
+      root.removeEventListener("wheel", onWheel, true);
+      root.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [flowInstanceEpoch]);
+
   const centerPosition = useCallback(() => {
     const rect = wrapperRef.current?.getBoundingClientRect();
     return screenToFlowRef.current({
@@ -2355,16 +2431,15 @@ function InfiniteCanvasLocalShellSurface({
     async (payload: CanvasNodeClipboardPayload) => {
       const canvasId = shellStateRef.current.canvasId;
       if (!canvasId) return;
-      const signature = serializeCanvasNodeClipboardPayload(payload);
-      const previous = canvasClipboardRef.current;
-      const pasteCount =
-        previous?.signature === signature ? previous.pasteCount + 1 : 1;
       const highestZIndex = shellStateRef.current.document.nodes.reduce(
         (maximum, node) => Math.max(maximum, node.zIndex),
         0,
       );
+      const target = pointerRef.current
+        ? screenToFlowRef.current(pointerRef.current)
+        : centerPosition();
       const canonicalNodes = materializeCanvasNodeClipboardPaste(payload, {
-        offset: pasteCount * 24,
+        target,
         zIndexStart: highestZIndex + 1,
       });
 
@@ -2446,7 +2521,6 @@ function InfiniteCanvasLocalShellSurface({
         controller.insertCanvasNodes(persistedNodes);
         syncState();
         scheduleSave();
-        canvasClipboardRef.current = { signature, pasteCount };
       } catch (error: unknown) {
         setShellState((current) => ({
           ...current,
@@ -2458,6 +2532,7 @@ function InfiniteCanvasLocalShellSurface({
     },
     [
       adapterDependencies,
+      centerPosition,
       controller,
       handleTaskNodeContentHeightChange,
       scheduleSave,
@@ -2480,10 +2555,11 @@ function InfiniteCanvasLocalShellSurface({
         selectedNodeIds,
       );
       if (!payload) return;
-      const signature = serializeCanvasNodeClipboardPayload(payload);
       event.preventDefault();
-      event.clipboardData.setData(CANVAS_NODE_CLIPBOARD_MIME, signature);
-      canvasClipboardRef.current = { signature, pasteCount: 0 };
+      event.clipboardData.setData(
+        CANVAS_NODE_CLIPBOARD_MIME,
+        serializeCanvasNodeClipboardPayload(payload),
+      );
     };
     window.addEventListener("copy", onCopy);
     return () => window.removeEventListener("copy", onCopy);
@@ -3027,6 +3103,13 @@ function InfiniteCanvasLocalShellSurface({
     [cancelPanInertia, reactFlow],
   );
 
+  const handleCanvasPointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      pointerRef.current = { x: event.clientX, y: event.clientY };
+    },
+    [],
+  );
+
   const handleCanvasWheel = useCallback(() => {
     cancelPanInertia(true);
   }, [cancelPanInertia]);
@@ -3108,6 +3191,8 @@ function InfiniteCanvasLocalShellSurface({
 
   const desktopToolbar = embedded ? (
     <CanvasDesktopToolbar
+      canRedo={controller.canRedo}
+      canUndo={controller.canUndo}
       copy={copy}
       error={shellState.error}
       onAddImage={(files) =>
@@ -3119,6 +3204,7 @@ function InfiniteCanvasLocalShellSurface({
       }
       onAddText={() => createTextNode(null, "", true)}
       onCloseTaskPicker={() => setTaskPickerOpen(false)}
+      onRedo={() => applyCanvasHistory("redo")}
       onReloadWinner={() => {
         if (shellState.canvasId) void openCanvas(shellState.canvasId);
       }}
@@ -3130,6 +3216,7 @@ function InfiniteCanvasLocalShellSurface({
       onTaskQueryChange={setTaskQuery}
       onToggleSidebar={() => setDesktopSidebarOpen((current) => !current)}
       onToggleTaskPicker={() => setTaskPickerOpen((current) => !current)}
+      onUndo={() => applyCanvasHistory("undo")}
       sidebarOpen={desktopSidebarOpen}
       status={shellState.status}
       taskPickerOpen={taskPickerOpen}
@@ -3286,6 +3373,7 @@ function InfiniteCanvasLocalShellSurface({
           }}
           onDrop={onDrop}
           onPointerDownCapture={handleCanvasPointerDown}
+          onPointerMoveCapture={handleCanvasPointerMove}
           onWheelCapture={handleCanvasWheel}
         >
           <ReactFlow
@@ -3301,6 +3389,8 @@ function InfiniteCanvasLocalShellSurface({
             onConnect={handleConnect}
             connectionMode={ConnectionMode.Loose}
             connectionLineComponent={CanvasConnectionLine}
+            minZoom={CANVAS_VIEWPORT_LIMITS.minZoom}
+            maxZoom={CANVAS_VIEWPORT_LIMITS.maxZoom}
             panOnDrag={[1]}
             selectionOnDrag
             selectionMode={SelectionMode.Partial}
@@ -3310,9 +3400,6 @@ function InfiniteCanvasLocalShellSurface({
             onPaneClick={(event) => {
               if (event.detail !== 2) return;
               createTextNode({ x: event.clientX, y: event.clientY }, "", true);
-            }}
-            onPaneMouseMove={(event) => {
-              pointerRef.current = { x: event.clientX, y: event.clientY };
             }}
             deleteKeyCode={["Backspace", "Delete"]}
           >
@@ -3512,6 +3599,7 @@ function InfiniteCanvasLocalShellSurface({
           }}
           onDrop={onDrop}
           onPointerDownCapture={handleCanvasPointerDown}
+          onPointerMoveCapture={handleCanvasPointerMove}
           onWheelCapture={handleCanvasWheel}
         >
           <ReactFlow
@@ -3527,6 +3615,8 @@ function InfiniteCanvasLocalShellSurface({
             onConnect={handleConnect}
             connectionMode={ConnectionMode.Loose}
             connectionLineComponent={CanvasConnectionLine}
+            minZoom={CANVAS_VIEWPORT_LIMITS.minZoom}
+            maxZoom={CANVAS_VIEWPORT_LIMITS.maxZoom}
             panOnDrag={[1]}
             selectionOnDrag
             selectionMode={SelectionMode.Partial}
@@ -3536,9 +3626,6 @@ function InfiniteCanvasLocalShellSurface({
             onPaneClick={(event) => {
               if (event.detail !== 2) return;
               createTextNode({ x: event.clientX, y: event.clientY }, "", true);
-            }}
-            onPaneMouseMove={(event) => {
-              pointerRef.current = { x: event.clientX, y: event.clientY };
             }}
             deleteKeyCode={["Backspace", "Delete"]}
           >
