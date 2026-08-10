@@ -25,22 +25,25 @@ const controller = fs.readFileSync(
 );
 
 describe("Canvas undo redo runtime", () => {
-  it("routes toolbar actions and keyboard shortcuts through canonical history", () => {
-    expect(shell).toContain('applyCanvasHistory("undo")');
-    expect(shell).toContain('applyCanvasHistory("redo")');
-    expect(shell).toContain(
-      'window.addEventListener("keydown", onHistoryKeyDown, true)',
-    );
-    expect(shell).toContain(
-      'key === "y" || (key === "z" && event.shiftKey)',
-    );
-    expect(controller).toContain(
-      "undoDocument(): LocalCanvasShellState | null",
-    );
-    expect(controller).toContain(
-      "redoDocument(): LocalCanvasShellState | null",
-    );
-  });
+  it(
+    "routes toolbar actions and keyboard shortcuts through canonical history",
+    () => {
+      expect(shell).toContain('applyCanvasHistory("undo")');
+      expect(shell).toContain('applyCanvasHistory("redo")');
+      expect(shell).toContain(
+        'window.addEventListener("keydown", onHistoryKeyDown, true)',
+      );
+      expect(shell).toContain(
+        'key === "y" || (key === "z" && event.shiftKey)',
+      );
+      expect(controller).toContain(
+        "undoDocument(): LocalCanvasShellState | null",
+      );
+      expect(controller).toContain(
+        "redoDocument(): LocalCanvasShellState | null",
+      );
+    },
+  );
 
   it("reuses the accepted Knowledge history button treatment", () => {
     expect(toolbar).toContain('className="knowledge-content-history-action"');
