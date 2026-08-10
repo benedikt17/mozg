@@ -33,9 +33,7 @@ describe("Canvas undo redo runtime", () => {
       expect(shell).toContain(
         'window.addEventListener("keydown", onHistoryKeyDown, true)',
       );
-      expect(shell).toContain(
-        'key === "y" || (key === "z" && event.shiftKey)',
-      );
+      expect(shell).toContain('key === "y" || (key === "z" && event.shiftKey)');
       expect(controller).toContain(
         "undoDocument(): LocalCanvasShellState | null",
       );
