@@ -2,7 +2,10 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
-import { MarkdownStringPreview, getDocumentHeadings } from "@/prototype/knowledge/markdown-document-preview";
+import {
+  MarkdownStringPreview,
+  getDocumentHeadings,
+} from "@/prototype/knowledge/markdown-document-preview";
 import { getDocumentTitle } from "@/prototype/state/knowledge-state";
 
 function documentWith(content: string[]): PrototypeDocument {
@@ -18,7 +21,7 @@ function documentWith(content: string[]): PrototypeDocument {
 }
 
 describe("Knowledge canonical Markdown structure integration", () => {
-  it("derives title and outline labels from MDAST heading semantics", () => {
+  it("uses synchronized title and derives outline labels from MDAST heading semantics", () => {
     const document = documentWith([
       "# **Главный** `документ`",
       "",
@@ -28,6 +31,7 @@ describe("Knowledge canonical Markdown structure integration", () => {
       "",
       "#### Скрыт из трёхуровневого outline",
     ]);
+    document.title = "Главный документ";
 
     expect(getDocumentTitle(document)).toBe("Главный документ");
     expect(getDocumentHeadings(document)).toEqual([
