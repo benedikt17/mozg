@@ -1,6 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_USER_EMAIL, E2E_USER_PASSWORD } from "./test-user";
 
+const LOCAL_ONLY_PROTOTYPE_PATHS = [
+  "/prototype/canvas-image-ingestion-lab",
+  "/prototype/canvas-react-flow-ingestion-spike",
+  "/prototype/infinite-canvas-local-shell",
+] as const;
+
 async function signIn(page: Page): Promise<void> {
   await page.goto("/prototype/desktop");
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fprototype%2Fdesktop$/);
@@ -15,6 +21,13 @@ async function signIn(page: Page): Promise<void> {
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Выйти" })).toBeVisible();
 }
+
+test("blocks local-only prototype labs in cloud runtime", async ({ request }) => {
+  for (const pathname of LOCAL_ONLY_PROTOTYPE_PATHS) {
+    const response = await request.get(pathname, { maxRedirects: 0 });
+    expect(response.status(), pathname).toBe(404);
+  }
+});
 
 test("authenticates and navigates the four primary Desktop sections", async ({
   page,
