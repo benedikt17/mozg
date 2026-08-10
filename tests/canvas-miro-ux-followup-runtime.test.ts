@@ -31,7 +31,9 @@ describe("Canvas Miro UX follow-up runtime", () => {
     );
     expect(style).toContain('textAlign: "center"');
     expect(frame).toContain('new CustomEvent("mozg:canvas-text-style"');
-    expect(frame).toContain('data-canvas-text-align={isTextFrame ? textAlign : undefined}');
+    expect(frame).toContain(
+      'data-canvas-text-align={isTextFrame ? textAlign : undefined}',
+    );
     expect(frame).toContain('alignItems: "center"');
     expect(frame).toContain('fieldSizing: "content"');
   });
@@ -42,6 +44,8 @@ describe("Canvas Miro UX follow-up runtime", () => {
     expect(source).toContain("CANVAS_VIEWPORT_LIMITS.minZoom");
     expect(source).toContain("CANVAS_VIEWPORT_LIMITS.maxZoom");
     expect(source).toContain("store.setState({");
-    expect(source).toContain('viewport.style.transition = "transform 55ms linear"');
+    expect(source).toContain(
+      'viewport.style.transition = "transform 55ms linear"',
+    );
   });
 });
