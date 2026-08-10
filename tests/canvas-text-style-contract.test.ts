@@ -51,7 +51,8 @@ describe("Canvas text style contract", () => {
   });
 
   it("accepts pre-alignment styled text and defaults it to centered alignment", () => {
-    const { textAlign: _textAlign, ...legacyStyle } = styledText;
+    const { textAlign, ...legacyStyle } = styledText;
+    void textAlign;
     const parsed = parseCanvasDocumentV2({
       ...document(),
       nodes: [
