@@ -1,0 +1,49 @@
+name: Canvas text test contract fix
+
+on:
+  push:
+    branches:
+      - agent/canvas-miro-text-foundation
+    paths:
+      - .github/workflows/canvas-text-test-contract-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Restore accepted test and change only pure-text layout expectation
+        shell: bash
+        run: |
+          git show origin/agent/canvas-miro-upgrade:tests/infinite-canvas-text-nodes.test.ts > tests/infinite-canvas-text-nodes.test.ts
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tests/infinite-canvas-text-nodes.test.ts')
+          source = path.read_text()
+          old = '''  it("uses a default text layout", () =>\n    expect(\n      createCanvasTextFlowNode({ id: "x", markdown: "" }).style,\n    ).toMatchObject({ width: 320, height: 220 }));'''
+          new = '''  it("uses a compact default text layout", () =>\n    expect(\n      createCanvasTextFlowNode({ id: "x", markdown: "" }).style,\n    ).toMatchObject({ width: 240, height: 56 }));'''
+          assert source.count(old) == 1, source.count(old)
+          path.write_text(source.replace(old, new, 1))
+          PY
+      - run: pnpm exec prettier --write tests/infinite-canvas-text-nodes.test.ts
+      - name: Commit narrow test contract update
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/infinite-canvas-text-nodes.test.ts
+          git commit -m "Canvas: update compact text layout expectation"
+          git push
