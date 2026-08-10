@@ -1,0 +1,75 @@
+name: Canvas Miro copy paste codemod
+
+on:
+  push:
+    branches:
+      - agent/canvas-miro-copy-paste
+    paths:
+      - .github/workflows/canvas-miro-copy-paste-codemod.yml
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply exact Canvas clipboard integration
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          controller = Path('src/lib/canvas/local-canvas-shell-controller.ts')
+          source = controller.read_text()
+          import_anchor = '''  type CanvasViewport,\n  type CanvasTextNode,\n} from "@/lib/canvas/canvas-document";'''
+          import_replacement = '''  type CanvasViewport,\n  type CanvasTextNode,\n  type CanvasNode,\n} from "@/lib/canvas/canvas-document";'''
+          assert source.count(import_anchor) == 1, source.count(import_anchor)
+          source = source.replace(import_anchor, import_replacement, 1)
+
+          insert_anchor = '''  insertTextNode(node: CanvasTextFlowNode): LocalCanvasShellState {'''
+          insert_block = '''  insertCanvasNodes(nodes: readonly CanvasNode[]): LocalCanvasShellState {\n    if (!this.stateValue.canvasId || nodes.length === 0) return this.state;\n    const existing = new Set(\n      this.stateValue.document.nodes.map((node) => node.id),\n    );\n    const additions = nodes\n      .filter((node) => !existing.has(node.id))\n      .map((node) => clone(node));\n    if (additions.length === 0) return this.state;\n    return this.markPendingSave({\n      ...this.stateValue,\n      document: parseCanvasDocumentV2({\n        ...this.stateValue.document,\n        nodes: [...this.stateValue.document.nodes, ...additions],\n      }),\n    });\n  }\n\n  insertTextNode(node: CanvasTextFlowNode): LocalCanvasShellState {'''
+          assert source.count(insert_anchor) == 1, source.count(insert_anchor)
+          source = source.replace(insert_anchor, insert_block, 1)
+          controller.write_text(source)
+
+          shell = Path('src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx')
+          source = shell.read_text()
+          clipboard_import_anchor = '''import { canvasMiniMapNodeColor } from "@/lib/canvas/canvas-minimap";'''
+          clipboard_import_replacement = '''import { canvasMiniMapNodeColor } from "@/lib/canvas/canvas-minimap";\nimport {\n  CANVAS_NODE_CLIPBOARD_MIME,\n  createCanvasNodeClipboardPayload,\n  materializeCanvasNodeClipboardPaste,\n  parseCanvasNodeClipboardPayload,\n  serializeCanvasNodeClipboardPayload,\n  type CanvasNodeClipboardPayload,\n} from "@/lib/canvas/canvas-node-clipboard";'''
+          assert source.count(clipboard_import_anchor) == 1, source.count(clipboard_import_anchor)
+          source = source.replace(clipboard_import_anchor, clipboard_import_replacement, 1)
+
+          ref_anchor = '''  const pointerRef = useRef<FlowPosition | null>(null);\n  const nodesRef = useRef<CanvasFlowNode[]>([]);'''
+          ref_replacement = '''  const pointerRef = useRef<FlowPosition | null>(null);\n  const canvasClipboardRef = useRef<{\n    signature: string;\n    pasteCount: number;\n  } | null>(null);\n  const nodesRef = useRef<CanvasFlowNode[]>([]);'''
+          assert source.count(ref_anchor) == 1, source.count(ref_anchor)
+          source = source.replace(ref_anchor, ref_replacement, 1)
+
+          paste_anchor = '''  useEffect(() => {\n    const onPaste = (event: ClipboardEvent) => {\n      if (eventTouchesEditingSurface(event)) return;\n      const payload = transferPayload(event);\n      if (shouldPreventCanvasImagePaste(event)) {\n        event.preventDefault();\n        void ingestRef.current(payload, "clipboard", pointerRef.current);\n        return;\n      }\n      if (transferHasSupportedImage(payload)) return;\n      const text = plainTextFromClipboard(event);\n      if (!hasMeaningfulPlainText(text)) return;\n      event.preventDefault();\n      createTextNode(pointerRef.current, text, false);\n    };\n    return attachCanvasImagePasteListener(onPaste);\n  }, [createTextNode]);'''
+          paste_replacement = '''  const pasteCanvasNodes = useCallback(\n    async (payload: CanvasNodeClipboardPayload) => {\n      const canvasId = shellStateRef.current.canvasId;\n      if (!canvasId) return;\n      const signature = serializeCanvasNodeClipboardPayload(payload);\n      const previous = canvasClipboardRef.current;\n      const pasteCount =\n        previous?.signature === signature ? previous.pasteCount + 1 : 1;\n      const highestZIndex = shellStateRef.current.document.nodes.reduce(\n        (maximum, node) => Math.max(maximum, node.zIndex),\n        0,\n      );\n      const canonicalNodes = materializeCanvasNodeClipboardPaste(payload, {\n        offset: pasteCount * 24,\n        zIndexStart: highestZIndex + 1,\n      });\n\n      try {\n        const runtimeNodes: CanvasFlowNode[] = [];\n        for (const node of canonicalNodes) {\n          if (node.kind === "text") {\n            runtimeNodes.push(\n              createCanvasTextFlowNode({\n                id: node.id,\n                markdown: node.markdown,\n                position: node.position,\n                size: node.size,\n                zIndex: node.zIndex,\n              }),\n            );\n          } else if (node.kind === "task") {\n            runtimeNodes.push(\n              createCanvasTaskFlowNode({\n                id: node.id,\n                taskId: node.taskId,\n                lastKnownTitle: node.lastKnownTitle,\n                position: node.position,\n                size: node.size,\n                zIndex: node.zIndex,\n                taskBridge,\n                taskWorkspaceId,\n                onContentHeightChange: handleTaskNodeContentHeightChange,\n              }),\n            );\n          }\n        }\n\n        const imageNodes = canonicalNodes.filter(\n          (node) => node.kind === "image",\n        );\n        const restoredImages =\n          imageNodes.length === 0\n            ? { nodes: [], missingAssetIds: [] }\n            : await restoreCanvasImageNodes(\n                { schemaVersion: 2 as const, nodes: imageNodes, edges: [] },\n                canvasImageAdapterDependenciesForCanvas(\n                  adapterDependencies,\n                  canvasId,\n                ),\n                {\n                  cachedAssetPayloads: variantPayloadsRef.current,\n                  viewportZoom: shellStateRef.current.viewport.zoom,\n                  allowDowngrade: false,\n                },\n              );\n        const canonicalImagesById = new Map(\n          imageNodes.map((node) => [node.id, node]),\n        );\n        for (const image of restoredImages.nodes) {\n          const canonical = canonicalImagesById.get(image.id);\n          const runtimeImage = canonical\n            ? { ...image, zIndex: canonical.zIndex }\n            : image;\n          runtimeNodes.push(runtimeImage);\n          rememberImageRuntimePayload(\n            variantPayloadsRef.current,\n            runtimeImage,\n            { workspaceId: shellWorkspaceId, canvasId },\n          );\n        }\n\n        const runtimeIds = new Set(runtimeNodes.map((node) => node.id));\n        const persistedNodes = canonicalNodes.filter((node) =>\n          runtimeIds.has(node.id),\n        );\n        if (persistedNodes.length === 0) return;\n        setNodes((current) => [\n          ...current.map((node) =>\n            node.selected ? { ...node, selected: false } : node,\n          ),\n          ...runtimeNodes.map((node) => ({ ...node, selected: true })),\n        ]);\n        controller.insertCanvasNodes(persistedNodes);\n        syncState();\n        scheduleSave();\n        canvasClipboardRef.current = { signature, pasteCount };\n      } catch (error: unknown) {\n        setShellState((current) => ({\n          ...current,\n          status: "error",\n          error:\n            error instanceof Error ? error.message : "Canvas paste failed.",\n        }));\n      }\n    },\n    [\n      adapterDependencies,\n      controller,\n      handleTaskNodeContentHeightChange,\n      scheduleSave,\n      setNodes,\n      shellWorkspaceId,\n      syncState,\n      taskBridge,\n      taskWorkspaceId,\n    ],\n  );\n\n  useEffect(() => {\n    const onCopy = (event: ClipboardEvent) => {\n      if (eventTouchesEditingSurface(event) || !event.clipboardData) return;\n      const selectedNodeIds = new Set(\n        nodesRef.current\n          .filter((node) => node.selected)\n          .map((node) => node.id),\n      );\n      const payload = createCanvasNodeClipboardPayload(\n        controller.state.document,\n        selectedNodeIds,\n      );\n      if (!payload) return;\n      const signature = serializeCanvasNodeClipboardPayload(payload);\n      event.preventDefault();\n      event.clipboardData.setData(CANVAS_NODE_CLIPBOARD_MIME, signature);\n      canvasClipboardRef.current = { signature, pasteCount: 0 };\n    };\n    window.addEventListener("copy", onCopy);\n    return () => window.removeEventListener("copy", onCopy);\n  }, [controller]);\n\n  useEffect(() => {\n    const onPaste = (event: ClipboardEvent) => {\n      if (eventTouchesEditingSurface(event)) return;\n      const canvasPayload = parseCanvasNodeClipboardPayload(\n        event.clipboardData?.getData(CANVAS_NODE_CLIPBOARD_MIME) ?? "",\n      );\n      if (canvasPayload) {\n        event.preventDefault();\n        void pasteCanvasNodes(canvasPayload);\n        return;\n      }\n      const payload = transferPayload(event);\n      if (shouldPreventCanvasImagePaste(event)) {\n        event.preventDefault();\n        void ingestRef.current(payload, "clipboard", pointerRef.current);\n        return;\n      }\n      if (transferHasSupportedImage(payload)) return;\n      const text = plainTextFromClipboard(event);\n      if (!hasMeaningfulPlainText(text)) return;\n      event.preventDefault();\n      createTextNode(pointerRef.current, text, false);\n    };\n    return attachCanvasImagePasteListener(onPaste);\n  }, [createTextNode, pasteCanvasNodes]);'''
+          assert source.count(paste_anchor) == 1, source.count(paste_anchor)
+          source = source.replace(paste_anchor, paste_replacement, 1)
+          shell.write_text(source)
+
+          runtime_test = Path('tests/canvas-copy-paste-runtime.test.ts')
+          runtime_test.write_text('''import fs from "node:fs";\nimport path from "node:path";\nimport { describe, expect, it } from "vitest";\n\nconst shellPath = path.resolve(\n  process.cwd(),\n  "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",\n);\nconst controllerPath = path.resolve(\n  process.cwd(),\n  "src/lib/canvas/local-canvas-shell-controller.ts",\n);\n\ndescribe("Canvas selection clipboard runtime", () => {\n  it("copies selected canonical nodes into the MOZG Canvas MIME", () => {\n    const source = fs.readFileSync(shellPath, "utf8");\n\n    expect(source).toContain('window.addEventListener("copy", onCopy)');\n    expect(source).toContain("createCanvasNodeClipboardPayload(");\n    expect(source).toContain("event.clipboardData.setData(CANVAS_NODE_CLIPBOARD_MIME");\n  });\n\n  it("handles Canvas-node paste before the existing image/plain-text clipboard paths", () => {\n    const source = fs.readFileSync(shellPath, "utf8");\n    const canvasPaste = source.indexOf("parseCanvasNodeClipboardPayload(");\n    const imagePaste = source.indexOf("shouldPreventCanvasImagePaste(event)");\n\n    expect(canvasPaste).toBeGreaterThan(-1);\n    expect(imagePaste).toBeGreaterThan(canvasPaste);\n    expect(source).toContain("materializeCanvasNodeClipboardPaste(payload");\n    expect(source).toContain("selected: true");\n  });\n\n  it("persists pasted nodes as one canonical controller mutation", () => {\n    const source = fs.readFileSync(controllerPath, "utf8");\n    const shell = fs.readFileSync(shellPath, "utf8");\n\n    expect(source).toContain("insertCanvasNodes(nodes: readonly CanvasNode[])");\n    expect(shell).toContain("controller.insertCanvasNodes(persistedNodes)");\n  });\n});\n''')
+          PY
+      - name: Format changed files
+        run: pnpm exec prettier --write src/lib/canvas/local-canvas-shell-controller.ts src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx tests/canvas-copy-paste-runtime.test.ts
+      - name: Commit materialized change
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/canvas/local-canvas-shell-controller.ts src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx tests/canvas-copy-paste-runtime.test.ts
+          git commit -m "Canvas: wire selected-node copy paste"
+          git push
