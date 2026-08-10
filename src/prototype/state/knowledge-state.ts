@@ -208,6 +208,90 @@ export function getKnowledgePaneState(
   };
 }
 
+type KnowledgeTreeDocumentShape = {
+  id: string;
+  title: string;
+  excerpt: string;
+  folderPath: string[];
+  order: number | undefined;
+};
+
+type KnowledgeTreeCacheEntry = {
+  projectId: string;
+  query: string;
+  knowledgeFolders: DesktopPrototypeState["knowledgeFolders"];
+  documents: KnowledgeTreeDocumentShape[];
+  tree: KnowledgeTreeNode[];
+};
+
+let knowledgeTreeCache: KnowledgeTreeCacheEntry | null = null;
+
+function knowledgeTreeDocumentShape(
+  document: PrototypeDocument,
+): KnowledgeTreeDocumentShape {
+  return {
+    id: document.id,
+    title: getDocumentTitle(document),
+    excerpt: document.excerpt,
+    folderPath: [...getDocumentFolderPath(document)],
+    order: document.order,
+  };
+}
+
+function knowledgeTreeDocumentMatches(
+  document: PrototypeDocument,
+  shape: KnowledgeTreeDocumentShape,
+): boolean {
+  const folderPath = getDocumentFolderPath(document);
+  return (
+    document.id === shape.id &&
+    getDocumentTitle(document) === shape.title &&
+    document.excerpt === shape.excerpt &&
+    document.order === shape.order &&
+    folderPath.length === shape.folderPath.length &&
+    folderPath.every((segment, index) => segment === shape.folderPath[index])
+  );
+}
+
+function getCachedKnowledgeTree(
+  state: DesktopPrototypeState,
+  projectId: string,
+  query: string,
+  documents: PrototypeDocument[],
+): KnowledgeTreeNode[] | undefined {
+  const cached = knowledgeTreeCache;
+  if (
+    !cached ||
+    cached.projectId !== projectId ||
+    cached.query !== query ||
+    cached.knowledgeFolders !== state.knowledgeFolders ||
+    cached.documents.length !== documents.length
+  ) {
+    return undefined;
+  }
+  return documents.every((document, index) =>
+    knowledgeTreeDocumentMatches(document, cached.documents[index]!),
+  )
+    ? cached.tree
+    : undefined;
+}
+
+function cacheKnowledgeTree(
+  state: DesktopPrototypeState,
+  projectId: string,
+  query: string,
+  documents: PrototypeDocument[],
+  tree: KnowledgeTreeNode[],
+): void {
+  knowledgeTreeCache = {
+    projectId,
+    query,
+    knowledgeFolders: state.knowledgeFolders,
+    documents: documents.map(knowledgeTreeDocumentShape),
+    tree,
+  };
+}
+
 export function getKnowledgeTree(
   state: DesktopPrototypeState,
   projectId = state.activeProjectId,
@@ -219,6 +303,8 @@ export function getKnowledgeTree(
     documents.map((document, index) => [document.id, document.order ?? index]),
   );
   const query = state.knowledgeSearchQuery.trim().toLocaleLowerCase("ru");
+  const cachedTree = getCachedKnowledgeTree(state, projectId, query, documents);
+  if (cachedTree) return cachedTree;
   const rootFolders = new Map<string, KnowledgeTreeNode>();
   const rootDocuments: KnowledgeTreeNode[] = [];
   const childFolderMaps = new Map<string, Map<string, KnowledgeTreeNode>>();
@@ -307,10 +393,12 @@ export function getKnowledgeTree(
     });
   }
 
-  return sortKnowledgeNodes(
+  const tree = sortKnowledgeNodes(
     [...Array.from(rootFolders.values()), ...rootDocuments],
     documentOrder,
   );
+  cacheKnowledgeTree(state, projectId, query, documents, tree);
+  return tree;
 }
 
 export function getProjectDocumentFolders(

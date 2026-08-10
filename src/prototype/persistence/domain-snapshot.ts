@@ -49,6 +49,17 @@ export type DesktopDomainCollections = Omit<
   "schemaVersion"
 >;
 
+export type DesktopPersistentState = Pick<
+  DesktopPrototypeState,
+  | "projects"
+  | "overviewDirections"
+  | "taskGroups"
+  | "taskLists"
+  | "tasks"
+  | "knowledgeFolders"
+  | "documents"
+>;
+
 export type DesktopDomainValidationIssue = {
   code: string;
   path: string;
@@ -166,7 +177,7 @@ export function migrateDesktopDomainSnapshotV1ToV2(
 }
 
 export function createDesktopDomainSnapshot(
-  state: DesktopPrototypeState,
+  state: DesktopPersistentState,
 ): DesktopDomainSnapshot {
   return {
     schemaVersion: DESKTOP_DOMAIN_SCHEMA_VERSION,
