@@ -16,45 +16,36 @@ const stylePath = path.resolve(
 );
 
 describe("Canvas Miro UX follow-up runtime", () => {
-  it(
-    "keeps the standard arrow cursor across Canvas node hover and selection",
-    () => {
-      const source = fs.readFileSync(framePath, "utf8");
+  it("keeps the standard arrow cursor across Canvas node hover and selection", () => {
+    const source = fs.readFileSync(framePath, "utf8");
 
-      expect(source).toContain('style={{ cursor: "default" }}');
-    },
-  );
+    expect(source).toContain('style={{ cursor: "default" }}');
+  });
 
-  it(
-    "centers text vertically and exposes persistent left/center/right alignment",
-    () => {
-      const frame = fs.readFileSync(framePath, "utf8");
-      const style = fs.readFileSync(stylePath, "utf8");
+  it("centers text vertically and exposes persistent left/center/right alignment", () => {
+    const frame = fs.readFileSync(framePath, "utf8");
+    const style = fs.readFileSync(stylePath, "utf8");
 
-      expect(style).toContain(
-        'CANVAS_TEXT_ALIGNMENTS = ["left", "center", "right"]',
-      );
-      expect(style).toContain('textAlign: "center"');
-      expect(frame).toContain('new CustomEvent("mozg:canvas-text-style"');
-      expect(frame).toContain(
-        'data-canvas-text-align={isTextFrame ? textAlign : undefined}',
-      );
-      expect(frame).toContain('alignItems: "center"');
-      expect(frame).toContain('fieldSizing: "content"');
-    },
-  );
+    expect(style).toContain(
+      'CANVAS_TEXT_ALIGNMENTS = ["left", "center", "right"]',
+    );
+    expect(style).toContain('textAlign: "center"');
+    expect(frame).toContain('new CustomEvent("mozg:canvas-text-style"');
+    expect(frame).toContain(
+      'data-canvas-text-align={isTextFrame ? textAlign : undefined}',
+    );
+    expect(frame).toContain('alignItems: "center"');
+    expect(frame).toContain('fieldSizing: "content"');
+  });
 
-  it(
-    "binds React Flow runtime zoom to the Canvas 10-400 percent contract and smooths wheel transforms",
-    () => {
-      const source = fs.readFileSync(viewportPath, "utf8");
+  it("binds React Flow runtime zoom to the Canvas 10-400 percent contract and smooths wheel transforms", () => {
+    const source = fs.readFileSync(viewportPath, "utf8");
 
-      expect(source).toContain("CANVAS_VIEWPORT_LIMITS.minZoom");
-      expect(source).toContain("CANVAS_VIEWPORT_LIMITS.maxZoom");
-      expect(source).toContain("store.setState({");
-      expect(source).toContain(
-        'viewport.style.transition = "transform 55ms linear"',
-      );
-    },
-  );
+    expect(source).toContain("CANVAS_VIEWPORT_LIMITS.minZoom");
+    expect(source).toContain("CANVAS_VIEWPORT_LIMITS.maxZoom");
+    expect(source).toContain("store.setState({");
+    expect(source).toContain(
+      'viewport.style.transition = "transform 55ms linear"',
+    );
+  });
 });
