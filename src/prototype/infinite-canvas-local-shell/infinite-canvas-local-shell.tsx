@@ -69,6 +69,14 @@ import {
 } from "@/lib/canvas/canvas-pan-inertia";
 import { canvasMiniMapNodeColor } from "@/lib/canvas/canvas-minimap";
 import {
+  CANVAS_NODE_CLIPBOARD_MIME,
+  createCanvasNodeClipboardPayload,
+  materializeCanvasNodeClipboardPaste,
+  parseCanvasNodeClipboardPayload,
+  serializeCanvasNodeClipboardPayload,
+  type CanvasNodeClipboardPayload,
+} from "@/lib/canvas/canvas-node-clipboard";
+import {
   CANVAS_IMAGE_NODE_TYPE,
   CANVAS_TASK_NODE_TYPE,
   CANVAS_TEXT_NODE_TYPE,
@@ -1066,6 +1074,10 @@ function InfiniteCanvasLocalShellSurface({
   taskBridgeRef.current = taskBridge;
   taskWorkspaceIdRef.current = taskWorkspaceId;
   const pointerRef = useRef<FlowPosition | null>(null);
+  const canvasClipboardRef = useRef<{
+    signature: string;
+    pasteCount: number;
+  } | null>(null);
   const nodesRef = useRef<CanvasFlowNode[]>([]);
   const edgesRef = useRef<CanvasEdgeFlow[]>([]);
   const summariesRef = useRef<CanvasSummary[]>([]);
@@ -2076,9 +2088,155 @@ function InfiniteCanvasLocalShellSurface({
     ingestRef.current = ingest;
   }, [ingest]);
 
+  const pasteCanvasNodes = useCallback(
+    async (payload: CanvasNodeClipboardPayload) => {
+      const canvasId = shellStateRef.current.canvasId;
+      if (!canvasId) return;
+      const signature = serializeCanvasNodeClipboardPayload(payload);
+      const previous = canvasClipboardRef.current;
+      const pasteCount =
+        previous?.signature === signature ? previous.pasteCount + 1 : 1;
+      const highestZIndex = shellStateRef.current.document.nodes.reduce(
+        (maximum, node) => Math.max(maximum, node.zIndex),
+        0,
+      );
+      const canonicalNodes = materializeCanvasNodeClipboardPaste(payload, {
+        offset: pasteCount * 24,
+        zIndexStart: highestZIndex + 1,
+      });
+
+      try {
+        const runtimeNodes: CanvasFlowNode[] = [];
+        for (const node of canonicalNodes) {
+          if (node.kind === "text") {
+            runtimeNodes.push(
+              createCanvasTextFlowNode({
+                id: node.id,
+                markdown: node.markdown,
+                position: node.position,
+                size: node.size,
+                zIndex: node.zIndex,
+              }),
+            );
+          } else if (node.kind === "task") {
+            runtimeNodes.push(
+              createCanvasTaskFlowNode({
+                id: node.id,
+                taskId: node.taskId,
+                lastKnownTitle: node.lastKnownTitle,
+                position: node.position,
+                size: node.size,
+                zIndex: node.zIndex,
+                taskBridge,
+                taskWorkspaceId,
+                onContentHeightChange: handleTaskNodeContentHeightChange,
+              }),
+            );
+          }
+        }
+
+        const imageNodes = canonicalNodes.filter(
+          (node) => node.kind === "image",
+        );
+        const restoredImages =
+          imageNodes.length === 0
+            ? { nodes: [], missingAssetIds: [] }
+            : await restoreCanvasImageNodes(
+                { schemaVersion: 2 as const, nodes: imageNodes, edges: [] },
+                canvasImageAdapterDependenciesForCanvas(
+                  adapterDependencies,
+                  canvasId,
+                ),
+                {
+                  cachedAssetPayloads: variantPayloadsRef.current,
+                  viewportZoom: shellStateRef.current.viewport.zoom,
+                  allowDowngrade: false,
+                },
+              );
+        const canonicalImagesById = new Map(
+          imageNodes.map((node) => [node.id, node]),
+        );
+        for (const image of restoredImages.nodes) {
+          const canonical = canonicalImagesById.get(image.id);
+          const runtimeImage = canonical
+            ? { ...image, zIndex: canonical.zIndex }
+            : image;
+          runtimeNodes.push(runtimeImage);
+          rememberImageRuntimePayload(
+            variantPayloadsRef.current,
+            runtimeImage,
+            { workspaceId: shellWorkspaceId, canvasId },
+          );
+        }
+
+        const runtimeIds = new Set(runtimeNodes.map((node) => node.id));
+        const persistedNodes = canonicalNodes.filter((node) =>
+          runtimeIds.has(node.id),
+        );
+        if (persistedNodes.length === 0) return;
+        setNodes((current) => [
+          ...current.map((node) =>
+            node.selected ? { ...node, selected: false } : node,
+          ),
+          ...runtimeNodes.map((node) => ({ ...node, selected: true })),
+        ]);
+        controller.insertCanvasNodes(persistedNodes);
+        syncState();
+        scheduleSave();
+        canvasClipboardRef.current = { signature, pasteCount };
+      } catch (error: unknown) {
+        setShellState((current) => ({
+          ...current,
+          status: "error",
+          error:
+            error instanceof Error ? error.message : "Canvas paste failed.",
+        }));
+      }
+    },
+    [
+      adapterDependencies,
+      controller,
+      handleTaskNodeContentHeightChange,
+      scheduleSave,
+      setNodes,
+      shellWorkspaceId,
+      syncState,
+      taskBridge,
+      taskWorkspaceId,
+    ],
+  );
+
+  useEffect(() => {
+    const onCopy = (event: ClipboardEvent) => {
+      if (eventTouchesEditingSurface(event) || !event.clipboardData) return;
+      const selectedNodeIds = new Set(
+        nodesRef.current.filter((node) => node.selected).map((node) => node.id),
+      );
+      const payload = createCanvasNodeClipboardPayload(
+        controller.state.document,
+        selectedNodeIds,
+      );
+      if (!payload) return;
+      const signature = serializeCanvasNodeClipboardPayload(payload);
+      event.preventDefault();
+      event.clipboardData.setData(CANVAS_NODE_CLIPBOARD_MIME, signature);
+      canvasClipboardRef.current = { signature, pasteCount: 0 };
+    };
+    window.addEventListener("copy", onCopy);
+    return () => window.removeEventListener("copy", onCopy);
+  }, [controller]);
+
   useEffect(() => {
     const onPaste = (event: ClipboardEvent) => {
       if (eventTouchesEditingSurface(event)) return;
+      const canvasPayload = parseCanvasNodeClipboardPayload(
+        event.clipboardData?.getData(CANVAS_NODE_CLIPBOARD_MIME) ?? "",
+      );
+      if (canvasPayload) {
+        event.preventDefault();
+        void pasteCanvasNodes(canvasPayload);
+        return;
+      }
       const payload = transferPayload(event);
       if (shouldPreventCanvasImagePaste(event)) {
         event.preventDefault();
@@ -2092,7 +2250,7 @@ function InfiniteCanvasLocalShellSurface({
       createTextNode(pointerRef.current, text, false);
     };
     return attachCanvasImagePasteListener(onPaste);
-  }, [createTextNode]);
+  }, [createTextNode, pasteCanvasNodes]);
 
   useEffect(() => {
     const guard = (event: DragEvent) => {

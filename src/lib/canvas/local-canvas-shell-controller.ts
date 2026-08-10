@@ -6,6 +6,7 @@ import {
   type CanvasEdgeV2,
   type CanvasViewport,
   type CanvasTextNode,
+  type CanvasNode,
 } from "@/lib/canvas/canvas-document";
 import type {
   CanvasPendingSaveFlushState,
@@ -34,11 +35,7 @@ type CanvasNavigationLifecycleRepository = {
 };
 
 export type LocalCanvasShellStatus =
-  | "loading"
-  | "saved"
-  | "saving"
-  | "conflict"
-  | "error";
+  "loading" | "saved" | "saving" | "conflict" | "error";
 
 export type LocalCanvasShellState = {
   canvasId: string | null;
@@ -108,7 +105,8 @@ export class LocalCanvasShellController {
     lifecycleRepository.registerPendingSaveFlush?.({
       userId: this.userId,
       flush: async () => {
-        if (!this.hasPendingSave && !this.stateValue.autosaveBlocked) return null;
+        if (!this.hasPendingSave && !this.stateValue.autosaveBlocked)
+          return null;
         try {
           await this.flushPendingSave();
         } catch {
@@ -150,13 +148,17 @@ export class LocalCanvasShellController {
     groupId: string | null = null,
   ): Promise<LocalCanvasShellState> {
     if (this.stateValue.canvasId && this.stateValue.autosaveBlocked) {
-      throw new Error("Resolve the current Canvas save conflict before leaving it.");
+      throw new Error(
+        "Resolve the current Canvas save conflict before leaving it.",
+      );
     }
     this.beginCanvasNavigation(null);
     if (this.stateValue.canvasId) {
       await this.flushPendingSave();
       if (this.stateValue.autosaveBlocked) {
-        throw new Error("Resolve the current Canvas save conflict before leaving it.");
+        throw new Error(
+          "Resolve the current Canvas save conflict before leaving it.",
+        );
       }
     }
     const canvas = await this.repository.createCanvas({
@@ -174,7 +176,9 @@ export class LocalCanvasShellController {
       currentCanvasId !== canvasId &&
       this.stateValue.autosaveBlocked
     ) {
-      throw new Error("Resolve the current Canvas save conflict before leaving it.");
+      throw new Error(
+        "Resolve the current Canvas save conflict before leaving it.",
+      );
     }
     this.beginCanvasNavigation(canvasId);
     if (currentCanvasId) {
@@ -182,7 +186,9 @@ export class LocalCanvasShellController {
         await this.flushPendingSave();
       }
       if (currentCanvasId !== canvasId && this.stateValue.autosaveBlocked) {
-        throw new Error("Resolve the current Canvas save conflict before leaving it.");
+        throw new Error(
+          "Resolve the current Canvas save conflict before leaving it.",
+        );
       }
     }
 
@@ -308,6 +314,24 @@ export class LocalCanvasShellController {
           (edge) =>
             !removed.has(edge.sourceNodeId) && !removed.has(edge.targetNodeId),
         ),
+      }),
+    });
+  }
+
+  insertCanvasNodes(nodes: readonly CanvasNode[]): LocalCanvasShellState {
+    if (!this.stateValue.canvasId || nodes.length === 0) return this.state;
+    const existing = new Set(
+      this.stateValue.document.nodes.map((node) => node.id),
+    );
+    const additions = nodes
+      .filter((node) => !existing.has(node.id))
+      .map((node) => clone(node));
+    if (additions.length === 0) return this.state;
+    return this.markPendingSave({
+      ...this.stateValue,
+      document: parseCanvasDocumentV2({
+        ...this.stateValue.document,
+        nodes: [...this.stateValue.document.nodes, ...additions],
       }),
     });
   }
@@ -479,12 +503,14 @@ export class LocalCanvasShellController {
   }
 
   async save(): Promise<CanvasSaveResult | null> {
-    if (!this.stateValue.canvasId || this.stateValue.autosaveBlocked) return null;
+    if (!this.stateValue.canvasId || this.stateValue.autosaveBlocked)
+      return null;
 
     while (this.saveInFlight) {
       const inFlight = this.saveInFlight;
       const result = await inFlight;
-      if (!this.hasPendingSave || this.stateValue.autosaveBlocked) return result;
+      if (!this.hasPendingSave || this.stateValue.autosaveBlocked)
+        return result;
     }
 
     const operation = this.performSave();
