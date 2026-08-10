@@ -2,12 +2,17 @@ name: CI
 
 on:
   pull_request:
+  push:
+    branches:
+      - refactor/prototype-state-root
 
 jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
         with:
           version: 11.11.0
@@ -16,6 +21,19 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - name: Check changed-file whitespace
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            git diff --check "$PR_BASE_SHA...HEAD"
+          else
+            git diff --check "$PUSH_BEFORE_SHA...HEAD"
+          fi
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
