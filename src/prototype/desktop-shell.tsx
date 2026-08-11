@@ -32,6 +32,7 @@ import { InboxWorkspace } from "@/prototype/inbox/inbox-workspace";
 import { DesktopCanvasWorkspace } from "@/prototype/canvases/desktop-canvas-workspace";
 import { ApplicationHeader } from "@/prototype/shell/application-header";
 import { SectionRail } from "@/prototype/shell/section-rail";
+import { MobileNavigation } from "@/prototype/shell/mobile-navigation";
 import type { UseDesktopPersistenceResult } from "@/prototype/persistence/use-desktop-persistence";
 import type { DesktopPersistenceErrorCode } from "@/prototype/persistence/persistence-adapter";
 import type { DesktopCloudBootstrap } from "@/prototype/persistence/cloud-snapshot-bridge";
@@ -82,6 +83,7 @@ function DesktopPrototypeShellContent({
     useDesktopTaskRuntime();
   const [commandQuery, setCommandQuery] = useState(getInitialCommandQuery);
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
+  const [mobileToolSidebarOpen, setMobileToolSidebarOpen] = useState(false);
   const seededFromUrl = useRef(false);
   const { commandPaletteOpen, documents, inboxItems, projects, tasks } = state;
   const commandResults = useMemo(
@@ -112,6 +114,10 @@ function DesktopPrototypeShellContent({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [workspaceAvailable]);
+
+  useEffect(() => {
+    setMobileToolSidebarOpen(false);
+  }, [state.activeProjectId, state.activeSection]);
 
   useEffect(() => {
     if (!workspaceAvailable) return;
@@ -212,15 +218,26 @@ function DesktopPrototypeShellContent({
       <div className="project-workspace">
         <ApplicationHeader
           dispatch={dispatch}
+          mobileToolSidebarOpen={mobileToolSidebarOpen}
+          onToggleMobileToolSidebar={() =>
+            setMobileToolSidebarOpen((open) => !open)
+          }
           runtimeMode={runtimeMode}
           state={state}
         />
         <SectionWorkspace
           dispatch={dispatch}
+          mobileToolSidebarOpen={mobileToolSidebarOpen}
+          onCloseMobileToolSidebar={() => setMobileToolSidebarOpen(false)}
           state={state}
           workspaceId={workspaceId}
         />
       </div>
+      <MobileNavigation
+        dispatch={dispatch}
+        runtimeMode={runtimeMode}
+        state={state}
+      />
       <DesktopPersistenceStatus
         avoidRightPanel={
           state.contextPanel !== null && state.activeSection !== "overview"
@@ -336,10 +353,14 @@ function SectionWorkspace({
   state,
   dispatch,
   workspaceId,
+  mobileToolSidebarOpen,
+  onCloseMobileToolSidebar,
 }: {
   state: DesktopPrototypeState;
   dispatch: Dispatch;
   workspaceId?: string;
+  mobileToolSidebarOpen: boolean;
+  onCloseMobileToolSidebar: () => void;
 }): React.JSX.Element {
   const knowledgeHistory = useKnowledgeContentHistory();
   const [knowledgeTreeOverlayOpen, setKnowledgeTreeOverlayOpen] =
@@ -391,6 +412,7 @@ function SectionWorkspace({
         `workspace-policy-${workspaceWidthPolicy(state)}`,
         `section-${state.activeSection}`,
         sidebar ? "has-tool-sidebar" : "",
+        sidebar && mobileToolSidebarOpen ? "is-mobile-tool-sidebar-open" : "",
         hasContextPanel ? "has-context-panel" : "",
         hasFullHeightDrawer ? "has-full-height-drawer" : "",
         overviewReaderActive ? "has-overview-contextual-reader" : "",
@@ -449,6 +471,14 @@ function SectionWorkspace({
           )}
         </section>
       </TasksDndBoundary>
+      {sidebar && mobileToolSidebarOpen ? (
+        <button
+          aria-label="Закрыть панель раздела"
+          className="mobile-tool-sidebar-backdrop"
+          onClick={onCloseMobileToolSidebar}
+          type="button"
+        />
+      ) : null}
       {state.activeSection === "knowledge" && knowledgeTreeOverlayOpen ? (
         <button
           aria-label="Закрыть дополнительную панель"

@@ -1364,6 +1364,11 @@ function InfiniteCanvasLocalShellSurface({
     "idle" | "loading" | "ready" | "error"
   >("idle");
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 767px)").matches) {
+      setDesktopSidebarOpen(false);
+    }
+  }, []);
   const [flowInstanceEpoch, setFlowInstanceEpoch] = useState(0);
   const [viewportInitialization, setViewportInitialization] =
     useState<CanvasViewportInitialization | null>(null);

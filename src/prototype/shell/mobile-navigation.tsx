@@ -71,7 +71,9 @@ export function MobileNavigation({
       <nav className="mobile-bottom-navigation" aria-label="Основные разделы">
         {mobileSections.map((section) => (
           <button
-            aria-current={state.activeSection === section.id ? "page" : undefined}
+            aria-current={
+              state.activeSection === section.id ? "page" : undefined
+            }
             className="mobile-bottom-navigation-item"
             data-active={state.activeSection === section.id ? "true" : "false"}
             key={section.id}

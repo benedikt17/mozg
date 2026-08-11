@@ -1398,3 +1398,56 @@
   background: #fafaf9;
   box-shadow: 0 8px 20px rgba(28, 25, 23, 0.12);
 }
+
+@media (max-width: 767px) {
+  .desktopCanvasPage,
+  .desktopCanvasPageSidebarCollapsed {
+    position: relative;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .desktopCanvasSidebar {
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 30;
+    width: min(88vw, 340px);
+    max-width: 340px;
+    height: 100%;
+    max-height: none;
+    border-right: 1px solid var(--border, #deddd8);
+    border-bottom: 0;
+    box-shadow: 12px 0 32px rgb(32 32 29 / 14%);
+  }
+
+  .desktopCanvasPageSidebarCollapsed .desktopCanvasSidebar {
+    display: none;
+  }
+
+  .desktopCanvasMain {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .desktopCanvasToolbar {
+    min-width: 0;
+    height: 42px;
+    min-height: 42px;
+    flex-basis: 42px;
+  }
+
+  .desktopCanvasToolbarStatus {
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  .desktopCanvasToolbarGroup {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .desktopCanvasToolbarGroup::-webkit-scrollbar {
+    display: none;
+  }
+}
