@@ -1,4 +1,3 @@
-// trigger Canvas in-place editor patch
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -26,7 +25,7 @@ const css = fs.readFileSync(
 );
 
 describe("Canvas Miro-style in-place text editing", () => {
-  it("focuses a native caret without replacing the node with a full-size edit card", () => {
+  it("keeps the native focused caret and compact textarea editor", () => {
     expect(shell).toContain("input.focus({ preventScroll: true })");
     expect(shell).toContain("input.setSelectionRange(caret, caret)");
     expect(shell).toMatch(
@@ -37,15 +36,22 @@ describe("Canvas Miro-style in-place text editing", () => {
     expect(css).toContain("field-sizing: content");
   });
 
-  it("keeps preview and editor vertically centered in the same node geometry", () => {
+  it("restores the caret from the actual double-click point instead of forcing the end", () => {
+    expect(frame).toContain("canvasTextCaretOffsetAtPoint");
+    expect(frame).toContain("caretPositionFromPoint");
+    expect(frame).toContain("caretRangeFromPoint");
+    expect(frame).toContain("onDoubleClickCapture={handleDoubleClickCapture}");
+    expect(frame).toContain("input.setSelectionRange(caret, caret)");
+  });
+
+  it("locks the initial editor height to the preview height so entering edit mode does not jump", () => {
+    expect(frame).toContain("previewHeight: surface.offsetHeight");
+    expect(frame).toContain('input.style.height = `${previewHeight}px`');
+    expect(frame).toContain('input.style.minHeight = `${previewHeight}px`');
+    expect(frame).toContain('input.style.height = ""');
+    expect(frame).toContain('input.style.minHeight = ""');
     expect(css).toMatch(
       /\.textNodeContent \{[\s\S]*display: flex;[\s\S]*align-items: center;/,
-    );
-    expect(css).toMatch(
-      /\.textPreview \{[\s\S]*height: auto;[\s\S]*max-height: 100%;/,
-    );
-    expect(css).toMatch(
-      /\.textEditorInput \{[\s\S]*height: auto;[\s\S]*align-self: center;/,
     );
   });
 });
