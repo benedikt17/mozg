@@ -1,0 +1,74 @@
+name: Canvas text centering owner fix
+
+on:
+  push:
+    branches:
+      - agent/canvas-miro-editing-selection-polish
+    paths:
+      - .github/workflows/canvas-text-centering-owner-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/canvas-miro-editing-selection-polish
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Apply exact centering fix
+        shell: python
+        run: |
+          from pathlib import Path
+
+          shell_path = Path("src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx")
+          text = shell_path.read_text()
+          old = '''    <textarea
+              ref={inputRef}
+              value={draft}'''
+          new = '''    <textarea
+              ref={inputRef}
+              rows={1}
+              value={draft}'''
+          if old not in text:
+              raise SystemExit("Expected CanvasTextEditor textarea anchor not found")
+          if text.count(old) != 1:
+              raise SystemExit(f"Expected exactly one textarea anchor, found {text.count(old)}")
+          shell_path.write_text(text.replace(old, new, 1))
+
+          test_path = Path("tests/canvas-miro-text-editing-runtime.test.ts")
+          test = test_path.read_text()
+          old_test = '''    expect(shell).toContain("input.setSelectionRange(caret, caret)");
+            expect(frame).not.toContain("withCenteredTextContent");'''
+          new_test = '''    expect(shell).toContain("input.setSelectionRange(caret, caret)");
+            expect(shell).toContain("rows={1}");
+            expect(frame).not.toContain("withCenteredTextContent");'''
+          if old_test not in test:
+              raise SystemExit("Expected text-editing regression-test anchor not found")
+          test_path.write_text(test.replace(old_test, new_test, 1))
+
+      - name: Format touched files
+        run: npx prettier --write src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx tests/canvas-miro-text-editing-runtime.test.ts
+
+      - name: Run focused regression test
+        run: npx vitest run tests/canvas-miro-text-editing-runtime.test.ts
+
+      - name: Commit fix and remove temporary workflow
+        run: |
+          rm .github/workflows/canvas-text-centering-owner-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx tests/canvas-miro-text-editing-runtime.test.ts .github/workflows/canvas-text-centering-owner-fix.yml
+          git diff --cached --check
+          git commit -m "Canvas: keep text centered when editing"
+          git push origin HEAD:agent/canvas-miro-editing-selection-polish
