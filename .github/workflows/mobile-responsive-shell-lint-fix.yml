@@ -33,50 +33,38 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import re
 
-          def replace_once(path, old, new):
-              p = Path(path)
-              text = p.read_text()
-              if text.count(old) != 1:
-                  raise SystemExit(f"anchor mismatch in {path}: {text.count(old)}")
-              p.write_text(text.replace(old, new, 1))
+          def sub_once(path: str, pattern: str, replacement: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              updated, count = re.subn(pattern, replacement, text, count=1)
+              if count != 1:
+                  raise SystemExit(f"anchor mismatch in {path}: {count}")
+              file.write_text(updated)
 
-          replace_once(
+          sub_once(
               "src/prototype/desktop-shell.tsx",
-              '''  useEffect(() => {
-            setMobileToolSidebarOpen(false);
-          }, [state.activeProjectId, state.activeSection]);
-
-          ''',
-              "",
+              r'\n  useEffect\(\(\) => \{\n    setMobileToolSidebarOpen\(false\);\n  \}, \[state\.activeProjectId, state\.activeSection\]\);\n',
+              "\n",
           )
 
-          replace_once(
+          sub_once(
               "src/prototype/shell/mobile-navigation.tsx",
-              '''  useEffect(() => {
-            setMoreOpen(false);
-          }, [state.activeProjectId, state.activeSection]);
-
-          ''',
-              "",
+              r'\n  useEffect\(\(\) => \{\n    setMoreOpen\(false\);\n  \}, \[state\.activeProjectId, state\.activeSection\]\);\n',
+              "\n",
           )
 
-          replace_once(
+          sub_once(
               "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
-              '''  useEffect(() => {
-            if (window.matchMedia("(max-width: 767px)").matches) {
-              setDesktopSidebarOpen(false);
-            }
-          }, []);
-          ''',
+              r'  useEffect\(\(\) => \{\n    if \(window\.matchMedia\("\(max-width: 767px\)"\)\.matches\) \{\n      setDesktopSidebarOpen\(false\);\n    \}\n  \}, \[\]\);',
               '''  useEffect(() => {
             if (!window.matchMedia("(max-width: 767px)").matches) return;
             const frame = window.requestAnimationFrame(() => {
               setDesktopSidebarOpen(false);
             });
             return () => window.cancelAnimationFrame(frame);
-          }, []);
-          ''',
+          }, []);''',
           )
 
       - name: Format
