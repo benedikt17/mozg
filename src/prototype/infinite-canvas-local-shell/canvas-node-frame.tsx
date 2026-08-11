@@ -15,6 +15,7 @@ import {
   CANVAS_CONNECTION_HANDLE_GAP,
   CANVAS_CONNECTION_HANDLE_RADIUS,
 } from "@/lib/canvas/canvas-edge-geometry";
+import groupSelectionStyles from "./canvas-group-selection.module.css";
 import styles from "./infinite-canvas-local-shell.module.css";
 
 export type CanvasNodeFrameProps = {
@@ -234,7 +235,7 @@ export function CanvasNodeFrame({
 
   return (
     <div
-      className={`${styles.nodeFrame} ${className ?? ""}`.trim()}
+      className={`${styles.nodeFrame} ${groupSelectionStyles.hook} ${className ?? ""}`.trim()}
       data-canvas-node-frame="true"
       data-selected={selected ? "true" : "false"}
       style={{ cursor: "default" }}
