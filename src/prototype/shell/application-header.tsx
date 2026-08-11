@@ -6,6 +6,7 @@ import {
   type DesktopPrototypeAction,
   type DesktopPrototypeState,
 } from "@/prototype/desktop-state";
+import { UiIcon } from "@/prototype/desktop-icons";
 import { PrototypeButton } from "@/prototype/desktop-ui";
 import { createClient } from "@/lib/supabase/browser";
 import {
@@ -133,10 +134,14 @@ export function ApplicationHeader({
   state,
   dispatch,
   runtimeMode,
+  mobileToolSidebarOpen = false,
+  onToggleMobileToolSidebar,
 }: {
   state: DesktopPrototypeState;
   dispatch: Dispatch;
   runtimeMode: DesktopRuntimeMode;
+  mobileToolSidebarOpen?: boolean;
+  onToggleMobileToolSidebar?: () => void;
 }): React.JSX.Element {
   const router = useRouter();
   const logout = async (): Promise<void> => {
@@ -144,6 +149,8 @@ export function ApplicationHeader({
     router.replace("/sign-in");
     router.refresh();
   };
+  const hasMobileSectionDrawer =
+    state.activeSection === "knowledge" || state.activeSection === "tasks";
   return (
     <header className="application-header">
       <button
@@ -158,6 +165,23 @@ export function ApplicationHeader({
       >
         <strong>{getActiveProject(state).name}</strong>
       </button>
+      {hasMobileSectionDrawer ? (
+        <button
+          aria-expanded={mobileToolSidebarOpen}
+          aria-label={
+            mobileToolSidebarOpen
+              ? "Закрыть панель раздела"
+              : "Открыть панель раздела"
+          }
+          className="mobile-tool-sidebar-trigger"
+          onClick={onToggleMobileToolSidebar}
+          type="button"
+        >
+          <UiIcon name={mobileToolSidebarOpen ? "close" : "panel-left"} />
+        </button>
+      ) : (
+        <span className="mobile-tool-sidebar-spacer" aria-hidden="true" />
+      )}
       <ApplicationSectionNavigation state={state} dispatch={dispatch} />
       <div className="application-header-right">
         <ApplicationSectionActions state={state} dispatch={dispatch} />
