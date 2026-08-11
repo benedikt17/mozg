@@ -285,40 +285,17 @@
   line-height: 1.25;
   white-space: pre-wrap;
 }
-.textPreview {
-  width: 100%;
-  height: auto;
-  max-height: 100%;
-  overflow: visible;
-  padding: 0;
-  color: inherit;
-  font: inherit;
-  line-height: inherit;
-}
-.textPreview :global(p),
-.textPreview :global(h1),
-.textPreview :global(h2),
-.textPreview :global(h3),
-.textPreview :global(h4),
-.textPreview :global(h5),
-.textPreview :global(h6) {
-  margin: 0;
-  color: inherit;
-  font-family: inherit;
-  font-size: inherit;
-  line-height: inherit;
-}
-.textEditorInput {
+.textSurface {
   box-sizing: border-box;
+  display: block;
   width: 100%;
   height: auto;
   max-height: 100%;
   min-width: 0;
   min-height: 1.25em;
   align-self: center;
-  field-sizing: content;
-  resize: none;
-  overflow: hidden;
+  overflow: visible;
+  margin: 0;
   border: 0;
   outline: 0;
   padding: 0;
@@ -330,18 +307,22 @@
   text-align: inherit;
   text-decoration: inherit;
   white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
-.textEditorInput::placeholder,
-.textPlaceholder {
+.textSurface[contenteditable="true"] {
+  cursor: text;
+}
+.textSurface:empty::before {
+  content: "Type something";
   color: #a8a29e;
   font: inherit;
   font-style: normal;
   font-weight: 400;
   text-decoration: none;
+  pointer-events: none;
 }
-.textPlaceholder {
-  width: 100%;
-}
+
 .textSelectionToolbar {
   display: flex;
   align-items: center;

@@ -7,11 +7,7 @@ import {
   Position,
   useStore,
 } from "@xyflow/react";
-import {
-  type CSSProperties,
-  type MouseEvent as ReactMouseEvent,
-  type ReactNode,
-} from "react";
+import { type CSSProperties, type ReactNode } from "react";
 import type { CanvasTextAlignment } from "@/lib/canvas/canvas-text-style";
 import {
   CANVAS_CONNECTION_HANDLE_CENTER_OFFSET,
@@ -34,121 +30,6 @@ export type CanvasNodeFrameProps = {
   /** Shared interaction layer for persistent Canvas connections. */
   connectionHandleLayer?: ReactNode;
 };
-
-type CanvasTextEditSnapshot = {
-  caret: number;
-  previewHeight: number;
-  previewLeft: number;
-  previewTop: number;
-  previewWidth: number;
-  font: string;
-  letterSpacing: string;
-  lineHeight: string;
-  textAlign: string;
-};
-
-function caretPointFromDocument(
-  clientX: number,
-  clientY: number,
-): { node: Node; offset: number } | null {
-  const caretDocument = document as Document & {
-    caretPositionFromPoint?: (
-      x: number,
-      y: number,
-    ) => { offsetNode: Node; offset: number } | null;
-    caretRangeFromPoint?: (x: number, y: number) => Range | null;
-  };
-  const caretPosition = caretDocument.caretPositionFromPoint?.(clientX, clientY);
-  if (caretPosition) {
-    return { node: caretPosition.offsetNode, offset: caretPosition.offset };
-  }
-  const caretRange = caretDocument.caretRangeFromPoint?.(clientX, clientY);
-  return caretRange
-    ? { node: caretRange.startContainer, offset: caretRange.startOffset }
-    : null;
-}
-
-function canvasTextCaretOffsetAtPoint(
-  surface: HTMLElement,
-  clientX: number,
-  clientY: number,
-): number | null {
-  const point = caretPointFromDocument(clientX, clientY);
-  if (!point || !surface.contains(point.node)) return null;
-  const range = document.createRange();
-  range.selectNodeContents(surface);
-  try {
-    range.setEnd(point.node, point.offset);
-  } catch {
-    return null;
-  }
-  return range.toString().length;
-}
-
-function canvasTextPreviewSurface(
-  target: EventTarget | null,
-  frame: HTMLDivElement,
-): HTMLElement | null {
-  let element = target instanceof Element ? target : null;
-  while (element && element !== frame) {
-    if (
-      element instanceof HTMLElement &&
-      element.classList.contains(styles.textPreview)
-    ) {
-      return element;
-    }
-    element = element.parentElement;
-  }
-  return null;
-}
-
-function restoreCanvasTextEditSnapshot(
-  frame: HTMLDivElement,
-  snapshot: CanvasTextEditSnapshot,
-  attempt = 0,
-): void {
-  const input = frame.querySelector<HTMLTextAreaElement>(
-    'textarea[aria-label="Canvas text"]',
-  );
-  if (!input) {
-    if (attempt < 3) {
-      requestAnimationFrame(() =>
-        restoreCanvasTextEditSnapshot(frame, snapshot, attempt + 1),
-      );
-    }
-    return;
-  }
-
-  const previewHeight = Math.max(1, snapshot.previewHeight);
-  const previewWidth = Math.max(1, snapshot.previewWidth);
-  input.style.setProperty("field-sizing", "fixed");
-  input.style.appearance = "none";
-  input.style.boxSizing = "border-box";
-  input.style.display = "block";
-  input.style.width = `${previewWidth}px`;
-  input.style.height = `${previewHeight}px`;
-  input.style.minHeight = `${previewHeight}px`;
-  input.style.maxHeight = `${previewHeight}px`;
-  input.style.margin = "0";
-  input.style.padding = "0";
-  input.style.border = "0";
-  input.style.overflow = "hidden";
-  input.style.font = snapshot.font;
-  input.style.lineHeight = snapshot.lineHeight;
-  input.style.letterSpacing = snapshot.letterSpacing;
-  input.style.textAlign = snapshot.textAlign;
-  input.style.transform = "none";
-
-  const inputRect = input.getBoundingClientRect();
-  const deltaX = snapshot.previewLeft - inputRect.left;
-  const deltaY = snapshot.previewTop - inputRect.top;
-  input.style.transformOrigin = "top left";
-  input.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
-
-  const caret = Math.max(0, Math.min(snapshot.caret, input.value.length));
-  input.focus({ preventScroll: true });
-  input.setSelectionRange(caret, caret);
-}
 
 function useIndividualSelectionVisible(selected: boolean): boolean {
   const selectedNodeCount = useStore((state) =>
@@ -351,33 +232,6 @@ export function CanvasNodeFrame({
 }: CanvasNodeFrameProps): React.JSX.Element {
   const renderedToolbar = toolbar;
   const individualSelectionVisible = useIndividualSelectionVisible(selected);
-  const handleDoubleClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (!className?.includes(styles.textNodeFrame)) return;
-    const surface = canvasTextPreviewSurface(event.target, event.currentTarget);
-    if (!surface) return;
-    const caret = canvasTextCaretOffsetAtPoint(
-      surface,
-      event.clientX,
-      event.clientY,
-    );
-    if (caret === null) return;
-    const rect = surface.getBoundingClientRect();
-    const computed = window.getComputedStyle(surface);
-    const snapshot: CanvasTextEditSnapshot = {
-      caret,
-      previewHeight: rect.height,
-      previewLeft: rect.left,
-      previewTop: rect.top,
-      previewWidth: rect.width,
-      font: computed.font,
-      letterSpacing: computed.letterSpacing,
-      lineHeight: computed.lineHeight,
-      textAlign: computed.textAlign,
-    };
-    requestAnimationFrame(() =>
-      restoreCanvasTextEditSnapshot(event.currentTarget, snapshot),
-    );
-  };
 
   return (
     <div
@@ -385,7 +239,6 @@ export function CanvasNodeFrame({
       data-canvas-node-frame="true"
       data-selected={selected ? "true" : "false"}
       style={{ cursor: "default" }}
-      onDoubleClickCapture={handleDoubleClickCapture}
     >
       <SelectionLayer selected={individualSelectionVisible} />
       <ResizeLayer

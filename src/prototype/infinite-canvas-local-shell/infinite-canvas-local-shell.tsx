@@ -33,6 +33,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -145,7 +146,6 @@ import {
   plainTextFromClipboard,
   commitTextMarkdown,
 } from "@/lib/canvas/text-canvas-interactions";
-import { MarkdownStringPreview } from "@/prototype/knowledge/markdown-document-preview";
 import type {
   CanvasTaskBridge,
   CanvasTaskProjection,
@@ -603,62 +603,186 @@ function canvasTextCss(style: CanvasTextStyle): CSSProperties {
   };
 }
 
-function CanvasTextEditor({
+type PendingCanvasTextCaret = {
+  id: string;
+  offset: number;
+};
+
+let pendingCanvasTextCaret: PendingCanvasTextCaret | null = null;
+
+function canvasTextCaretOffsetAtPoint(
+  surface: HTMLDivElement,
+  clientX: number,
+  clientY: number,
+): number | null {
+  const caretDocument = document as Document & {
+    caretPositionFromPoint?: (
+      x: number,
+      y: number,
+    ) => { offsetNode: Node; offset: number } | null;
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+  };
+
+  const caretPosition = caretDocument.caretPositionFromPoint?.(
+    clientX,
+    clientY,
+  );
+  let node: Node | null = caretPosition?.offsetNode ?? null;
+  let offset = caretPosition?.offset ?? 0;
+
+  if (!node) {
+    const range = caretDocument.caretRangeFromPoint?.(clientX, clientY);
+    if (range) {
+      node = range.startContainer;
+      offset = range.startOffset;
+    }
+  }
+  if (!node || !surface.contains(node)) return null;
+
+  const range = document.createRange();
+  range.selectNodeContents(surface);
+  try {
+    range.setEnd(node, offset);
+  } catch {
+    return null;
+  }
+  return range.toString().length;
+}
+
+function placeCanvasTextCaretAtOffset(
+  surface: HTMLDivElement,
+  requestedOffset: number,
+): void {
+  const selection = window.getSelection();
+  if (!selection) return;
+
+  const walker = document.createTreeWalker(surface, NodeFilter.SHOW_TEXT);
+  let remaining = Math.max(0, requestedOffset);
+  let node = walker.nextNode();
+  let lastTextNode: Text | null = null;
+
+  while (node) {
+    const textNode = node as Text;
+    lastTextNode = textNode;
+    if (remaining <= textNode.data.length) {
+      const range = document.createRange();
+      range.setStart(textNode, remaining);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return;
+    }
+    remaining -= textNode.data.length;
+    node = walker.nextNode();
+  }
+
+  const range = document.createRange();
+  if (lastTextNode) {
+    range.setStart(lastTextNode, lastTextNode.data.length);
+  } else {
+    range.selectNodeContents(surface);
+    range.collapse(false);
+  }
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function CanvasTextSurface({
   id,
   markdown,
+  isEditing,
 }: {
   id: string;
   markdown: string;
+  isEditing: boolean;
 }): React.JSX.Element {
-  const [draft, setDraft] = useState(markdown);
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const draftRef = useRef(markdown);
+  const wasEditingRef = useRef(false);
   const skipNextBlurCommitRef = useRef(false);
 
-  useEffect(() => {
-    const input = inputRef.current;
-    if (!input) return;
-    input.focus({ preventScroll: true });
-    const caret = input.value.length;
-    input.setSelectionRange(caret, caret);
-  }, []);
-  const update = (value: string) => {
-    setDraft(value);
-    window.dispatchEvent(
-      new CustomEvent("mozg:canvas-text-draft", {
-        detail: { id, markdown: value },
-      }),
-    );
-  };
+  useLayoutEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+
+    const enteringEdit = isEditing && !wasEditingRef.current;
+    if (enteringEdit) {
+      draftRef.current = markdown;
+      surface.focus({ preventScroll: true });
+      const pending = pendingCanvasTextCaret;
+      pendingCanvasTextCaret = null;
+      placeCanvasTextCaretAtOffset(
+        surface,
+        pending?.id === id ? pending.offset : markdown.length,
+      );
+    } else if (!isEditing) {
+      draftRef.current = markdown;
+      if (surface.textContent !== markdown) surface.textContent = markdown;
+    }
+
+    wasEditingRef.current = isEditing;
+  }, [id, isEditing, markdown]);
+
   const commit = () => {
     window.dispatchEvent(
       new CustomEvent("mozg:canvas-text-commit", {
-        detail: { id, markdown: commitTextMarkdown(draft) },
+        detail: { id, markdown: commitTextMarkdown(draftRef.current) },
       }),
     );
   };
+
   const cancel = () => {
     skipNextBlurCommitRef.current = true;
     window.dispatchEvent(
       new CustomEvent("mozg:canvas-text-cancel", { detail: { id } }),
     );
   };
+
   return (
-    <textarea
-      ref={inputRef}
-      rows={1}
-      value={draft}
-      placeholder="Type something"
-      aria-label="Canvas text"
-      className={`${styles.textEditorInput} nodrag nopan nowheel`}
+    <div
+      ref={surfaceRef}
+      className={`${styles.textSurface} ${isEditing ? "nodrag nopan nowheel" : ""}`.trim()}
+      role={isEditing ? "textbox" : undefined}
+      aria-label={isEditing ? "Canvas text" : undefined}
+      aria-multiline={isEditing ? "true" : undefined}
+      contentEditable={isEditing}
+      suppressContentEditableWarning
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        if (isEditing) return;
+        pendingCanvasTextCaret = {
+          id,
+          offset:
+            canvasTextCaretOffsetAtPoint(
+              event.currentTarget,
+              event.clientX,
+              event.clientY,
+            ) ?? markdown.length,
+        };
+        window.dispatchEvent(
+          new CustomEvent("mozg:canvas-text-edit", { detail: { id } }),
+        );
+      }}
       onBlur={() => {
+        if (!isEditing) return;
         if (skipNextBlurCommitRef.current) {
           skipNextBlurCommitRef.current = false;
           return;
         }
         commit();
       }}
-      onChange={(event) => update(event.target.value)}
+      onInput={(event) => {
+        if (!isEditing) return;
+        draftRef.current = event.currentTarget.innerText.replace(/\r/g, "");
+        window.dispatchEvent(
+          new CustomEvent("mozg:canvas-text-draft", {
+            detail: { id, markdown: draftRef.current },
+          }),
+        );
+      }}
       onKeyDown={(event) => {
+        if (!isEditing) return;
         event.stopPropagation();
         if (event.key === "Escape") {
           event.preventDefault();
@@ -668,8 +792,12 @@ function CanvasTextEditor({
           event.currentTarget.blur();
         }
       }}
-      onPaste={(event) => event.stopPropagation()}
-    />
+      onPaste={(event) => {
+        if (isEditing) event.stopPropagation();
+      }}
+    >
+      {markdown}
+    </div>
   );
 }
 
@@ -688,25 +816,12 @@ function TextNodeBody({
       toolbar={<TextSelectionToolbar id={id} style={data.style} />}
       connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
     >
-      <div
-        className={styles.textNodeContent}
-        style={textStyle}
-        onDoubleClick={(event) => {
-          event.stopPropagation();
-          window.dispatchEvent(
-            new CustomEvent("mozg:canvas-text-edit", { detail: { id } }),
-          );
-        }}
-      >
-        {data.isEditing ? (
-          <CanvasTextEditor id={id} markdown={data.markdown} />
-        ) : data.markdown.trim() ? (
-          <div className={styles.textPreview}>
-            <MarkdownStringPreview contentId={id} markdown={data.markdown} />
-          </div>
-        ) : (
-          <span className={styles.textPlaceholder}>Type something</span>
-        )}
+      <div className={styles.textNodeContent} style={textStyle}>
+        <CanvasTextSurface
+          id={id}
+          markdown={data.markdown}
+          isEditing={Boolean(data.isEditing)}
+        />
       </div>
     </CanvasNodeFrame>
   );
