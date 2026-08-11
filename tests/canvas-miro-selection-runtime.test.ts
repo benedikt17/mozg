@@ -10,6 +10,10 @@ const shellCssPath = path.resolve(
   process.cwd(),
   "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css",
 );
+const groupSelectionCssPath = path.resolve(
+  process.cwd(),
+  "src/prototype/infinite-canvas-local-shell/canvas-group-selection.module.css",
+);
 
 function readShell(): string {
   return fs.readFileSync(shellPath, "utf8");
@@ -32,6 +36,28 @@ describe("Canvas Miro-style selection interaction", () => {
 
     expect(css).toContain(".react-flow__nodesselection-rect");
     expect(css).toContain("cursor: default !important");
+  });
+
+  it("shows one persistent outer frame for a multi-selection", () => {
+    const css = fs.readFileSync(groupSelectionCssPath, "utf8");
+    const frame = fs.readFileSync(
+      path.resolve(
+        process.cwd(),
+        "src/prototype/infinite-canvas-local-shell/canvas-node-frame.tsx",
+      ),
+      "utf8",
+    );
+
+    expect(css).toContain(
+      ":global([data-pan-mode] .react-flow__nodesselection-rect)",
+    );
+    expect(css).toContain("border: 2px solid #0f766e !important");
+    expect(css).toContain("background: transparent !important");
+    expect(css).not.toContain(".react-flow__selection");
+    expect(frame).toContain(
+      'import groupSelectionStyles from "./canvas-group-selection.module.css";',
+    );
+    expect(frame).toContain("groupSelectionStyles.hook");
   });
 
   it("keeps hover visually silent and suppresses per-node controls for multi-selection", () => {
