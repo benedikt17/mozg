@@ -1,0 +1,48 @@
+name: Canvas UX Polish Patch
+
+on:
+  push:
+    branches:
+      - agent/canvas-miro-editing-selection-polish
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply Canvas UX patch
+        run: python scripts/tmp_canvas_ux_polish.py
+      - name: Format changed source and tests
+        run: |
+          pnpm exec prettier --write \
+            src/prototype/infinite-canvas-local-shell/canvas-node-frame.tsx \
+            src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx \
+            src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css \
+            tests/canvas-miro-selection-runtime.test.ts \
+            tests/canvas-miro-text-editing-runtime.test.ts \
+            tests/canvas-alt-drag-duplicate-runtime.test.ts
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/prototype/infinite-canvas-local-shell/canvas-node-frame.tsx \
+            src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx \
+            src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css \
+            tests/canvas-miro-selection-runtime.test.ts \
+            tests/canvas-miro-text-editing-runtime.test.ts \
+            tests/canvas-alt-drag-duplicate-runtime.test.ts
+          git commit -m "Canvas: polish Miro editing and selection interactions"
+          git push origin HEAD:agent/canvas-miro-editing-selection-polish
