@@ -51,9 +51,7 @@ describe("mobile responsive shell", () => {
     expect(shell).not.toContain(
       "useEffect(() => {\n    setMobileToolSidebarOpen(false);",
     );
-    expect(nav).not.toContain(
-      "useEffect(() => {\n    setMoreOpen(false);",
-    );
+    expect(nav).not.toContain("useEffect(() => {\n    setMoreOpen(false);");
   });
 
   it("starts the Canvas sidebar collapsed on mobile and keeps its desktop state otherwise", () => {
