@@ -28,6 +28,7 @@ describe("Canvas Miro-style in-place text editing", () => {
   it("focuses a native caret without replacing the node with a full-size edit card", () => {
     expect(shell).toContain("input.focus({ preventScroll: true })");
     expect(shell).toContain("input.setSelectionRange(caret, caret)");
+    expect(shell).toContain("rows={1}");
     expect(frame).not.toContain("withCenteredTextContent");
     expect(css).toContain("caret-color: #111111");
     expect(css).toContain("field-sizing: content");

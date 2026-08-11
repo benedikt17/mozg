@@ -645,6 +645,7 @@ function CanvasTextEditor({
   return (
     <textarea
       ref={inputRef}
+      rows={1}
       value={draft}
       placeholder="Type something"
       aria-label="Canvas text"
