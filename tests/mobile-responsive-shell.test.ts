@@ -26,7 +26,9 @@ describe("mobile responsive shell", () => {
     expect(css).toMatch(
       /@media \(max-width: 767px\)[\s\S]*\.project-rail \{[\s\S]*display: none;/,
     );
-    expect(css).toMatch(/\.mobile-bottom-navigation \{[\s\S]*position: fixed;/);
+    expect(css).toMatch(
+      /\.mobile-bottom-navigation \{[\s\S]*position: fixed;/,
+    );
   });
 
   it("provides four primary sections plus More with touch-sized mobile controls", () => {
@@ -47,8 +49,16 @@ describe("mobile responsive shell", () => {
     );
   });
 
+  it("keeps mobile menu lifecycle out of synchronous effects", () => {
+    expect(shell).not.toContain(
+      "useEffect(() => {\n    setMobileToolSidebarOpen(false);",
+    );
+    expect(nav).not.toContain("useEffect(() => {\n    setMoreOpen(false);");
+  });
+
   it("starts the Canvas sidebar collapsed on mobile and keeps its desktop state otherwise", () => {
     expect(canvas).toContain('window.matchMedia("(max-width: 767px)").matches');
+    expect(canvas).toContain("window.requestAnimationFrame");
     expect(canvasCss).toMatch(
       /@media \(max-width: 767px\)[\s\S]*\.desktopCanvasSidebar \{[\s\S]*position: absolute;/,
     );
