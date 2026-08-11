@@ -1,17 +1,18 @@
 name: Canvas text centering owner fix
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/canvas-miro-editing-selection-polish
-    paths:
-      - .github/workflows/canvas-text-centering-owner-fix.yml
+      - refactor/prototype-state-root
+    types:
+      - synchronize
 
 permissions:
   contents: write
 
 jobs:
   patch:
+    if: github.event.pull_request.number == 49 && github.event.pull_request.head.ref == 'agent/canvas-miro-editing-selection-polish'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
