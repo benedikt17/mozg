@@ -116,10 +116,6 @@ function DesktopPrototypeShellContent({
   }, [workspaceAvailable]);
 
   useEffect(() => {
-    setMobileToolSidebarOpen(false);
-  }, [state.activeProjectId, state.activeSection]);
-
-  useEffect(() => {
     if (!workspaceAvailable) return;
     if (isPublicProjectSection(state.activeSection)) return;
     dispatch({ type: "switch-section", section: "overview" });

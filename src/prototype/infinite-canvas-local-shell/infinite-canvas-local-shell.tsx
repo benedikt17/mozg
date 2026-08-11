@@ -1365,9 +1365,11 @@ function InfiniteCanvasLocalShellSurface({
   >("idle");
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   useEffect(() => {
-    if (window.matchMedia("(max-width: 767px)").matches) {
+    if (!window.matchMedia("(max-width: 767px)").matches) return;
+    const frame = window.requestAnimationFrame(() => {
       setDesktopSidebarOpen(false);
-    }
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
   const [flowInstanceEpoch, setFlowInstanceEpoch] = useState(0);
   const [viewportInitialization, setViewportInitialization] =

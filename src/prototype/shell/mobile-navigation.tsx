@@ -43,10 +43,6 @@ export function MobileNavigation({
   const router = useRouter();
 
   useEffect(() => {
-    setMoreOpen(false);
-  }, [state.activeProjectId, state.activeSection]);
-
-  useEffect(() => {
     if (!moreOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setMoreOpen(false);
