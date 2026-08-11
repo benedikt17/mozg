@@ -1,3 +1,4 @@
+# trigger persistent Canvas text surface fix
 name: Canvas persistent text surface fix
 
 on:
@@ -321,7 +322,6 @@ function TextNodeBody({
 '''
           css_path.write_text(css[:start] + css_replacement + css[end:])
 
-          # Remove the prior textarea geometry workaround completely.
           frame_path = Path("src/prototype/infinite-canvas-local-shell/canvas-node-frame.tsx")
           clean_frame = subprocess.check_output([
             "git", "show",
@@ -335,24 +335,15 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const shell = fs.readFileSync(
-  path.resolve(
-    process.cwd(),
-    "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
-  ),
+  path.resolve(process.cwd(), "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx"),
   "utf8",
 );
 const frame = fs.readFileSync(
-  path.resolve(
-    process.cwd(),
-    "src/prototype/infinite-canvas-local-shell/canvas-node-frame.tsx",
-  ),
+  path.resolve(process.cwd(), "src/prototype/infinite-canvas-local-shell/canvas-node-frame.tsx"),
   "utf8",
 );
 const css = fs.readFileSync(
-  path.resolve(
-    process.cwd(),
-    "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css",
-  ),
+  path.resolve(process.cwd(), "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css"),
   "utf8",
 );
 
@@ -376,12 +367,8 @@ describe("Canvas Miro-style in-place text editing", () => {
   });
 
   it("keeps exactly the same typography box while contentEditable toggles", () => {
-    expect(css).toMatch(
-      /\.textNodeContent \{[\s\S]*display: flex;[\s\S]*align-items: center;/,
-    );
-    expect(css).toMatch(
-      /\.textSurface \{[\s\S]*display: block;[\s\S]*width: 100%;[\s\S]*align-self: center;/,
-    );
+    expect(css).toMatch(/\.textNodeContent \{[\s\S]*display: flex;[\s\S]*align-items: center;/);
+    expect(css).toMatch(/\.textSurface \{[\s\S]*display: block;[\s\S]*width: 100%;[\s\S]*align-self: center;/);
     expect(css).toContain("caret-color: #111111");
     expect(css).not.toContain("field-sizing: content");
   });
