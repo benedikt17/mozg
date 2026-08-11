@@ -1,18 +1,17 @@
 name: Canvas in-place text owner fix
 
 on:
-  pull_request:
+  push:
     branches:
-      - refactor/prototype-state-root
-    types:
-      - synchronize
+      - agent/canvas-miro-editing-selection-polish
+    paths:
+      - .github/workflows/canvas-inline-text-owner-fix.yml
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.event.pull_request.number == 49 && github.event.pull_request.head.ref == 'agent/canvas-miro-editing-selection-polish'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -228,30 +227,21 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const shell = fs.readFileSync(
-  path.resolve(
-    process.cwd(),
-    "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
-  ),
+  path.resolve(process.cwd(), "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx"),
   "utf8",
 );
 const frame = fs.readFileSync(
-  path.resolve(
-    process.cwd(),
-    "src/prototype/infinite-canvas-local-shell/canvas-node-frame.tsx",
-  ),
+  path.resolve(process.cwd(), "src/prototype/infinite-canvas-local-shell/canvas-node-frame.tsx"),
   "utf8",
 );
 const css = fs.readFileSync(
-  path.resolve(
-    process.cwd(),
-    "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css",
-  ),
+  path.resolve(process.cwd(), "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css"),
   "utf8",
 );
 
 describe("Canvas Miro-style in-place text editing", () => {
   it("edits with the same layout surface instead of swapping in a textarea", () => {
-    expect(shell).toContain('contentEditable');
+    expect(shell).toContain("contentEditable");
     expect(shell).toContain('role="textbox"');
     expect(shell).not.toMatch(/<textarea[\s\S]*?aria-label="Canvas text"/);
     expect(frame).not.toContain("withCenteredTextContent");
@@ -269,15 +259,9 @@ describe("Canvas Miro-style in-place text editing", () => {
   });
 
   it("keeps preview and editor vertically centered in the same node geometry", () => {
-    expect(css).toMatch(
-      /\.textNodeContent \{[\s\S]*display: flex;[\s\S]*align-items: center;/,
-    );
-    expect(css).toMatch(
-      /\.textPreview \{[\s\S]*height: auto;[\s\S]*max-height: 100%;/,
-    );
-    expect(css).toMatch(
-      /\.textEditorInput \{[\s\S]*display: block;[\s\S]*height: auto;[\s\S]*align-self: center;/,
-    );
+    expect(css).toMatch(/\.textNodeContent \{[\s\S]*display: flex;[\s\S]*align-items: center;/);
+    expect(css).toMatch(/\.textPreview \{[\s\S]*height: auto;[\s\S]*max-height: 100%;/);
+    expect(css).toMatch(/\.textEditorInput \{[\s\S]*display: block;[\s\S]*height: auto;[\s\S]*align-self: center;/);
   });
 });
 ''')
