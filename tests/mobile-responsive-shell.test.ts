@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+// Contract: mobile rules must coexist with the accepted desktop shell.
 const read = (file: string) =>
   fs.readFileSync(path.resolve(process.cwd(), file), "utf8");
 
