@@ -2574,8 +2574,8 @@ function InfiniteCanvasLocalShellSurface({
   );
 
   const duplicateSelectionAtDragStart = useCallback(
-    (event: ReactMouseEvent, dragNodes: readonly CanvasFlowNode[]): void => {
-      if (!event.altKey || altDuplicateGestureRef.current) return;
+    (altKey: boolean, dragNodes: readonly CanvasFlowNode[]): void => {
+      if (!altKey || altDuplicateGestureRef.current) return;
       const selectedNodeIds = new Set(dragNodes.map((node) => node.id));
       const payload = createCanvasNodeClipboardPayload(
         controller.state.document,
@@ -2603,14 +2603,14 @@ function InfiniteCanvasLocalShellSurface({
   );
 
   const handleNodeDragStart = useCallback(
-    (event: ReactMouseEvent, node: CanvasFlowNode): void => {
+    (event: MouseEvent | TouchEvent, node: CanvasFlowNode): void => {
       nodeDragActiveRef.current = true;
       edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
       const selectedNodes = nodesRef.current.filter((candidate) =>
         Boolean(candidate.selected),
       );
       if (selectedNodes.length > 1) return;
-      duplicateSelectionAtDragStart(event, [node]);
+      duplicateSelectionAtDragStart(event.altKey, [node]);
     },
     [duplicateSelectionAtDragStart],
   );
@@ -2619,7 +2619,7 @@ function InfiniteCanvasLocalShellSurface({
     (event: ReactMouseEvent, selectedNodes: CanvasFlowNode[]): void => {
       nodeDragActiveRef.current = true;
       edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
-      duplicateSelectionAtDragStart(event, selectedNodes);
+      duplicateSelectionAtDragStart(event.altKey, selectedNodes);
     },
     [duplicateSelectionAtDragStart],
   );
