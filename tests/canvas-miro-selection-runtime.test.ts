@@ -46,7 +46,15 @@ describe("Canvas Miro-style selection interaction", () => {
 
     expect(css).not.toContain(".nodeFrame:hover .connectionHandle");
     expect(frame).toContain("selectedNodeCount === 1");
-    expect(frame).toContain("isVisible={selected}");
+    expect(frame).toContain(
+      "const individualSelectionVisible = useIndividualSelectionVisible(selected);",
+    );
+    expect(frame).toContain(
+      "<SelectionLayer selected={individualSelectionVisible} />",
+    );
+    expect(frame).toMatch(
+      /<ResizeLayer[\s\S]*?selected=\{individualSelectionVisible\}/,
+    );
     expect(frame).toContain('data-visible={visible ? "true" : "false"}');
   });
 
