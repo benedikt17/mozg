@@ -194,8 +194,7 @@
     opacity 120ms ease,
     background-color 120ms ease;
 }
-.connectionHandle[data-visible="true"],
-.nodeFrame:hover .connectionHandle {
+.connectionHandle[data-visible="true"] {
   opacity: 1;
 }
 .connectionHandle[data-side="top"] {
@@ -280,13 +279,16 @@
   height: 100%;
   min-width: 0;
   min-height: 0;
+  display: flex;
+  align-items: center;
   overflow: visible;
   line-height: 1.25;
   white-space: pre-wrap;
 }
 .textPreview {
   width: 100%;
-  height: 100%;
+  height: auto;
+  max-height: 100%;
   overflow: visible;
   padding: 0;
   color: inherit;
@@ -309,19 +311,25 @@
 .textEditorInput {
   box-sizing: border-box;
   width: 100%;
-  height: 100%;
+  height: auto;
+  max-height: 100%;
   min-width: 0;
-  min-height: 0;
+  min-height: 1.25em;
+  align-self: center;
+  field-sizing: content;
   resize: none;
   overflow: hidden;
   border: 0;
   outline: 0;
   padding: 0;
   color: inherit;
+  caret-color: #111111;
   background: transparent;
   font: inherit;
   line-height: inherit;
+  text-align: inherit;
   text-decoration: inherit;
+  white-space: pre-wrap;
 }
 .textEditorInput::placeholder,
 .textPlaceholder {
@@ -330,6 +338,9 @@
   font-style: normal;
   font-weight: 400;
   text-decoration: none;
+}
+.textPlaceholder {
+  width: 100%;
 }
 .textSelectionToolbar {
   display: flex;

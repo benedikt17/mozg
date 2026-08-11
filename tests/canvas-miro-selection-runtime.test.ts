@@ -34,6 +34,22 @@ describe("Canvas Miro-style selection interaction", () => {
     expect(css).toContain("cursor: default !important");
   });
 
+  it("keeps hover visually silent and suppresses per-node controls for multi-selection", () => {
+    const css = fs.readFileSync(shellCssPath, "utf8");
+    const frame = fs.readFileSync(
+      path.resolve(
+        process.cwd(),
+        "src/prototype/infinite-canvas-local-shell/canvas-node-frame.tsx",
+      ),
+      "utf8",
+    );
+
+    expect(css).not.toContain(".nodeFrame:hover .connectionHandle");
+    expect(frame).toContain("selectedNodeCount === 1");
+    expect(frame).toContain("isVisible={selected}");
+    expect(frame).toContain('data-visible={visible ? "true" : "false"}');
+  });
+
   it("does not re-enable generic pointer-drag panning", () => {
     const source = readShell();
 

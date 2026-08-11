@@ -5,15 +5,9 @@ import {
   NodeResizer,
   NodeToolbar,
   Position,
-  useInternalNode,
-  useNodeId,
+  useStore,
 } from "@xyflow/react";
-import {
-  cloneElement,
-  isValidElement,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { type CSSProperties, type ReactNode } from "react";
 import type { CanvasTextAlignment } from "@/lib/canvas/canvas-text-style";
 import {
   CANVAS_CONNECTION_HANDLE_CENTER_OFFSET,
@@ -35,6 +29,13 @@ export type CanvasNodeFrameProps = {
   /** Shared interaction layer for persistent Canvas connections. */
   connectionHandleLayer?: ReactNode;
 };
+
+function useIndividualSelectionVisible(selected: boolean): boolean {
+  const selectedNodeCount = useStore((state) =>
+    state.nodes.reduce((count, node) => count + (node.selected ? 1 : 0), 0),
+  );
+  return selected && selectedNodeCount === 1;
+}
 
 function SelectionLayer({
   selected,
@@ -88,6 +89,7 @@ export function ConnectionHandleLayer({
 }: {
   selected: boolean;
 }): React.JSX.Element {
+  const visible = useIndividualSelectionVisible(selected);
   return (
     <div className={styles.connectionHandleLayer} data-slot="connections">
       {CONNECTION_HANDLES.map((handle) => (
@@ -98,7 +100,7 @@ export function ConnectionHandleLayer({
           position={handle.position}
           className={`${styles.connectionHandle} nodrag nopan nowheel`}
           data-side={handle.id}
-          data-visible={selected ? "true" : "false"}
+          data-visible={visible ? "true" : "false"}
           style={CONNECTION_HANDLE_STYLE}
           isConnectableStart
           isConnectableEnd
@@ -216,62 +218,6 @@ export function TextAlignmentControls({
   );
 }
 
-type TextInnerStyle = CSSProperties & {
-  fieldSizing?: "content";
-};
-
-type CenteredTextElementProps = {
-  children?: ReactNode;
-  style?: CSSProperties;
-};
-
-function withCenteredTextContent(
-  children: ReactNode,
-  textAlign: CanvasTextAlignment,
-): ReactNode {
-  if (!isValidElement<CenteredTextElementProps>(children)) return children;
-
-  const content = children.props.children;
-  let centeredContent = content;
-  if (
-    isValidElement<{ style?: CSSProperties }>(content) &&
-    typeof content.type === "string" &&
-    content.type === "textarea"
-  ) {
-    const style: TextInnerStyle = {
-      ...content.props.style,
-      width: "100%",
-      height: "auto",
-      maxHeight: "100%",
-      alignSelf: "center",
-      textAlign,
-      fieldSizing: "content",
-    };
-    centeredContent = cloneElement(content, { style });
-  }
-
-  return cloneElement(
-    children,
-    {
-      style: {
-        ...children.props.style,
-        display: "grid",
-        alignItems: "center",
-        textAlign,
-      },
-    },
-    <div
-      style={{
-        width: "100%",
-        maxHeight: "100%",
-        textAlign,
-      }}
-    >
-      {centeredContent}
-    </div>,
-  );
-}
-
 export function CanvasNodeFrame({
   children,
   selected,
@@ -283,31 +229,19 @@ export function CanvasNodeFrame({
   contextMenu,
   connectionHandleLayer,
 }: CanvasNodeFrameProps): React.JSX.Element {
-  const nodeId = useNodeId();
-  const internalNode = useInternalNode(nodeId ?? "");
-  const isTextFrame = Boolean(className?.includes(styles.textNodeFrame));
-  const textAlign =
-    (
-      internalNode?.data as {
-        style?: { textAlign?: CanvasTextAlignment };
-      }
-    )?.style?.textAlign ?? "center";
   const renderedToolbar = toolbar;
-  const renderedChildren = isTextFrame
-    ? withCenteredTextContent(children, textAlign)
-    : children;
+  const individualSelectionVisible = useIndividualSelectionVisible(selected);
 
   return (
     <div
       className={`${styles.nodeFrame} ${className ?? ""}`.trim()}
       data-canvas-node-frame="true"
-      data-canvas-text-align={isTextFrame ? textAlign : undefined}
       data-selected={selected ? "true" : "false"}
       style={{ cursor: "default" }}
     >
-      <SelectionLayer selected={selected} />
+      <SelectionLayer selected={individualSelectionVisible} />
       <ResizeLayer
-        selected={selected}
+        selected={individualSelectionVisible}
         keepAspectRatio={keepAspectRatio}
         minWidth={minWidth}
         minHeight={minHeight}
@@ -319,7 +253,7 @@ export function CanvasNodeFrame({
       {contextMenu ? (
         <NodeContextMenuSlot>{contextMenu}</NodeContextMenuSlot>
       ) : null}
-      <div className={styles.nodeBody}>{renderedChildren}</div>
+      <div className={styles.nodeBody}>{children}</div>
     </div>
   );
 }

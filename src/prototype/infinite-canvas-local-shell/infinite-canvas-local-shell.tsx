@@ -39,6 +39,7 @@ import {
   type ChangeEvent,
   type CSSProperties,
   type DragEvent as ReactDragEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
@@ -610,7 +611,16 @@ function CanvasTextEditor({
   markdown: string;
 }): React.JSX.Element {
   const [draft, setDraft] = useState(markdown);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const skipNextBlurCommitRef = useRef(false);
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    const caret = input.value.length;
+    input.setSelectionRange(caret, caret);
+  }, []);
   const update = (value: string) => {
     setDraft(value);
     window.dispatchEvent(
@@ -634,7 +644,7 @@ function CanvasTextEditor({
   };
   return (
     <textarea
-      autoFocus
+      ref={inputRef}
       value={draft}
       placeholder="Type something"
       aria-label="Canvas text"
@@ -1321,6 +1331,7 @@ function InfiniteCanvasLocalShellSurface({
   const pendingContentHeightSaveRef = useRef(false);
   const nodeGeometrySignatureRef = useRef("");
   const nodeDragActiveRef = useRef(false);
+  const altDuplicateGestureRef = useRef(false);
   const middlePanActiveRef = useRef(false);
   const panSamplesRef = useRef<CanvasPanSample[]>([]);
   const panInertiaFrameRef = useRef<number | null>(null);
@@ -1659,13 +1670,9 @@ function InfiniteCanvasLocalShellSurface({
     [controller, handleEdgeUpdate, scheduleSave, setEdges],
   );
 
-  const handleNodeDragStart = useCallback((): void => {
-    nodeDragActiveRef.current = true;
-    edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
-  }, []);
-
   const handleNodeDragStop = useCallback((): void => {
     nodeDragActiveRef.current = false;
+    altDuplicateGestureRef.current = false;
     edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
     window.setTimeout(() => {
       if (!shellStateRef.current.canvasId) return;
@@ -2438,16 +2445,21 @@ function InfiniteCanvasLocalShellSurface({
   }, [ingest]);
 
   const pasteCanvasNodes = useCallback(
-    async (payload: CanvasNodeClipboardPayload) => {
+    async (
+      payload: CanvasNodeClipboardPayload,
+      options?: { target?: FlowPosition; selectPasted?: boolean },
+    ) => {
       const canvasId = shellStateRef.current.canvasId;
       if (!canvasId) return;
       const highestZIndex = shellStateRef.current.document.nodes.reduce(
         (maximum, node) => Math.max(maximum, node.zIndex),
         0,
       );
-      const target = pointerRef.current
-        ? screenToFlowRef.current(pointerRef.current)
-        : centerPosition();
+      const target =
+        options?.target ??
+        (pointerRef.current
+          ? screenToFlowRef.current(pointerRef.current)
+          : centerPosition());
       const canonicalNodes = materializeCanvasNodeClipboardPaste(payload, {
         target,
         zIndexStart: highestZIndex + 1,
@@ -2523,11 +2535,17 @@ function InfiniteCanvasLocalShellSurface({
           runtimeIds.has(node.id),
         );
         if (persistedNodes.length === 0) return;
+        const selectPasted = options?.selectPasted !== false;
         setNodes((current) => [
-          ...current.map((node) =>
-            node.selected ? { ...node, selected: false } : node,
-          ),
-          ...runtimeNodes.map((node) => ({ ...node, selected: true })),
+          ...(selectPasted
+            ? current.map((node) =>
+                node.selected ? { ...node, selected: false } : node,
+              )
+            : current),
+          ...runtimeNodes.map((node) => ({
+            ...node,
+            selected: selectPasted,
+          })),
         ]);
         controller.insertCanvasNodes(persistedNodes);
         syncState();
@@ -2553,6 +2571,57 @@ function InfiniteCanvasLocalShellSurface({
       taskBridge,
       taskWorkspaceId,
     ],
+  );
+
+  const duplicateSelectionAtDragStart = useCallback(
+    (event: ReactMouseEvent, dragNodes: readonly CanvasFlowNode[]): void => {
+      if (!event.altKey || altDuplicateGestureRef.current) return;
+      const selectedNodeIds = new Set(dragNodes.map((node) => node.id));
+      const payload = createCanvasNodeClipboardPayload(
+        controller.state.document,
+        selectedNodeIds,
+      );
+      if (!payload) return;
+
+      let minX = Number.POSITIVE_INFINITY;
+      let minY = Number.POSITIVE_INFINITY;
+      let maxX = Number.NEGATIVE_INFINITY;
+      let maxY = Number.NEGATIVE_INFINITY;
+      for (const node of payload.nodes) {
+        minX = Math.min(minX, node.position.x);
+        minY = Math.min(minY, node.position.y);
+        maxX = Math.max(maxX, node.position.x + node.size.width);
+        maxY = Math.max(maxY, node.position.y + node.size.height);
+      }
+      altDuplicateGestureRef.current = true;
+      void pasteCanvasNodes(payload, {
+        target: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 },
+        selectPasted: false,
+      });
+    },
+    [controller, pasteCanvasNodes],
+  );
+
+  const handleNodeDragStart = useCallback(
+    (event: ReactMouseEvent, node: CanvasFlowNode): void => {
+      nodeDragActiveRef.current = true;
+      edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
+      const selectedNodes = nodesRef.current.filter((candidate) =>
+        Boolean(candidate.selected),
+      );
+      if (selectedNodes.length > 1) return;
+      duplicateSelectionAtDragStart(event, [node]);
+    },
+    [duplicateSelectionAtDragStart],
+  );
+
+  const handleSelectionDragStart = useCallback(
+    (event: ReactMouseEvent, selectedNodes: CanvasFlowNode[]): void => {
+      nodeDragActiveRef.current = true;
+      edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
+      duplicateSelectionAtDragStart(event, selectedNodes);
+    },
+    [duplicateSelectionAtDragStart],
   );
 
   useEffect(() => {
@@ -3397,6 +3466,7 @@ function InfiniteCanvasLocalShellSurface({
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
             onNodeDragStart={handleNodeDragStart}
+            onSelectionDragStart={handleSelectionDragStart}
             onNodeDragStop={handleNodeDragStop}
             onConnect={handleConnect}
             connectionMode={ConnectionMode.Loose}
@@ -3623,6 +3693,7 @@ function InfiniteCanvasLocalShellSurface({
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
             onNodeDragStart={handleNodeDragStart}
+            onSelectionDragStart={handleSelectionDragStart}
             onNodeDragStop={handleNodeDragStop}
             onConnect={handleConnect}
             connectionMode={ConnectionMode.Loose}
