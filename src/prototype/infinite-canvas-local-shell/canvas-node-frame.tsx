@@ -38,6 +38,13 @@ export type CanvasNodeFrameProps = {
 type CanvasTextEditSnapshot = {
   caret: number;
   previewHeight: number;
+  previewLeft: number;
+  previewTop: number;
+  previewWidth: number;
+  font: string;
+  letterSpacing: string;
+  lineHeight: string;
+  textAlign: string;
 };
 
 function caretPointFromDocument(
@@ -113,23 +120,34 @@ function restoreCanvasTextEditSnapshot(
   }
 
   const previewHeight = Math.max(1, snapshot.previewHeight);
+  const previewWidth = Math.max(1, snapshot.previewWidth);
+  input.style.setProperty("field-sizing", "fixed");
+  input.style.appearance = "none";
+  input.style.boxSizing = "border-box";
+  input.style.display = "block";
+  input.style.width = `${previewWidth}px`;
   input.style.height = `${previewHeight}px`;
   input.style.minHeight = `${previewHeight}px`;
-  input.style.display = "block";
+  input.style.maxHeight = `${previewHeight}px`;
   input.style.margin = "0";
+  input.style.padding = "0";
+  input.style.border = "0";
+  input.style.overflow = "hidden";
+  input.style.font = snapshot.font;
+  input.style.lineHeight = snapshot.lineHeight;
+  input.style.letterSpacing = snapshot.letterSpacing;
+  input.style.textAlign = snapshot.textAlign;
+  input.style.transform = "none";
+
+  const inputRect = input.getBoundingClientRect();
+  const deltaX = snapshot.previewLeft - inputRect.left;
+  const deltaY = snapshot.previewTop - inputRect.top;
+  input.style.transformOrigin = "top left";
+  input.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
 
   const caret = Math.max(0, Math.min(snapshot.caret, input.value.length));
   input.focus({ preventScroll: true });
   input.setSelectionRange(caret, caret);
-
-  input.addEventListener(
-    "input",
-    () => {
-      input.style.height = "";
-      input.style.minHeight = "";
-    },
-    { once: true },
-  );
 }
 
 function useIndividualSelectionVisible(selected: boolean): boolean {
@@ -343,9 +361,18 @@ export function CanvasNodeFrame({
       event.clientY,
     );
     if (caret === null) return;
+    const rect = surface.getBoundingClientRect();
+    const computed = window.getComputedStyle(surface);
     const snapshot: CanvasTextEditSnapshot = {
       caret,
-      previewHeight: surface.offsetHeight,
+      previewHeight: rect.height,
+      previewLeft: rect.left,
+      previewTop: rect.top,
+      previewWidth: rect.width,
+      font: computed.font,
+      letterSpacing: computed.letterSpacing,
+      lineHeight: computed.lineHeight,
+      textAlign: computed.textAlign,
     };
     requestAnimationFrame(() =>
       restoreCanvasTextEditSnapshot(event.currentTarget, snapshot),
