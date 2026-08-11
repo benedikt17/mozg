@@ -33,28 +33,18 @@ jobs:
 
           shell_path = Path("src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx")
           text = shell_path.read_text()
-          old = '''    <textarea
-              ref={inputRef}
-              value={draft}'''
-          new = '''    <textarea
-              ref={inputRef}
-              rows={1}
-              value={draft}'''
-          if old not in text:
-              raise SystemExit("Expected CanvasTextEditor textarea anchor not found")
+          old = "    <textarea\n      ref={inputRef}\n      value={draft}"
+          new = "    <textarea\n      ref={inputRef}\n      rows={1}\n      value={draft}"
           if text.count(old) != 1:
-              raise SystemExit(f"Expected exactly one textarea anchor, found {text.count(old)}")
+              raise SystemExit(f"Expected exactly one CanvasTextEditor textarea anchor, found {text.count(old)}")
           shell_path.write_text(text.replace(old, new, 1))
 
           test_path = Path("tests/canvas-miro-text-editing-runtime.test.ts")
           test = test_path.read_text()
-          old_test = '''    expect(shell).toContain("input.setSelectionRange(caret, caret)");
-            expect(frame).not.toContain("withCenteredTextContent");'''
-          new_test = '''    expect(shell).toContain("input.setSelectionRange(caret, caret)");
-            expect(shell).toContain("rows={1}");
-            expect(frame).not.toContain("withCenteredTextContent");'''
-          if old_test not in test:
-              raise SystemExit("Expected text-editing regression-test anchor not found")
+          old_test = '    expect(shell).toContain("input.setSelectionRange(caret, caret)");\n    expect(frame).not.toContain("withCenteredTextContent");'
+          new_test = '    expect(shell).toContain("input.setSelectionRange(caret, caret)");\n    expect(shell).toContain("rows={1}");\n    expect(frame).not.toContain("withCenteredTextContent");'
+          if test.count(old_test) != 1:
+              raise SystemExit(f"Expected exactly one text-editing test anchor, found {test.count(old_test)}")
           test_path.write_text(test.replace(old_test, new_test, 1))
 
       - name: Format touched files
