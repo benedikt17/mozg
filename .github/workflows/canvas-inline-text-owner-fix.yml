@@ -1,0 +1,299 @@
+name: Canvas in-place text owner fix
+
+on:
+  pull_request:
+    branches:
+      - refactor/prototype-state-root
+    types:
+      - synchronize
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.number == 49 && github.event.pull_request.head.ref == 'agent/canvas-miro-editing-selection-polish'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/canvas-miro-editing-selection-polish
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Replace textarea editor with layout-stable contenteditable editor
+        shell: python
+        run: |
+          from pathlib import Path
+
+          shell_path = Path("src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx")
+          shell = shell_path.read_text()
+          start = shell.index("function CanvasTextEditor({")
+          end = shell.index("\nfunction TextNodeBody({", start)
+          replacement = r'''type PendingCanvasTextEditPoint = {
+  id: string;
+  clientX: number;
+  clientY: number;
+};
+
+let pendingCanvasTextEditPoint: PendingCanvasTextEditPoint | null = null;
+
+function placeCanvasTextCaretAtPoint(
+  editor: HTMLDivElement,
+  clientX: number,
+  clientY: number,
+): boolean {
+  const caretDocument = document as Document & {
+    caretPositionFromPoint?: (
+      x: number,
+      y: number,
+    ) => { offsetNode: Node; offset: number } | null;
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+  };
+  let range: Range | null = null;
+  const caretPosition = caretDocument.caretPositionFromPoint?.(clientX, clientY);
+  if (caretPosition && editor.contains(caretPosition.offsetNode)) {
+    range = document.createRange();
+    range.setStart(caretPosition.offsetNode, caretPosition.offset);
+    range.collapse(true);
+  } else {
+    const fallbackRange = caretDocument.caretRangeFromPoint?.(clientX, clientY);
+    if (fallbackRange && editor.contains(fallbackRange.startContainer)) {
+      range = fallbackRange;
+    }
+  }
+  if (!range) return false;
+  const selection = window.getSelection();
+  if (!selection) return false;
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
+}
+
+function moveCanvasTextCaretToEnd(editor: HTMLDivElement): void {
+  const range = document.createRange();
+  range.selectNodeContents(editor);
+  range.collapse(false);
+  const selection = window.getSelection();
+  if (!selection) return;
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function CanvasTextEditor({
+  id,
+  markdown,
+}: {
+  id: string;
+  markdown: string;
+}): React.JSX.Element {
+  const inputRef = useRef<HTMLDivElement | null>(null);
+  const draftRef = useRef(markdown);
+  const skipNextBlurCommitRef = useRef(false);
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.textContent = draftRef.current;
+    input.focus({ preventScroll: true });
+    const point = pendingCanvasTextEditPoint;
+    pendingCanvasTextEditPoint = null;
+    if (
+      !point ||
+      point.id !== id ||
+      !placeCanvasTextCaretAtPoint(input, point.clientX, point.clientY)
+    ) {
+      moveCanvasTextCaretToEnd(input);
+    }
+  }, [id]);
+
+  const update = (value: string) => {
+    draftRef.current = value;
+    window.dispatchEvent(
+      new CustomEvent("mozg:canvas-text-draft", {
+        detail: { id, markdown: value },
+      }),
+    );
+  };
+  const commit = () => {
+    window.dispatchEvent(
+      new CustomEvent("mozg:canvas-text-commit", {
+        detail: { id, markdown: commitTextMarkdown(draftRef.current) },
+      }),
+    );
+  };
+  const cancel = () => {
+    skipNextBlurCommitRef.current = true;
+    window.dispatchEvent(
+      new CustomEvent("mozg:canvas-text-cancel", { detail: { id } }),
+    );
+  };
+  return (
+    <div
+      ref={inputRef}
+      role="textbox"
+      aria-label="Canvas text"
+      aria-multiline="true"
+      contentEditable
+      suppressContentEditableWarning
+      className={`${styles.textEditorInput} nodrag nopan nowheel`}
+      onBlur={() => {
+        if (skipNextBlurCommitRef.current) {
+          skipNextBlurCommitRef.current = false;
+          return;
+        }
+        commit();
+      }}
+      onInput={(event) => update(event.currentTarget.innerText.replace(/\r/g, ""))}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        if (event.key === "Escape") {
+          event.preventDefault();
+          cancel();
+        } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+          event.preventDefault();
+          event.currentTarget.blur();
+        }
+      }}
+      onPaste={(event) => event.stopPropagation()}
+    />
+  );
+}
+'''
+          shell = shell[:start] + replacement + shell[end:]
+
+          old_double_click = '''        onDoubleClick={(event) => {
+          event.stopPropagation();
+          window.dispatchEvent(
+            new CustomEvent("mozg:canvas-text-edit", { detail: { id } }),
+          );
+        }}'''
+          new_double_click = '''        onDoubleClick={(event) => {
+          event.stopPropagation();
+          pendingCanvasTextEditPoint = {
+            id,
+            clientX: event.clientX,
+            clientY: event.clientY,
+          };
+          window.dispatchEvent(
+            new CustomEvent("mozg:canvas-text-edit", { detail: { id } }),
+          );
+        }}'''
+          if shell.count(old_double_click) != 1:
+            raise SystemExit(f"Expected exactly one text double-click anchor, found {shell.count(old_double_click)}")
+          shell = shell.replace(old_double_click, new_double_click, 1)
+          shell_path.write_text(shell)
+
+          css_path = Path("src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css")
+          css = css_path.read_text()
+          css_start = css.index(".textEditorInput {")
+          css_end = css.index("\n.textEditorInput::placeholder", css_start)
+          css_replacement = '''.textEditorInput {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  min-width: 0;
+  min-height: 1.25em;
+  align-self: center;
+  overflow: visible;
+  border: 0;
+  outline: 0;
+  padding: 0;
+  color: inherit;
+  caret-color: #111111;
+  background: transparent;
+  font: inherit;
+  line-height: inherit;
+  text-align: inherit;
+  text-decoration: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+'''
+          css = css[:css_start] + css_replacement + css[css_end:]
+          css_path.write_text(css)
+
+          test_path = Path("tests/canvas-miro-text-editing-runtime.test.ts")
+          test_path.write_text(r'''import fs from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+
+const shell = fs.readFileSync(
+  path.resolve(
+    process.cwd(),
+    "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
+  ),
+  "utf8",
+);
+const frame = fs.readFileSync(
+  path.resolve(
+    process.cwd(),
+    "src/prototype/infinite-canvas-local-shell/canvas-node-frame.tsx",
+  ),
+  "utf8",
+);
+const css = fs.readFileSync(
+  path.resolve(
+    process.cwd(),
+    "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css",
+  ),
+  "utf8",
+);
+
+describe("Canvas Miro-style in-place text editing", () => {
+  it("edits with the same layout surface instead of swapping in a textarea", () => {
+    expect(shell).toContain('contentEditable');
+    expect(shell).toContain('role="textbox"');
+    expect(shell).not.toMatch(/<textarea[\s\S]*?aria-label="Canvas text"/);
+    expect(frame).not.toContain("withCenteredTextContent");
+    expect(css).toContain("caret-color: #111111");
+    expect(css).not.toContain("field-sizing: content");
+  });
+
+  it("places the native caret from the actual double-click point", () => {
+    expect(shell).toContain("pendingCanvasTextEditPoint = {");
+    expect(shell).toContain("clientX: event.clientX");
+    expect(shell).toContain("clientY: event.clientY");
+    expect(shell).toContain("placeCanvasTextCaretAtPoint(");
+    expect(shell).toContain("caretPositionFromPoint");
+    expect(shell).toContain("caretRangeFromPoint");
+  });
+
+  it("keeps preview and editor vertically centered in the same node geometry", () => {
+    expect(css).toMatch(
+      /\.textNodeContent \{[\s\S]*display: flex;[\s\S]*align-items: center;/,
+    );
+    expect(css).toMatch(
+      /\.textPreview \{[\s\S]*height: auto;[\s\S]*max-height: 100%;/,
+    );
+    expect(css).toMatch(
+      /\.textEditorInput \{[\s\S]*display: block;[\s\S]*height: auto;[\s\S]*align-self: center;/,
+    );
+  });
+});
+''')
+
+      - name: Format and focused tests
+        run: |
+          npx prettier --write src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css tests/canvas-miro-text-editing-runtime.test.ts
+          npx vitest run tests/canvas-miro-text-editing-runtime.test.ts
+          npm run typecheck
+
+      - name: Commit fix and remove temporary workflow
+        run: |
+          rm .github/workflows/canvas-inline-text-owner-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css tests/canvas-miro-text-editing-runtime.test.ts .github/workflows/canvas-inline-text-owner-fix.yml
+          git diff --cached --check
+          git commit -m "Canvas: preserve text layout and click caret in edit mode"
+          git push origin HEAD:agent/canvas-miro-editing-selection-polish
