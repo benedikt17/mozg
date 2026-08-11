@@ -20,13 +20,6 @@ jobs:
           ref: agent/canvas-miro-editing-selection-polish
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - run: npm ci
-
       - name: Apply exact centering fix
         shell: python
         run: |
@@ -47,12 +40,6 @@ jobs:
           if test.count(old_test) != 1:
               raise SystemExit(f"Expected exactly one text-editing test anchor, found {test.count(old_test)}")
           test_path.write_text(test.replace(old_test, new_test, 1))
-
-      - name: Format touched files
-        run: npx prettier --write src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx tests/canvas-miro-text-editing-runtime.test.ts
-
-      - name: Run focused regression test
-        run: npx vitest run tests/canvas-miro-text-editing-runtime.test.ts
 
       - name: Commit fix and remove temporary workflow
         run: |
