@@ -75,9 +75,7 @@ function TaskDetailsWorkspaceToolbar({
   const subtasksMaterial = material.kind === "subtasks";
   const splitEnabled = splitDocument !== undefined;
   const splitAvailable = attachedDocuments.length > 0;
-  const editLabel = editing
-    ? "\u0413\u043e\u0442\u043e\u0432\u043e"
-    : "\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c";
+  const editLabel = editing ? "Готово" : "Редактировать";
 
   return (
     <div className="document-tabs-row task-details-workspace-toolbar">
@@ -88,15 +86,11 @@ function TaskDetailsWorkspaceToolbar({
             <UiIcon name={contextCollapsed ? "panel-right" : "panel-left"} />
           }
           label={
-            contextCollapsed
-              ? "\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442 \u0437\u0430\u0434\u0430\u0447\u0438"
-              : "\u0421\u043a\u0440\u044b\u0442\u044c \u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442 \u0437\u0430\u0434\u0430\u0447\u0438"
+            contextCollapsed ? "Показать контекст задачи" : "Скрыть контекст задачи"
           }
           onClick={onToggleContext}
           title={
-            contextCollapsed
-              ? "\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442 \u0437\u0430\u0434\u0430\u0447\u0438"
-              : "\u0421\u043a\u0440\u044b\u0442\u044c \u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442 \u0437\u0430\u0434\u0430\u0447\u0438"
+            contextCollapsed ? "Показать контекст задачи" : "Скрыть контекст задачи"
           }
           variant="quiet"
         />
@@ -106,9 +100,7 @@ function TaskDetailsWorkspaceToolbar({
           disabled={!subtasksMaterial}
           icon={<UiIcon name={editing ? "eye" : "pencil"} />}
           label={
-            subtasksMaterial
-              ? editLabel
-              : "\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u043f\u043e\u0434\u0437\u0430\u0434\u0430\u0447\u0438"
+            subtasksMaterial ? editLabel : "Редактировать подзадачи"
           }
           onClick={onToggleEditing}
           title={editLabel}
@@ -119,9 +111,9 @@ function TaskDetailsWorkspaceToolbar({
           aria-pressed={splitEnabled}
           disabled={!splitAvailable && !splitEnabled}
           icon={<UiIcon name="split" />}
-          label="\u0412\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u0438\u043b\u0438 \u0432\u044b\u043a\u043b\u044e\u0447\u0438\u0442\u044c Split"
+          label="Включить или выключить Split"
           onClick={onToggleSplit}
-          title="\u0412\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u0438\u043b\u0438 \u0432\u044b\u043a\u043b\u044e\u0447\u0438\u0442\u044c Split"
+          title="Включить или выключить Split"
           variant="quiet"
         />
       </div>
@@ -134,6 +126,8 @@ export function OverviewContextualReader({
   dispatch,
   documents,
   material,
+  mobileContextOpen,
+  onMobileContextOpenChange,
   task,
   state,
 }: {
@@ -141,11 +135,12 @@ export function OverviewContextualReader({
   dispatch: Dispatch;
   documents: PrototypeDocument[];
   material: OverviewTaskDetailMaterial;
+  mobileContextOpen: boolean;
+  onMobileContextOpenChange?: (open: boolean) => void;
   task: PrototypeTask;
   state: DesktopPrototypeState;
 }): React.JSX.Element {
   const [contextCollapsed, setContextCollapsed] = useState(false);
-  const [mobileContextOpen, setMobileContextOpen] = useState(false);
   const [subtasksEditing, setSubtasksEditing] = useState(false);
   const articleRef = useRef<HTMLElement>(null);
   const articleScrollDocumentIdRef = useRef<string | null>(
@@ -189,6 +184,7 @@ export function OverviewContextualReader({
 
   useEffect(() => {
     if (!mobileContextOpen) return;
+    if (window.matchMedia("(max-width: 767px)").matches) return;
     const frame = window.requestAnimationFrame(() => {
       mobileContextCloseRef.current?.focus();
     });
@@ -212,11 +208,13 @@ export function OverviewContextualReader({
   };
 
   const returnToBoard = (): void => {
+    onMobileContextOpenChange?.(false);
     dispatch({ type: "close-overview-article-preview" });
   };
 
   const closeMobileContext = (): void => {
-    setMobileContextOpen(false);
+    onMobileContextOpenChange?.(false);
+    if (window.matchMedia("(max-width: 767px)").matches) return;
     window.requestAnimationFrame(() => {
       mobileContextTriggerRef.current?.focus();
     });
@@ -402,7 +400,7 @@ export function OverviewContextualReader({
               <div className="overview-reader-mobile-actions">
                 <button
                   className="ui-button ui-button-quiet ui-button-compact"
-                  onClick={() => setMobileContextOpen(true)}
+                  onClick={() => onMobileContextOpenChange?.(true)}
                   ref={mobileContextTriggerRef}
                   type="button"
                 >
