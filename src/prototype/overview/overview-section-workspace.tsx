@@ -52,7 +52,7 @@ export function OverviewSectionWorkspace({
         .filter(Boolean)
         .join(" ")}
     >
-      <div aria-hidden={readerActive} className="overview-board-mode">
+      <div inert={readerActive} className="overview-board-mode">
         <OverviewWorkspace
           directions={directions}
           dispatch={dispatch}
