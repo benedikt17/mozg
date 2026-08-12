@@ -144,7 +144,9 @@ describe("mobile responsive shell", () => {
     expect(overview).toContain("mobileAlignmentInProgressRef");
     expect(overview).toContain("mobileAlignmentTimerRef");
     expect(overview).toContain('behavior: "smooth"');
-    expect(overview).toContain("if (mobileAlignmentInProgressRef.current) return");
+    expect(overview).toContain(
+      "if (mobileAlignmentInProgressRef.current) return",
+    );
   });
 
   it("keeps mobile document and Canvas action rows left-anchored and horizontally scrollable", () => {
