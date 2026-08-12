@@ -72,9 +72,7 @@
   }
 
   :global(
-    [data-mobile-reading-chrome="hidden"]
-      .section-knowledge
-      .document-tabs-row
+    [data-mobile-reading-chrome="hidden"] .section-knowledge .document-tabs-row
   ) {
     height: 0;
     max-height: 0;
