@@ -49,6 +49,8 @@ describe("mobile responsive shell", () => {
     expect(header).toContain('state.activeSection === "canvases"');
     expect(header).toContain("Свернуть список холстов");
     expect(header).toContain("Развернуть список холстов");
+    expect(header).toContain("onPointerDown={handleMobileDrawerPointerDown}");
+    expect(header).toContain("suppressMobileDrawerClickRef");
     expect(shell).toContain("is-mobile-tool-sidebar-open");
     expect(shell).toContain("mobile-tool-sidebar-backdrop");
     expect(css).toMatch(
@@ -57,6 +59,7 @@ describe("mobile responsive shell", () => {
     expect(mobileCss).toContain(":global(.mobile-tool-sidebar-trigger)");
     expect(mobileCss).toContain("position: fixed");
     expect(mobileCss).toContain("border-radius: 999px");
+    expect(mobileCss).toContain("touch-action: manipulation");
     expect(mobileCss).toContain(
       ':global(.section-canvases aside[aria-label="Дерево холстов"])',
     );
@@ -81,22 +84,27 @@ describe("mobile responsive shell", () => {
     expect(mobileCss).toContain('[aria-label="Свернуть список холстов"]');
   });
 
-  it("auto-hides Knowledge chrome while reading but keeps the universal drawer trigger available", () => {
+  it("auto-hides Knowledge action chrome without moving the persistent mobile header", () => {
     expect(nav).toContain("data-mobile-reading-chrome");
     expect(nav).toContain('target.classList.contains("document-page")');
     expect(nav).toContain("state.editingKnowledgeDocumentId !== null");
+    expect(nav).toContain("maxScrollTop");
     expect(nav).toContain("directionDistance >= 24");
     expect(nav).toContain("directionDistance >= 14");
     expect(mobileCss).toContain(
-      ':global([data-mobile-reading-chrome="hidden"] .application-header)',
-    );
-    expect(mobileCss).toContain(
-      ".application-header\n      .mobile-tool-sidebar-trigger",
-    );
-    expect(mobileCss).toContain(
       ':global([data-mobile-reading-chrome="hidden"] .document-tabs-row)',
     );
-    expect(mobileCss).toContain(".document-page:not(.is-editing)");
+    expect(mobileCss).not.toContain("--header-height: 0px");
+    expect(mobileCss).toContain("overscroll-behavior-y: contain");
+    expect(mobileCss).toContain("-webkit-overflow-scrolling: touch");
+  });
+
+  it("keeps project and active Knowledge article titles stable in the mobile header", () => {
+    expect(header).toContain("getKnowledgePaneState");
+    expect(header).toContain("application-article-title");
+    expect(mobileCss).toContain(":global(.application-article-title)");
+    expect(mobileCss).toContain("text-overflow: ellipsis");
+    expect(mobileCss).toContain("max-width: 48%");
   });
 
   it("removes mobile Knowledge tab and breadcrumb chrome while preserving the action row", () => {
@@ -123,7 +131,7 @@ describe("mobile responsive shell", () => {
     );
   });
 
-  it("aligns an expanded Overview card and its column to the mobile left edge", () => {
+  it("aligns an expanded Overview card and its column without fighting persisted scroll state", () => {
     expect(overview).toContain(
       'window.matchMedia("(max-width: 767px)").matches',
     );
@@ -133,7 +141,10 @@ describe("mobile responsive shell", () => {
     expect(overview).toContain(
       "board.scrollLeft + columnRect.left - boardRect.left",
     );
+    expect(overview).toContain("mobileAlignmentInProgressRef");
+    expect(overview).toContain("mobileAlignmentTimerRef");
     expect(overview).toContain('behavior: "smooth"');
+    expect(overview).toContain("if (mobileAlignmentInProgressRef.current) return");
   });
 
   it("keeps mobile document and Canvas action rows left-anchored and horizontally scrollable", () => {
@@ -150,8 +161,8 @@ describe("mobile responsive shell", () => {
     );
     expect(mobileCss).toContain(".react-flow__controls");
     expect(mobileCss).toContain('[class*="canvasHint"]');
-    expect(mobileCss).toContain("grid-template-rows: 48px");
-    expect(mobileCss).toContain("height: 48px");
+    expect(mobileCss).toContain("grid-template-rows: 38px");
+    expect(mobileCss).toContain("height: 38px");
     expect(mobileCss).toContain('[aria-live="polite"]:has(button)');
   });
 });
