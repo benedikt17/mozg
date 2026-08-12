@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { publicProjectSections } from "@/prototype/desktop-mock-data";
 import {
   getActiveProject,
@@ -135,37 +135,81 @@ export function ApplicationHeader({
   state,
   dispatch,
   runtimeMode,
+  mobileOverviewContextOpen = false,
   mobileToolSidebarOpen = false,
+  onToggleMobileOverviewContext,
   onToggleMobileToolSidebar,
 }: {
   state: DesktopPrototypeState;
   dispatch: Dispatch;
   runtimeMode: DesktopRuntimeMode;
+  mobileOverviewContextOpen?: boolean;
   mobileToolSidebarOpen?: boolean;
+  onToggleMobileOverviewContext?: () => void;
   onToggleMobileToolSidebar?: () => void;
 }): React.JSX.Element {
   const router = useRouter();
   const suppressMobileDrawerClickRef = useRef(false);
+  const [canvasDrawerOpen, setCanvasDrawerOpen] = useState(false);
   const logout = async (): Promise<void> => {
     await createClient().auth.signOut();
     router.replace("/sign-in");
     router.refresh();
   };
+  const overviewReaderDrawer =
+    state.activeSection === "overview" &&
+    state.overviewArticleSourceTaskId !== null;
+  const canvasDrawer = state.activeSection === "canvases";
   const hasMobileSectionDrawer =
+    overviewReaderDrawer ||
     state.activeSection === "knowledge" ||
     state.activeSection === "tasks" ||
-    state.activeSection === "canvases";
-  const canvasDrawer = state.activeSection === "canvases";
+    canvasDrawer;
+  const mobileDrawerOpen = canvasDrawer
+    ? canvasDrawerOpen
+    : overviewReaderDrawer
+      ? mobileOverviewContextOpen
+      : mobileToolSidebarOpen;
   const activeKnowledgeTitle =
     state.activeSection === "knowledge"
       ? (getKnowledgePaneState(state).activeDocument?.title ?? null)
       : null;
+
+  useEffect(() => {
+    if (canvasDrawer || !canvasDrawerOpen) return;
+    const frame = window.requestAnimationFrame(() => setCanvasDrawerOpen(false));
+    return () => window.cancelAnimationFrame(frame);
+  }, [canvasDrawer, canvasDrawerOpen]);
+
+  const findCanvasDrawerToggle = (): HTMLButtonElement | null =>
+    window.document.querySelector<HTMLButtonElement>(
+      '[aria-label="Свернуть список холстов"], [aria-label="Развернуть список холстов"]',
+    );
+
+  const toggleCanvasDrawer = (): void => {
+    const canvasToggle = findCanvasDrawerToggle();
+    if (!canvasToggle) return;
+    const opening =
+      canvasToggle.getAttribute("aria-label") === "Развернуть список холстов";
+    canvasToggle.click();
+    setCanvasDrawerOpen(opening);
+  };
+
+  const closeCanvasDrawer = (): void => {
+    const canvasToggle = findCanvasDrawerToggle();
+    if (canvasToggle?.getAttribute("aria-label") === "Свернуть список холстов") {
+      canvasToggle.click();
+    }
+    setCanvasDrawerOpen(false);
+  };
+
   const toggleMobileSectionDrawer = (): void => {
     if (canvasDrawer) {
-      const canvasToggle = window.document.querySelector<HTMLButtonElement>(
-        '[aria-label="Свернуть список холстов"], [aria-label="Развернуть список холстов"]',
-      );
-      canvasToggle?.click();
+      toggleCanvasDrawer();
+      return;
+    }
+    if (overviewReaderDrawer) {
+      onToggleMobileOverviewContext?.();
       return;
     }
     onToggleMobileToolSidebar?.();
@@ -212,28 +256,30 @@ export function ApplicationHeader({
       </button>
       {hasMobileSectionDrawer ? (
         <button
-          aria-expanded={canvasDrawer ? undefined : mobileToolSidebarOpen}
+          aria-expanded={mobileDrawerOpen}
           aria-label={
-            canvasDrawer
-              ? "Открыть или закрыть панель раздела"
-              : mobileToolSidebarOpen
-                ? "Закрыть панель раздела"
-                : "Открыть панель раздела"
+            mobileDrawerOpen
+              ? "Закрыть панель раздела"
+              : "Открыть панель раздела"
           }
           className="mobile-tool-sidebar-trigger"
           onClick={handleMobileDrawerClick}
           onPointerDown={handleMobileDrawerPointerDown}
           type="button"
         >
-          <UiIcon
-            name={
-              !canvasDrawer && mobileToolSidebarOpen ? "close" : "panel-left"
-            }
-          />
+          <UiIcon name={mobileDrawerOpen ? "close" : "panel-left"} />
         </button>
       ) : (
         <span className="mobile-tool-sidebar-spacer" aria-hidden="true" />
       )}
+      {canvasDrawer && canvasDrawerOpen ? (
+        <button
+          aria-label="Закрыть дерево холстов"
+          className="mobile-canvas-drawer-backdrop"
+          onClick={closeCanvasDrawer}
+          type="button"
+        />
+      ) : null}
       <ApplicationSectionNavigation state={state} dispatch={dispatch} />
       <div className="application-header-right">
         <ApplicationSectionActions state={state} dispatch={dispatch} />
