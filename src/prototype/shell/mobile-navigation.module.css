@@ -1,0 +1,55 @@
+.mobileEnhancements {
+  display: contents;
+}
+
+@media (max-width: 767px) {
+  :global(.desktop-prototype[data-mobile-reading-chrome="hidden"]) {
+    --header-height: 0px;
+  }
+
+  :global(.desktop-prototype .application-header) {
+    transition:
+      transform 160ms ease,
+      opacity 120ms ease;
+  }
+
+  :global(
+    .desktop-prototype[data-mobile-reading-chrome="hidden"]
+      .application-header
+  ) {
+    min-height: 0;
+    height: 0;
+    overflow: hidden;
+    border-bottom-color: transparent;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-100%);
+  }
+
+  :global(
+    .desktop-prototype[data-mobile-reading-chrome="hidden"]
+      .document-workspace
+      > .document-tabs-row
+  ),
+  :global(
+    .desktop-prototype[data-mobile-reading-chrome="hidden"]
+      .document-body
+      > .document-breadcrumb-row
+  ) {
+    display: none;
+  }
+
+  :global(.desktop-prototype .document-tabs-row > .document-actions) {
+    justify-content: flex-start;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  :global(
+    .desktop-prototype .document-tabs-row > .document-actions::-webkit-scrollbar
+  ) {
+    display: none;
+  }
+}
