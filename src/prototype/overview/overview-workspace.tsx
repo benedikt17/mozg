@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useLayoutEffect,
   useRef,
   useState,
@@ -61,6 +62,7 @@ export function OverviewWorkspace({
   const boardRef = useRef<HTMLElement>(null);
   const mobileAlignmentInProgressRef = useRef(false);
   const mobileAlignmentTimerRef = useRef<number | null>(null);
+  const mobileGestureSettleTimerRef = useRef<number | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, {
@@ -70,6 +72,51 @@ export function OverviewWorkspace({
   const activeTask = tasks.find((task) => task.id === activeTaskId);
   const visibleDirections = directions.filter(
     (direction) => !hiddenDirectionIds.includes(direction.id),
+  );
+
+  const commitBoardScroll = useCallback(
+    (board: HTMLElement): void => {
+      dispatch({
+        type: "set-overview-scroll-left",
+        scrollLeft: board.scrollLeft,
+      });
+    },
+    [dispatch],
+  );
+
+  const alignMobileColumn = useCallback(
+    (column: HTMLElement): void => {
+      if (!window.matchMedia("(max-width: 767px)").matches) return;
+      const board = boardRef.current;
+      if (!board || !board.contains(column)) return;
+
+      const boardRect = board.getBoundingClientRect();
+      const columnRect = column.getBoundingClientRect();
+      const targetLeft = Math.max(
+        0,
+        board.scrollLeft + columnRect.left - boardRect.left,
+      );
+      if (Math.abs(board.scrollLeft - targetLeft) < 1) return;
+
+      mobileAlignmentInProgressRef.current = true;
+      if (mobileGestureSettleTimerRef.current !== null) {
+        window.clearTimeout(mobileGestureSettleTimerRef.current);
+        mobileGestureSettleTimerRef.current = null;
+      }
+      if (mobileAlignmentTimerRef.current !== null) {
+        window.clearTimeout(mobileAlignmentTimerRef.current);
+      }
+      board.scrollTo({
+        behavior: "smooth",
+        left: targetLeft,
+      });
+      mobileAlignmentTimerRef.current = window.setTimeout(() => {
+        mobileAlignmentInProgressRef.current = false;
+        mobileAlignmentTimerRef.current = null;
+        commitBoardScroll(board);
+      }, 420);
+    },
+    [commitBoardScroll],
   );
 
   useLayoutEffect(() => {
@@ -97,41 +144,27 @@ export function OverviewWorkspace({
         );
         const column = details?.closest<HTMLElement>(".board-column");
         if (!column || !board.contains(column)) return;
-
-        const boardRect = board.getBoundingClientRect();
-        const columnRect = column.getBoundingClientRect();
-        const targetLeft = board.scrollLeft + columnRect.left - boardRect.left;
-        if (Math.abs(board.scrollLeft - targetLeft) < 1) return;
-
-        mobileAlignmentInProgressRef.current = true;
-        if (mobileAlignmentTimerRef.current !== null) {
-          window.clearTimeout(mobileAlignmentTimerRef.current);
-        }
-        board.scrollTo({
-          behavior: "smooth",
-          left: Math.max(0, targetLeft),
-        });
-        mobileAlignmentTimerRef.current = window.setTimeout(() => {
-          mobileAlignmentInProgressRef.current = false;
-          mobileAlignmentTimerRef.current = null;
-          dispatch({
-            type: "set-overview-scroll-left",
-            scrollLeft: board.scrollLeft,
-          });
-        }, 420);
+        alignMobileColumn(column);
       });
     });
 
     return () => {
       window.cancelAnimationFrame(frame);
       if (settleFrame) window.cancelAnimationFrame(settleFrame);
+    };
+  }, [alignMobileColumn, expandedTaskId]);
+
+  useEffect(
+    () => () => {
       if (mobileAlignmentTimerRef.current !== null) {
         window.clearTimeout(mobileAlignmentTimerRef.current);
-        mobileAlignmentTimerRef.current = null;
       }
-      mobileAlignmentInProgressRef.current = false;
-    };
-  }, [dispatch, expandedTaskId]);
+      if (mobileGestureSettleTimerRef.current !== null) {
+        window.clearTimeout(mobileGestureSettleTimerRef.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!expandedTaskId) return;
@@ -203,10 +236,18 @@ export function OverviewWorkspace({
           aria-label="Рабочие направления проекта"
           onScroll={(event) => {
             if (mobileAlignmentInProgressRef.current) return;
-            dispatch({
-              type: "set-overview-scroll-left",
-              scrollLeft: event.currentTarget.scrollLeft,
-            });
+            const board = event.currentTarget;
+            if (!window.matchMedia("(max-width: 767px)").matches) {
+              commitBoardScroll(board);
+              return;
+            }
+            if (mobileGestureSettleTimerRef.current !== null) {
+              window.clearTimeout(mobileGestureSettleTimerRef.current);
+            }
+            mobileGestureSettleTimerRef.current = window.setTimeout(() => {
+              mobileGestureSettleTimerRef.current = null;
+              commitBoardScroll(board);
+            }, 180);
           }}
           ref={boardRef}
         >
@@ -220,6 +261,7 @@ export function OverviewWorkspace({
               expandedTaskId={expandedTaskId}
               key={direction.id}
               openTaskId={openTaskId}
+              onActivateColumn={alignMobileColumn}
               onToggleTaskExpanded={(taskId) =>
                 dispatch({ type: "toggle-overview-task-expanded", taskId })
               }
