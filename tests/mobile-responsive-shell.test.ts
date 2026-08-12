@@ -77,9 +77,7 @@ describe("mobile responsive shell", () => {
     expect(canvasCss).toContain("width: min(88vw, 340px)");
     expect(mobileCss).toContain("position: fixed !important");
     expect(mobileCss).toContain("left: 0 !important");
-    expect(mobileCss).toContain(
-      '[aria-label="Свернуть список холстов"]',
-    );
+    expect(mobileCss).toContain('[aria-label="Свернуть список холстов"]');
   });
 
   it("auto-hides Knowledge chrome while reading but keeps the universal drawer trigger available", () => {
