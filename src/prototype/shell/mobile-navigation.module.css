@@ -11,7 +11,7 @@
     transition: transform 160ms ease, opacity 120ms ease;
   }
 
-  :global([data-mobile-reading-chrome="hidden"]) :global(.application-header) {
+  :global([data-mobile-reading-chrome="hidden"] .application-header) {
     min-height: 0;
     height: 0;
     overflow: hidden;
@@ -21,9 +21,11 @@
     transform: translateY(-100%);
   }
 
-  :global([data-mobile-reading-chrome="hidden"]) :global(.document-tabs-row),
-  :global([data-mobile-reading-chrome="hidden"])
-    :global(.document-breadcrumb-row) {
+  :global([data-mobile-reading-chrome="hidden"] .document-tabs-row) {
+    display: none;
+  }
+
+  :global([data-mobile-reading-chrome="hidden"] .document-breadcrumb-row) {
     display: none;
   }
 
