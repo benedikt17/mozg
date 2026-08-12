@@ -81,7 +81,8 @@ export function MobileNavigation({
       if (!(target instanceof HTMLElement)) return;
       if (!target.classList.contains("document-page")) return;
 
-      const scrollTop = Math.max(target.scrollTop, 0);
+      const maxScrollTop = Math.max(0, target.scrollHeight - target.clientHeight);
+      const scrollTop = Math.min(Math.max(target.scrollTop, 0), maxScrollTop);
       if (scrollTop <= 16) {
         revealReadingChrome();
       }
