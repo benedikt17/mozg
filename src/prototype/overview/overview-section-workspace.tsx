@@ -17,9 +17,13 @@ type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 export function OverviewSectionWorkspace({
   state,
   dispatch,
+  mobileContextOpen = false,
+  onMobileContextOpenChange,
 }: {
   state: DesktopPrototypeState;
   dispatch: Dispatch;
+  mobileContextOpen?: boolean;
+  onMobileContextOpenChange?: (open: boolean) => void;
 }): React.JSX.Element {
   const directions = getProjectOverviewDirections(state);
   const documents = getActiveProjectDocuments(state);
@@ -74,6 +78,8 @@ export function OverviewSectionWorkspace({
           dispatch={dispatch}
           documents={documents}
           material={material ?? { kind: "subtasks" }}
+          mobileContextOpen={mobileContextOpen}
+          onMobileContextOpenChange={onMobileContextOpenChange}
           state={state}
           task={sourceTask}
         />
