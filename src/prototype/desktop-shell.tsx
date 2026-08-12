@@ -84,6 +84,8 @@ function DesktopPrototypeShellContent({
   const [commandQuery, setCommandQuery] = useState(getInitialCommandQuery);
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
   const [mobileToolSidebarOpen, setMobileToolSidebarOpen] = useState(false);
+  const [mobileOverviewContextOpen, setMobileOverviewContextOpen] =
+    useState(false);
   const seededFromUrl = useRef(false);
   const { commandPaletteOpen, documents, inboxItems, projects, tasks } = state;
   const commandResults = useMemo(
@@ -120,6 +122,21 @@ function DesktopPrototypeShellContent({
     if (isPublicProjectSection(state.activeSection)) return;
     dispatch({ type: "switch-section", section: "overview" });
   }, [state.activeSection, workspaceAvailable]);
+
+  useEffect(() => {
+    const overviewContextAvailable =
+      state.activeSection === "overview" &&
+      state.overviewArticleSourceTaskId !== null;
+    if (overviewContextAvailable || !mobileOverviewContextOpen) return;
+    const frame = window.requestAnimationFrame(() =>
+      setMobileOverviewContextOpen(false),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    mobileOverviewContextOpen,
+    state.activeSection,
+    state.overviewArticleSourceTaskId,
+  ]);
 
   useEffect(() => {
     if (!workspaceAvailable) return;
@@ -214,7 +231,11 @@ function DesktopPrototypeShellContent({
       <div className="project-workspace">
         <ApplicationHeader
           dispatch={dispatch}
+          mobileOverviewContextOpen={mobileOverviewContextOpen}
           mobileToolSidebarOpen={mobileToolSidebarOpen}
+          onToggleMobileOverviewContext={() =>
+            setMobileOverviewContextOpen((open) => !open)
+          }
           onToggleMobileToolSidebar={() =>
             setMobileToolSidebarOpen((open) => !open)
           }
@@ -223,8 +244,10 @@ function DesktopPrototypeShellContent({
         />
         <SectionWorkspace
           dispatch={dispatch}
+          mobileOverviewContextOpen={mobileOverviewContextOpen}
           mobileToolSidebarOpen={mobileToolSidebarOpen}
           onCloseMobileToolSidebar={() => setMobileToolSidebarOpen(false)}
+          onMobileOverviewContextOpenChange={setMobileOverviewContextOpen}
           state={state}
           workspaceId={workspaceId}
         />
@@ -349,14 +372,18 @@ function SectionWorkspace({
   state,
   dispatch,
   workspaceId,
+  mobileOverviewContextOpen,
   mobileToolSidebarOpen,
   onCloseMobileToolSidebar,
+  onMobileOverviewContextOpenChange,
 }: {
   state: DesktopPrototypeState;
   dispatch: Dispatch;
   workspaceId?: string;
+  mobileOverviewContextOpen: boolean;
   mobileToolSidebarOpen: boolean;
   onCloseMobileToolSidebar: () => void;
+  onMobileOverviewContextOpenChange: (open: boolean) => void;
 }): React.JSX.Element {
   const knowledgeHistory = useKnowledgeContentHistory();
   const [knowledgeTreeOverlayOpen, setKnowledgeTreeOverlayOpen] =
@@ -446,6 +473,8 @@ function SectionWorkspace({
                   state={state}
                 />
               ) : undefined,
+              mobileOverviewContextOpen,
+              onMobileOverviewContextOpenChange,
               onOpenKnowledgeTree: () => {
                 setKnowledgeSidebarCollapsed(false);
                 setKnowledgeTreeOverlayOpen(true);
@@ -553,6 +582,8 @@ function renderMainWorkspace(
   dispatch: Dispatch,
   options?: {
     aiPanel?: React.ReactNode;
+    mobileOverviewContextOpen?: boolean;
+    onMobileOverviewContextOpenChange?: (open: boolean) => void;
     onOpenKnowledgeTree?: () => void;
     onToggleKnowledgeTree?: () => void;
     treeOpen?: boolean;
@@ -599,5 +630,12 @@ function renderMainWorkspace(
   if (state.activeSection === "inbox") {
     return <InboxWorkspace state={state} dispatch={dispatch} />;
   }
-  return <OverviewSectionWorkspace state={state} dispatch={dispatch} />;
+  return (
+    <OverviewSectionWorkspace
+      dispatch={dispatch}
+      mobileContextOpen={options?.mobileOverviewContextOpen ?? false}
+      onMobileContextOpenChange={options?.onMobileOverviewContextOpenChange}
+      state={state}
+    />
+  );
 }
