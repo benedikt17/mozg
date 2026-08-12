@@ -31,7 +31,9 @@
     display: none;
   }
 
-  :global([data-mobile-reading-chrome="hidden"] .document-page:not(.is-editing)) {
+  :global(
+    [data-mobile-reading-chrome="hidden"] .document-page:not(.is-editing)
+  ) {
     padding-top: 16px;
   }
 
