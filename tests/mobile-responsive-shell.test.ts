@@ -11,6 +11,7 @@ const header = read("src/prototype/shell/application-header.tsx");
 const nav = read("src/prototype/shell/mobile-navigation.tsx");
 const mobileCss = read("src/prototype/shell/mobile-navigation.module.css");
 const css = read("src/prototype/desktop-shell.css");
+const overview = read("src/prototype/overview/overview-workspace.tsx");
 const overviewSection = read(
   "src/prototype/overview/overview-section-workspace.tsx",
 );
@@ -122,6 +123,17 @@ describe("mobile responsive shell", () => {
     );
   });
 
+  it("aligns an expanded Overview card and its column to the mobile left edge", () => {
+    expect(overview).toContain('window.matchMedia("(max-width: 767px)").matches');
+    expect(overview).toContain(
+      'details?.closest<HTMLElement>(".board-column")',
+    );
+    expect(overview).toContain(
+      "board.scrollLeft + columnRect.left - boardRect.left",
+    );
+    expect(overview).toContain('behavior: "smooth"');
+  });
+
   it("keeps mobile document and Canvas action rows left-anchored and horizontally scrollable", () => {
     expect(mobileCss).toContain(
       ":global(.document-tabs-row > .document-actions)",
@@ -130,12 +142,14 @@ describe("mobile responsive shell", () => {
     expect(mobileCss).toContain("overflow-x: auto");
   });
 
-  it("gives the mobile Canvas toolbar enough height for status plus controls", () => {
+  it("removes nonessential Canvas success chrome and phone-only helper controls", () => {
     expect(mobileCss).toContain(
-      ':global(.document-tabs-row[aria-label="Инструменты холста"])',
+      ":global(.desktop-persistence-status:not(.is-error))",
     );
-    expect(mobileCss).toContain("grid-template-rows: 24px 40px");
-    expect(mobileCss).toContain("height: 64px");
-    expect(mobileCss).toContain("flex: 0 0 64px");
+    expect(mobileCss).toContain(".react-flow__controls");
+    expect(mobileCss).toContain('[class*="canvasHint"]');
+    expect(mobileCss).toContain("grid-template-rows: 48px");
+    expect(mobileCss).toContain("height: 48px");
+    expect(mobileCss).toContain('[aria-live="polite"]:has(button)');
   });
 });
