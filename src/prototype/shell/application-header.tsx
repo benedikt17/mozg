@@ -177,7 +177,9 @@ export function ApplicationHeader({
 
   useEffect(() => {
     if (canvasDrawer || !canvasDrawerOpen) return;
-    const frame = window.requestAnimationFrame(() => setCanvasDrawerOpen(false));
+    const frame = window.requestAnimationFrame(() =>
+      setCanvasDrawerOpen(false),
+    );
     return () => window.cancelAnimationFrame(frame);
   }, [canvasDrawer, canvasDrawerOpen]);
 
@@ -190,14 +192,17 @@ export function ApplicationHeader({
     const canvasToggle = findCanvasDrawerToggle();
     if (!canvasToggle) return;
     const opening =
-      canvasToggle.getAttribute("aria-label") === "Развернуть список холстов";
+      canvasToggle.getAttribute("aria-label") ===
+      "Развернуть список холстов";
     canvasToggle.click();
     setCanvasDrawerOpen(opening);
   };
 
   const closeCanvasDrawer = (): void => {
     const canvasToggle = findCanvasDrawerToggle();
-    if (canvasToggle?.getAttribute("aria-label") === "Свернуть список холстов") {
+    if (
+      canvasToggle?.getAttribute("aria-label") === "Свернуть список холстов"
+    ) {
       canvasToggle.click();
     }
     setCanvasDrawerOpen(false);
