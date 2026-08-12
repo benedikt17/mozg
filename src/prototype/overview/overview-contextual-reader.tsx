@@ -86,11 +86,15 @@ function TaskDetailsWorkspaceToolbar({
             <UiIcon name={contextCollapsed ? "panel-right" : "panel-left"} />
           }
           label={
-            contextCollapsed ? "Показать контекст задачи" : "Скрыть контекст задачи"
+            contextCollapsed
+              ? "Показать контекст задачи"
+              : "Скрыть контекст задачи"
           }
           onClick={onToggleContext}
           title={
-            contextCollapsed ? "Показать контекст задачи" : "Скрыть контекст задачи"
+            contextCollapsed
+              ? "Показать контекст задачи"
+              : "Скрыть контекст задачи"
           }
           variant="quiet"
         />
@@ -99,9 +103,7 @@ function TaskDetailsWorkspaceToolbar({
           aria-pressed={editing}
           disabled={!subtasksMaterial}
           icon={<UiIcon name={editing ? "eye" : "pencil"} />}
-          label={
-            subtasksMaterial ? editLabel : "Редактировать подзадачи"
-          }
+          label={subtasksMaterial ? editLabel : "Редактировать подзадачи"}
           onClick={onToggleEditing}
           title={editLabel}
           variant="quiet"
