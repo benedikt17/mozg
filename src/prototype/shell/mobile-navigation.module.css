@@ -59,8 +59,29 @@
     background: var(--surface-selected) !important;
   }
 
-  :global([data-mobile-reading-chrome="hidden"] .document-tabs-row) {
-    display: none;
+  :global(.section-overview .overview-board) {
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 0;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  :global(.section-overview .board-column) {
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+  }
+
+  :global(
+    [data-mobile-reading-chrome="hidden"]
+      .section-knowledge
+      .document-tabs-row
+  ) {
+    height: 0;
+    max-height: 0;
+    border-bottom-color: transparent;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-6px);
   }
 
   :global([data-mobile-reading-chrome="hidden"] .document-breadcrumb-row) {
@@ -77,6 +98,7 @@
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-y;
+    transition: padding-top 180ms ease;
   }
 
   :global(.section-knowledge .document-tabs) {
@@ -85,17 +107,32 @@
 
   :global(.section-knowledge .document-tabs-row) {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    height: 40px;
+    min-height: 0;
+    max-height: 40px;
+    overflow: hidden;
+    opacity: 1;
+    transform: translateY(0);
+    transition:
+      height 180ms ease,
+      max-height 180ms ease,
+      opacity 140ms ease,
+      transform 180ms ease,
+      border-color 180ms ease;
   }
 
   :global(.section-knowledge .document-tabs-row > .document-actions) {
     grid-column: 1;
+    grid-row: 1;
     width: 100%;
     min-width: 0;
   }
 
   :global(.section-knowledge .document-breadcrumb-row),
-  :global(.section-knowledge .knowledge-responsive-actions) {
-    display: none;
+  :global(.section-knowledge .knowledge-responsive-actions),
+  :global(.section-knowledge .knowledge-responsive-close) {
+    display: none !important;
   }
 
   :global(.section-overview .task-details-toolbar-spacer),
@@ -110,6 +147,11 @@
 
   :global(.section-overview .task-details-workspace-toolbar) {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  :global(.section-overview .overview-reader-mobile-close),
+  :global(.section-overview .overview-reader-mobile-actions > button:first-child) {
+    display: none;
   }
 
   :global(.section-canvases [aria-label="Свернуть список холстов"]),
@@ -132,6 +174,20 @@
     border-bottom: 0 !important;
     background: var(--surface-2) !important;
     box-shadow: 12px 0 32px rgb(32 32 29 / 14%) !important;
+  }
+
+  :global(.mobile-canvas-drawer-backdrop) {
+    position: fixed;
+    top: var(--header-height);
+    right: 0;
+    bottom: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom));
+    left: min(88vw, 340px);
+    z-index: 75;
+    display: block;
+    border: 0;
+    background: rgb(32 32 29 / 22%);
+    padding: 0;
+    touch-action: manipulation;
   }
 
   :global(.desktop-persistence-status:not(.is-error)) {
@@ -202,5 +258,12 @@
     background: var(--surface);
     box-shadow: var(--shadow-overlay);
     padding: 6px 8px;
+  }
+}
+
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+  :global(.section-knowledge .document-tabs-row),
+  :global(.section-knowledge .document-page:not(.is-editing)) {
+    transition: none;
   }
 }
