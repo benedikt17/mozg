@@ -62,7 +62,11 @@ export function MobileNavigation({
       root.removeAttribute("data-mobile-reading-chrome");
     };
 
-    if (state.activeSection !== "knowledge" || !mobileViewport.matches) {
+    if (
+      state.activeSection !== "knowledge" ||
+      state.editingKnowledgeDocumentId !== null ||
+      !mobileViewport.matches
+    ) {
       revealReadingChrome();
       return;
     }
@@ -121,7 +125,7 @@ export function MobileNavigation({
       mobileViewport.removeEventListener("change", onViewportChange);
       revealReadingChrome();
     };
-  }, [state.activeSection]);
+  }, [state.activeSection, state.editingKnowledgeDocumentId]);
 
   const logout = async (): Promise<void> => {
     await createClient().auth.signOut();
