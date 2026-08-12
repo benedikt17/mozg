@@ -192,8 +192,7 @@ export function ApplicationHeader({
     const canvasToggle = findCanvasDrawerToggle();
     if (!canvasToggle) return;
     const opening =
-      canvasToggle.getAttribute("aria-label") ===
-      "Развернуть список холстов";
+      canvasToggle.getAttribute("aria-label") === "Развернуть список холстов";
     canvasToggle.click();
     setCanvasDrawerOpen(opening);
   };
