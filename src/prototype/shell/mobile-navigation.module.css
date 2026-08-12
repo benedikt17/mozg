@@ -31,6 +31,10 @@
     display: none;
   }
 
+  :global([data-mobile-reading-chrome="hidden"] .document-page:not(.is-editing)) {
+    padding-top: 16px;
+  }
+
   :global(.document-tabs-row > .document-actions) {
     justify-content: flex-start;
     overflow-x: auto;
