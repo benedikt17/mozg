@@ -12,6 +12,12 @@ const nav = read("src/prototype/shell/mobile-navigation.tsx");
 const mobileCss = read("src/prototype/shell/mobile-navigation.module.css");
 const css = read("src/prototype/desktop-shell.css");
 const overview = read("src/prototype/overview/overview-workspace.tsx");
+const overviewDirection = read(
+  "src/prototype/overview/overview-direction-column.tsx",
+);
+const overviewReader = read(
+  "src/prototype/overview/overview-contextual-reader.tsx",
+);
 const overviewSection = read(
   "src/prototype/overview/overview-section-workspace.tsx",
 );
@@ -44,13 +50,16 @@ describe("mobile responsive shell", () => {
     expect(css).toContain("env(safe-area-inset-bottom)");
   });
 
-  it("uses one sticky mobile drawer trigger for Knowledge, Tasks and Canvas", () => {
+  it("uses one sticky mobile drawer trigger for Overview details, Knowledge, Tasks and Canvas", () => {
     expect(header).toContain("mobile-tool-sidebar-trigger");
+    expect(header).toContain("overviewArticleSourceTaskId");
+    expect(header).toContain("mobileOverviewContextOpen");
     expect(header).toContain('state.activeSection === "canvases"');
     expect(header).toContain("Свернуть список холстов");
     expect(header).toContain("Развернуть список холстов");
     expect(header).toContain("onPointerDown={handleMobileDrawerPointerDown}");
     expect(header).toContain("suppressMobileDrawerClickRef");
+    expect(shell).toContain("mobileOverviewContextOpen");
     expect(shell).toContain("is-mobile-tool-sidebar-open");
     expect(shell).toContain("mobile-tool-sidebar-backdrop");
     expect(css).toMatch(
@@ -72,28 +81,37 @@ describe("mobile responsive shell", () => {
     expect(nav).not.toContain("useEffect(() => {\n    setMoreOpen(false);");
   });
 
-  it("starts the Canvas sidebar collapsed on mobile and overlays it from the left when opened", () => {
+  it("starts the Canvas sidebar collapsed, changes the header icon to close and blocks the exposed canvas gap", () => {
     expect(canvas).toContain('window.matchMedia("(max-width: 767px)").matches');
     expect(canvas).toContain("window.requestAnimationFrame");
     expect(canvasCss).toMatch(
       /@media \(max-width: 767px\)[\s\S]*\.desktopCanvasSidebar \{[\s\S]*position: absolute;/,
     );
     expect(canvasCss).toContain("width: min(88vw, 340px)");
+    expect(header).toContain("canvasDrawerOpen");
+    expect(header).toContain('mobileDrawerOpen ? "close" : "panel-left"');
+    expect(header).toContain("mobile-canvas-drawer-backdrop");
+    expect(header).toContain("closeCanvasDrawer");
+    expect(mobileCss).toContain(":global(.mobile-canvas-drawer-backdrop)");
+    expect(mobileCss).toContain("left: min(88vw, 340px)");
+    expect(mobileCss).toContain("z-index: 75");
     expect(mobileCss).toContain("position: fixed !important");
     expect(mobileCss).toContain("left: 0 !important");
     expect(mobileCss).toContain('[aria-label="Свернуть список холстов"]');
   });
 
-  it("auto-hides Knowledge action chrome without moving the persistent mobile header", () => {
+  it("auto-hides Knowledge action chrome smoothly without moving the persistent mobile header", () => {
     expect(nav).toContain("data-mobile-reading-chrome");
     expect(nav).toContain('target.classList.contains("document-page")');
     expect(nav).toContain("state.editingKnowledgeDocumentId !== null");
     expect(nav).toContain("maxScrollTop");
     expect(nav).toContain("directionDistance >= 24");
     expect(nav).toContain("directionDistance >= 14");
-    expect(mobileCss).toContain(
-      ':global([data-mobile-reading-chrome="hidden"] .document-tabs-row)',
-    );
+    expect(mobileCss).toContain("height: 0");
+    expect(mobileCss).toContain("max-height: 0");
+    expect(mobileCss).toContain("opacity: 0");
+    expect(mobileCss).toContain("height 180ms ease");
+    expect(mobileCss).toContain("padding-top 180ms ease");
     expect(mobileCss).not.toContain("--header-height: 0px");
     expect(mobileCss).toContain("overscroll-behavior-y: contain");
     expect(mobileCss).toContain("-webkit-overflow-scrolling: touch");
@@ -107,7 +125,7 @@ describe("mobile responsive shell", () => {
     expect(mobileCss).toContain("max-width: 48%");
   });
 
-  it("removes mobile Knowledge tab and breadcrumb chrome while preserving the action row", () => {
+  it("removes duplicate mobile Knowledge close/tab/breadcrumb chrome while preserving the action row", () => {
     expect(mobileCss).toContain(":global(.section-knowledge .document-tabs)");
     expect(mobileCss).toContain(
       ":global(.section-knowledge .document-breadcrumb-row)",
@@ -116,22 +134,36 @@ describe("mobile responsive shell", () => {
       ":global(.section-knowledge .knowledge-responsive-actions)",
     );
     expect(mobileCss).toContain(
+      ":global(.section-knowledge .knowledge-responsive-close)",
+    );
+    expect(mobileCss).toContain(
       ":global(.section-knowledge .document-tabs-row > .document-actions)",
     );
   });
 
-  it("keeps Overview details focus-safe and removes the redundant mobile context collapse control", () => {
+  it("keeps Overview details focus-safe and routes the phone context drawer through the header", () => {
     expect(overviewSection).toContain("inert={readerActive}");
     expect(overviewSection).not.toContain("aria-hidden={readerActive}");
+    expect(overviewSection).toContain("mobileContextOpen={mobileContextOpen}");
+    expect(overviewReader).toContain("onMobileContextOpenChange");
+    expect(overviewReader).toContain(
+      'window.matchMedia("(max-width: 767px)").matches',
+    );
     expect(mobileCss).toContain(
       ":global(.section-overview .task-details-toolbar-spacer)",
     );
     expect(mobileCss).toContain(
       ".task-details-workspace-toolbar\n      .document-actions\n      > button:first-child",
     );
+    expect(mobileCss).toContain(
+      ":global(.section-overview .overview-reader-mobile-close)",
+    );
+    expect(mobileCss).toContain(
+      ":global(.section-overview .overview-reader-mobile-actions > button:first-child)",
+    );
   });
 
-  it("aligns an expanded Overview card and its column without fighting persisted scroll state", () => {
+  it("aligns expanded Overview cards and tapped columns without fighting native scroll inertia", () => {
     expect(overview).toContain(
       'window.matchMedia("(max-width: 767px)").matches',
     );
@@ -143,10 +175,16 @@ describe("mobile responsive shell", () => {
     );
     expect(overview).toContain("mobileAlignmentInProgressRef");
     expect(overview).toContain("mobileAlignmentTimerRef");
+    expect(overview).toContain("mobileGestureSettleTimerRef");
+    expect(overview).toContain("onActivateColumn={alignMobileColumn}");
     expect(overview).toContain('behavior: "smooth"');
     expect(overview).toContain(
       "if (mobileAlignmentInProgressRef.current) return",
     );
+    expect(overviewDirection).toContain("onActivateColumn?.(event.currentTarget)");
+    expect(mobileCss).toContain("scroll-snap-type: x mandatory");
+    expect(mobileCss).toContain("scroll-snap-align: start");
+    expect(mobileCss).toContain("scroll-snap-stop: always");
   });
 
   it("keeps mobile document and Canvas action rows left-anchored and horizontally scrollable", () => {
