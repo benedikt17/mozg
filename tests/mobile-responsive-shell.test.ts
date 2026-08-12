@@ -9,6 +9,7 @@ const read = (file: string) =>
 const shell = read("src/prototype/desktop-shell.tsx");
 const header = read("src/prototype/shell/application-header.tsx");
 const nav = read("src/prototype/shell/mobile-navigation.tsx");
+const mobileCss = read("src/prototype/shell/mobile-navigation.module.css");
 const css = read("src/prototype/desktop-shell.css");
 const canvas = read(
   "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
@@ -62,5 +63,25 @@ describe("mobile responsive shell", () => {
       /@media \(max-width: 767px\)[\s\S]*\.desktopCanvasSidebar \{[\s\S]*position: absolute;/,
     );
     expect(canvasCss).toContain("width: min(88vw, 340px)");
+  });
+
+  it("auto-hides Knowledge chrome while reading and restores it when scrolling back", () => {
+    expect(nav).toContain("data-mobile-reading-chrome");
+    expect(nav).toContain('target.classList.contains("document-page")');
+    expect(nav).toContain("directionDistance >= 24");
+    expect(nav).toContain("directionDistance >= 14");
+    expect(mobileCss).toContain(
+      '.desktop-prototype[data-mobile-reading-chrome="hidden"]',
+    );
+    expect(mobileCss).toContain(".document-workspace");
+    expect(mobileCss).toContain(".document-breadcrumb-row");
+  });
+
+  it("keeps mobile document and Canvas action rows left-anchored and horizontally scrollable", () => {
+    expect(mobileCss).toContain(
+      ".desktop-prototype .document-tabs-row > .document-actions",
+    );
+    expect(mobileCss).toContain("justify-content: flex-start");
+    expect(mobileCss).toContain("overflow-x: auto");
   });
 });
