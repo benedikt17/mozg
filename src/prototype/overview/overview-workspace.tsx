@@ -77,6 +77,32 @@ export function OverviewWorkspace({
     }
   }, [overviewScrollLeft]);
 
+  useLayoutEffect(() => {
+    if (!expandedTaskId) return;
+    if (!window.matchMedia("(max-width: 767px)").matches) return;
+    const board = boardRef.current;
+    if (!board) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const details = window.document.getElementById(
+        `task-card-details-${expandedTaskId}`,
+      );
+      const column = details?.closest<HTMLElement>(".board-column");
+      if (!column || !board.contains(column)) return;
+
+      const boardRect = board.getBoundingClientRect();
+      const columnRect = column.getBoundingClientRect();
+      const targetLeft = board.scrollLeft + columnRect.left - boardRect.left;
+      if (Math.abs(board.scrollLeft - targetLeft) < 1) return;
+      board.scrollTo({
+        behavior: "smooth",
+        left: Math.max(0, targetLeft),
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [expandedTaskId]);
+
   useEffect(() => {
     if (!expandedTaskId) return;
 
