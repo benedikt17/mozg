@@ -53,7 +53,8 @@ export function MobileNavigation({
   }, [moreOpen]);
 
   useEffect(() => {
-    const root = window.document.querySelector<HTMLElement>(".desktop-prototype");
+    const root =
+      window.document.querySelector<HTMLElement>(".desktop-prototype");
     if (!root) return;
 
     const mobileViewport = window.matchMedia("(max-width: 767px)");
