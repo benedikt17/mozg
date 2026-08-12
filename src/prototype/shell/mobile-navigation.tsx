@@ -67,7 +67,7 @@ export function MobileNavigation({
       return;
     }
 
-    let activePage: HTMLElement | null = null;
+    let activeScroller: HTMLElement | null = null;
     let lastScrollTop = 0;
     let direction = 0;
     let directionDistance = 0;
@@ -75,15 +75,15 @@ export function MobileNavigation({
     const onScroll = (event: Event): void => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
-      if (!target.classList.contains("document-page")) return;
+      if (!target.classList.contains("main-workspace")) return;
 
       const scrollTop = Math.max(target.scrollTop, 0);
       if (scrollTop <= 16) {
         revealReadingChrome();
       }
 
-      if (target !== activePage) {
-        activePage = target;
+      if (target !== activeScroller) {
+        activeScroller = target;
         lastScrollTop = scrollTop;
         direction = 0;
         directionDistance = 0;
