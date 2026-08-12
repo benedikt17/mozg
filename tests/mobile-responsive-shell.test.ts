@@ -67,19 +67,23 @@ describe("mobile responsive shell", () => {
 
   it("auto-hides Knowledge chrome while reading and restores it when scrolling back", () => {
     expect(nav).toContain("data-mobile-reading-chrome");
-    expect(nav).toContain('target.classList.contains("document-page")');
+    expect(nav).toContain('target.classList.contains("main-workspace")');
     expect(nav).toContain("directionDistance >= 24");
     expect(nav).toContain("directionDistance >= 14");
     expect(mobileCss).toContain(
-      '.desktop-prototype[data-mobile-reading-chrome="hidden"]',
+      ':global([data-mobile-reading-chrome="hidden"] .application-header)',
     );
-    expect(mobileCss).toContain(".document-workspace");
-    expect(mobileCss).toContain(".document-breadcrumb-row");
+    expect(mobileCss).toContain(
+      ':global([data-mobile-reading-chrome="hidden"] .document-tabs-row)',
+    );
+    expect(mobileCss).toContain(
+      ':global([data-mobile-reading-chrome="hidden"] .document-breadcrumb-row)',
+    );
   });
 
   it("keeps mobile document and Canvas action rows left-anchored and horizontally scrollable", () => {
     expect(mobileCss).toContain(
-      ".desktop-prototype .document-tabs-row > .document-actions",
+      ":global(.document-tabs-row > .document-actions)",
     );
     expect(mobileCss).toContain("justify-content: flex-start");
     expect(mobileCss).toContain("overflow-x: auto");
