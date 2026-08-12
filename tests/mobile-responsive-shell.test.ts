@@ -11,6 +11,9 @@ const header = read("src/prototype/shell/application-header.tsx");
 const nav = read("src/prototype/shell/mobile-navigation.tsx");
 const mobileCss = read("src/prototype/shell/mobile-navigation.module.css");
 const css = read("src/prototype/desktop-shell.css");
+const overviewSection = read(
+  "src/prototype/overview/overview-section-workspace.tsx",
+);
 const canvas = read(
   "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
 );
@@ -40,12 +43,21 @@ describe("mobile responsive shell", () => {
     expect(css).toContain("env(safe-area-inset-bottom)");
   });
 
-  it("moves section sidebars into a mobile drawer without changing desktop markup", () => {
+  it("uses one sticky mobile drawer trigger for Knowledge, Tasks and Canvas", () => {
     expect(header).toContain("mobile-tool-sidebar-trigger");
+    expect(header).toContain('state.activeSection === "canvases"');
+    expect(header).toContain("Свернуть список холстов");
+    expect(header).toContain("Развернуть список холстов");
     expect(shell).toContain("is-mobile-tool-sidebar-open");
     expect(shell).toContain("mobile-tool-sidebar-backdrop");
     expect(css).toMatch(
       /\.section-workspace \.tool-sidebar \{[\s\S]*position: fixed;/,
+    );
+    expect(mobileCss).toContain(":global(.mobile-tool-sidebar-trigger)");
+    expect(mobileCss).toContain("position: fixed");
+    expect(mobileCss).toContain("border-radius: 999px");
+    expect(mobileCss).toContain(
+      ':global(.section-canvases aside[aria-label="Дерево холстов"])',
     );
   });
 
@@ -56,16 +68,21 @@ describe("mobile responsive shell", () => {
     expect(nav).not.toContain("useEffect(() => {\n    setMoreOpen(false);");
   });
 
-  it("starts the Canvas sidebar collapsed on mobile and keeps its desktop state otherwise", () => {
+  it("starts the Canvas sidebar collapsed on mobile and overlays it from the left when opened", () => {
     expect(canvas).toContain('window.matchMedia("(max-width: 767px)").matches');
     expect(canvas).toContain("window.requestAnimationFrame");
     expect(canvasCss).toMatch(
       /@media \(max-width: 767px\)[\s\S]*\.desktopCanvasSidebar \{[\s\S]*position: absolute;/,
     );
     expect(canvasCss).toContain("width: min(88vw, 340px)");
+    expect(mobileCss).toContain("position: fixed !important");
+    expect(mobileCss).toContain("left: 0 !important");
+    expect(mobileCss).toContain(
+      '[aria-label="Свернуть список холстов"]',
+    );
   });
 
-  it("auto-hides Knowledge chrome while reading and restores it when scrolling back", () => {
+  it("auto-hides Knowledge chrome while reading but keeps the universal drawer trigger available", () => {
     expect(nav).toContain("data-mobile-reading-chrome");
     expect(nav).toContain('target.classList.contains("document-page")');
     expect(nav).toContain("state.editingKnowledgeDocumentId !== null");
@@ -75,12 +92,36 @@ describe("mobile responsive shell", () => {
       ':global([data-mobile-reading-chrome="hidden"] .application-header)',
     );
     expect(mobileCss).toContain(
-      ':global([data-mobile-reading-chrome="hidden"] .document-tabs-row)',
+      ".application-header\n      .mobile-tool-sidebar-trigger",
     );
     expect(mobileCss).toContain(
-      ':global([data-mobile-reading-chrome="hidden"] .document-breadcrumb-row)',
+      ':global([data-mobile-reading-chrome="hidden"] .document-tabs-row)',
     );
     expect(mobileCss).toContain(".document-page:not(.is-editing)");
+  });
+
+  it("removes mobile Knowledge tab and breadcrumb chrome while preserving the action row", () => {
+    expect(mobileCss).toContain(":global(.section-knowledge .document-tabs)");
+    expect(mobileCss).toContain(
+      ":global(.section-knowledge .document-breadcrumb-row)",
+    );
+    expect(mobileCss).toContain(
+      ":global(.section-knowledge .knowledge-responsive-actions)",
+    );
+    expect(mobileCss).toContain(
+      ":global(.section-knowledge .document-tabs-row > .document-actions)",
+    );
+  });
+
+  it("keeps Overview details focus-safe and removes the redundant mobile context collapse control", () => {
+    expect(overviewSection).toContain("inert={readerActive}");
+    expect(overviewSection).not.toContain("aria-hidden={readerActive}");
+    expect(mobileCss).toContain(
+      ":global(.section-overview .task-details-toolbar-spacer)",
+    );
+    expect(mobileCss).toContain(
+      ".task-details-workspace-toolbar\n      .document-actions\n      > button:first-child",
+    );
   });
 
   it("keeps mobile document and Canvas action rows left-anchored and horizontally scrollable", () => {
