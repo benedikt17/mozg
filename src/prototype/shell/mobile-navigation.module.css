@@ -48,4 +48,35 @@
   :global(.document-tabs-row > .document-actions::-webkit-scrollbar) {
     display: none;
   }
+
+  :global(.document-tabs-row[aria-label="Инструменты холста"]) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 24px 40px;
+    min-height: 64px;
+    height: 64px;
+    flex: 0 0 64px;
+    align-items: center;
+    overflow: hidden;
+  }
+
+  :global(
+    .document-tabs-row[aria-label="Инструменты холста"] > .document-actions
+  ) {
+    grid-column: 1;
+    grid-row: 2;
+    width: 100%;
+    min-width: 0;
+    padding: 4px 8px;
+  }
+
+  :global(
+    .document-tabs-row[aria-label="Инструменты холста"]
+      > :not(.document-actions)
+  ) {
+    grid-column: 1;
+    grid-row: 1;
+    width: 100%;
+    min-width: 0;
+    padding: 4px 8px 0;
+  }
 }
