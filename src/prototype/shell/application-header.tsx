@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { publicProjectSections } from "@/prototype/desktop-mock-data";
 import {
   getActiveProject,
@@ -144,13 +144,37 @@ export function ApplicationHeader({
   onToggleMobileToolSidebar?: () => void;
 }): React.JSX.Element {
   const router = useRouter();
+  const [canvasMobileSidebarOpen, setCanvasMobileSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    setCanvasMobileSidebarOpen(false);
+  }, [state.activeProjectId, state.activeSection]);
+
   const logout = async (): Promise<void> => {
     await createClient().auth.signOut();
     router.replace("/sign-in");
     router.refresh();
   };
   const hasMobileSectionDrawer =
-    state.activeSection === "knowledge" || state.activeSection === "tasks";
+    state.activeSection === "knowledge" ||
+    state.activeSection === "tasks" ||
+    state.activeSection === "canvases";
+  const mobileDrawerOpen =
+    state.activeSection === "canvases"
+      ? canvasMobileSidebarOpen
+      : mobileToolSidebarOpen;
+  const toggleMobileSectionDrawer = (): void => {
+    if (state.activeSection === "canvases") {
+      const canvasToggle = window.document.querySelector<HTMLButtonElement>(
+        '[aria-label="Свернуть список холстов"], [aria-label="Развернуть список холстов"]',
+      );
+      if (!canvasToggle) return;
+      canvasToggle.click();
+      setCanvasMobileSidebarOpen((open) => !open);
+      return;
+    }
+    onToggleMobileToolSidebar?.();
+  };
   return (
     <header className="application-header">
       <button
@@ -167,17 +191,17 @@ export function ApplicationHeader({
       </button>
       {hasMobileSectionDrawer ? (
         <button
-          aria-expanded={mobileToolSidebarOpen}
+          aria-expanded={mobileDrawerOpen}
           aria-label={
-            mobileToolSidebarOpen
+            mobileDrawerOpen
               ? "Закрыть панель раздела"
               : "Открыть панель раздела"
           }
           className="mobile-tool-sidebar-trigger"
-          onClick={onToggleMobileToolSidebar}
+          onClick={toggleMobileSectionDrawer}
           type="button"
         >
-          <UiIcon name={mobileToolSidebarOpen ? "close" : "panel-left"} />
+          <UiIcon name={mobileDrawerOpen ? "close" : "panel-left"} />
         </button>
       ) : (
         <span className="mobile-tool-sidebar-spacer" aria-hidden="true" />
