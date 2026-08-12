@@ -181,7 +181,9 @@ describe("mobile responsive shell", () => {
     expect(overview).toContain(
       "if (mobileAlignmentInProgressRef.current) return",
     );
-    expect(overviewDirection).toContain("onActivateColumn?.(event.currentTarget)");
+    expect(overviewDirection).toContain(
+      "onActivateColumn?.(event.currentTarget)",
+    );
     expect(mobileCss).toContain("scroll-snap-type: x mandatory");
     expect(mobileCss).toContain("scroll-snap-align: start");
     expect(mobileCss).toContain("scroll-snap-stop: always");
