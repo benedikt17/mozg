@@ -8,7 +8,9 @@
   }
 
   :global(.application-header) {
-    transition: transform 160ms ease, opacity 120ms ease;
+    transition:
+      transform 160ms ease,
+      opacity 120ms ease;
   }
 
   :global([data-mobile-reading-chrome="hidden"] .application-header) {
