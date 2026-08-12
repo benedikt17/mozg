@@ -202,7 +202,10 @@ export function ApplicationHeader({
       >
         <strong>{getActiveProject(state).name}</strong>
         {activeKnowledgeTitle ? (
-          <span className="application-article-title" title={activeKnowledgeTitle}>
+          <span
+            className="application-article-title"
+            title={activeKnowledgeTitle}
+          >
             {activeKnowledgeTitle}
           </span>
         ) : null}
