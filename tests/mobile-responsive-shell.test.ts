@@ -159,7 +159,7 @@ describe("mobile responsive shell", () => {
       ":global(.section-overview .overview-reader-mobile-close)",
     );
     expect(mobileCss).toContain(
-      ":global(.section-overview .overview-reader-mobile-actions > button:first-child)",
+      ".section-overview .overview-reader-mobile-actions > button:first-child",
     );
   });
 
