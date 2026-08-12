@@ -67,7 +67,7 @@ describe("mobile responsive shell", () => {
 
   it("auto-hides Knowledge chrome while reading and restores it when scrolling back", () => {
     expect(nav).toContain("data-mobile-reading-chrome");
-    expect(nav).toContain('target.classList.contains("main-workspace")');
+    expect(nav).toContain('target.classList.contains("document-page")');
     expect(nav).toContain("directionDistance >= 24");
     expect(nav).toContain("directionDistance >= 14");
     expect(mobileCss).toContain(
