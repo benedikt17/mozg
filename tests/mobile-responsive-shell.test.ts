@@ -90,4 +90,13 @@ describe("mobile responsive shell", () => {
     expect(mobileCss).toContain("justify-content: flex-start");
     expect(mobileCss).toContain("overflow-x: auto");
   });
+
+  it("gives the mobile Canvas toolbar enough height for status plus controls", () => {
+    expect(mobileCss).toContain(
+      ':global(.document-tabs-row[aria-label="Инструменты холста"])',
+    );
+    expect(mobileCss).toContain("grid-template-rows: 24px 40px");
+    expect(mobileCss).toContain("height: 64px");
+    expect(mobileCss).toContain("flex: 0 0 64px");
+  });
 });
