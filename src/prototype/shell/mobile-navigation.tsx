@@ -14,6 +14,7 @@ import type {
 import { getActiveProject } from "@/prototype/desktop-state";
 import type { ProjectSection } from "@/prototype/desktop-mock-data";
 import { UiIcon, type UiIconName } from "@/prototype/desktop-icons";
+import styles from "./mobile-navigation.module.css";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 
@@ -51,6 +52,76 @@ export function MobileNavigation({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [moreOpen]);
 
+  useEffect(() => {
+    const root = window.document.querySelector<HTMLElement>(".desktop-prototype");
+    if (!root) return;
+
+    const mobileViewport = window.matchMedia("(max-width: 767px)");
+    const revealReadingChrome = (): void => {
+      root.removeAttribute("data-mobile-reading-chrome");
+    };
+
+    if (state.activeSection !== "knowledge" || !mobileViewport.matches) {
+      revealReadingChrome();
+      return;
+    }
+
+    let activePage: HTMLElement | null = null;
+    let lastScrollTop = 0;
+    let direction = 0;
+    let directionDistance = 0;
+
+    const onScroll = (event: Event): void => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (!target.classList.contains("document-page")) return;
+
+      const scrollTop = Math.max(target.scrollTop, 0);
+      if (scrollTop <= 16) {
+        revealReadingChrome();
+      }
+
+      if (target !== activePage) {
+        activePage = target;
+        lastScrollTop = scrollTop;
+        direction = 0;
+        directionDistance = 0;
+        return;
+      }
+
+      const delta = scrollTop - lastScrollTop;
+      lastScrollTop = scrollTop;
+      const nextDirection = Math.sign(delta);
+      if (nextDirection === 0) return;
+
+      if (nextDirection !== direction) {
+        direction = nextDirection;
+        directionDistance = 0;
+      }
+      directionDistance += Math.abs(delta);
+
+      if (direction > 0 && scrollTop > 64 && directionDistance >= 24) {
+        root.dataset.mobileReadingChrome = "hidden";
+        directionDistance = 0;
+      } else if (direction < 0 && directionDistance >= 14) {
+        revealReadingChrome();
+        directionDistance = 0;
+      }
+    };
+
+    const onViewportChange = (event: MediaQueryListEvent): void => {
+      if (!event.matches) revealReadingChrome();
+    };
+
+    window.addEventListener("scroll", onScroll, true);
+    mobileViewport.addEventListener("change", onViewportChange);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      mobileViewport.removeEventListener("change", onViewportChange);
+      revealReadingChrome();
+    };
+  }, [state.activeSection]);
+
   const logout = async (): Promise<void> => {
     await createClient().auth.signOut();
     router.replace("/sign-in");
@@ -63,7 +134,7 @@ export function MobileNavigation({
   };
 
   return (
-    <>
+    <div className={styles.mobileEnhancements}>
       <nav className="mobile-bottom-navigation" aria-label="Основные разделы">
         {mobileSections.map((section) => (
           <button
@@ -202,6 +273,6 @@ export function MobileNavigation({
           </section>
         </>
       ) : null}
-    </>
+    </div>
   );
 }
