@@ -2,41 +2,40 @@
   display: contents;
 }
 
+:global(.application-article-title) {
+  display: none;
+}
+
 @media (max-width: 767px) {
-  :global([data-mobile-reading-chrome="hidden"]) {
-    --header-height: 0px;
+  :global(.application-project-title) {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+    overflow: hidden;
+    white-space: nowrap;
   }
 
-  :global(.application-header) {
-    transition:
-      transform 160ms ease,
-      opacity 120ms ease;
+  :global(.application-project-title strong) {
+    min-width: 0;
+    max-width: 48%;
+    flex: 0 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  :global([data-mobile-reading-chrome="hidden"] .application-header) {
-    min-height: 0;
-    height: 0;
-    border-bottom-color: transparent;
-    background: transparent;
-    pointer-events: none;
-  }
-
-  :global(
-    [data-mobile-reading-chrome="hidden"]
-      .application-header
-      > :not(.mobile-tool-sidebar-trigger)
-  ) {
-    opacity: 0;
-    pointer-events: none;
-    transform: translateY(-100%);
-  }
-
-  :global(
-    [data-mobile-reading-chrome="hidden"]
-      .application-header
-      .mobile-tool-sidebar-trigger
-  ) {
-    pointer-events: auto;
+  :global(.application-article-title) {
+    min-width: 0;
+    flex: 1 1 0;
+    display: block;
+    overflow: hidden;
+    color: var(--text-3);
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   :global(.mobile-tool-sidebar-trigger) {
@@ -52,6 +51,7 @@
     border-radius: 999px !important;
     background: var(--surface) !important;
     box-shadow: 0 4px 14px rgb(32 32 29 / 14%);
+    touch-action: manipulation;
   }
 
   :global(.mobile-tool-sidebar-trigger:active),
@@ -71,6 +71,12 @@
     [data-mobile-reading-chrome="hidden"] .document-page:not(.is-editing)
   ) {
     padding-top: 16px;
+  }
+
+  :global(.section-knowledge .document-page:not(.is-editing)) {
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
   }
 
   :global(.section-knowledge .document-tabs) {
@@ -152,12 +158,13 @@
   :global(.document-tabs-row[aria-label="Инструменты холста"]) {
     position: relative;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 48px;
-    min-height: 48px;
-    height: 48px;
-    flex: 0 0 48px;
+    grid-template-rows: 38px;
+    min-height: 38px;
+    height: 38px;
+    flex: 0 0 38px;
     align-items: center;
     overflow: visible;
+    margin: 0;
   }
 
   :global(
@@ -167,7 +174,9 @@
     grid-row: 1;
     width: 100%;
     min-width: 0;
-    padding: 4px 8px;
+    height: 38px;
+    align-items: center;
+    padding: 0 8px;
   }
 
   :global(
