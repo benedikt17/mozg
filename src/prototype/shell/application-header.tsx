@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { publicProjectSections } from "@/prototype/desktop-mock-data";
 import {
   getActiveProject,
+  getKnowledgePaneState,
   getProjectOverviewDirections,
   type DesktopPrototypeAction,
   type DesktopPrototypeState,
@@ -144,6 +145,7 @@ export function ApplicationHeader({
   onToggleMobileToolSidebar?: () => void;
 }): React.JSX.Element {
   const router = useRouter();
+  const suppressMobileDrawerClickRef = useRef(false);
   const logout = async (): Promise<void> => {
     await createClient().auth.signOut();
     router.replace("/sign-in");
@@ -154,6 +156,10 @@ export function ApplicationHeader({
     state.activeSection === "tasks" ||
     state.activeSection === "canvases";
   const canvasDrawer = state.activeSection === "canvases";
+  const activeKnowledgeTitle =
+    state.activeSection === "knowledge"
+      ? (getKnowledgePaneState(state).activeDocument?.title ?? null)
+      : null;
   const toggleMobileSectionDrawer = (): void => {
     if (canvasDrawer) {
       const canvasToggle = window.document.querySelector<HTMLButtonElement>(
@@ -163,6 +169,24 @@ export function ApplicationHeader({
       return;
     }
     onToggleMobileToolSidebar?.();
+  };
+  const handleMobileDrawerPointerDown = (
+    event: React.PointerEvent<HTMLButtonElement>,
+  ): void => {
+    if (event.pointerType === "mouse") return;
+    event.preventDefault();
+    suppressMobileDrawerClickRef.current = true;
+    window.setTimeout(() => {
+      suppressMobileDrawerClickRef.current = false;
+    }, 700);
+    toggleMobileSectionDrawer();
+  };
+  const handleMobileDrawerClick = (): void => {
+    if (suppressMobileDrawerClickRef.current) {
+      suppressMobileDrawerClickRef.current = false;
+      return;
+    }
+    toggleMobileSectionDrawer();
   };
   return (
     <header className="application-header">
@@ -177,6 +201,11 @@ export function ApplicationHeader({
         type="button"
       >
         <strong>{getActiveProject(state).name}</strong>
+        {activeKnowledgeTitle ? (
+          <span className="application-article-title" title={activeKnowledgeTitle}>
+            {activeKnowledgeTitle}
+          </span>
+        ) : null}
       </button>
       {hasMobileSectionDrawer ? (
         <button
@@ -189,7 +218,8 @@ export function ApplicationHeader({
                 : "Открыть панель раздела"
           }
           className="mobile-tool-sidebar-trigger"
-          onClick={toggleMobileSectionDrawer}
+          onClick={handleMobileDrawerClick}
+          onPointerDown={handleMobileDrawerPointerDown}
           type="button"
         >
           <UiIcon
