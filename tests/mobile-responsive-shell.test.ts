@@ -124,7 +124,9 @@ describe("mobile responsive shell", () => {
   });
 
   it("aligns an expanded Overview card and its column to the mobile left edge", () => {
-    expect(overview).toContain('window.matchMedia("(max-width: 767px)").matches');
+    expect(overview).toContain(
+      'window.matchMedia("(max-width: 767px)").matches',
+    );
     expect(overview).toContain(
       'details?.closest<HTMLElement>(".board-column")',
     );
