@@ -150,7 +150,9 @@
   }
 
   :global(.section-overview .overview-reader-mobile-close),
-  :global(.section-overview .overview-reader-mobile-actions > button:first-child) {
+  :global(
+    .section-overview .overview-reader-mobile-actions > button:first-child
+  ) {
     display: none;
   }
 
