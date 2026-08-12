@@ -59,6 +59,8 @@ export function OverviewWorkspace({
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<OverviewDropTarget | null>(null);
   const boardRef = useRef<HTMLElement>(null);
+  const mobileAlignmentInProgressRef = useRef(false);
+  const mobileAlignmentTimerRef = useRef<number | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, {
@@ -72,7 +74,11 @@ export function OverviewWorkspace({
 
   useLayoutEffect(() => {
     const board = boardRef.current;
-    if (board && board.scrollLeft !== overviewScrollLeft) {
+    if (
+      board &&
+      !mobileAlignmentInProgressRef.current &&
+      board.scrollLeft !== overviewScrollLeft
+    ) {
       board.scrollLeft = overviewScrollLeft;
     }
   }, [overviewScrollLeft]);
@@ -83,25 +89,49 @@ export function OverviewWorkspace({
     const board = boardRef.current;
     if (!board) return;
 
+    let settleFrame = 0;
     const frame = window.requestAnimationFrame(() => {
-      const details = window.document.getElementById(
-        `task-card-details-${expandedTaskId}`,
-      );
-      const column = details?.closest<HTMLElement>(".board-column");
-      if (!column || !board.contains(column)) return;
+      settleFrame = window.requestAnimationFrame(() => {
+        const details = window.document.getElementById(
+          `task-card-details-${expandedTaskId}`,
+        );
+        const column = details?.closest<HTMLElement>(".board-column");
+        if (!column || !board.contains(column)) return;
 
-      const boardRect = board.getBoundingClientRect();
-      const columnRect = column.getBoundingClientRect();
-      const targetLeft = board.scrollLeft + columnRect.left - boardRect.left;
-      if (Math.abs(board.scrollLeft - targetLeft) < 1) return;
-      board.scrollTo({
-        behavior: "smooth",
-        left: Math.max(0, targetLeft),
+        const boardRect = board.getBoundingClientRect();
+        const columnRect = column.getBoundingClientRect();
+        const targetLeft = board.scrollLeft + columnRect.left - boardRect.left;
+        if (Math.abs(board.scrollLeft - targetLeft) < 1) return;
+
+        mobileAlignmentInProgressRef.current = true;
+        if (mobileAlignmentTimerRef.current !== null) {
+          window.clearTimeout(mobileAlignmentTimerRef.current);
+        }
+        board.scrollTo({
+          behavior: "smooth",
+          left: Math.max(0, targetLeft),
+        });
+        mobileAlignmentTimerRef.current = window.setTimeout(() => {
+          mobileAlignmentInProgressRef.current = false;
+          mobileAlignmentTimerRef.current = null;
+          dispatch({
+            type: "set-overview-scroll-left",
+            scrollLeft: board.scrollLeft,
+          });
+        }, 420);
       });
     });
 
-    return () => window.cancelAnimationFrame(frame);
-  }, [expandedTaskId]);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (settleFrame) window.cancelAnimationFrame(settleFrame);
+      if (mobileAlignmentTimerRef.current !== null) {
+        window.clearTimeout(mobileAlignmentTimerRef.current);
+        mobileAlignmentTimerRef.current = null;
+      }
+      mobileAlignmentInProgressRef.current = false;
+    };
+  }, [dispatch, expandedTaskId]);
 
   useEffect(() => {
     if (!expandedTaskId) return;
@@ -171,12 +201,13 @@ export function OverviewWorkspace({
             .filter(Boolean)
             .join(" ")}
           aria-label="Рабочие направления проекта"
-          onScroll={(event) =>
+          onScroll={(event) => {
+            if (mobileAlignmentInProgressRef.current) return;
             dispatch({
               type: "set-overview-scroll-left",
               scrollLeft: event.currentTarget.scrollLeft,
-            })
-          }
+            });
+          }}
           ref={boardRef}
         >
           {visibleDirections.map((direction) => (
