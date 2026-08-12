@@ -31,6 +31,7 @@ export function OverviewDirectionColumn({
   dropTarget,
   expandedTaskId,
   openTaskId,
+  onActivateColumn,
   onToggleTaskExpanded,
 }: {
   tasks: PrototypeTask[];
@@ -41,6 +42,7 @@ export function OverviewDirectionColumn({
   dropTarget: OverviewDropTarget | null;
   expandedTaskId: string | null;
   openTaskId: string | null;
+  onActivateColumn?: (column: HTMLElement) => void;
   onToggleTaskExpanded: (taskId: string) => void;
 }): JSX.Element {
   const tasks = getOverviewDirectionTasks(overviewTasks, direction.id);
@@ -59,6 +61,19 @@ export function OverviewDirectionColumn({
       className={["board-column", isOver ? "is-drag-over" : ""]
         .filter(Boolean)
         .join(" ")}
+      data-overview-direction-id={direction.id}
+      onClick={(event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        if (
+          target.closest(
+            "button, input, textarea, select, a, .task-card, [contenteditable='true']",
+          )
+        ) {
+          return;
+        }
+        onActivateColumn?.(event.currentTarget);
+      }}
     >
       <header>
         <DirectionTitleInput direction={direction} dispatch={dispatch} />
