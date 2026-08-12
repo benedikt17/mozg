@@ -171,8 +171,7 @@
   }
 
   :global(
-    .document-tabs-row[aria-label="Инструменты холста"]
-      > [aria-live="polite"]
+    .document-tabs-row[aria-label="Инструменты холста"] > [aria-live="polite"]
   ) {
     display: none;
   }
