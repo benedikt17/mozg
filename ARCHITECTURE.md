@@ -476,6 +476,57 @@ share_links (
 
 ---
 
+### 4.11 Project Files (Stage A)
+
+`Files` is the canonical Project-scoped shared asset domain defined by ADR-0005.
+It is independent from legacy `attachments` and from Canvas-owned
+`canvas_assets`.
+
+Current Product Project identity follows Desktop Snapshot V3:
+
+```text
+workspace_id uuid
+project_id   text
+```
+
+`project_id` is an opaque current Snapshot Project id and is intentionally not a
+foreign key to the legacy `public.projects(id uuid)` table. New Files objects are
+validated against the current schema-v3 `workspace_snapshots` row.
+
+Stage A persistence consists of:
+
+```text
+project_folders
+project_files
+file_variants
+```
+
+`project_files.id` is the durable shared asset identity. `name` is mutable display
+metadata; `original_name` preserves the uploaded filename. The original binary
+uses the stable private Storage key `{workspace_id}/{file_id}/original`, so rename
+and folder move never rewrite or re-encode the source object.
+
+Uploads follow reserve → upload → finalize. Finalize verifies Storage MIME type
+and byte size before setting `ready_at`. A non-null `checksum` is optional metadata
+and is not server-verified integrity evidence unless a later trusted path computes
+or compares it explicitly.
+
+The private `project-files` bucket has a Stage A1 server ceiling of 50 MiB. The
+current browser repository uses standard Supabase upload only up to 6 MiB; files
+above that threshold must use the later TUS/resumable path before the UI exposes
+that capability.
+
+Normal reads expose ready, non-deleted files. User deletion is soft via
+`deleted_at`; normal clients cannot physically delete or overwrite originals.
+Workspace membership/RLS plus Project-qualified RPCs are the authorization and
+mutation boundaries; Storage paths themselves are not trusted authorization.
+
+Stage A does not change existing Canvas persistence and does not migrate
+`canvas_assets`. Files → Canvas references and new-Canvas-upload adoption are
+separate later stages.
+
+---
+
 ## 5. Правила архивации
 
 Пользовательское удаление:
