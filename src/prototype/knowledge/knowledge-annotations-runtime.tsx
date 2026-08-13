@@ -298,10 +298,7 @@ export function KnowledgeAnnotationsRuntime({
       const rects = Array.from(range.getClientRects());
       const rect = rects.at(-1) ?? range.getBoundingClientRect();
       setSelectionAction({
-        left: Math.max(
-          8,
-          Math.min(window.innerWidth - 158, rect.right + 8),
-        ),
+        left: Math.max(8, Math.min(window.innerWidth - 158, rect.right + 8)),
         top: Math.max(8, rect.top - 38),
         selection: selectionModel,
       });
@@ -365,7 +362,8 @@ export function KnowledgeAnnotationsRuntime({
   }, [draftSelection, panelOpen]);
 
   const unresolvedCount = useMemo(
-    () => annotations.filter((annotation) => annotation.resolvedAt === null).length,
+    () =>
+      annotations.filter((annotation) => annotation.resolvedAt === null).length,
     [annotations],
   );
   const resolvedCount = annotations.length - unresolvedCount;
