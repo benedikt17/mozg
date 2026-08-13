@@ -38,11 +38,15 @@ describe("desktop routes in local development mode", () => {
     loadDesktopCloudSnapshot.mockResolvedValue({ kind: "ready", bootstrap });
 
     const page = await DesktopPrototypePage();
+    const [desktopShell, annotationsRuntime] = page.props.children;
 
     expect(loadDesktopCloudSnapshot).toHaveBeenCalledOnce();
-    expect(page.props).toMatchObject({
+    expect(desktopShell.props).toMatchObject({
       runtimeMode: "cloud",
       cloudBootstrap: bootstrap,
+    });
+    expect(annotationsRuntime.props).toMatchObject({
+      workspaceId: bootstrap.workspaceId,
     });
   });
 
@@ -50,11 +54,15 @@ describe("desktop routes in local development mode", () => {
     loadDesktopCloudSnapshot.mockResolvedValue({ kind: "ready", bootstrap });
 
     const page = await DesktopPrototypePage();
+    const [desktopShell, annotationsRuntime] = page.props.children;
 
     expect(loadDesktopCloudSnapshot).toHaveBeenCalledOnce();
-    expect(page.props).toMatchObject({
+    expect(desktopShell.props).toMatchObject({
       runtimeMode: "cloud",
       cloudBootstrap: bootstrap,
+    });
+    expect(annotationsRuntime.props).toMatchObject({
+      workspaceId: bootstrap.workspaceId,
     });
   });
 

@@ -280,6 +280,65 @@ export type Database = {
           },
         ]
       }
+      knowledge_annotations: {
+        Row: {
+          comment: string
+          created_at: string
+          created_by: string
+          document_id: string
+          end_offset: number
+          id: string
+          prefix: string
+          resolved_at: string | null
+          schema_version: number
+          selected_text: string
+          start_offset: number
+          suffix: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          comment: string
+          created_at?: string
+          created_by?: string
+          document_id: string
+          end_offset: number
+          id?: string
+          prefix?: string
+          resolved_at?: string | null
+          schema_version?: number
+          selected_text: string
+          start_offset: number
+          suffix?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          comment?: string
+          created_at?: string
+          created_by?: string
+          document_id?: string
+          end_offset?: number
+          id?: string
+          prefix?: string
+          resolved_at?: string | null
+          schema_version?: number
+          selected_text?: string
+          start_offset?: number
+          suffix?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_annotations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notes: {
         Row: {
           archived_at: string | null
