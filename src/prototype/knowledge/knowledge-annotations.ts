@@ -2,8 +2,6 @@
 
 import { createClient } from "@/lib/supabase/browser";
 
-export const KNOWLEDGE_ANNOTATIONS_BUCKET = "knowledge-annotations";
-
 const ANNOTATION_SCHEMA_VERSION = 1 as const;
 const ANCHOR_CONTEXT_LENGTH = 96;
 
@@ -37,6 +35,23 @@ export type KnowledgeAnnotationLoadResult = {
   persistenceMode: KnowledgeAnnotationPersistenceMode;
 };
 
+type KnowledgeAnnotationRow = {
+  comment: string;
+  created_at: string;
+  created_by: string;
+  document_id: string;
+  end_offset: number;
+  id: string;
+  prefix: string;
+  resolved_at: string | null;
+  schema_version: number;
+  selected_text: string;
+  start_offset: number;
+  suffix: string;
+  updated_at: string;
+  workspace_id: string;
+};
+
 function encodePathSegment(value: string): string {
   return encodeURIComponent(value).replace(/%2F/giu, "%252F");
 }
@@ -47,15 +62,6 @@ export function getKnowledgeAnnotationPrefix(
   documentId: string,
 ): string {
   return `${workspaceId}/${userId}/${encodePathSegment(documentId)}`;
-}
-
-export function getKnowledgeAnnotationPath(
-  workspaceId: string,
-  userId: string,
-  documentId: string,
-  annotationId: string,
-): string {
-  return `${getKnowledgeAnnotationPrefix(workspaceId, userId, documentId)}/${annotationId}.json`;
 }
 
 function getLocalStorageKey(
@@ -276,6 +282,55 @@ function writeLocalAnnotations(
   );
 }
 
+function clearLocalAnnotations(
+  workspaceId: string,
+  userId: string,
+  documentId: string,
+): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(
+    getLocalStorageKey(workspaceId, userId, documentId),
+  );
+}
+
+function rowToAnnotation(row: KnowledgeAnnotationRow): KnowledgeAnnotation | null {
+  return parseKnowledgeAnnotation({
+    schemaVersion: row.schema_version,
+    id: row.id,
+    workspaceId: row.workspace_id,
+    documentId: row.document_id,
+    createdBy: row.created_by,
+    selectedText: row.selected_text,
+    startOffset: row.start_offset,
+    endOffset: row.end_offset,
+    prefix: row.prefix,
+    suffix: row.suffix,
+    comment: row.comment,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    resolvedAt: row.resolved_at,
+  });
+}
+
+function annotationToRow(annotation: KnowledgeAnnotation): KnowledgeAnnotationRow {
+  return {
+    id: annotation.id,
+    workspace_id: annotation.workspaceId,
+    document_id: annotation.documentId,
+    created_by: annotation.createdBy,
+    schema_version: annotation.schemaVersion,
+    selected_text: annotation.selectedText,
+    start_offset: annotation.startOffset,
+    end_offset: annotation.endOffset,
+    prefix: annotation.prefix,
+    suffix: annotation.suffix,
+    comment: annotation.comment,
+    created_at: annotation.createdAt,
+    updated_at: annotation.updatedAt,
+    resolved_at: annotation.resolvedAt,
+  };
+}
+
 async function getAuthenticatedUserId(): Promise<string> {
   const client = createClient();
   const { data, error } = await client.auth.getUser();
@@ -283,15 +338,53 @@ async function getAuthenticatedUserId(): Promise<string> {
   return data.user.id;
 }
 
+async function migrateLocalAnnotations(
+  workspaceId: string,
+  userId: string,
+  documentId: string,
+): Promise<void> {
+  const localAnnotations = loadLocalAnnotations(
+    workspaceId,
+    userId,
+    documentId,
+  );
+  if (localAnnotations.length === 0) return;
+
+  const client = createClient();
+  const { error } = await client
+    .from("knowledge_annotations")
+    .upsert(localAnnotations.map(annotationToRow), { onConflict: "id" });
+  if (error) throw error;
+  clearLocalAnnotations(workspaceId, userId, documentId);
+}
+
 export async function loadKnowledgeAnnotations(
   workspaceId: string,
   documentId: string,
 ): Promise<KnowledgeAnnotationLoadResult> {
   const userId = await getAuthenticatedUserId();
+  await migrateLocalAnnotations(workspaceId, userId, documentId);
+
+  const client = createClient();
+  const { data, error } = await client
+    .from("knowledge_annotations")
+    .select(
+      "id, workspace_id, document_id, created_by, schema_version, selected_text, start_offset, end_offset, prefix, suffix, comment, resolved_at, created_at, updated_at",
+    )
+    .eq("workspace_id", workspaceId)
+    .eq("document_id", documentId)
+    .eq("created_by", userId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+
   return {
-    annotations: loadLocalAnnotations(workspaceId, userId, documentId),
+    annotations: sortAnnotations(
+      (data ?? [])
+        .map((row) => rowToAnnotation(row as KnowledgeAnnotationRow))
+        .filter((item): item is KnowledgeAnnotation => item !== null),
+    ),
     userId,
-    persistenceMode: "preview-local",
+    persistenceMode: "cloud",
   };
 }
 
@@ -313,20 +406,11 @@ export async function createKnowledgeAnnotation(
     );
     return;
   }
+
   const client = createClient();
-  const path = getKnowledgeAnnotationPath(
-    annotation.workspaceId,
-    annotation.createdBy,
-    annotation.documentId,
-    annotation.id,
-  );
-  const { error } = await client.storage
-    .from(KNOWLEDGE_ANNOTATIONS_BUCKET)
-    .upload(
-      path,
-      new Blob([JSON.stringify(annotation)], { type: "application/json" }),
-      { contentType: "application/json", upsert: false },
-    );
+  const { error } = await client
+    .from("knowledge_annotations")
+    .insert(annotationToRow(annotation));
   if (error) throw error;
 }
 
@@ -348,19 +432,21 @@ export async function updateKnowledgeAnnotation(
     );
     return;
   }
+
   const client = createClient();
-  const path = getKnowledgeAnnotationPath(
-    annotation.workspaceId,
-    annotation.createdBy,
-    annotation.documentId,
-    annotation.id,
-  );
-  const { error } = await client.storage
-    .from(KNOWLEDGE_ANNOTATIONS_BUCKET)
-    .update(
-      path,
-      new Blob([JSON.stringify(annotation)], { type: "application/json" }),
-      { contentType: "application/json", upsert: false },
-    );
+  const { error } = await client
+    .from("knowledge_annotations")
+    .update({
+      selected_text: annotation.selectedText,
+      start_offset: annotation.startOffset,
+      end_offset: annotation.endOffset,
+      prefix: annotation.prefix,
+      suffix: annotation.suffix,
+      comment: annotation.comment,
+      resolved_at: annotation.resolvedAt,
+    })
+    .eq("id", annotation.id)
+    .eq("workspace_id", annotation.workspaceId)
+    .eq("created_by", annotation.createdBy);
   if (error) throw error;
 }
