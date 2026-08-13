@@ -14,7 +14,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: tmp/knowledge-annotations-format
+          ref: feat/knowledge-annotations-clean
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
         with:
           version: 11.11.0
@@ -23,15 +24,13 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec prettier --write src/prototype/knowledge/knowledge-annotations.ts src/prototype/knowledge/knowledge-annotations-runtime.tsx src/prototype/knowledge/knowledge-annotations.module.css
+      - run: pnpm exec prettier --write src/app/prototype/desktop/page.tsx src/prototype/knowledge/knowledge-edit-annotations-runtime.tsx
       - name: Commit exact formatting
         shell: bash
         run: |
-          if git diff --quiet; then
-            exit 0
-          fi
+          if git diff --quiet; then exit 0; fi
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add src/prototype/knowledge/knowledge-annotations.ts src/prototype/knowledge/knowledge-annotations-runtime.tsx src/prototype/knowledge/knowledge-annotations.module.css
-          git commit -m "Format Knowledge annotations"
-          git push origin HEAD:tmp/knowledge-annotations-format
+          git add src/app/prototype/desktop/page.tsx src/prototype/knowledge/knowledge-edit-annotations-runtime.tsx
+          git commit -m "Format Knowledge edit annotations"
+          git push origin HEAD:feat/knowledge-annotations-clean
