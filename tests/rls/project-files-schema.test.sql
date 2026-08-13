@@ -8,27 +8,27 @@ select has_table('public', 'file_variants', 'File variants table exists');
 select has_function(
   'public',
   'reserve_project_file',
-  array['uuid', 'text', 'uuid', 'uuid', 'text', 'text', 'text', 'bigint', 'integer', 'integer', 'text'],
+  array['uuid', 'text', 'uuid', 'text', 'text', 'text', 'bigint', 'uuid', 'integer', 'integer', 'text'],
   'typed Project file reserve RPC exists'
 );
 select has_function('public', 'finalize_project_file', array['uuid'], 'typed Project file finalize RPC exists');
 select is(
-  (select prosecdef from pg_proc where oid = 'public.reserve_project_file(uuid,text,uuid,uuid,text,text,text,bigint,integer,integer,text)'::regprocedure),
+  (select prosecdef from pg_proc where oid = 'public.reserve_project_file(uuid,text,uuid,text,text,text,bigint,uuid,integer,integer,text)'::regprocedure),
   true,
   'reserve RPC is SECURITY DEFINER'
 );
 select is(
-  (select array_to_string(proconfig, ',') from pg_proc where oid = 'public.reserve_project_file(uuid,text,uuid,uuid,text,text,text,bigint,integer,integer,text)'::regprocedure),
+  (select array_to_string(proconfig, ',') from pg_proc where oid = 'public.reserve_project_file(uuid,text,uuid,text,text,text,bigint,uuid,integer,integer,text)'::regprocedure),
   'search_path=pg_catalog, public, private'::text,
   'reserve RPC pins a safe search_path'
 );
 select is(
-  has_function_privilege('authenticated', 'public.reserve_project_file(uuid,text,uuid,uuid,text,text,text,bigint,integer,integer,text)', 'EXECUTE'),
+  has_function_privilege('authenticated', 'public.reserve_project_file(uuid,text,uuid,text,text,text,bigint,uuid,integer,integer,text)', 'EXECUTE'),
   true,
   'authenticated clients receive reserve RPC access'
 );
 select is(
-  has_function_privilege('anon', 'public.reserve_project_file(uuid,text,uuid,uuid,text,text,text,bigint,integer,integer,text)', 'EXECUTE'),
+  has_function_privilege('anon', 'public.reserve_project_file(uuid,text,uuid,text,text,text,bigint,uuid,integer,integer,text)', 'EXECUTE'),
   false,
   'anonymous clients cannot reserve Project files'
 );
