@@ -47,6 +47,11 @@ jobs:
       - run: pnpm supabase start
       - run: pnpm supabase gen types typescript --local --schema public > /tmp/database.types.ts
       - run: perl -0pi -e 's/\n\n\z/\n/' /tmp/database.types.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: generated-database-types
+          path: /tmp/database.types.ts
+          retention-days: 1
       - run: diff -u src/lib/supabase/database.types.ts /tmp/database.types.ts
       - run: pnpm test:rls
       - name: Export local Supabase browser-test environment
