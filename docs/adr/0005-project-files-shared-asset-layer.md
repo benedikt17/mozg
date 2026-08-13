@@ -1,6 +1,6 @@
 # ADR-0005: Project Files as a shared asset layer
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-13
 
 ## Context
