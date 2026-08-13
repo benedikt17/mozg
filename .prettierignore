@@ -8,3 +8,5 @@ CHANGELOG.md
 STAGE-1A-SPEC.md
 docs/adr/README.md
 src/lib/supabase/database.types.ts
+src/prototype/knowledge/knowledge-annotations.ts
+src/prototype/knowledge/knowledge-annotations-runtime.tsx
