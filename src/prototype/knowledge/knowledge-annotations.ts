@@ -97,11 +97,7 @@ function getLocalStorageKey(
 }
 
 function isFiniteNonNegativeInteger(value: unknown): value is number {
-  return (
-    typeof value === "number" &&
-    Number.isSafeInteger(value) &&
-    value >= 0
-  );
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 export function parseKnowledgeAnnotation(

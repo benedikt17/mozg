@@ -182,9 +182,8 @@ export function KnowledgeAnnotationsRuntime({
   const pageSignatureRef = useRef("");
 
   useEffect(() => {
-    const root = window.document.querySelector<HTMLElement>(
-      ".desktop-prototype",
-    );
+    const root =
+      window.document.querySelector<HTMLElement>(".desktop-prototype");
     if (!root) return;
 
     let frame = 0;
