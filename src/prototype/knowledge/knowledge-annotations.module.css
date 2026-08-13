@@ -1,0 +1,385 @@
+:global(::highlight(mozg-knowledge-annotations)) {
+  background: color-mix(in srgb, #ffcf4a 42%, transparent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, #b77900 58%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.selectionAction,
+.toggle,
+.panel {
+  font-family:
+    Inter,
+    Geist Sans,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+.selectionAction {
+  position: fixed;
+  z-index: 96;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #d8d6cf;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(32 32 29 / 18%);
+  color: #292925;
+  padding: 0 10px;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.selectionAction:hover {
+  background: #f3f2ef;
+}
+
+.toggle {
+  position: fixed;
+  z-index: 62;
+  top: 106px;
+  right: 18px;
+  min-width: 42px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid #d8d6cf;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 94%);
+  box-shadow: 0 6px 18px rgb(32 32 29 / 12%);
+  color: #5b5a54;
+  padding: 0 9px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+}
+
+.toggle:hover,
+.toggle[aria-expanded="true"] {
+  background: #fff4e9;
+  border-color: #ffb38b;
+  color: #d94700;
+}
+
+.bubbleIcon {
+  font-size: 14px;
+  line-height: 1;
+  transform: rotate(45deg);
+}
+
+.panel {
+  position: fixed;
+  z-index: 64;
+  top: 106px;
+  right: 16px;
+  bottom: 16px;
+  width: min(368px, calc(100vw - 32px));
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid #d8d6cf;
+  border-radius: 10px;
+  background: #fbfbfa;
+  box-shadow: 0 24px 64px rgb(32 32 29 / 20%);
+  color: #20201d;
+}
+
+.panelHeader {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #e2e0da;
+  padding: 9px 10px 9px 14px;
+  background: #fff;
+}
+
+.panelHeader > div {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.panelHeader strong {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 650;
+}
+
+.panelHeader span {
+  color: #77756d;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.closeButton {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #77756d;
+  padding: 0;
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  background: #f0efec;
+  color: #20201d;
+}
+
+.previewNotice,
+.error {
+  border-bottom: 1px solid #e5e3de;
+  padding: 7px 12px;
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.previewNotice {
+  background: #fff9e7;
+  color: #7b5b00;
+}
+
+.error {
+  background: #fff2f0;
+  color: #a62b20;
+}
+
+.composer {
+  display: grid;
+  gap: 8px;
+  border-bottom: 1px solid #deddd8;
+  background: #fff;
+  padding: 12px;
+}
+
+.quote {
+  max-height: 86px;
+  overflow: auto;
+  border-left: 3px solid #f0a870;
+  background: #faf8f4;
+  color: #66635c;
+  padding: 7px 9px;
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.composer textarea {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+  border: 1px solid #d8d6cf;
+  border-radius: 7px;
+  outline: 0;
+  background: #fff;
+  color: #20201d;
+  padding: 8px 9px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.composer textarea:focus {
+  border-color: #ff8a4c;
+  box-shadow: 0 0 0 2px rgb(255 82 0 / 12%);
+}
+
+.composerActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.primaryButton,
+.secondaryButton {
+  min-height: 30px;
+  border-radius: 6px;
+  padding: 0 10px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primaryButton {
+  border: 1px solid #ff5200;
+  background: #ff5200;
+  color: #fff;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: #e84a00;
+}
+
+.secondaryButton {
+  border: 1px solid #d8d6cf;
+  background: #fff;
+  color: #5c5a54;
+}
+
+.secondaryButton:hover:not(:disabled) {
+  background: #f3f2ef;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.list {
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 10px;
+}
+
+.empty {
+  color: #77756d;
+  padding: 18px 10px;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.commentCard {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #dfddd7;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+}
+
+.commentCard.resolved {
+  background: #f5f4f1;
+  opacity: 0.72;
+}
+
+.quoteButton {
+  width: 100%;
+  max-height: 64px;
+  overflow: hidden;
+  display: -webkit-box;
+  border: 0;
+  border-left: 3px solid #f0a870;
+  background: #faf8f4;
+  color: #66635c;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: left;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  cursor: pointer;
+}
+
+.quoteButton:hover:not(:disabled) {
+  background: #fff3e7;
+  color: #302f2b;
+}
+
+.quoteButton:disabled {
+  cursor: default;
+}
+
+.orphan {
+  width: fit-content;
+  border-radius: 999px;
+  background: #fff0ed;
+  color: #a83b2d;
+  padding: 2px 6px;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 600;
+}
+
+.commentCard p {
+  margin: 0;
+  color: #2d2c28;
+  font-size: 13px;
+  line-height: 18px;
+  white-space: pre-wrap;
+}
+
+.commentCard footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #8a887f;
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.commentCard footer button {
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #747168;
+  padding: 3px 5px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.commentCard footer button:hover:not(:disabled) {
+  background: #f1f0ec;
+  color: #20201d;
+}
+
+.commentCard footer button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.resolvedToggle {
+  min-height: 34px;
+  border: 0;
+  border-top: 1px solid #deddd8;
+  background: #f7f6f3;
+  color: #68665f;
+  padding: 0 12px;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.resolvedToggle:hover {
+  background: #efeeea;
+}
+
+@media (max-width: 767px) {
+  .selectionAction,
+  .toggle,
+  .panel {
+    display: none;
+  }
+}
