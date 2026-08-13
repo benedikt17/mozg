@@ -30,13 +30,13 @@ type HighlightConstructorLike = new (...ranges: Range[]) => object;
 
 function activeKnowledgePage(): HTMLElement | null {
   return window.document.querySelector<HTMLElement>(
-    ".desktop-prototype.knowledge-active .document-page.is-active-pane[data-document-id]",
+    ".desktop-prototype .document-page.is-active-pane[data-document-id]",
   );
 }
 
 function activeReadingRoot(): HTMLElement | null {
   return window.document.querySelector<HTMLElement>(
-    ".desktop-prototype.knowledge-active .document-page.is-active-pane:not(.is-editing) .document-page-inner",
+    ".desktop-prototype .document-page.is-active-pane:not(.is-editing) .document-page-inner",
   );
 }
 
@@ -182,9 +182,7 @@ export function KnowledgeAnnotationsRuntime({
   const pageSignatureRef = useRef("");
 
   useEffect(() => {
-    const root =
-      window.document.querySelector<HTMLElement>(".desktop-prototype");
-    if (!root) return;
+    const root = window.document.body;
 
     let frame = 0;
     const sync = (): void => {
@@ -322,13 +320,13 @@ export function KnowledgeAnnotationsRuntime({
     };
     const clearSelectionAction = (): void => setSelectionAction(null);
 
-    window.document.addEventListener("pointerup", onPointerUp);
-    window.document.addEventListener("keyup", onKeyUp);
+    window.document.addEventListener("pointerup", onPointerUp, true);
+    window.document.addEventListener("keyup", onKeyUp, true);
     window.addEventListener("resize", clearSelectionAction);
     window.addEventListener("scroll", clearSelectionAction, true);
     return () => {
-      window.document.removeEventListener("pointerup", onPointerUp);
-      window.document.removeEventListener("keyup", onKeyUp);
+      window.document.removeEventListener("pointerup", onPointerUp, true);
+      window.document.removeEventListener("keyup", onKeyUp, true);
       window.removeEventListener("resize", clearSelectionAction);
       window.removeEventListener("scroll", clearSelectionAction, true);
     };
