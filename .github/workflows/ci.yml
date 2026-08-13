@@ -21,17 +21,6 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Inspect Files runtime formatting
-        shell: bash
-        run: |
-          pnpm exec prettier --write \
-            src/lib/files/cloud-project-file-repository.ts \
-            src/lib/files/project-file-runtime.ts \
-            src/lib/files/project-file-runtime.test.ts
-          git diff -- \
-            src/lib/files/cloud-project-file-repository.ts \
-            src/lib/files/project-file-runtime.ts \
-            src/lib/files/project-file-runtime.test.ts
       - name: Resolve changed range
         shell: bash
         env:
