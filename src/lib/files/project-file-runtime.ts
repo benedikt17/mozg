@@ -1,6 +1,6 @@
 import type { Database } from "@/lib/supabase/database.types";
+import { PROJECT_FILE_STANDARD_UPLOAD_MAX_BYTES } from "./project-file-upload-limit";
 import {
-  PROJECT_FILE_MAX_BYTES,
   PROJECT_FILE_MAX_CHECKSUM_LENGTH,
   PROJECT_FILE_MAX_IMAGE_DIMENSION,
   PROJECT_FILE_MAX_IMAGE_PIXELS,
@@ -205,7 +205,7 @@ export function validateProjectFileUpload(
   if (
     !Number.isInteger(input.byteSize) ||
     input.byteSize <= 0 ||
-    input.byteSize > PROJECT_FILE_MAX_BYTES ||
+    input.byteSize > PROJECT_FILE_STANDARD_UPLOAD_MAX_BYTES ||
     input.blob.size !== input.byteSize
   ) {
     throw new CloudProjectFileRepositoryError(
