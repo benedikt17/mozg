@@ -11,7 +11,68 @@ select has_function(
   array['uuid', 'text', 'uuid', 'text', 'text', 'text', 'bigint', 'uuid', 'integer', 'integer', 'text'],
   'typed Project file reserve RPC exists'
 );
-select has_function('public', 'finalize_project_file', array['uuid'], 'typed Project file finalize RPC exists');
+select has_function(
+  'public',
+  'finalize_project_file',
+  array['uuid', 'text', 'uuid'],
+  'Project-qualified finalize RPC exists'
+);
+select has_function(
+  'public',
+  'rename_project_file',
+  array['uuid', 'text', 'uuid', 'text'],
+  'Project-qualified rename RPC exists'
+);
+select has_function(
+  'public',
+  'move_project_file',
+  array['uuid', 'text', 'uuid', 'uuid'],
+  'Project-qualified move RPC exists'
+);
+select has_function(
+  'public',
+  'delete_project_file',
+  array['uuid', 'text', 'uuid'],
+  'Project-qualified delete RPC exists'
+);
+select has_function(
+  'public',
+  'restore_project_file',
+  array['uuid', 'text', 'uuid'],
+  'Project-qualified restore RPC exists'
+);
+select has_function(
+  'public',
+  'rename_project_folder',
+  array['uuid', 'text', 'uuid', 'text'],
+  'Project-qualified folder rename RPC exists'
+);
+select has_function(
+  'public',
+  'move_project_folder',
+  array['uuid', 'text', 'uuid', 'uuid'],
+  'Project-qualified folder move RPC exists'
+);
+select ok(
+  to_regprocedure('public.finalize_project_file(uuid)') is null,
+  'legacy ID-only finalize RPC is removed'
+);
+select ok(
+  to_regprocedure('public.rename_project_file(uuid,text)') is null,
+  'legacy ID-only file rename RPC is removed'
+);
+select ok(
+  to_regprocedure('public.move_project_file(uuid,uuid)') is null,
+  'legacy ID-only file move RPC is removed'
+);
+select ok(
+  to_regprocedure('public.delete_project_file(uuid)') is null,
+  'legacy ID-only file delete RPC is removed'
+);
+select ok(
+  to_regprocedure('public.restore_project_file(uuid)') is null,
+  'legacy ID-only file restore RPC is removed'
+);
 select is(
   (select prosecdef from pg_proc where oid = 'public.reserve_project_file(uuid,text,uuid,text,text,text,bigint,uuid,integer,integer,text)'::regprocedure),
   true,
@@ -31,6 +92,16 @@ select is(
   has_function_privilege('anon', 'public.reserve_project_file(uuid,text,uuid,text,text,text,bigint,uuid,integer,integer,text)', 'EXECUTE'),
   false,
   'anonymous clients cannot reserve Project files'
+);
+select is(
+  has_function_privilege('authenticated', 'public.finalize_project_file(uuid,text,uuid)', 'EXECUTE'),
+  true,
+  'authenticated clients receive qualified finalize access'
+);
+select is(
+  has_function_privilege('anon', 'public.finalize_project_file(uuid,text,uuid)', 'EXECUTE'),
+  false,
+  'anonymous clients cannot finalize Project files'
 );
 
 select is(has_table_privilege('authenticated', 'public.project_files', 'SELECT'), true, 'authenticated clients may read metadata through RLS');
