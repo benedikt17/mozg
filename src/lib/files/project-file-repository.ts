@@ -95,17 +95,30 @@ export type ListProjectFilesInput = ProjectFileScope & {
 export interface ProjectFileRepository {
   listFolders(scope: ProjectFileScope): Promise<ProjectFolderRecord[]>;
   createFolder(input: CreateProjectFolderInput): Promise<ProjectFolderRecord>;
-  renameFolder(input: { folderId: string; name: string }): Promise<ProjectFolderRecord>;
+  renameFolder(input: {
+    folderId: string;
+    name: string;
+  }): Promise<ProjectFolderRecord>;
   moveFolder(input: MoveProjectFolderInput): Promise<ProjectFolderRecord>;
 
   listFiles(input: ListProjectFilesInput): Promise<ProjectFileRecord[]>;
-  getFile(input: ProjectFileScope & { fileId: string }): Promise<ProjectFileRecord>;
+  getFile(
+    input: ProjectFileScope & { fileId: string },
+  ): Promise<ProjectFileRecord>;
   uploadFile(input: UploadProjectFileInput): Promise<ProjectFileRecord>;
-  renameFile(input: { fileId: string; name: string }): Promise<ProjectFileRecord>;
-  moveFile(input: { fileId: string; folderId: string | null }): Promise<ProjectFileRecord>;
+  renameFile(input: {
+    fileId: string;
+    name: string;
+  }): Promise<ProjectFileRecord>;
+  moveFile(input: {
+    fileId: string;
+    folderId: string | null;
+  }): Promise<ProjectFileRecord>;
   deleteFile(input: { fileId: string }): Promise<ProjectFileRecord>;
   restoreFile(input: { fileId: string }): Promise<ProjectFileRecord>;
-  downloadFile(input: ProjectFileScope & { fileId: string }): Promise<ProjectFileDownload>;
+  downloadFile(
+    input: ProjectFileScope & { fileId: string },
+  ): Promise<ProjectFileDownload>;
 
   invalidateAuthentication(): void;
 }
@@ -117,7 +130,9 @@ export function projectFileStorageKey(input: {
   return `${input.workspaceId}/${input.fileId}/original`;
 }
 
-export function isProjectFileMimeType(value: string): value is ProjectFileMimeType {
+export function isProjectFileMimeType(
+  value: string,
+): value is ProjectFileMimeType {
   return (PROJECT_FILE_MIME_TYPES as readonly string[]).includes(value);
 }
 
