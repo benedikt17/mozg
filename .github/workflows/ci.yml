@@ -6,9 +6,6 @@ on:
     branches:
       - refactor/prototype-state-root
 
-permissions:
-  contents: write
-
 jobs:
   quality:
     runs-on: ubuntu-latest
@@ -16,7 +13,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.head_ref || github.ref_name }}
       - uses: pnpm/action-setup@v4
         with:
           version: 11.11.0
@@ -25,129 +21,6 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: One-time align Files runtime and architecture
-        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'feat/project-files-stage-a-foundation' }}
-        shell: bash
-        env:
-          HEAD_BRANCH: ${{ github.head_ref }}
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          def replace_once(path: str, old: str, new: str) -> None:
-              target = Path(path)
-              text = target.read_text()
-              if text.count(old) != 1:
-                  raise SystemExit(f"Expected one match in {path}, found {text.count(old)}")
-              target.write_text(text.replace(old, new, 1))
-
-          replace_once(
-              "src/lib/files/project-file-runtime.ts",
-              'import type { Database } from "@/lib/supabase/database.types";\nimport {\n  PROJECT_FILE_MAX_BYTES,\n',
-              'import type { Database } from "@/lib/supabase/database.types";\nimport { PROJECT_FILE_STANDARD_UPLOAD_MAX_BYTES } from "./project-file-upload-limit";\nimport {\n',
-          )
-          replace_once(
-              "src/lib/files/project-file-runtime.ts",
-              "    input.byteSize > PROJECT_FILE_MAX_BYTES ||\n",
-              "    input.byteSize > PROJECT_FILE_STANDARD_UPLOAD_MAX_BYTES ||\n",
-          )
-
-          architecture_section = '''---
-
-### 4.11 Project Files (Stage A)
-
-`Files` is the canonical Project-scoped shared asset domain defined by ADR-0005.
-It is independent from legacy `attachments` and from Canvas-owned
-`canvas_assets`.
-
-Current Product Project identity follows Desktop Snapshot V3:
-
-```text
-workspace_id uuid
-project_id   text
-```
-
-`project_id` is an opaque current Snapshot Project id and is intentionally not a
-foreign key to the legacy `public.projects(id uuid)` table. New Files objects are
-validated against the current schema-v3 `workspace_snapshots` row.
-
-Stage A persistence consists of:
-
-```text
-project_folders
-project_files
-file_variants
-```
-
-`project_files.id` is the durable shared asset identity. `name` is mutable display
-metadata; `original_name` preserves the uploaded filename. The original binary
-uses the stable private Storage key `{workspace_id}/{file_id}/original`, so rename
-and folder move never rewrite or re-encode the source object.
-
-Uploads follow reserve -> upload -> finalize. Finalize verifies Storage MIME type
-and byte size before setting `ready_at`. A non-null `checksum` is optional metadata
-and is not server-verified integrity evidence unless a later trusted path computes
-or compares it explicitly.
-
-The private `project-files` bucket has a Stage A1 server ceiling of 50 MiB. The
-current browser repository uses standard Supabase upload only up to 6 MiB; files
-above that threshold must use the later TUS/resumable path before the UI exposes
-that capability.
-
-Normal reads expose ready, non-deleted files. User deletion is soft via
-`deleted_at`; normal clients cannot physically delete or overwrite originals.
-Workspace membership/RLS plus Project-qualified RPCs are the authorization and
-mutation boundaries; Storage paths themselves are not trusted authorization.
-
-Stage A does not change existing Canvas persistence and does not migrate
-`canvas_assets`. Files -> Canvas references and new-Canvas-upload adoption are
-separate later stages.
-
----
-
-## 5. Правила архивации'''
-          replace_once(
-              "ARCHITECTURE.md",
-              "---\n\n## 5. Правила архивации",
-              architecture_section,
-          )
-
-          replace_once(
-              "docs/adr/0005-project-files-shared-asset-layer.md",
-              "Stage A must define an explicit Files upload policy. Small browser uploads may use the normal Storage path; larger source assets must use a resumable upload path. The policy must be enforced at both the UX boundary and the trusted server/storage boundary.",
-              "Stage A1 keeps a 50 MiB server/bucket ceiling, while the current browser repository deliberately limits the standard upload path to 6 MiB. Files above 6 MiB and up to the server ceiling must use TUS/resumable upload before the UI exposes that capability. This keeps storage capacity separate from transfer reliability. The policy must be enforced at both the UX boundary and the trusted server/storage boundary.",
-          )
-
-          replace_once(
-              "CHANGELOG.md",
-              "- Files mutations are explicitly qualified by `workspace_id + project_id + resource_id`; Product Project identity follows Desktop Snapshot V3 text IDs rather than the legacy UUID `public.projects` table.",
-              "- Files mutations are explicitly qualified by `workspace_id + project_id + resource_id`; Product Project identity follows Desktop Snapshot V3 text IDs rather than the legacy UUID `public.projects` table.\n- Project Files keeps a 50 MiB server/bucket ceiling while the current standard browser upload path is capped at 6 MiB; larger accepted files require the later TUS/resumable path.",
-          )
-          PY
-          pnpm exec prettier --write \
-            src/lib/files/project-file-runtime.ts \
-            src/lib/files/project-file-upload-limit.ts \
-            src/lib/files/project-file-upload-limit.test.ts
-          pnpm exec prettier --check ARCHITECTURE.md docs/adr/0005-project-files-shared-asset-layer.md CHANGELOG.md
-          git diff --check
-          if git diff --quiet -- \
-            src/lib/files/project-file-runtime.ts \
-            ARCHITECTURE.md \
-            docs/adr/0005-project-files-shared-asset-layer.md \
-            CHANGELOG.md; then
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            src/lib/files/project-file-runtime.ts \
-            src/lib/files/project-file-upload-limit.ts \
-            src/lib/files/project-file-upload-limit.test.ts \
-            ARCHITECTURE.md \
-            docs/adr/0005-project-files-shared-asset-layer.md \
-            CHANGELOG.md
-          git commit -m "Files: align upload reliability and architecture"
-          git push origin "HEAD:$HEAD_BRANCH"
       - name: Resolve changed range
         shell: bash
         env:
