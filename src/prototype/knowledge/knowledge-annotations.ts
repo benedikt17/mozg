@@ -293,7 +293,9 @@ function clearLocalAnnotations(
   );
 }
 
-function rowToAnnotation(row: KnowledgeAnnotationRow): KnowledgeAnnotation | null {
+function rowToAnnotation(
+  row: KnowledgeAnnotationRow,
+): KnowledgeAnnotation | null {
   return parseKnowledgeAnnotation({
     schemaVersion: row.schema_version,
     id: row.id,
@@ -312,7 +314,9 @@ function rowToAnnotation(row: KnowledgeAnnotationRow): KnowledgeAnnotation | nul
   });
 }
 
-function annotationToRow(annotation: KnowledgeAnnotation): KnowledgeAnnotationRow {
+function annotationToRow(
+  annotation: KnowledgeAnnotation,
+): KnowledgeAnnotationRow {
   return {
     id: annotation.id,
     workspace_id: annotation.workspaceId,
