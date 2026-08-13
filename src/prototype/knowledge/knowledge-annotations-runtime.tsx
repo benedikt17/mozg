@@ -218,7 +218,7 @@ export function KnowledgeAnnotationsRuntime({
       childList: true,
       subtree: true,
     });
-    sync();
+    scheduleSync();
     return () => {
       observer.disconnect();
       if (frame !== 0) window.cancelAnimationFrame(frame);
@@ -226,47 +226,50 @@ export function KnowledgeAnnotationsRuntime({
   }, []);
 
   useEffect(() => {
-    setSelectionAction(null);
-    setDraftSelection(null);
-    setCommentDraft("");
-    setPanelOpen(false);
-    setShowResolved(false);
-    setError(null);
-    if (!activeDocumentId) {
-      setAnnotations([]);
-      setUserId(null);
-      return;
-    }
-
     let cancelled = false;
-    setLoading(true);
-    void loadKnowledgeAnnotations(workspaceId, activeDocumentId)
-      .then((result) => {
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      setSelectionAction(null);
+      setDraftSelection(null);
+      setCommentDraft("");
+      setPanelOpen(false);
+      setShowResolved(false);
+      setError(null);
+
+      if (!activeDocumentId) {
+        setAnnotations([]);
+        setUserId(null);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const result = await loadKnowledgeAnnotations(
+          workspaceId,
+          activeDocumentId,
+        );
         if (cancelled) return;
         setAnnotations(result.annotations);
         setPersistenceMode(result.persistenceMode);
         setUserId(result.userId);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setAnnotations([]);
-          setUserId(null);
-          setError("Не удалось загрузить комментарии.");
-        }
-      })
-      .finally(() => {
+      } catch {
+        if (cancelled) return;
+        setAnnotations([]);
+        setUserId(null);
+        setError("Не удалось загрузить комментарии.");
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
   }, [activeDocumentId, workspaceId]);
 
   useEffect(() => {
-    if (!isReading || !activeDocumentId) {
-      setSelectionAction(null);
-      return;
-    }
+    if (!isReading || !activeDocumentId) return;
 
     const captureSelection = (): void => {
       const selection = window.getSelection();
@@ -335,11 +338,14 @@ export function KnowledgeAnnotationsRuntime({
   useEffect(() => {
     if (!activeDocumentId || !isReading) {
       clearRegisteredHighlight();
-      setOrphanIds((current) =>
-        current.size === 0 ? current : new Set<string>(),
-      );
-      return;
+      const frame = window.requestAnimationFrame(() => {
+        setOrphanIds((current) =>
+          current.size === 0 ? current : new Set<string>(),
+        );
+      });
+      return () => window.cancelAnimationFrame(frame);
     }
+
     const root = activeReadingRoot();
     if (!root) return;
     const ranges: Range[] = [];
@@ -351,10 +357,15 @@ export function KnowledgeAnnotationsRuntime({
       else nextOrphans.add(annotation.id);
     }
     registerHighlight(ranges);
-    setOrphanIds((current) =>
-      setsEqual(current, nextOrphans) ? current : nextOrphans,
-    );
-    return clearRegisteredHighlight;
+    const frame = window.requestAnimationFrame(() => {
+      setOrphanIds((current) =>
+        setsEqual(current, nextOrphans) ? current : nextOrphans,
+      );
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      clearRegisteredHighlight();
+    };
   }, [activeDocumentId, annotations, domEpoch, isReading]);
 
   useEffect(() => {
