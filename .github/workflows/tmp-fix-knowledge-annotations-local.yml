@@ -1,0 +1,58 @@
+name: Temporary Knowledge annotations local preview fixer
+
+on:
+  push:
+    branches:
+      - feat/knowledge-annotations-clean
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/knowledge-annotations-clean
+      - name: Force annotation MVP to browser-local persistence
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          path = Path('src/prototype/knowledge/knowledge-annotations.ts')
+          text = path.read_text()
+          text = re.sub(
+              r'''type StorageErrorLike = \{.*?function encodePathSegment''',
+              'function encodePathSegment',
+              text,
+              flags=re.S,
+          )
+          replacement = '''export async function loadKnowledgeAnnotations(\n  workspaceId: string,\n  documentId: string,\n): Promise<KnowledgeAnnotationLoadResult> {\n  const userId = await getAuthenticatedUserId();\n  return {\n    annotations: loadLocalAnnotations(workspaceId, userId, documentId),\n    userId,\n    persistenceMode: "preview-local",\n  };\n}\n\nexport async function createKnowledgeAnnotation'''
+          text, count = re.subn(
+              r'''export async function loadKnowledgeAnnotations\(.*?export async function createKnowledgeAnnotation''',
+              replacement,
+              text,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit(f'Expected one loadKnowledgeAnnotations block, got {count}')
+          path.write_text(text)
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prettier --write src/prototype/knowledge/knowledge-annotations.ts
+      - name: Commit fix
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/prototype/knowledge/knowledge-annotations.ts
+          git commit -m "Keep Knowledge annotation preview persistence local"
+          git push origin HEAD:feat/knowledge-annotations-clean
