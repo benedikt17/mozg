@@ -25,6 +25,7 @@
 ### Changed
 
 - Files mutations are explicitly qualified by `workspace_id + project_id + resource_id`; Product Project identity follows Desktop Snapshot V3 text IDs rather than the legacy UUID `public.projects` table.
+- Project Files keeps a 50 MiB server/bucket ceiling while the current standard browser upload path is capped at 6 MiB; larger accepted files require the later TUS/resumable path.
 - Инструкции для AI-агентов разделяют локальные prototype-задачи и изменения production architecture, Markdown, database и security.
 - Prototype model cleanup удалил obsolete milestones и Overview filters.
 - Overview manual ordering отделён от Tasks filtering: `overviewOrder` больше не несёт временной семантики.
