@@ -67,6 +67,7 @@ id
 workspace_id
 project_id
 folder_id nullable
+name
 original_name
 storage_key
 mime_type
@@ -137,7 +138,9 @@ The bucket remains private. Public bucket access is not an accepted sharing mech
 
 ### 5. Uploads use reserve → upload → finalize semantics
 
-A new file is first reserved in metadata, then its Storage object is uploaded, then metadata is finalized with authoritative size/type/checksum information and `ready_at`.
+A new file is first reserved in metadata, then its Storage object is uploaded, then metadata is finalized after Storage verifies the uploaded object's MIME type and byte size; `ready_at` marks the file as readable through normal Files paths.
+
+`checksum` is optional integrity metadata in Stage A1. The current browser path may provide it during reservation, but finalize does not independently recompute or prove that checksum. Code must not treat a non-null checksum as server-verified integrity evidence unless a later trusted implementation explicitly computes or compares it against the stored object.
 
 Pending rows are visible only where required for the uploader/editor workflow. Normal read paths only expose ready, non-deleted files.
 
