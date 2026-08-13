@@ -280,6 +280,59 @@ export type Database = {
           },
         ]
       }
+      file_variants: {
+        Row: {
+          byte_size: number
+          created_at: string
+          file_id: string
+          kind: string
+          mime_type: string
+          pixel_height: number | null
+          pixel_width: number | null
+          project_id: string
+          ready_at: string | null
+          storage_path: string
+          target_max_edge: number | null
+          workspace_id: string
+        }
+        Insert: {
+          byte_size: number
+          created_at?: string
+          file_id: string
+          kind: string
+          mime_type: string
+          pixel_height?: number | null
+          pixel_width?: number | null
+          project_id: string
+          ready_at?: string | null
+          storage_path: string
+          target_max_edge?: number | null
+          workspace_id: string
+        }
+        Update: {
+          byte_size?: number
+          created_at?: string
+          file_id?: string
+          kind?: string
+          mime_type?: string
+          pixel_height?: number | null
+          pixel_width?: number | null
+          project_id?: string
+          ready_at?: string | null
+          storage_path?: string
+          target_max_edge?: number | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "file_variants_parent_fkey"
+            columns: ["workspace_id", "project_id", "file_id"]
+            isOneToOne: false
+            referencedRelation: "project_files"
+            referencedColumns: ["workspace_id", "project_id", "id"]
+          },
+        ]
+      }
       knowledge_annotations: {
         Row: {
           comment: string
@@ -392,6 +445,138 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "projects"
             referencedColumns: ["workspace_id", "id"]
+          },
+        ]
+      }
+      project_files: {
+        Row: {
+          byte_size: number
+          checksum: string | null
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          folder_id: string | null
+          height: number | null
+          id: string
+          mime_type: string
+          name: string
+          original_name: string
+          project_id: string
+          ready_at: string | null
+          search_tsv: unknown
+          storage_key: string
+          updated_at: string
+          width: number | null
+          workspace_id: string
+        }
+        Insert: {
+          byte_size: number
+          checksum?: string | null
+          created_at?: string
+          created_by: string
+          deleted_at?: string | null
+          folder_id?: string | null
+          height?: number | null
+          id: string
+          mime_type: string
+          name: string
+          original_name: string
+          project_id: string
+          ready_at?: string | null
+          search_tsv?: unknown
+          storage_key: string
+          updated_at?: string
+          width?: number | null
+          workspace_id: string
+        }
+        Update: {
+          byte_size?: number
+          checksum?: string | null
+          created_at?: string
+          created_by?: string
+          deleted_at?: string | null
+          folder_id?: string | null
+          height?: number | null
+          id?: string
+          mime_type?: string
+          name?: string
+          original_name?: string
+          project_id?: string
+          ready_at?: string | null
+          search_tsv?: unknown
+          storage_key?: string
+          updated_at?: string
+          width?: number | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_files_folder_scope_fkey"
+            columns: ["workspace_id", "project_id", "folder_id"]
+            isOneToOne: false
+            referencedRelation: "project_folders"
+            referencedColumns: ["workspace_id", "project_id", "id"]
+          },
+          {
+            foreignKeyName: "project_files_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_folders: {
+        Row: {
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          id: string
+          name: string
+          parent_folder_id: string | null
+          project_id: string
+          sort_order: number
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          deleted_at?: string | null
+          id?: string
+          name: string
+          parent_folder_id?: string | null
+          project_id: string
+          sort_order?: number
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          deleted_at?: string | null
+          id?: string
+          name?: string
+          parent_folder_id?: string | null
+          project_id?: string
+          sort_order?: number
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_folders_parent_scope_fkey"
+            columns: ["workspace_id", "project_id", "parent_folder_id"]
+            isOneToOne: false
+            referencedRelation: "project_folders"
+            referencedColumns: ["workspace_id", "project_id", "id"]
+          },
+          {
+            foreignKeyName: "project_folders_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -673,6 +858,32 @@ export type Database = {
           id: string
         }[]
       }
+      create_project_folder: {
+        Args: {
+          target_name: string
+          target_parent_folder_id?: string
+          target_project_id: string
+          target_workspace_id: string
+        }
+        Returns: {
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          id: string
+          name: string
+          parent_folder_id: string | null
+          project_id: string
+          sort_order: number
+          updated_at: string
+          workspace_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "project_folders"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       delete_canvas: {
         Args: { target_canvas_id: string }
         Returns: {
@@ -715,6 +926,39 @@ export type Database = {
           id: string
           workspace_id: string
         }[]
+      }
+      delete_project_file: {
+        Args: {
+          target_file_id: string
+          target_project_id: string
+          target_workspace_id: string
+        }
+        Returns: {
+          byte_size: number
+          checksum: string | null
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          folder_id: string | null
+          height: number | null
+          id: string
+          mime_type: string
+          name: string
+          original_name: string
+          project_id: string
+          ready_at: string | null
+          search_tsv: unknown
+          storage_key: string
+          updated_at: string
+          width: number | null
+          workspace_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "project_files"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       finalize_canvas_asset: {
         Args: {
@@ -782,6 +1026,39 @@ export type Database = {
           workspace_id: string
         }[]
       }
+      finalize_project_file: {
+        Args: {
+          target_file_id: string
+          target_project_id: string
+          target_workspace_id: string
+        }
+        Returns: {
+          byte_size: number
+          checksum: string | null
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          folder_id: string | null
+          height: number | null
+          id: string
+          mime_type: string
+          name: string
+          original_name: string
+          project_id: string
+          ready_at: string | null
+          search_tsv: unknown
+          storage_key: string
+          updated_at: string
+          width: number | null
+          workspace_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "project_files"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       has_workspace_role: {
         Args: { roles: string[]; target_workspace_id: string }
         Returns: boolean
@@ -823,6 +1100,66 @@ export type Database = {
         Args: { target_canvas_id: string; target_group_id: string }
         Returns: undefined
       }
+      move_project_file: {
+        Args: {
+          target_file_id: string
+          target_folder_id?: string
+          target_project_id: string
+          target_workspace_id: string
+        }
+        Returns: {
+          byte_size: number
+          checksum: string | null
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          folder_id: string | null
+          height: number | null
+          id: string
+          mime_type: string
+          name: string
+          original_name: string
+          project_id: string
+          ready_at: string | null
+          search_tsv: unknown
+          storage_key: string
+          updated_at: string
+          width: number | null
+          workspace_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "project_files"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      move_project_folder: {
+        Args: {
+          target_folder_id: string
+          target_parent_folder_id?: string
+          target_project_id: string
+          target_workspace_id: string
+        }
+        Returns: {
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          id: string
+          name: string
+          parent_folder_id: string | null
+          project_id: string
+          sort_order: number
+          updated_at: string
+          workspace_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "project_folders"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       rename_canvas: {
         Args: { target_canvas_id: string; target_title: string }
         Returns: {
@@ -853,6 +1190,66 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "canvas_groups"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      rename_project_file: {
+        Args: {
+          target_file_id: string
+          target_name: string
+          target_project_id: string
+          target_workspace_id: string
+        }
+        Returns: {
+          byte_size: number
+          checksum: string | null
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          folder_id: string | null
+          height: number | null
+          id: string
+          mime_type: string
+          name: string
+          original_name: string
+          project_id: string
+          ready_at: string | null
+          search_tsv: unknown
+          storage_key: string
+          updated_at: string
+          width: number | null
+          workspace_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "project_files"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      rename_project_folder: {
+        Args: {
+          target_folder_id: string
+          target_name: string
+          target_project_id: string
+          target_workspace_id: string
+        }
+        Returns: {
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          id: string
+          name: string
+          parent_folder_id: string | null
+          project_id: string
+          sort_order: number
+          updated_at: string
+          workspace_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "project_folders"
           isOneToOne: false
           isSetofReturn: true
         }
@@ -933,6 +1330,80 @@ export type Database = {
           target_max_edge: number
           workspace_id: string
         }[]
+      }
+      reserve_project_file: {
+        Args: {
+          target_byte_size: number
+          target_checksum?: string
+          target_file_id: string
+          target_folder_id?: string
+          target_height?: number
+          target_mime_type: string
+          target_name: string
+          target_original_name: string
+          target_project_id: string
+          target_width?: number
+          target_workspace_id: string
+        }
+        Returns: {
+          byte_size: number
+          checksum: string | null
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          folder_id: string | null
+          height: number | null
+          id: string
+          mime_type: string
+          name: string
+          original_name: string
+          project_id: string
+          ready_at: string | null
+          search_tsv: unknown
+          storage_key: string
+          updated_at: string
+          width: number | null
+          workspace_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "project_files"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      restore_project_file: {
+        Args: {
+          target_file_id: string
+          target_project_id: string
+          target_workspace_id: string
+        }
+        Returns: {
+          byte_size: number
+          checksum: string | null
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          folder_id: string | null
+          height: number | null
+          id: string
+          mime_type: string
+          name: string
+          original_name: string
+          project_id: string
+          ready_at: string | null
+          search_tsv: unknown
+          storage_key: string
+          updated_at: string
+          width: number | null
+          workspace_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "project_files"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       save_canvas_document: {
         Args: {
