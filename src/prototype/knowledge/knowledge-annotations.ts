@@ -37,32 +37,6 @@ export type KnowledgeAnnotationLoadResult = {
   persistenceMode: KnowledgeAnnotationPersistenceMode;
 };
 
-type StorageErrorLike = {
-  message?: unknown;
-  status?: unknown;
-  statusCode?: unknown;
-};
-
-function storageErrorMessage(error: unknown): string {
-  if (!error || typeof error !== "object") return "";
-  const candidate = error as StorageErrorLike;
-  return [candidate.message, candidate.status, candidate.statusCode]
-    .filter(
-      (value): value is string | number =>
-        typeof value === "string" || typeof value === "number",
-    )
-    .join(" ")
-    .toLowerCase();
-}
-
-function isMissingAnnotationsBucket(error: unknown): boolean {
-  const message = storageErrorMessage(error);
-  return (
-    message.includes("bucket") &&
-    (message.includes("not found") || message.includes("404"))
-  );
-}
-
 function encodePathSegment(value: string): string {
   return encodeURIComponent(value).replace(/%2F/giu, "%252F");
 }
@@ -314,52 +288,10 @@ export async function loadKnowledgeAnnotations(
   documentId: string,
 ): Promise<KnowledgeAnnotationLoadResult> {
   const userId = await getAuthenticatedUserId();
-  const client = createClient();
-  const prefix = getKnowledgeAnnotationPrefix(workspaceId, userId, documentId);
-  const { data: files, error: listError } = await client.storage
-    .from(KNOWLEDGE_ANNOTATIONS_BUCKET)
-    .list(prefix, {
-      limit: 100,
-      sortBy: { column: "created_at", order: "asc" },
-    });
-
-  if (listError) {
-    if (isMissingAnnotationsBucket(listError)) {
-      return {
-        annotations: loadLocalAnnotations(workspaceId, userId, documentId),
-        userId,
-        persistenceMode: "preview-local",
-      };
-    }
-    throw listError;
-  }
-
-  const annotations = await Promise.all(
-    (files ?? [])
-      .filter((file) => file.name.endsWith(".json"))
-      .map(async (file) => {
-        const { data, error } = await client.storage
-          .from(KNOWLEDGE_ANNOTATIONS_BUCKET)
-          .download(`${prefix}/${file.name}`);
-        if (error) throw error;
-        const parsed = parseKnowledgeAnnotation(JSON.parse(await data.text()));
-        return parsed;
-      }),
-  );
-
   return {
-    annotations: sortAnnotations(
-      annotations
-        .filter((item): item is KnowledgeAnnotation => item !== null)
-        .filter(
-          (item) =>
-            item.workspaceId === workspaceId &&
-            item.documentId === documentId &&
-            item.createdBy === userId,
-        ),
-    ),
+    annotations: loadLocalAnnotations(workspaceId, userId, documentId),
     userId,
-    persistenceMode: "cloud",
+    persistenceMode: "preview-local",
   };
 }
 
