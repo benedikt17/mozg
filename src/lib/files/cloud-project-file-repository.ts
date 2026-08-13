@@ -79,7 +79,9 @@ export class SupabaseProjectFileRepository implements ProjectFileRepository {
     return pending;
   }
 
-  async listFolders(scopeInput: ProjectFileScope): Promise<ProjectFolderRecord[]> {
+  async listFolders(
+    scopeInput: ProjectFileScope,
+  ): Promise<ProjectFolderRecord[]> {
     try {
       await this.assertAuthenticated();
       const scope = projectFileScope(scopeInput);
@@ -98,7 +100,9 @@ export class SupabaseProjectFileRepository implements ProjectFileRepository {
     }
   }
 
-  async createFolder(input: CreateProjectFolderInput): Promise<ProjectFolderRecord> {
+  async createFolder(
+    input: CreateProjectFolderInput,
+  ): Promise<ProjectFolderRecord> {
     try {
       await this.assertAuthenticated();
       const scope = projectFileScope(input);
@@ -143,7 +147,9 @@ export class SupabaseProjectFileRepository implements ProjectFileRepository {
     }
   }
 
-  async moveFolder(input: MoveProjectFolderInput): Promise<ProjectFolderRecord> {
+  async moveFolder(
+    input: MoveProjectFolderInput,
+  ): Promise<ProjectFolderRecord> {
     try {
       await this.assertAuthenticated();
       const scope = projectFileScope(input);
@@ -235,9 +241,8 @@ export class SupabaseProjectFileRepository implements ProjectFileRepository {
     try {
       await this.assertAuthenticated();
       const validated = validateProjectFileUpload(input, this.idGenerator);
-      const { data: reservedData, error: reserveError } = await this.supabase.rpc(
-        "reserve_project_file",
-        {
+      const { data: reservedData, error: reserveError } =
+        await this.supabase.rpc("reserve_project_file", {
           target_workspace_id: validated.workspaceId,
           target_project_id: validated.projectId,
           target_file_id: validated.fileId,
@@ -255,8 +260,7 @@ export class SupabaseProjectFileRepository implements ProjectFileRepository {
           ...(validated.checksum == null
             ? {}
             : { target_checksum: validated.checksum }),
-        },
-      );
+        });
       if (reserveError) throw reserveError;
       const expected = {
         workspaceId: validated.workspaceId,
