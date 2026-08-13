@@ -68,7 +68,7 @@ export type CreateProjectFolderInput = ProjectFileScope & {
   parentFolderId?: string | null;
 };
 
-export type MoveProjectFolderInput = {
+export type MoveProjectFolderInput = ProjectFileScope & {
   folderId: string;
   parentFolderId: string | null;
 };
@@ -95,10 +95,9 @@ export type ListProjectFilesInput = ProjectFileScope & {
 export interface ProjectFileRepository {
   listFolders(scope: ProjectFileScope): Promise<ProjectFolderRecord[]>;
   createFolder(input: CreateProjectFolderInput): Promise<ProjectFolderRecord>;
-  renameFolder(input: {
-    folderId: string;
-    name: string;
-  }): Promise<ProjectFolderRecord>;
+  renameFolder(
+    input: ProjectFileScope & { folderId: string; name: string },
+  ): Promise<ProjectFolderRecord>;
   moveFolder(input: MoveProjectFolderInput): Promise<ProjectFolderRecord>;
 
   listFiles(input: ListProjectFilesInput): Promise<ProjectFileRecord[]>;
@@ -106,16 +105,18 @@ export interface ProjectFileRepository {
     input: ProjectFileScope & { fileId: string },
   ): Promise<ProjectFileRecord>;
   uploadFile(input: UploadProjectFileInput): Promise<ProjectFileRecord>;
-  renameFile(input: {
-    fileId: string;
-    name: string;
-  }): Promise<ProjectFileRecord>;
-  moveFile(input: {
-    fileId: string;
-    folderId: string | null;
-  }): Promise<ProjectFileRecord>;
-  deleteFile(input: { fileId: string }): Promise<ProjectFileRecord>;
-  restoreFile(input: { fileId: string }): Promise<ProjectFileRecord>;
+  renameFile(
+    input: ProjectFileScope & { fileId: string; name: string },
+  ): Promise<ProjectFileRecord>;
+  moveFile(
+    input: ProjectFileScope & { fileId: string; folderId: string | null },
+  ): Promise<ProjectFileRecord>;
+  deleteFile(
+    input: ProjectFileScope & { fileId: string },
+  ): Promise<ProjectFileRecord>;
+  restoreFile(
+    input: ProjectFileScope & { fileId: string },
+  ): Promise<ProjectFileRecord>;
   downloadFile(
     input: ProjectFileScope & { fileId: string },
   ): Promise<ProjectFileDownload>;
