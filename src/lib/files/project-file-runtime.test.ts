@@ -8,8 +8,7 @@ import {
   validateProjectFileUpload,
 } from "./project-file-runtime";
 
-type ProjectFileRow =
-  Database["public"]["Tables"]["project_files"]["Row"];
+type ProjectFileRow = Database["public"]["Tables"]["project_files"]["Row"];
 
 const workspaceId = "84000000-0000-4000-8000-000000000001";
 const fileId = "84000000-0000-4000-8000-000000000021";
