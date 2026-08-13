@@ -150,7 +150,7 @@ The implementation can reuse proven Canvas asset repository patterns, but Files 
 
 The current `canvas-assets` 20 MB bucket limit and image-only allowlist are Canvas-specific and must not be copied automatically to Files.
 
-Stage A must define an explicit Files upload policy. Small browser uploads may use the normal Storage path; larger source assets must use a resumable upload path. The policy must be enforced at both the UX boundary and the trusted server/storage boundary.
+Stage A1 keeps a 50 MiB server/bucket ceiling, while the current browser repository deliberately limits the standard upload path to 6 MiB. Files above 6 MiB and up to the server ceiling must use TUS/resumable upload before the UI exposes that capability. This keeps storage capacity separate from transfer reliability. The policy must be enforced at both the UX boundary and the trusted server/storage boundary.
 
 No broad PSD/TIFF/ZIP/video support is implied by this ADR. Those formats can be added deliberately once their upload, preview and size requirements are specified.
 
