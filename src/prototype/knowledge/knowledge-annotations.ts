@@ -47,8 +47,9 @@ function storageErrorMessage(error: unknown): string {
   if (!error || typeof error !== "object") return "";
   const candidate = error as StorageErrorLike;
   return [candidate.message, candidate.status, candidate.statusCode]
-    .filter((value): value is string | number =>
-      typeof value === "string" || typeof value === "number",
+    .filter(
+      (value): value is string | number =>
+        typeof value === "string" || typeof value === "number",
     )
     .join(" ")
     .toLowerCase();
@@ -217,7 +218,11 @@ export function resolveKnowledgeAnnotationOffset(
     };
   }
 
-  const candidates: Array<{ startOffset: number; score: number; distance: number }> = [];
+  const candidates: Array<{
+    startOffset: number;
+    score: number;
+    distance: number;
+  }> = [];
   let searchFrom = 0;
   while (searchFrom <= text.length - quote.length) {
     const startOffset = text.indexOf(quote, searchFrom);
@@ -317,7 +322,10 @@ export async function loadKnowledgeAnnotations(
   const prefix = getKnowledgeAnnotationPrefix(workspaceId, userId, documentId);
   const { data: files, error: listError } = await client.storage
     .from(KNOWLEDGE_ANNOTATIONS_BUCKET)
-    .list(prefix, { limit: 100, sortBy: { column: "created_at", order: "asc" } });
+    .list(prefix, {
+      limit: 100,
+      sortBy: { column: "created_at", order: "asc" },
+    });
 
   if (listError) {
     if (isMissingAnnotationsBucket(listError)) {
