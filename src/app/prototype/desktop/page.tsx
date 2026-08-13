@@ -1,5 +1,6 @@
 import type { DesktopCloudSnapshotLoadResult } from "@/lib/supabase/desktop-snapshot-loader";
 import { DesktopPrototypeShell } from "@/prototype/desktop-shell";
+import { KnowledgeAnnotationsRuntime } from "@/prototype/knowledge/knowledge-annotations-runtime";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -14,10 +15,13 @@ export default async function DesktopPrototypePage() {
   if (result.kind !== "ready")
     return <DesktopSnapshotBoundary kind={result.kind} />;
   return (
-    <DesktopPrototypeShell
-      cloudBootstrap={result.bootstrap}
-      runtimeMode="cloud"
-    />
+    <>
+      <DesktopPrototypeShell
+        cloudBootstrap={result.bootstrap}
+        runtimeMode="cloud"
+      />
+      <KnowledgeAnnotationsRuntime workspaceId={result.bootstrap.workspaceId} />
+    </>
   );
 }
 
