@@ -19,7 +19,7 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export const PROJECT_FILE_SELECT =
-  "id,workspace_id,project_id,folder_id,name,original_name,storage_key,mime_type,byte_size,checksum,width,height,created_by,created_at,updated_at,ready_at,deleted_at";
+  "id,workspace_id,project_id,folder_id,name,original_name,storage_key,mime_type,byte_size,checksum,width,height,search_tsv,created_by,created_at,updated_at,ready_at,deleted_at";
 export const PROJECT_FOLDER_SELECT =
   "id,workspace_id,project_id,parent_folder_id,name,sort_order,created_by,created_at,updated_at,deleted_at";
 
@@ -237,8 +237,7 @@ export function validateProjectFileUpload(
       (input.height ?? 0) <= 0 ||
       (input.width ?? 0) > PROJECT_FILE_MAX_IMAGE_DIMENSION ||
       (input.height ?? 0) > PROJECT_FILE_MAX_IMAGE_DIMENSION ||
-      (input.width ?? 0) * (input.height ?? 0) >
-        PROJECT_FILE_MAX_IMAGE_PIXELS
+      (input.width ?? 0) * (input.height ?? 0) > PROJECT_FILE_MAX_IMAGE_PIXELS
     ) {
       throw new CloudProjectFileRepositoryError(
         "invalid-input",
@@ -338,7 +337,10 @@ export function mapProjectFile(
   };
   if (
     record.storageKey !==
-    projectFileStorageKey({ workspaceId: record.workspaceId, fileId: record.id })
+    projectFileStorageKey({
+      workspaceId: record.workspaceId,
+      fileId: record.id,
+    })
   ) {
     throw new CloudProjectFileRepositoryError(
       "invalid-server-metadata",
