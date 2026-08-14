@@ -85,8 +85,7 @@ export function FilesWorkspace({
     location.kind === "folder"
       ? (folders.find((folder) => folder.id === location.folderId) ?? null)
       : null;
-  const selectedFile =
-    files.find((file) => file.id === selectedFileId) ?? null;
+  const selectedFile = files.find((file) => file.id === selectedFileId) ?? null;
   const folderTree = getProjectFolderTree(folders);
   const title = query.trim()
     ? "Результаты поиска"
