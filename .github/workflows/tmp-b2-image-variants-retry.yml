@@ -34,78 +34,21 @@ jobs:
       - name: Install dependencies
         working-directory: work
         run: pnpm install --frozen-lockfile
-      - name: Wire B2 image variants into clean branch
-        shell: bash
+      - name: Wire permanent B2 product code
         working-directory: work
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          import re
-
-          path = Path('../helper/scripts/tmp-b2-wire.py')
-          text = path.read_text()
-          text = text.replace(
-              '  chooseProjectFilePreviewVariant,\n  type ProjectFileImageVariantRepository,',
-              '  chooseProjectFilePreviewVariant,\n  type ProjectFileImageVariantMetadata,\n  type ProjectFileImageVariantRepository,',
-              1,
-          )
-          text = text.replace(
-              '        let variants = [];',
-              '        let variants: ProjectFileImageVariantMetadata[] = [];',
-              1,
-          )
-          valid_png = 'iVBORw0KGgoAAAANSUhEUgAAAyAAAAJYCAIAAAAVFBUnAAAIzUlEQVR42u3WMREAAAjEMMC/2JeACY4pkdCpnaQAALgzEgAAGCwAAIMFAGCwAAAwWAAABgsAwGABAGCwAAAMFgCAwQIAwGABABgsAACDBQBgsAAAMFgAAAYLAMBgAQBgsAAADBYAgMECAMBgAQAYLAAAgwUAgMECADBYAAAGCwDAYAEAYLAAAAwWAIDBAgDAYAEAGCwAAIMFAIDBAgAwWAAABgsAAIMFAGCwAAAMFgCAwQIAwGABABgsAACDBQCAwQIAMFgAAAYLAACDBQBgsAAADBYAAAYLAMBgAQAYLAAAgwUAgMECADBYAAAGCwAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAIMFAIDBAgAwWAAABgsAAIMFAGCwAAAMFgAABgsAwGABABgsAAAMFgCAwQIAMFgAAAYLAACDBQBgsAAADBYAAAYLAMBgAQAYLAAADBYAgMECADBYAAAYLAAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAAwWAIDBAgAwWAAAGCwAAIMFAGCwAAAwWAAABgsAwGABABgsAAAMFgCAwQIAMFgAABgsAACDBQBgsAAAMFgAAAYLAMBgAQAYLAAADBYAgMECADBYAAAYLAAAgwUAYLAAADBYAAAGCwDAYAEAYLAAAAwWAIDBAgAwWAAAGCwAAIMFAGCwAAAwWAAABgsAwGABAGCwAAAMFgCAwQIAwGABABgsAACDBQBgsAAAMFgAAAYLAMBgAQBgsAAADBYAgMECAMBgAQAYLAAAgwUAgMECADBYAAAGCwDAYAEAYLAAAAwWAIDBAgDAYAEAGCwAAIMFAIDBAgAwWAAABgsAwGABAGCwAAAMFgCAwQIAwGABABgsAACDBQBgsAAAMFgAAAYLAMBgAQBgsAAADBYAgMECAMBgAQAYLAAAgwUAgMECADBYAAAGCwAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAIMFAIDBAgAwWAAABgsAAIMFAGCwAAAMFgAABgsAwGABABgsAAAMFgCAwQIAMFgAAAYLAACDBQBgsAAADBYAAAYLAMBgAQAYLAAADBYAgMECADBYAAAGCwAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAAwWAIDBAgAwWAAAGCwAAIMFAGCwAAAMFgAABgsAwGABABgsAAAMFgCAwQIAMFgAABgsAACDBQBgsAAAMFgAAAYLAMBgAQAYLAAADBYAgMECADBYAAAYLAAAgwUAYLAAADBYAAAGCwDAYAEAYLAAAAwWAIDBAgAwWAAAGCwAAIMFAGCwAAAwWAAABgsAwGABAGCwAAAMFgCAwQIAwGABABgsAACDBQCAwQIAMFgAAAYLAMBgAQBgsAAADBYAgMECAMBgAQAYLAAAgwUAgMECADBYAAAGCwDAYAEAYLAAAAwWAIDBAgDAYAEAGCwAAIMFAIDBAgAwWAAABgsAAIMFAGCwAAAMFgCAwQIAwGABABgsAACDBQCAwQIAMFgAAAYLAACDBQBgsAAADBYAAAYLAMBgAQAYLAAAgwUAgMECADBYAAAGCwAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAAwWAIDBAgAwWAAABgsAAIMFAGCwAAAMFgAABgsAwGABABgsAAAMFgCAwQIAMFgAAAYLAACDBQBgsAAADBYAAAYLAMBgAQAYLAAADBYAgMECADBYAAAYLAAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAAwWAIDBAgAwWAAAGCwAAIMFAGCwAAAwWAAABgsAwGABABgsAAAMFgCAwQIAMFgAABgsAACDBQBgsAAAMFgAAAYLAMBgAQBgsAAADBYAgMECADBYAAAYLAAAgwUAYLAAADBYAAAGCwDAYAEAYLAAAAwWAIDBAgAwWBIAABgsAACDBQBgsAAAMFgAAAYLAMBgAQBgsAAADBYAgMECAMBgAQAYLAAAgwUAYLAAADBYAAAGCwDAYAEAYLAAAAwWAIDBAgDAYAEAGCwAAIMFAIDBAgAwWAAABgsAwGABAGCwAAAMFgCAwQIAwGABABgsAACDBQCAwQIAMFgAAAYLAACDBQBgsAAADBYAgMECAMBgAQAYLAAAgwUAgMECADBYAAAGCwAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAIMFAIDBAgAwWAAABgsAAIMFAGCwAAAMFgAABgsAwGABABgsAACDBQCAwQIAMFgAAAYLAACDBQBgsAAADBYAAAYLAMBgAQAYLAAADBYAgMECADBYAAAGCwAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAAwWAMCfBZlEB4Aye4RvAAAAAElFTkSuQmCC'
-          text, count = re.subn(
-              r'png_base64 = "[^"]+"',
-              f'png_base64 = "{valid_png}"',
-              text,
-              count=1,
-          )
-          if count != 1:
-              raise SystemExit('PNG fixture marker missing')
-          path.write_text(text)
-          PY
           python ../helper/scripts/tmp-b2-wire.py
-      - name: Add transient B2 diagnostics
-        shell: bash
-        working-directory: work
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          generation = Path('src/lib/files/project-file-image-variant-generation.ts')
-          text = generation.read_text()
-          text = text.replace(
-              '  } catch {\n    // Derivatives are disposable caches.',
-              '  } catch (error) {\n    console.error("B2_VARIANT_GENERATION_ERROR", error);\n    // Derivatives are disposable caches.',
-              1,
-          )
-          generation.write_text(text)
-
-          e2e = Path('tests/e2e/files-desktop.spec.ts')
-          text = e2e.read_text()
-          marker = '  let sawResumableUpload = false;\n'
-          replacement = marker + '  page.on("console", (message) => console.log("B2_BROWSER_CONSOLE", message.type(), message.text()));\n'
-          if marker not in text:
-              raise SystemExit('E2E console marker missing')
-          text = text.replace(marker, replacement, 1)
-          request_marker = '    const url = decodeURIComponent(request.url());\n'
-          request_replacement = request_marker + '    if (url.includes("/project-files/")) console.log("B2_PROJECT_FILES_REQUEST", request.method(), url);\n'
-          if request_marker not in text:
-              raise SystemExit('E2E request marker missing')
-          text = text.replace(request_marker, request_replacement, 1)
-          e2e.write_text(text)
-          PY
-      - name: Format B2 source
+          python ../helper/scripts/tmp-b2-harden.py
+      - name: Format changed product code
         working-directory: work
         run: >-
           pnpm exec prettier --write
-          src/lib/files/cloud-project-file-image-variant-repository.ts
-          src/lib/files/project-file-image-variant-generation.ts
-          src/lib/files/project-file-image-variants.ts
-          src/lib/files/project-file-image-variants.test.ts
           src/prototype/files/files-workspace.tsx
           tests/e2e/files-desktop.spec.ts
+          src/lib/files/project-file-image-variants.ts
+      - name: Check changed-file whitespace
+        working-directory: work
+        run: git diff --check
       - name: Start local Supabase
         working-directory: work
         run: pnpm supabase start
@@ -146,48 +89,45 @@ jobs:
         working-directory: work
         run: pnpm exec playwright install --with-deps chromium
       - name: E2E
+        id: e2e
+        continue-on-error: true
+        shell: bash
         working-directory: work
-        run: pnpm test:e2e
-      - name: Build
-        working-directory: work
-        run: pnpm build
+        run: |
+          set -o pipefail
+          pnpm test:e2e 2>&1 | tee b2-e2e.log
+      - name: Upload E2E diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b2-playwright-report
+          path: |
+            work/playwright-report/
+            work/test-results/
+            work/b2-e2e.log
+          retention-days: 7
       - name: Stop Supabase
         if: always()
         working-directory: work
         run: pnpm supabase stop --no-backup
+      - name: Require E2E success
+        if: steps.e2e.outcome != 'success'
+        run: exit 1
+      - name: Build
+        working-directory: work
+        run: pnpm build
+      - name: Final diff checks
+        working-directory: work
+        run: |
+          git diff --check
+          pnpm exec prettier --check src/prototype/files/files-workspace.tsx tests/e2e/files-desktop.spec.ts src/lib/files/project-file-image-variants.ts
       - name: Commit validated B2 slice to clean branch
-        if: success()
         shell: bash
         working-directory: work
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          generation = Path('src/lib/files/project-file-image-variant-generation.ts')
-          text = generation.read_text().replace(
-              '  } catch (error) {\n    console.error("B2_VARIANT_GENERATION_ERROR", error);\n    // Derivatives are disposable caches.',
-              '  } catch {\n    // Derivatives are disposable caches.',
-              1,
-          )
-          generation.write_text(text)
-
-          e2e = Path('tests/e2e/files-desktop.spec.ts')
-          text = e2e.read_text()
-          text = text.replace(
-              '  page.on("console", (message) =>\n    console.log("B2_BROWSER_CONSOLE", message.type(), message.text()),\n  );\n',
-              '',
-              1,
-          )
-          text = text.replace(
-              '    if (url.includes("/project-files/"))\n      console.log("B2_PROJECT_FILES_REQUEST", request.method(), url);\n',
-              '',
-              1,
-          )
-          e2e.write_text(text)
-          PY
-          pnpm exec prettier --write src/lib/files/project-file-image-variant-generation.ts tests/e2e/files-desktop.spec.ts
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/lib/supabase/database.types.ts src/prototype/files/files-workspace.tsx tests/e2e/files-desktop.spec.ts src/lib/files/project-file-image-variant-generation.ts
+          git add src/lib/supabase/database.types.ts src/prototype/files/files-workspace.tsx tests/e2e/files-desktop.spec.ts
           git diff --cached --check
           git commit -m "Files B2: wire image variants into Files UI"
           git push origin HEAD:feat/project-files-b2-image-variants-clean
