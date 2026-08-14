@@ -1,0 +1,105 @@
+name: tmp-b1-ui
+
+on:
+  push:
+    branches:
+      - tmp/project-files-b1-deps
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-check:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Patch B1 upload UI and browser coverage
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path('src/prototype/files/files-workspace.tsx')
+          text = path.read_text()
+          text = text.replace(
+          'import { SupabaseProjectFileRepository } from "@/lib/files/cloud-project-file-repository";\n',
+          'import {\n  CloudProjectFileRepositoryError,\n  SupabaseProjectFileRepository,\n} from "@/lib/files/cloud-project-file-repository";\nimport { getPublicEnv } from "@/lib/env";\n'
+          )
+          text = text.replace(
+          '  type ProjectFileRepository,\n  type ProjectFolderRecord,\n} from "@/lib/files/project-file-repository";\n',
+          '  type ProjectFileRepository,\n  type ProjectFileUploadTransport,\n  type ProjectFolderRecord,\n} from "@/lib/files/project-file-repository";\nimport { projectFileResumableUploadEndpoint } from "@/lib/files/project-file-resumable-upload";\nimport { projectFileUploadTransport } from "@/lib/files/project-file-upload-limit";\n'
+          )
+          text = text.replace(
+          'type FilesActionMessage = { kind: "error" | "info"; text: string };\n',
+          '''type FilesActionMessage = { kind: "error" | "info"; text: string };\ntype ActiveProjectFileUpload = {\n  fileName: string;\n  currentFile: number;\n  totalFiles: number;\n  percentage: number;\n  transport: ProjectFileUploadTransport;\n  resumed: boolean;\n  retryAttempt: number;\n};\n'''
+          )
+          text = text.replace(
+          '''  const repository = useMemo(\n    () => new SupabaseProjectFileRepository({ supabase: createClient() }),\n    [],\n  );\n  const uploadInputRef = useRef<HTMLInputElement>(null);\n''',
+          '''  const repository = useMemo(() => {\n    const env = getPublicEnv();\n    return new SupabaseProjectFileRepository({\n      supabase: createClient(),\n      resumableUploadEndpoint: projectFileResumableUploadEndpoint(\n        env.NEXT_PUBLIC_SUPABASE_URL,\n      ),\n    });\n  }, []);\n  const uploadInputRef = useRef<HTMLInputElement>(null);\n  const uploadAbortControllerRef = useRef<AbortController | null>(null);\n'''
+          )
+          text = text.replace(
+          '''  const [actionMessage, setActionMessage] = useState<FilesActionMessage | null>(\n    null,\n  );\n''',
+          '''  const [actionMessage, setActionMessage] = useState<FilesActionMessage | null>(\n    null,\n  );\n  const [activeUpload, setActiveUpload] =\n    useState<ActiveProjectFileUpload | null>(null);\n'''
+          )
+
+          start = text.index('  const uploadFiles = async (browserFiles: readonly File[]) => {')
+          end = text.index('\n  const renameFile = async', start)
+          upload = '''  const uploadFiles = async (browserFiles: readonly File[]) => {\n    if (!workspaceId || !canMutate || browserFiles.length === 0) return;\n\n    setActionState("uploading");\n    setActionMessage({\n      kind: "info",\n      text:\n        browserFiles.length === 1\n          ? "Загрузка файла…"\n          : `Загрузка файлов: ${browserFiles.length}…`,\n    });\n\n    let completedCount = 0;\n    try {\n      let lastUploadedFile: ProjectFileRecord | null = null;\n      for (const [index, browserFile] of browserFiles.entries()) {\n        const prepared = await prepareProjectFileBrowserUpload(browserFile);\n        const transport = projectFileUploadTransport(prepared.byteSize);\n        const abortController = new AbortController();\n        uploadAbortControllerRef.current = abortController;\n        setActiveUpload({\n          fileName: prepared.name,\n          currentFile: index + 1,\n          totalFiles: browserFiles.length,\n          percentage: 0,\n          transport,\n          resumed: false,\n          retryAttempt: 0,\n        });\n\n        const uploaded = await repository.uploadFile({\n          workspaceId,\n          projectId,\n          folderId: activeFolderId,\n          ...prepared,\n          signal: abortController.signal,\n          onProgress: (progress) => {\n            setActiveUpload((current) =>\n              current\n                ? {\n                    ...current,\n                    percentage: progress.percentage,\n                    transport: progress.transport,\n                  }\n                : current,\n            );\n          },\n          onResume: () => {\n            setActiveUpload((current) =>\n              current ? { ...current, resumed: true } : current,\n            );\n          },\n          onRetry: (retryAttempt) => {\n            setActiveUpload((current) =>\n              current ? { ...current, retryAttempt } : current,\n            );\n          },\n        });\n        completedCount += 1;\n        lastUploadedFile = uploaded;\n        setFiles((current) => [\n          uploaded,\n          ...current.filter((file) => file.id !== uploaded.id),\n        ]);\n      }\n\n      if (lastUploadedFile) {\n        setSelectedFileId(lastUploadedFile.id);\n        setActionMessage({\n          kind: "info",\n          text:\n            browserFiles.length === 1\n              ? `Загружен: ${lastUploadedFile.name}`\n              : `Загружено файлов: ${browserFiles.length}`,\n        });\n      }\n    } catch (cause) {\n      if (\n        cause instanceof CloudProjectFileRepositoryError &&\n        cause.code === "cancelled"\n      ) {\n        setActionMessage({\n          kind: "info",\n          text:\n            completedCount === 0\n              ? "Загрузка отменена."\n              : `Загрузка остановлена. Загружено файлов: ${completedCount}.`,\n        });\n      } else {\n        setActionMessage({\n          kind: "error",\n          text: projectFileUploadErrorMessage(cause),\n        });\n      }\n    } finally {\n      uploadAbortControllerRef.current = null;\n      setActiveUpload(null);\n      setActionState("idle");\n    }\n  };\n\n  const cancelActiveUpload = () => {\n    uploadAbortControllerRef.current?.abort();\n  };\n'''
+          text = text[:start] + upload + text[end:]
+
+          marker = '''        <nav aria-label="Путь к папке" className={styles.breadcrumbs}>\n'''
+          progress = '''        {activeUpload ? (\n          <div\n            aria-label="Прогресс загрузки"\n            className={styles.uploadProgress}\n            role="status"\n          >\n            <div className={styles.uploadProgressMeta}>\n              <strong title={activeUpload.fileName}>{activeUpload.fileName}</strong>\n              <span>\n                {activeUpload.totalFiles > 1\n                  ? `${activeUpload.currentFile} из ${activeUpload.totalFiles} · `\n                  : ""}\n                {activeUpload.resumed\n                  ? "Продолжение загрузки"\n                  : activeUpload.transport === "resumable"\n                    ? "Надёжная загрузка"\n                    : "Загрузка"}\n                {activeUpload.retryAttempt > 0\n                  ? ` · повтор ${activeUpload.retryAttempt}`\n                  : ""}\n              </span>\n            </div>\n            <progress\n              aria-label={`Загрузка ${activeUpload.fileName}`}\n              className={styles.uploadProgressTrack}\n              max={100}\n              value={activeUpload.percentage}\n            />\n            <span className={styles.uploadProgressPercent}>\n              {Math.round(activeUpload.percentage)}%\n            </span>\n            {activeUpload.transport === "resumable" ? (\n              <button\n                className={styles.uploadCancelButton}\n                onClick={cancelActiveUpload}\n                type="button"\n              >\n                Отменить\n              </button>\n            ) : null}\n          </div>\n        ) : null}\n\n'''
+          if marker not in text:
+              raise SystemExit('breadcrumb marker missing')
+          text = text.replace(marker, progress + marker, 1)
+          path.write_text(text)
+
+          css = Path('src/prototype/files/files-workspace.module.css')
+          css_text = css.read_text()
+          css_text += '''\n.uploadProgress {\n  display: grid;\n  grid-template-columns: minmax(140px, 1fr) minmax(120px, 220px) 42px auto;\n  align-items: center;\n  gap: 10px;\n  min-height: 42px;\n  border-bottom: 1px solid var(--border);\n  padding: 6px 12px;\n  background: var(--surface-2);\n}\n\n.uploadProgressMeta {\n  min-width: 0;\n  display: grid;\n  gap: 1px;\n}\n\n.uploadProgressMeta strong,\n.uploadProgressMeta span {\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.uploadProgressMeta strong {\n  color: var(--text);\n  font-size: 12px;\n  font-weight: 600;\n}\n\n.uploadProgressMeta span,\n.uploadProgressPercent {\n  color: var(--text-3);\n  font-size: 11px;\n}\n\n.uploadProgressTrack {\n  width: 100%;\n  height: 6px;\n  accent-color: var(--focus);\n}\n\n.uploadProgressPercent {\n  text-align: right;\n  font-variant-numeric: tabular-nums;\n}\n\n.uploadCancelButton {\n  min-height: 28px;\n  border: 1px solid var(--border);\n  border-radius: var(--radius-md);\n  background: var(--surface);\n  padding: 0 8px;\n  color: var(--text-2);\n  font: inherit;\n  font-size: 12px;\n  cursor: pointer;\n}\n\n.uploadCancelButton:hover {\n  border-color: var(--border-strong);\n  color: var(--text);\n}\n'''
+          css.write_text(css_text)
+
+          e2e = Path('tests/e2e/files-desktop.spec.ts')
+          e2e_text = e2e.read_text()
+          signature = '''test("uploads to Inbox, accepts a file above 6 MiB, creates a folder, previews and downloads an original", async ({\n  page,\n}) => {\n  await signIn(page);\n'''
+          replacement = '''test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder, previews and downloads an original", async ({\n  page,\n}) => {\n  let sawResumableUpload = false;\n  page.on("request", (request) => {\n    if (request.url().includes("/storage/v1/upload/resumable")) {\n      sawResumableUpload = true;\n    }\n  });\n\n  await signIn(page);\n'''
+          if signature not in e2e_text:
+              raise SystemExit('e2e signature marker missing')
+          e2e_text = e2e_text.replace(signature, replacement, 1)
+          small_marker = '''  await expect(\n    page.getByRole("button", { name: /inbox-note\\.txt/ }),\n  ).toBeVisible();\n\n  const largeFileChooserPromise'''
+          small_replacement = '''  await expect(\n    page.getByRole("button", { name: /inbox-note\\.txt/ }),\n  ).toBeVisible();\n  expect(sawResumableUpload).toBe(false);\n\n  const largeFileChooserPromise'''
+          if small_marker not in e2e_text:
+              raise SystemExit('small upload marker missing')
+          e2e_text = e2e_text.replace(small_marker, small_replacement, 1)
+          large_marker = '''  await expect(\n    page.getByRole("button", { name: /large-note\\.txt/ }),\n  ).toBeVisible();\n\n  await createFolder'''
+          large_replacement = '''  await expect(\n    page.getByRole("button", { name: /large-note\\.txt/ }),\n  ).toBeVisible();\n  expect(sawResumableUpload).toBe(true);\n\n  await createFolder'''
+          if large_marker not in e2e_text:
+              raise SystemExit('large upload marker missing')
+          e2e_text = e2e_text.replace(large_marker, large_replacement, 1)
+          e2e.write_text(e2e_text)
+          PY
+      - run: pnpm exec prettier --write src/prototype/files/files-workspace.tsx src/prototype/files/files-workspace.module.css tests/e2e/files-desktop.spec.ts src/lib/files/project-file-resumable-upload.test.ts src/lib/files/project-file-upload-limit.test.ts
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - name: Commit UI
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/prototype/files src/lib/files tests/e2e/files-desktop.spec.ts
+          git commit -m 'Files B1: add resumable upload progress and cancel UI'
+          git push
