@@ -6,6 +6,7 @@ import {
   type ProjectFileUploadProgress,
 } from "./project-file-repository";
 
+export const PROJECT_FILE_TUS_CHUNK_BYTES = 6 * 1024 * 1024;
 export const PROJECT_FILE_TUS_RETRY_DELAYS = [
   0, 3_000, 5_000, 10_000, 20_000,
 ] as const;
@@ -108,6 +109,7 @@ export async function uploadProjectFileResumable(input: {
 
     const upload = new tus.Upload(input.blob, {
       endpoint: input.endpoint,
+      chunkSize: PROJECT_FILE_TUS_CHUNK_BYTES,
       retryDelays: [...PROJECT_FILE_TUS_RETRY_DELAYS],
       uploadDataDuringCreation: true,
       removeFingerprintOnSuccess: true,
