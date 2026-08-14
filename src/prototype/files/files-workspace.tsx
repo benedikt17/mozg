@@ -118,9 +118,7 @@ export function FilesWorkspace({
           <span className={styles.breadcrumbPart} key={folder.id}>
             <span aria-hidden="true">/</span>
             <button
-              aria-current={
-                folder.id === activeFolderId ? "page" : undefined
-              }
+              aria-current={folder.id === activeFolderId ? "page" : undefined}
               onClick={() => setActiveFolderId(folder.id)}
               type="button"
             >
