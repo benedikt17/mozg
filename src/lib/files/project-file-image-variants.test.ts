@@ -7,6 +7,8 @@ import {
   type ProjectFileImageVariantMetadata,
 } from "./project-file-image-variants";
 
+// Pure variant planning/selection lives here; browser encoding and Storage delivery
+// are covered by the Files Playwright acceptance test.
 function variant(targetMaxEdge: number): ProjectFileImageVariantMetadata {
   return {
     workspaceId: "86000000-0000-4000-8000-000000000001",
