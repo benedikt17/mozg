@@ -4,6 +4,7 @@ import type { ProjectFolderRecord } from "@/lib/files/project-file-repository";
 import {
   formatProjectFileSize,
   getProjectFolderBreadcrumbs,
+  getProjectFolderTree,
 } from "@/prototype/files/files-workspace";
 
 const baseFolder = {
@@ -41,6 +42,27 @@ describe("getProjectFolderBreadcrumbs", () => {
     const folders = [folder("a", "A", "b"), folder("b", "B", "a")];
 
     expect(getProjectFolderBreadcrumbs(folders, "a")).toHaveLength(2);
+  });
+});
+
+describe("getProjectFolderTree", () => {
+  it("flattens nested project folders in sidebar order", () => {
+    const folders = [
+      { ...folder("a", "Персонажи", null), sortOrder: 1 },
+      { ...folder("b", "Мир", null), sortOrder: 0 },
+      folder("c", "Яга", "a"),
+    ];
+
+    expect(
+      getProjectFolderTree(folders).map(({ folder: item, depth }) => [
+        item.id,
+        depth,
+      ]),
+    ).toEqual([
+      ["b", 0],
+      ["a", 0],
+      ["c", 1],
+    ]);
   });
 });
 
