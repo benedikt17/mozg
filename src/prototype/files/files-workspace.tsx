@@ -12,12 +12,12 @@ import type {
 import styles from "./files-workspace.module.css";
 
 type FilesWorkspaceProps = {
-  workspaceId?: string;
+  workspaceId: string;
   projectId: string;
   projectName: string;
 };
 
-type FilesLoadStatus = "idle" | "loading" | "ready" | "error";
+type FilesLoadStatus = "loading" | "ready" | "error";
 
 export function FilesWorkspace({
   workspaceId,
@@ -32,26 +32,13 @@ export function FilesWorkspace({
   const [files, setFiles] = useState<ProjectFileRecord[]>([]);
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<FilesLoadStatus>("idle");
+  const [status, setStatus] = useState<FilesLoadStatus>("loading");
   const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
-    setActiveFolderId(null);
-    setQuery("");
-  }, [projectId]);
-
-  useEffect(() => {
-    if (!workspaceId) {
-      setStatus("error");
-      setFolders([]);
-      setFiles([]);
-      return;
-    }
-
     let cancelled = false;
     const trimmedQuery = query.trim();
     const scope = { workspaceId, projectId };
-    setStatus("loading");
 
     void Promise.all([
       repository.listFolders(scope),
@@ -89,6 +76,11 @@ export function FilesWorkspace({
       );
   const hasEntries = childFolders.length > 0 || files.length > 0;
 
+  const openFolder = (folderId: string | null) => {
+    setStatus("loading");
+    setActiveFolderId(folderId);
+  };
+
   return (
     <div className={styles.workspace}>
       <header className={styles.header}>
@@ -99,7 +91,10 @@ export function FilesWorkspace({
         <label className={styles.search}>
           <span className={styles.visuallyHidden}>Поиск файлов</span>
           <input
-            onChange={(event) => setQuery(event.currentTarget.value)}
+            onChange={(event) => {
+              setStatus("loading");
+              setQuery(event.currentTarget.value);
+            }}
             placeholder="Поиск файлов"
             type="search"
             value={query}
@@ -110,7 +105,7 @@ export function FilesWorkspace({
       <nav aria-label="Путь к папке" className={styles.breadcrumbs}>
         <button
           aria-current={activeFolderId === null ? "page" : undefined}
-          onClick={() => setActiveFolderId(null)}
+          onClick={() => openFolder(null)}
           type="button"
         >
           {projectName}
@@ -120,7 +115,7 @@ export function FilesWorkspace({
             <span aria-hidden="true">/</span>
             <button
               aria-current={folder.id === activeFolderId ? "page" : undefined}
-              onClick={() => setActiveFolderId(folder.id)}
+              onClick={() => openFolder(folder.id)}
               type="button"
             >
               {folder.name}
@@ -143,7 +138,10 @@ export function FilesWorkspace({
               Preview-бэкенд для этого раздела ещё не подключён или не отвечает.
             </span>
             <button
-              onClick={() => setReloadToken((value) => value + 1)}
+              onClick={() => {
+                setStatus("loading");
+                setReloadToken((value) => value + 1);
+              }}
               type="button"
             >
               Повторить
@@ -177,7 +175,7 @@ export function FilesWorkspace({
                 <button
                   className={styles.entryRow}
                   key={folder.id}
-                  onClick={() => setActiveFolderId(folder.id)}
+                  onClick={() => openFolder(folder.id)}
                   type="button"
                 >
                   <span className={styles.nameCell}>
