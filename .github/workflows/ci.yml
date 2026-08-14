@@ -1,4 +1,4 @@
-name: Files A4 Fix Helper
+name: Files A4 Test Format Helper
 
 on:
   pull_request:
@@ -7,7 +7,7 @@ permissions:
   contents: write
 
 jobs:
-  fix:
+  format:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,44 +22,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Fix React effect state ownership
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("src/prototype/files/files-workspace.tsx")
-          text = path.read_text()
-
-          text = text.replace(
-              '            <FolderHeaderActions\n                folder={activeFolder}',
-              '            <FolderHeaderActions\n                folder={activeFolder}\n                key={activeFolder.id}',
-          )
-
-          text = text.replace(
-              '''\n  useEffect(() => {\n    setName(folder.name);\n    setTargetParentId(folder.parentFolderId ?? "");\n  }, [folder.id, folder.name, folder.parentFolderId]);\n''',
-              '\n',
-          )
-
-          text = text.replace(
-              '''\n  useEffect(() => {\n    setName(file.name);\n    setTargetFolderId(file.folderId ?? "");\n  }, [file.folderId, file.id, file.name]);\n''',
-              '\n',
-          )
-
-          text = text.replace(
-              '''    setDownload(null);\n    setImageUrl(null);\n    setLoadError(false);\n\n''',
-              '',
-          )
-
-          text = text.replace(
-              '          onClick={() => setEditingName(true)}',
-              '''          onClick={() => {\n            setName(file.name);\n            setEditingName(true);\n          }}''',
-          )
-
-          path.write_text(text)
-          PY
-      - run: pnpm exec prettier --write src/prototype/files/files-workspace.tsx
-      - name: Commit fixes to A4
+      - run: pnpm exec prettier --write src/prototype/files/files-workspace.test.ts tests/e2e/files-desktop.spec.ts
+      - name: Commit canonical test formatting to A4
         shell: bash
         run: |
           if git diff --quiet; then
@@ -67,6 +31,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/prototype/files/files-workspace.tsx
-          git commit -m "Files: fix A4 React state ownership"
+          git add src/prototype/files/files-workspace.test.ts tests/e2e/files-desktop.spec.ts
+          git commit -m "Files: apply canonical A4 test formatting"
           git push origin HEAD:feat/project-files-stage-a4-lifecycle
