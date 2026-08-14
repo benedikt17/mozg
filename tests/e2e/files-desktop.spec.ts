@@ -25,6 +25,12 @@ test("uploads to Inbox, creates a folder, previews and downloads an original", a
     .getByRole("button", { name: "Файлы", exact: true })
     .click();
 
+  const uploadButton = page.getByRole("button", {
+    name: "Загрузить файл",
+    exact: true,
+  });
+  await expect(uploadButton).toBeEnabled();
+
   const fileInput = page.getByLabel("Выбрать файлы для загрузки");
   await fileInput.setInputFiles({
     name: "inbox-note.txt",
@@ -55,6 +61,7 @@ test("uploads to Inbox, creates a folder, previews and downloads an original", a
     filesNavigation.getByRole("button", { name: "E2E Assets", exact: true }),
   ).toHaveAttribute("aria-current", "page");
   await expect(page.getByText("Папка пуста", { exact: true })).toBeVisible();
+  await expect(uploadButton).toBeEnabled();
 
   await fileInput.setInputFiles({
     name: "pixel.gif",
