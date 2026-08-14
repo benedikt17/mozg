@@ -33,8 +33,6 @@ jobs:
           src/lib/files/project-file-image-variants.test.ts
           src/prototype/files/files-workspace.tsx
           tests/e2e/files-desktop.spec.ts
-          tests/rls/project-file-variants-security.test.sql
-          supabase/migrations/20260814220000_project_file_image_variants.sql
       - run: pnpm supabase start
       - name: Regenerate Supabase types
         shell: bash
