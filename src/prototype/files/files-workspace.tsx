@@ -1,15 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { createClient } from "@/lib/supabase/browser";
+import {
+  prepareProjectFileBrowserUpload,
+  ProjectFileBrowserUploadError,
+} from "@/lib/files/project-file-browser-upload";
 import { SupabaseProjectFileRepository } from "@/lib/files/cloud-project-file-repository";
-import type {
-  ProjectFileRecord,
-  ProjectFolderRecord,
+import {
+  PROJECT_FILE_MIME_TYPES,
+  type ProjectFileDownload,
+  type ProjectFileRecord,
+  type ProjectFileRepository,
+  type ProjectFolderRecord,
 } from "@/lib/files/project-file-repository";
+import { createClient } from "@/lib/supabase/browser";
 import { UiIcon } from "@/prototype/desktop-icons";
-import { IconButton } from "@/prototype/desktop-ui";
+import { IconButton, PrototypeButton } from "@/prototype/desktop-ui";
 
 import styles from "./files-workspace.module.css";
 
@@ -20,7 +27,9 @@ type FilesWorkspaceProps = {
 };
 
 type FilesLoadStatus = "loading" | "ready" | "error";
+type FilesActionState = "idle" | "creating-folder" | "uploading";
 type FilesLocation = { kind: "inbox" } | { kind: "folder"; folderId: string };
+type FilesActionMessage = { kind: "error" | "info"; text: string };
 
 export function FilesWorkspace({
   workspaceId,
@@ -31,6 +40,7 @@ export function FilesWorkspace({
     () => new SupabaseProjectFileRepository({ supabase: createClient() }),
     [],
   );
+  const uploadInputRef = useRef<HTMLInputElement>(null);
   const [folders, setFolders] = useState<ProjectFolderRecord[]>([]);
   const [files, setFiles] = useState<ProjectFileRecord[]>([]);
   const [location, setLocation] = useState<FilesLocation>({ kind: "inbox" });
@@ -38,6 +48,13 @@ export function FilesWorkspace({
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<FilesLoadStatus>("loading");
   const [reloadToken, setReloadToken] = useState(0);
+  const [actionState, setActionState] = useState<FilesActionState>("idle");
+  const [actionMessage, setActionMessage] = useState<FilesActionMessage | null>(
+    null,
+  );
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [isDropTarget, setIsDropTarget] = useState(false);
 
   const activeFolderId = location.kind === "folder" ? location.folderId : null;
 
@@ -94,11 +111,17 @@ export function FilesWorkspace({
       ? "Входящие"
       : (activeFolder?.name ?? "Папка");
   const hasEntries = files.length > 0;
+  const canMutate =
+    Boolean(workspaceId) &&
+    effectiveStatus === "ready" &&
+    actionState === "idle" &&
+    query.trim().length === 0;
 
   const openInbox = () => {
     setStatus("loading");
     setQuery("");
     setSelectedFileId(null);
+    setActionMessage(null);
     setLocation({ kind: "inbox" });
   };
 
@@ -106,7 +129,87 @@ export function FilesWorkspace({
     setStatus("loading");
     setQuery("");
     setSelectedFileId(null);
+    setActionMessage(null);
     setLocation({ kind: "folder", folderId });
+  };
+
+  const createFolder = async () => {
+    if (!workspaceId || !canMutate) return;
+    const name = newFolderName.trim();
+    if (name.length === 0) return;
+
+    setActionState("creating-folder");
+    setActionMessage(null);
+    try {
+      const folder = await repository.createFolder({
+        workspaceId,
+        projectId,
+        name,
+        parentFolderId: activeFolderId,
+      });
+      setFolders((current) => [...current, folder]);
+      setIsCreatingFolder(false);
+      setNewFolderName("");
+      setStatus("loading");
+      setSelectedFileId(null);
+      setLocation({ kind: "folder", folderId: folder.id });
+    } catch {
+      setActionMessage({
+        kind: "error",
+        text: "Не удалось создать папку. Проверьте название и попробуйте ещё раз.",
+      });
+    } finally {
+      setActionState("idle");
+    }
+  };
+
+  const uploadFiles = async (browserFiles: readonly File[]) => {
+    if (!workspaceId || !canMutate || browserFiles.length === 0) return;
+
+    setActionState("uploading");
+    setActionMessage({
+      kind: "info",
+      text:
+        browserFiles.length === 1
+          ? "Загрузка файла…"
+          : `Загрузка файлов: ${browserFiles.length}…`,
+    });
+
+    try {
+      let lastUploadedFile: ProjectFileRecord | null = null;
+      for (const browserFile of browserFiles) {
+        const prepared = await prepareProjectFileBrowserUpload(browserFile);
+        const uploaded = await repository.uploadFile({
+          workspaceId,
+          projectId,
+          folderId: activeFolderId,
+          ...prepared,
+        });
+        lastUploadedFile = uploaded;
+        setFiles((current) => [
+          uploaded,
+          ...current.filter((file) => file.id !== uploaded.id),
+        ]);
+      }
+
+      if (lastUploadedFile) {
+        setSelectedFileId(lastUploadedFile.id);
+        setActionMessage({
+          kind: "info",
+          text:
+            browserFiles.length === 1
+              ? `Загружен: ${lastUploadedFile.name}`
+              : `Загружено файлов: ${browserFiles.length}`,
+        });
+      }
+    } catch (cause) {
+      setActionMessage({
+        kind: "error",
+        text: projectFileUploadErrorMessage(cause),
+      });
+    } finally {
+      setActionState("idle");
+    }
   };
 
   return (
@@ -118,20 +221,49 @@ export function FilesWorkspace({
             aria-label="Действия с файлами"
           >
             <IconButton
-              disabled
+              disabled={!canMutate}
               icon={<UiIcon name="file-plus" />}
               label="Загрузить файл"
-              title="Загрузка файлов появится на следующем этапе"
+              onClick={() => uploadInputRef.current?.click()}
+              title={
+                query.trim()
+                  ? "Завершите поиск, чтобы выбрать папку для загрузки"
+                  : activeFolder
+                    ? `Загрузить в «${activeFolder.name}»`
+                    : "Загрузить во Входящие"
+              }
               variant="ghost"
             />
             <IconButton
-              disabled
+              disabled={!canMutate || isCreatingFolder}
               icon={<UiIcon name="folder-plus" />}
               label="Создать папку"
-              title="Создание папок появится на следующем этапе"
+              onClick={() => {
+                setActionMessage(null);
+                setNewFolderName("");
+                setIsCreatingFolder(true);
+              }}
+              title={
+                activeFolder
+                  ? `Новая папка внутри «${activeFolder.name}»`
+                  : "Новая папка"
+              }
               variant="ghost"
             />
           </div>
+          <input
+            ref={uploadInputRef}
+            accept={PROJECT_FILE_MIME_TYPES.join(",")}
+            aria-label="Выбрать файлы для загрузки"
+            className={styles.hiddenFileInput}
+            multiple
+            onChange={(event) => {
+              const browserFiles = Array.from(event.currentTarget.files ?? []);
+              event.currentTarget.value = "";
+              void uploadFiles(browserFiles);
+            }}
+            type="file"
+          />
         </header>
 
         <label className={styles.sidebarSearch}>
@@ -140,6 +272,7 @@ export function FilesWorkspace({
             onChange={(event) => {
               setStatus("loading");
               setSelectedFileId(null);
+              setActionMessage(null);
               setQuery(event.currentTarget.value);
             }}
             placeholder="Файл или папка"
@@ -162,6 +295,33 @@ export function FilesWorkspace({
           </button>
 
           <div className={styles.sidebarDivider} />
+
+          {isCreatingFolder ? (
+            <form
+              className={styles.newFolderRow}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void createFolder();
+              }}
+            >
+              <UiIcon name="folder" />
+              <input
+                aria-label="Название новой папки"
+                autoFocus
+                disabled={actionState === "creating-folder"}
+                onChange={(event) => setNewFolderName(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setIsCreatingFolder(false);
+                    setNewFolderName("");
+                  }
+                }}
+                placeholder="Новая папка"
+                value={newFolderName}
+              />
+            </form>
+          ) : null}
 
           <div className={styles.folderTree}>
             {folderTree.length > 0 ? (
@@ -188,7 +348,7 @@ export function FilesWorkspace({
                   <span>{folder.name}</span>
                 </button>
               ))
-            ) : (
+            ) : isCreatingFolder ? null : (
               <div className={styles.sidebarEmpty}>Папок пока нет</div>
             )}
           </div>
@@ -200,6 +360,16 @@ export function FilesWorkspace({
           <div className={styles.headingBlock}>
             <h2>{title}</h2>
           </div>
+          {actionMessage ? (
+            <span
+              className={`${styles.actionMessage} ${
+                actionMessage.kind === "error" ? styles.actionMessageError : ""
+              }`}
+              role={actionMessage.kind === "error" ? "alert" : "status"}
+            >
+              {actionMessage.text}
+            </span>
+          ) : null}
         </header>
 
         <nav aria-label="Путь к папке" className={styles.breadcrumbs}>
@@ -228,9 +398,36 @@ export function FilesWorkspace({
         </nav>
 
         <section
-          aria-busy={effectiveStatus === "loading"}
-          className={styles.content}
+          aria-busy={
+            effectiveStatus === "loading" || actionState === "uploading"
+          }
+          className={`${styles.content} ${
+            isDropTarget ? styles.contentDropTarget : ""
+          }`}
+          onDragEnter={(event) => {
+            if (!canMutate) return;
+            event.preventDefault();
+            setIsDropTarget(true);
+          }}
+          onDragLeave={() => setIsDropTarget(false)}
+          onDragOver={(event) => {
+            if (!canMutate) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "copy";
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            setIsDropTarget(false);
+            if (!canMutate) return;
+            void uploadFiles(Array.from(event.dataTransfer.files));
+          }}
         >
+          {isDropTarget ? (
+            <div className={styles.dropOverlay} aria-hidden="true">
+              Отпустите файлы для загрузки
+            </div>
+          ) : null}
+
           {effectiveStatus === "loading" ? (
             <div className={styles.stateMessage} role="status">
               Загрузка файлов…
@@ -272,8 +469,8 @@ export function FilesWorkspace({
                 {query.trim()
                   ? "Попробуйте изменить поисковый запрос."
                   : location.kind === "inbox"
-                    ? "Новые файлы без выбранной папки будут попадать сюда."
-                    : "Здесь появятся файлы этой папки."}
+                    ? "Перетащите файлы сюда или используйте кнопку загрузки."
+                    : "Перетащите файлы сюда или используйте кнопку загрузки."}
               </span>
             </div>
           ) : null}
@@ -320,27 +517,14 @@ export function FilesWorkspace({
         <header className={styles.previewHeader}>
           <strong>Предпросмотр</strong>
         </header>
-        {selectedFile ? (
-          <div className={styles.previewContent}>
-            <div className={styles.previewPlaceholder} aria-hidden="true">
-              <UiIcon name="file" />
-            </div>
-            <div className={styles.previewTitle}>{selectedFile.name}</div>
-            <dl className={styles.previewMetadata}>
-              <div>
-                <dt>Тип</dt>
-                <dd>{projectFileTypeLabel(selectedFile.mimeType)}</dd>
-              </div>
-              <div>
-                <dt>Размер</dt>
-                <dd>{formatProjectFileSize(selectedFile.byteSize)}</dd>
-              </div>
-              <div>
-                <dt>Изменён</dt>
-                <dd>{formatProjectFileDate(selectedFile.updatedAt)}</dd>
-              </div>
-            </dl>
-          </div>
+        {selectedFile && workspaceId ? (
+          <ProjectFilePreview
+            file={selectedFile}
+            key={`${selectedFile.projectId}:${selectedFile.id}`}
+            projectId={projectId}
+            repository={repository}
+            workspaceId={workspaceId}
+          />
         ) : (
           <div className={styles.previewEmpty}>
             <UiIcon name="file" />
@@ -351,6 +535,105 @@ export function FilesWorkspace({
       </aside>
     </div>
   );
+}
+
+function ProjectFilePreview({
+  repository,
+  workspaceId,
+  projectId,
+  file,
+}: {
+  repository: ProjectFileRepository;
+  workspaceId: string;
+  projectId: string;
+  file: ProjectFileRecord;
+}): React.JSX.Element {
+  const [download, setDownload] = useState<ProjectFileDownload | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    void repository
+      .downloadFile({ workspaceId, projectId, fileId: file.id })
+      .then((nextDownload) => {
+        if (cancelled) return;
+        setDownload(nextDownload);
+        if (file.mimeType.startsWith("image/")) {
+          objectUrl = URL.createObjectURL(nextDownload.blob);
+          setImageUrl(objectUrl);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoadError(true);
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [file.id, file.mimeType, projectId, repository, workspaceId]);
+
+  const downloadOriginal = () => {
+    if (!download) return;
+    const objectUrl = URL.createObjectURL(download.blob);
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = file.originalName;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(objectUrl);
+  };
+
+  return (
+    <div className={styles.previewContent}>
+      <div className={styles.previewPlaceholder}>
+        {imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- preview uses a local authenticated Blob URL.
+          <img alt={file.name} className={styles.previewImage} src={imageUrl} />
+        ) : loadError ? (
+          <span className={styles.previewState}>Предпросмотр недоступен</span>
+        ) : download ? (
+          <UiIcon name="file" />
+        ) : (
+          <span className={styles.previewState}>Загрузка предпросмотра…</span>
+        )}
+      </div>
+      <div className={styles.previewTitle}>{file.name}</div>
+      <dl className={styles.previewMetadata}>
+        <div>
+          <dt>Тип</dt>
+          <dd>{projectFileTypeLabel(file.mimeType)}</dd>
+        </div>
+        <div>
+          <dt>Размер</dt>
+          <dd>{formatProjectFileSize(file.byteSize)}</dd>
+        </div>
+        <div>
+          <dt>Изменён</dt>
+          <dd>{formatProjectFileDate(file.updatedAt)}</dd>
+        </div>
+      </dl>
+      <div className={styles.previewActions}>
+        <PrototypeButton
+          disabled={!download}
+          onClick={downloadOriginal}
+          size="compact"
+          variant="default"
+        >
+          Скачать оригинал
+        </PrototypeButton>
+      </div>
+    </div>
+  );
+}
+
+function projectFileUploadErrorMessage(cause: unknown): string {
+  if (cause instanceof ProjectFileBrowserUploadError) return cause.message;
+  return "Не удалось загрузить файл. Попробуйте ещё раз.";
 }
 
 export function getProjectFolderBreadcrumbs(
