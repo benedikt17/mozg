@@ -188,9 +188,7 @@ test("renames, moves, drags, trashes and restores files and reorganizes folders"
     name: "Новое имя файла",
   });
   await fileNameInput.fill("renamed-lifecycle.txt");
-  await preview
-    .getByRole("button", { name: "Сохранить", exact: true })
-    .click();
+  await preview.getByRole("button", { name: "Сохранить", exact: true }).click();
   await expect(
     page.getByText("Переименован: renamed-lifecycle.txt", { exact: true }),
   ).toBeVisible();
@@ -268,9 +266,7 @@ test("renames, moves, drags, trashes and restores files and reorganizes folders"
     name: "Новое название папки",
   });
   await folderRenameInput.fill("A4 Target Renamed");
-  await page
-    .getByRole("button", { name: "Сохранить", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Сохранить", exact: true }).click();
   await expect(
     filesNavigation.getByRole("button", {
       name: "A4 Target Renamed",
@@ -281,12 +277,12 @@ test("renames, moves, drags, trashes and restores files and reorganizes folders"
   await page
     .getByLabel("Куда переместить папку")
     .selectOption({ label: "A4 Parent" });
-  await page
-    .getByRole("button", { name: "Переместить", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Переместить", exact: true }).click();
 
   const breadcrumbs = page.getByRole("navigation", { name: "Путь к папке" });
-  await expect(breadcrumbs.getByText("A4 Parent", { exact: true })).toBeVisible();
+  await expect(
+    breadcrumbs.getByText("A4 Parent", { exact: true }),
+  ).toBeVisible();
   await expect(
     breadcrumbs.getByRole("button", {
       name: "A4 Target Renamed",

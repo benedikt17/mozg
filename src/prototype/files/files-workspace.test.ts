@@ -77,8 +77,8 @@ describe("getProjectFolderMoveTargets", () => {
     ];
 
     expect(
-      getProjectFolderMoveTargets(folders, "a").map(({ folder: item }) =>
-        item.id,
+      getProjectFolderMoveTargets(folders, "a").map(
+        ({ folder: item }) => item.id,
       ),
     ).toEqual(["d"]);
   });
