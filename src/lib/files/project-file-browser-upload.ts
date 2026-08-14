@@ -76,7 +76,7 @@ export async function prepareProjectFileBrowserUpload(
   }
   if (file.size > PROJECT_FILE_STANDARD_UPLOAD_MAX_BYTES) {
     throw new ProjectFileBrowserUploadError(
-      "Сейчас через браузер можно загрузить файл размером до 6 МБ. Для больших файлов будет добавлена возобновляемая загрузка.",
+      "Сейчас можно загрузить файл размером до 50 МБ.",
     );
   }
 

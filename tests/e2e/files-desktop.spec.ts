@@ -13,7 +13,7 @@ async function signIn(page: Page): Promise<void> {
   await expect(page).toHaveURL(/\/prototype\/desktop$/);
 }
 
-test("uploads to Inbox, creates a folder, previews and downloads an original", async ({
+test("uploads to Inbox, accepts a file above 6 MiB, creates a folder, previews and downloads an original", async ({
   page,
 }) => {
   await signIn(page);
@@ -46,6 +46,22 @@ test("uploads to Inbox, creates a folder, previews and downloads an original", a
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: /inbox-note\.txt/ }),
+  ).toBeVisible();
+
+  const largeFileChooserPromise = page.waitForEvent("filechooser");
+  await uploadButton.click();
+  const largeFileChooser = await largeFileChooserPromise;
+  await largeFileChooser.setFiles({
+    name: "large-note.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.alloc(7 * 1024 * 1024, "L"),
+  });
+
+  await expect(
+    page.getByText("Загружен: large-note.txt", { exact: true }),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByRole("button", { name: /large-note\.txt/ }),
   ).toBeVisible();
 
   await page
@@ -105,6 +121,9 @@ test("uploads to Inbox, creates a folder, previews and downloads an original", a
     .click();
   await expect(
     page.getByRole("button", { name: /inbox-note\.txt/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /large-note\.txt/ }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: /pixel\.gif/ })).toHaveCount(0);
 });
