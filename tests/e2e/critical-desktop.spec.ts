@@ -31,7 +31,7 @@ test("blocks local-only prototype labs in cloud runtime", async ({
   }
 });
 
-test("authenticates and navigates the four primary Desktop sections", async ({
+test("authenticates and navigates the five primary Desktop sections", async ({
   page,
 }) => {
   await signIn(page);
@@ -39,7 +39,13 @@ test("authenticates and navigates the four primary Desktop sections", async ({
   const navigation = page.getByRole("navigation", {
     name: "Разделы приложения",
   });
-  for (const section of ["Обзор", "Знания", "Задачи", "Холсты"] as const) {
+  for (const section of [
+    "Обзор",
+    "Знания",
+    "Задачи",
+    "Холсты",
+    "Файлы",
+  ] as const) {
     const button = navigation.getByRole("button", {
       name: section,
       exact: true,
@@ -53,6 +59,59 @@ test("authenticates and navigates the four primary Desktop sections", async ({
 
   await page.getByRole("button", { name: "Выйти" }).click();
   await expect(page).toHaveURL(/\/sign-in$/);
+});
+
+test("opens Project Files inside the normal Desktop shell", async ({
+  page,
+}) => {
+  await signIn(page);
+
+  const navigation = page.getByRole("navigation", {
+    name: "Разделы приложения",
+  });
+  const filesButton = navigation.getByRole("button", {
+    name: "Файлы",
+    exact: true,
+  });
+  await filesButton.click();
+
+  await expect(filesButton).toHaveAttribute("aria-current", "page");
+  await expect(
+    page.locator(".section-workspace.section-files .main-workspace"),
+  ).toHaveCSS("padding", "0px");
+  const filesNavigation = page.getByRole("complementary", {
+    name: "Навигация по файлам",
+  });
+  await expect(filesNavigation).toBeVisible();
+  await expect(
+    filesNavigation.getByRole("button", { name: "Входящие", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("heading", { name: "Входящие" })).toBeVisible();
+  await expect(page.getByText("Входящие пусты", { exact: true })).toBeVisible();
+  const filePreview = page.getByRole("complementary", {
+    name: "Предпросмотр файла",
+  });
+  await expect(filePreview).toBeVisible();
+  await expect(
+    filePreview.getByText("Выберите файл", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Preview · Файлы", { exact: true })).toHaveCount(
+    0,
+  );
+});
+
+test("redirects the retired Files harness route into the Desktop section", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/prototype/desktop/files");
+
+  await expect(page).toHaveURL(/\/prototype\/desktop\?section=files$/);
+  await expect(
+    page
+      .getByRole("navigation", { name: "Разделы приложения" })
+      .getByRole("button", { name: "Файлы", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
 });
 
 test("persists a Knowledge Markdown edit through cloud snapshot reload", async ({

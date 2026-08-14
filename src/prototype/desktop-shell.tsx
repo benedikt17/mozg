@@ -30,6 +30,7 @@ import { TasksDndProvider } from "@/prototype/tasks/tasks-dnd-context";
 import { InboxSidebar } from "@/prototype/inbox/inbox-sidebar";
 import { InboxWorkspace } from "@/prototype/inbox/inbox-workspace";
 import { DesktopCanvasWorkspace } from "@/prototype/canvases/desktop-canvas-workspace";
+import { FilesWorkspace } from "@/prototype/files/files-workspace";
 import { ApplicationHeader } from "@/prototype/shell/application-header";
 import { SectionRail } from "@/prototype/shell/section-rail";
 import { MobileNavigation } from "@/prototype/shell/mobile-navigation";
@@ -623,6 +624,16 @@ function renderMainWorkspace(
             ? state.contextPanel.taskId
             : undefined
         }
+        workspaceId={options?.workspaceId}
+      />
+    );
+  }
+  if (state.activeSection === "files") {
+    return (
+      <FilesWorkspace
+        key={`${options?.workspaceId ?? "local"}:${state.activeProjectId}`}
+        projectId={state.activeProjectId}
+        projectName={getActiveProject(state).name}
         workspaceId={options?.workspaceId}
       />
     );
