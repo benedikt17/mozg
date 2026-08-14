@@ -12,7 +12,7 @@ import type {
 import styles from "./files-workspace.module.css";
 
 type FilesWorkspaceProps = {
-  workspaceId: string;
+  workspaceId?: string;
   projectId: string;
   projectName: string;
 };
@@ -36,6 +36,7 @@ export function FilesWorkspace({
   const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
+    if (!workspaceId) return;
     let cancelled = false;
     const trimmedQuery = query.trim();
     const scope = { workspaceId, projectId };
@@ -67,6 +68,7 @@ export function FilesWorkspace({
     };
   }, [activeFolderId, projectId, query, reloadToken, repository, workspaceId]);
 
+  const effectiveStatus: FilesLoadStatus = workspaceId ? status : "error";
   const breadcrumbs = getProjectFolderBreadcrumbs(folders, activeFolderId);
   const childFolders = query.trim()
     ? []
@@ -86,7 +88,6 @@ export function FilesWorkspace({
       <header className={styles.header}>
         <div className={styles.headingBlock}>
           <h2>Файлы</h2>
-          <span>{projectName}</span>
         </div>
         <label className={styles.search}>
           <span className={styles.visuallyHidden}>Поиск файлов</span>
@@ -124,32 +125,39 @@ export function FilesWorkspace({
         ))}
       </nav>
 
-      <section aria-busy={status === "loading"} className={styles.content}>
-        {status === "loading" ? (
+      <section
+        aria-busy={effectiveStatus === "loading"}
+        className={styles.content}
+      >
+        {effectiveStatus === "loading" ? (
           <div className={styles.stateMessage} role="status">
             Загрузка файлов…
           </div>
         ) : null}
 
-        {status === "error" ? (
+        {effectiveStatus === "error" ? (
           <div className={styles.stateMessage} role="alert">
             <strong>Файлы пока недоступны</strong>
             <span>
-              Preview-бэкенд для этого раздела ещё не подключён или не отвечает.
+              {workspaceId
+                ? "Не удалось загрузить файлы проекта. Попробуйте ещё раз."
+                : "Файлы доступны в облачном рабочем пространстве."}
             </span>
-            <button
-              onClick={() => {
-                setStatus("loading");
-                setReloadToken((value) => value + 1);
-              }}
-              type="button"
-            >
-              Повторить
-            </button>
+            {workspaceId ? (
+              <button
+                onClick={() => {
+                  setStatus("loading");
+                  setReloadToken((value) => value + 1);
+                }}
+                type="button"
+              >
+                Повторить
+              </button>
+            ) : null}
           </div>
         ) : null}
 
-        {status === "ready" && !hasEntries ? (
+        {effectiveStatus === "ready" && !hasEntries ? (
           <div className={styles.stateMessage} role="status">
             <strong>
               {query.trim() ? "Ничего не найдено" : "Папка пуста"}
@@ -162,7 +170,7 @@ export function FilesWorkspace({
           </div>
         ) : null}
 
-        {status === "ready" && hasEntries ? (
+        {effectiveStatus === "ready" && hasEntries ? (
           <div className={styles.tableWrap}>
             <div className={styles.tableHeader} aria-hidden="true">
               <span>Имя</span>

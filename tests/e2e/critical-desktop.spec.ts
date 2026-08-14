@@ -31,7 +31,7 @@ test("blocks local-only prototype labs in cloud runtime", async ({
   }
 });
 
-test("authenticates and navigates the four primary Desktop sections", async ({
+test("authenticates and navigates the five primary Desktop sections", async ({
   page,
 }) => {
   await signIn(page);
@@ -39,7 +39,13 @@ test("authenticates and navigates the four primary Desktop sections", async ({
   const navigation = page.getByRole("navigation", {
     name: "Разделы приложения",
   });
-  for (const section of ["Обзор", "Знания", "Задачи", "Холсты"] as const) {
+  for (const section of [
+    "Обзор",
+    "Знания",
+    "Задачи",
+    "Холсты",
+    "Файлы",
+  ] as const) {
     const button = navigation.getByRole("button", {
       name: section,
       exact: true,
@@ -55,18 +61,40 @@ test("authenticates and navigates the four primary Desktop sections", async ({
   await expect(page).toHaveURL(/\/sign-in$/);
 });
 
-test("opens the authenticated Project Files preview through the cloud repository", async ({
+test("opens Project Files inside the normal Desktop shell", async ({
+  page,
+}) => {
+  await signIn(page);
+
+  const navigation = page.getByRole("navigation", {
+    name: "Разделы приложения",
+  });
+  const filesButton = navigation.getByRole("button", {
+    name: "Файлы",
+    exact: true,
+  });
+  await filesButton.click();
+
+  await expect(filesButton).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("heading", { name: "Файлы" })).toBeVisible();
+  await expect(page.getByText("Папка пуста", { exact: true })).toBeVisible();
+  await expect(page.getByText("Preview · Файлы", { exact: true })).toHaveCount(
+    0,
+  );
+});
+
+test("redirects the retired Files harness route into the Desktop section", async ({
   page,
 }) => {
   await signIn(page);
   await page.goto("/prototype/desktop/files");
 
+  await expect(page).toHaveURL(/\/prototype\/desktop\?section=files$/);
   await expect(
-    page.getByText("Preview · Файлы", { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Файлы" })).toBeVisible();
-  await expect(page.getByRole("combobox")).toHaveValue("lukomorie");
-  await expect(page.getByText("Папка пуста", { exact: true })).toBeVisible();
+    page
+      .getByRole("navigation", { name: "Разделы приложения" })
+      .getByRole("button", { name: "Файлы", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
 });
 
 test("persists a Knowledge Markdown edit through cloud snapshot reload", async ({

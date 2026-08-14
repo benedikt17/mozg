@@ -1,5 +1,5 @@
 export type ProjectSection =
-  "overview" | "knowledge" | "tasks" | "canvases" | "inbox";
+  "overview" | "knowledge" | "tasks" | "canvases" | "files" | "inbox";
 
 export type OverviewDirectionId = string;
 
@@ -134,6 +134,11 @@ export const projectSections: {
     description: "Пространство схем, объектов и отношений проекта.",
   },
   {
+    id: "files",
+    label: "Файлы",
+    description: "Папки и оригиналы файлов текущего проекта.",
+  },
+  {
     id: "inbox",
     label: "Входящие",
     description: "Захваченные материалы до превращения в знания или задачи.",
@@ -141,7 +146,7 @@ export const projectSections: {
 ];
 
 export const publicProjectSections = projectSections.filter(({ id }) =>
-  ["overview", "knowledge", "tasks", "canvases"].includes(id),
+  ["overview", "knowledge", "tasks", "canvases", "files"].includes(id),
 );
 
 export function isPublicProjectSection(section: ProjectSection): boolean {

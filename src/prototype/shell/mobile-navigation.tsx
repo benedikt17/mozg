@@ -247,6 +247,17 @@ export function MobileNavigation({
 
             <div className="mobile-more-section mobile-more-actions">
               <button
+                data-active={state.activeSection === "files" ? "true" : "false"}
+                onClick={() => {
+                  dispatch({ type: "switch-section", section: "files" });
+                  setMoreOpen(false);
+                }}
+                type="button"
+              >
+                <UiIcon name="folder" />
+                <span>Файлы</span>
+              </button>
+              <button
                 onClick={() => {
                   dispatch({ type: "open-command-palette" });
                   setMoreOpen(false);
