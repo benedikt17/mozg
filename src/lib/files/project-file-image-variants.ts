@@ -27,11 +27,12 @@ export type ProjectFileImageVariantMetadata = {
   pixelHeight: number;
   targetMaxEdge: number;
   createdAt: string;
-  readyAt: string;
+  readyAt: string | null;
 };
 
 export type ProjectFileImageVariantRecord = ProjectFileImageVariantMetadata & {
   blob: Blob;
+  readyAt: string;
 };
 
 export type StoreProjectFileImageVariantInput = {
@@ -98,7 +99,7 @@ export function chooseProjectFilePreviewVariant(
   preferredMaxEdge = PROJECT_FILE_PREVIEW_PREFERRED_MAX_EDGE,
 ): ProjectFileImageVariantMetadata | null {
   const sorted = variants
-    .filter((variant) => variant.readyAt.length > 0)
+    .filter((variant) => variant.readyAt !== null)
     .slice()
     .sort((left, right) => left.targetMaxEdge - right.targetMaxEdge);
   return (
