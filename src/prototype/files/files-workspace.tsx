@@ -9,6 +9,7 @@ import type {
   ProjectFolderRecord,
 } from "@/lib/files/project-file-repository";
 import { UiIcon } from "@/prototype/desktop-icons";
+import { IconButton } from "@/prototype/desktop-ui";
 
 import styles from "./files-workspace.module.css";
 
@@ -112,7 +113,22 @@ export function FilesWorkspace({
     <div className={styles.workspace}>
       <aside className={styles.sidebar} aria-label="Навигация по файлам">
         <header className={styles.sidebarHeader}>
-          <strong>Файлы</strong>
+          <div className={styles.sidebarToolbar} aria-label="Действия с файлами">
+            <IconButton
+              disabled
+              icon={<UiIcon name="file-plus" />}
+              label="Загрузить файл"
+              title="Загрузка файлов появится на следующем этапе"
+              variant="ghost"
+            />
+            <IconButton
+              disabled
+              icon={<UiIcon name="folder-plus" />}
+              label="Создать папку"
+              title="Создание папок появится на следующем этапе"
+              variant="ghost"
+            />
+          </div>
         </header>
 
         <label className={styles.sidebarSearch}>
@@ -142,7 +158,7 @@ export function FilesWorkspace({
             <span>Входящие</span>
           </button>
 
-          <div className={styles.sidebarSectionLabel}>Папки</div>
+          <div className={styles.sidebarDivider} />
 
           <div className={styles.folderTree}>
             {folderTree.length > 0 ? (
@@ -180,18 +196,20 @@ export function FilesWorkspace({
         <header className={styles.contentHeader}>
           <div className={styles.headingBlock}>
             <h2>{title}</h2>
-            {location.kind === "inbox" && !query.trim() ? (
-              <span>Неразобранные файлы</span>
-            ) : null}
           </div>
         </header>
 
-        {location.kind === "folder" && !query.trim() ? (
-          <nav aria-label="Путь к папке" className={styles.breadcrumbs}>
-            <span>{projectName}</span>
-            {breadcrumbs.map((folder) => (
+        <nav aria-label="Путь к папке" className={styles.breadcrumbs}>
+          <span>{projectName}</span>
+          <span aria-hidden="true">/</span>
+          {query.trim() ? (
+            <span className={styles.breadcrumbCurrent}>Результаты поиска</span>
+          ) : location.kind === "inbox" ? (
+            <span className={styles.breadcrumbCurrent}>Входящие</span>
+          ) : (
+            breadcrumbs.map((folder, index) => (
               <span className={styles.breadcrumbPart} key={folder.id}>
-                <span aria-hidden="true">/</span>
+                {index > 0 ? <span aria-hidden="true">/</span> : null}
                 <button
                   aria-current={
                     folder.id === activeFolderId ? "page" : undefined
@@ -202,9 +220,9 @@ export function FilesWorkspace({
                   {folder.name}
                 </button>
               </span>
-            ))}
-          </nav>
-        ) : null}
+            ))
+          )}
+        </nav>
 
         <section
           aria-busy={effectiveStatus === "loading"}
