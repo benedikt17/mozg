@@ -1,7 +1,18 @@
-.workspace {
-  display: grid;
+:global(.section-workspace.section-files .main-workspace) {
   min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  background: var(--surface);
+}
+
+:global(.section-workspace.section-files) {
+  background: var(--surface);
+}
+
+.workspace {
   height: 100%;
+  min-height: 0;
+  display: grid;
   grid-template-columns:
     clamp(280px, 18vw, 340px) minmax(0, 1fr)
     380px;
@@ -22,34 +33,45 @@
   grid-template-rows: auto auto minmax(0, 1fr);
   overflow: hidden;
   border-right: 1px solid var(--border);
-  background: var(--surface);
-}
-
-.sidebarHeader,
-.contentHeader,
-.previewHeader {
-  min-height: 46px;
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--surface-2);
 }
 
 .sidebarHeader {
-  padding: 0 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  padding: 8px 8px 6px;
 }
 
-.sidebarHeader strong,
-.previewHeader strong {
-  font-size: 13px;
-  line-height: 18px;
-  font-weight: 600;
+.sidebarToolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sidebarToolbar :global(.ui-button) {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  justify-content: center;
+  padding: 0;
+  color: var(--text-3);
+}
+
+.sidebarToolbar :global(.ui-icon) {
+  width: 19px;
+  height: 19px;
+}
+
+.sidebarToolbar :global(.ui-button:disabled) {
+  opacity: 0.42;
 }
 
 .sidebarSearch {
   display: grid;
   border-bottom: 1px solid var(--border);
-  padding: 8px 10px 10px;
+  padding: 0 10px 10px;
 }
 
 .sidebarSearch input {
@@ -128,14 +150,10 @@
   font-weight: 600;
 }
 
-.sidebarSectionLabel {
-  margin: 14px 8px 5px;
-  color: var(--text-3);
-  font-size: 11px;
-  line-height: 16px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+.sidebarDivider {
+  height: 1px;
+  margin: 8px 0;
+  background: var(--border);
 }
 
 .folderTree {
@@ -152,55 +170,56 @@
 
 .contentPane {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: 38px 34px minmax(0, 1fr);
   overflow: hidden;
   background: var(--surface);
 }
 
+.contentHeader,
+.previewHeader {
+  min-width: 0;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
 .contentHeader {
-  justify-content: space-between;
-  gap: 16px;
-  padding: 0 16px;
+  padding: 0 12px;
 }
 
 .headingBlock {
   display: flex;
   min-width: 0;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
 }
 
 .headingBlock h2 {
   margin: 0;
-  font-size: 15px;
-  line-height: 20px;
-  font-weight: 600;
-}
-
-.headingBlock span {
   overflow: hidden;
-  color: var(--text-3);
-  font-size: 12px;
-  line-height: 16px;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .breadcrumbs {
-  display: flex;
+  min-width: 0;
   min-height: 34px;
+  display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   overflow-x: auto;
-  padding: 0 16px;
   border-bottom: 1px solid var(--border);
+  padding: 0 16px;
   color: var(--text-3);
   font-size: 12px;
+  line-height: 16px;
   scrollbar-width: none;
-}
-
-.breadcrumbs:empty {
-  display: none;
 }
 
 .breadcrumbs::-webkit-scrollbar {
@@ -218,12 +237,14 @@
 }
 
 .breadcrumbs button:hover,
-.breadcrumbs button[aria-current="page"] {
-  color: var(--text);
+.breadcrumbs button[aria-current="page"],
+.breadcrumbCurrent {
+  color: var(--text-2);
 }
 
-.breadcrumbs button[aria-current="page"] {
-  font-weight: 600;
+.breadcrumbs button[aria-current="page"],
+.breadcrumbCurrent {
+  font-weight: 500;
 }
 
 .breadcrumbPart {
@@ -235,13 +256,11 @@
 .content {
   min-height: 0;
   overflow: auto;
-  padding: 14px 16px 20px;
+  background: var(--surface);
 }
 
 .tableWrap {
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
   background: var(--surface);
 }
 
@@ -255,6 +274,7 @@
 
 .tableHeader {
   min-height: 34px;
+  border-bottom: 1px solid var(--border);
   padding: 0 12px;
   background: var(--surface-2);
   color: var(--text-3);
@@ -273,7 +293,7 @@
   width: 100%;
   min-height: 46px;
   border: 0;
-  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   background: var(--surface);
   padding: 0 12px;
   color: var(--text-2);
@@ -302,9 +322,9 @@
 }
 
 .entryIcon {
-  display: inline-flex;
   width: 20px;
   flex: 0 0 20px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--text-3);
@@ -318,12 +338,13 @@
 }
 
 .stateMessage {
-  display: flex;
   min-height: 180px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  flex-direction: column;
   gap: 6px;
+  padding: 24px;
   color: var(--text-3);
   text-align: center;
 }
@@ -359,14 +380,21 @@
 
 .previewPane {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: 38px minmax(0, 1fr);
   overflow: hidden;
   border-left: 1px solid var(--border);
   background: var(--surface);
 }
 
 .previewHeader {
-  padding: 0 16px;
+  padding: 0 12px;
+}
+
+.previewHeader strong {
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
 }
 
 .previewContent {
@@ -380,7 +408,6 @@
   display: grid;
   place-items: center;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
   background: var(--surface-2);
   color: var(--text-3);
 }
@@ -428,9 +455,9 @@
 .previewEmpty {
   min-height: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  flex-direction: column;
   gap: 6px;
   padding: 24px;
   color: var(--text-3);
@@ -459,12 +486,12 @@
   position: absolute;
   width: 1px;
   height: 1px;
-  padding: 0;
   margin: -1px;
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
   border: 0;
+  padding: 0;
+  white-space: nowrap;
 }
 
 @media (max-width: 1360px) {
@@ -494,6 +521,10 @@
 }
 
 @media (max-width: 900px) {
+  :global(.section-workspace.section-files .main-workspace) {
+    overflow: auto;
+  }
+
   .workspace {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
@@ -505,23 +536,13 @@
     border-bottom: 1px solid var(--border);
   }
 
-  .sidebarHeader,
-  .contentHeader {
-    min-height: 42px;
-  }
-
-  .headingBlock {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 0;
+  .contentPane {
+    grid-template-rows: 38px 34px minmax(0, 1fr);
   }
 
   .breadcrumbs {
+    justify-content: flex-start;
     padding: 0 12px;
-  }
-
-  .content {
-    padding: 12px;
   }
 
   .tableHeader {
