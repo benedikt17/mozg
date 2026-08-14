@@ -303,9 +303,7 @@ export function FilesWorkspace({
         {selectedFile ? (
           <div className={styles.previewContent}>
             <div className={styles.previewPlaceholder} aria-hidden="true">
-              <UiIcon
-                name={selectedFile.mimeType.startsWith("image/") ? "image" : "file"}
-              />
+              <UiIcon name="file" />
             </div>
             <div className={styles.previewTitle}>{selectedFile.name}</div>
             <dl className={styles.previewMetadata}>
