@@ -7,13 +7,18 @@ import {
   ProjectFileBrowserUploadError,
 } from "@/lib/files/project-file-browser-upload";
 import { SupabaseProjectFileRepository } from "@/lib/files/cloud-project-file-repository";
+import { getPublicEnv } from "@/lib/env";
+import { CloudProjectFileRepositoryError } from "@/lib/files/project-file-runtime";
 import {
   PROJECT_FILE_MIME_TYPES,
   type ProjectFileDownload,
   type ProjectFileRecord,
   type ProjectFileRepository,
+  type ProjectFileUploadTransport,
   type ProjectFolderRecord,
 } from "@/lib/files/project-file-repository";
+import { projectFileResumableUploadEndpoint } from "@/lib/files/project-file-resumable-upload";
+import { projectFileUploadTransport } from "@/lib/files/project-file-upload-limit";
 import { createClient } from "@/lib/supabase/browser";
 import { UiIcon } from "@/prototype/desktop-icons";
 import { IconButton, PrototypeButton } from "@/prototype/desktop-ui";
@@ -40,6 +45,15 @@ type FilesActionState =
 type FilesLocation =
   { kind: "inbox" } | { kind: "folder"; folderId: string } | { kind: "trash" };
 type FilesActionMessage = { kind: "error" | "info"; text: string };
+type ActiveProjectFileUpload = {
+  fileName: string;
+  currentFile: number;
+  totalFiles: number;
+  percentage: number;
+  transport: ProjectFileUploadTransport;
+  resumed: boolean;
+  retryAttempt: number;
+};
 
 const MOZG_FILE_DRAG_TYPE = "application/x-mozg-project-file-id";
 
@@ -48,11 +62,17 @@ export function FilesWorkspace({
   projectId,
   projectName,
 }: FilesWorkspaceProps): React.JSX.Element {
-  const repository = useMemo(
-    () => new SupabaseProjectFileRepository({ supabase: createClient() }),
-    [],
-  );
+  const repository = useMemo(() => {
+    const env = getPublicEnv();
+    return new SupabaseProjectFileRepository({
+      supabase: createClient(),
+      resumableUploadEndpoint: projectFileResumableUploadEndpoint(
+        env.NEXT_PUBLIC_SUPABASE_URL,
+      ),
+    });
+  }, []);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const uploadAbortControllerRef = useRef<AbortController | null>(null);
   const [folders, setFolders] = useState<ProjectFolderRecord[]>([]);
   const [files, setFiles] = useState<ProjectFileRecord[]>([]);
   const [location, setLocation] = useState<FilesLocation>({ kind: "inbox" });
@@ -64,6 +84,8 @@ export function FilesWorkspace({
   const [actionMessage, setActionMessage] = useState<FilesActionMessage | null>(
     null,
   );
+  const [activeUpload, setActiveUpload] =
+    useState<ActiveProjectFileUpload | null>(null);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [isDropTarget, setIsDropTarget] = useState(false);
@@ -215,16 +237,53 @@ export function FilesWorkspace({
           : `Загрузка файлов: ${browserFiles.length}…`,
     });
 
+    let completedCount = 0;
     try {
       let lastUploadedFile: ProjectFileRecord | null = null;
-      for (const browserFile of browserFiles) {
+      for (const [index, browserFile] of browserFiles.entries()) {
         const prepared = await prepareProjectFileBrowserUpload(browserFile);
+        const transport = projectFileUploadTransport(prepared.byteSize);
+        const abortController = new AbortController();
+        uploadAbortControllerRef.current = abortController;
+        setActiveUpload({
+          fileName: prepared.name,
+          currentFile: index + 1,
+          totalFiles: browserFiles.length,
+          percentage: 0,
+          transport,
+          resumed: false,
+          retryAttempt: 0,
+        });
+
         const uploaded = await repository.uploadFile({
           workspaceId,
           projectId,
           folderId: activeFolderId,
           ...prepared,
+          signal: abortController.signal,
+          onProgress: (progress) => {
+            setActiveUpload((current) =>
+              current
+                ? {
+                    ...current,
+                    percentage: progress.percentage,
+                    transport: progress.transport,
+                  }
+                : current,
+            );
+          },
+          onResume: () => {
+            setActiveUpload((current) =>
+              current ? { ...current, resumed: true } : current,
+            );
+          },
+          onRetry: (retryAttempt) => {
+            setActiveUpload((current) =>
+              current ? { ...current, retryAttempt } : current,
+            );
+          },
         });
+        completedCount += 1;
         lastUploadedFile = uploaded;
         setFiles((current) => [
           uploaded,
@@ -243,13 +302,32 @@ export function FilesWorkspace({
         });
       }
     } catch (cause) {
-      setActionMessage({
-        kind: "error",
-        text: projectFileUploadErrorMessage(cause),
-      });
+      if (
+        cause instanceof CloudProjectFileRepositoryError &&
+        cause.code === "cancelled"
+      ) {
+        setActionMessage({
+          kind: "info",
+          text:
+            completedCount === 0
+              ? "Загрузка отменена."
+              : `Загрузка остановлена. Загружено файлов: ${completedCount}.`,
+        });
+      } else {
+        setActionMessage({
+          kind: "error",
+          text: projectFileUploadErrorMessage(cause),
+        });
+      }
     } finally {
+      uploadAbortControllerRef.current = null;
+      setActiveUpload(null);
       setActionState("idle");
     }
+  };
+
+  const cancelActiveUpload = () => {
+    uploadAbortControllerRef.current?.abort();
   };
 
   const renameFile = async (file: ProjectFileRecord, name: string) => {
@@ -698,6 +776,51 @@ export function FilesWorkspace({
             ) : null}
           </div>
         </header>
+
+        {activeUpload ? (
+          <div
+            aria-label="Прогресс загрузки"
+            className={styles.uploadProgress}
+            role="status"
+          >
+            <div className={styles.uploadProgressMeta}>
+              <strong title={activeUpload.fileName}>
+                {activeUpload.fileName}
+              </strong>
+              <span>
+                {activeUpload.totalFiles > 1
+                  ? `${activeUpload.currentFile} из ${activeUpload.totalFiles} · `
+                  : ""}
+                {activeUpload.resumed
+                  ? "Продолжение загрузки"
+                  : activeUpload.transport === "resumable"
+                    ? "Надёжная загрузка"
+                    : "Загрузка"}
+                {activeUpload.retryAttempt > 0
+                  ? ` · повтор ${activeUpload.retryAttempt}`
+                  : ""}
+              </span>
+            </div>
+            <progress
+              aria-label={`Загрузка ${activeUpload.fileName}`}
+              className={styles.uploadProgressTrack}
+              max={100}
+              value={activeUpload.percentage}
+            />
+            <span className={styles.uploadProgressPercent}>
+              {Math.round(activeUpload.percentage)}%
+            </span>
+            {activeUpload.transport === "resumable" ? (
+              <button
+                className={styles.uploadCancelButton}
+                onClick={cancelActiveUpload}
+                type="button"
+              >
+                Отменить
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         <nav aria-label="Путь к папке" className={styles.breadcrumbs}>
           <span>{projectName}</span>

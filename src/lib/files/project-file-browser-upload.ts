@@ -1,9 +1,9 @@
 import {
+  PROJECT_FILE_MAX_BYTES,
   isProjectFileImageMimeType,
   isProjectFileMimeType,
   type ProjectFileMimeType,
 } from "./project-file-repository";
-import { PROJECT_FILE_STANDARD_UPLOAD_MAX_BYTES } from "./project-file-upload-limit";
 
 export type PreparedProjectFileUpload = {
   name: string;
@@ -13,6 +13,7 @@ export type PreparedProjectFileUpload = {
   byteSize: number;
   width: number | null;
   height: number | null;
+  resumeKey: string;
 };
 
 const PROJECT_FILE_EXTENSION_MIME_TYPES: Readonly<
@@ -59,6 +60,20 @@ export function resolveProjectFileBrowserMimeType(
   );
 }
 
+export function projectFileBrowserResumeKey(input: {
+  fileName: string;
+  byteSize: number;
+  lastModified: number;
+  mimeType: ProjectFileMimeType;
+}): string {
+  return JSON.stringify([
+    input.fileName,
+    input.byteSize,
+    input.lastModified,
+    input.mimeType,
+  ]);
+}
+
 export async function prepareProjectFileBrowserUpload(
   file: File,
 ): Promise<PreparedProjectFileUpload> {
@@ -74,7 +89,7 @@ export async function prepareProjectFileBrowserUpload(
   if (file.size <= 0) {
     throw new ProjectFileBrowserUploadError("Пустой файл загрузить нельзя.");
   }
-  if (file.size > PROJECT_FILE_STANDARD_UPLOAD_MAX_BYTES) {
+  if (file.size > PROJECT_FILE_MAX_BYTES) {
     throw new ProjectFileBrowserUploadError(
       "Сейчас можно загрузить файл размером до 50 МБ.",
     );
@@ -90,7 +105,10 @@ export async function prepareProjectFileBrowserUpload(
   const blob =
     file.type.trim().toLowerCase() === mimeType
       ? file
-      : new Blob([file], { type: mimeType });
+      : new File([file], fileName, {
+          type: mimeType,
+          lastModified: file.lastModified,
+        });
   const dimensions = isProjectFileImageMimeType(mimeType)
     ? await readProjectImageDimensions(blob)
     : null;
@@ -103,6 +121,12 @@ export async function prepareProjectFileBrowserUpload(
     byteSize: blob.size,
     width: dimensions?.width ?? null,
     height: dimensions?.height ?? null,
+    resumeKey: projectFileBrowserResumeKey({
+      fileName,
+      byteSize: blob.size,
+      lastModified: file.lastModified,
+      mimeType,
+    }),
   };
 }
 

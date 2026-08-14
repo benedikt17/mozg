@@ -20,6 +20,14 @@ export const PROJECT_FILE_MIME_TYPES = [
 ] as const;
 
 export type ProjectFileMimeType = (typeof PROJECT_FILE_MIME_TYPES)[number];
+export type ProjectFileUploadTransport = "standard" | "resumable";
+
+export type ProjectFileUploadProgress = {
+  transport: ProjectFileUploadTransport;
+  bytesUploaded: number;
+  bytesTotal: number;
+  percentage: number;
+};
 
 export type ProjectFolderRecord = {
   id: string;
@@ -84,6 +92,11 @@ export type UploadProjectFileInput = ProjectFileScope & {
   checksum?: string | null;
   width?: number | null;
   height?: number | null;
+  resumeKey?: string | null;
+  signal?: AbortSignal;
+  onProgress?: (progress: ProjectFileUploadProgress) => void;
+  onResume?: () => void;
+  onRetry?: (attempt: number) => void;
 };
 
 export type ListProjectFilesInput = ProjectFileScope & {
