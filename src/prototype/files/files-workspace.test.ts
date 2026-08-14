@@ -14,10 +14,7 @@ const baseFolder = {
   createdAt: "2026-08-14T00:00:00.000Z",
   updatedAt: "2026-08-14T00:00:00.000Z",
   deletedAt: null,
-} satisfies Omit<
-  ProjectFolderRecord,
-  "id" | "parentFolderId" | "name"
->;
+} satisfies Omit<ProjectFolderRecord, "id" | "parentFolderId" | "name">;
 
 function folder(
   id: string,
@@ -35,11 +32,9 @@ describe("getProjectFolderBreadcrumbs", () => {
       folder("c", "Концепты", "b"),
     ];
 
-    expect(getProjectFolderBreadcrumbs(folders, "c").map((item) => item.id)).toEqual([
-      "a",
-      "b",
-      "c",
-    ]);
+    expect(
+      getProjectFolderBreadcrumbs(folders, "c").map((item) => item.id),
+    ).toEqual(["a", "b", "c"]);
   });
 
   it("stops safely if folder metadata contains a cycle", () => {
