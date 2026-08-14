@@ -1,3 +1,9 @@
+import type {
+  ProjectFileImageVariantMetadata,
+  ProjectFileImageVariantRecord,
+  StoreProjectFileImageVariantInput,
+} from "./project-file-image-variants";
+
 export const PROJECT_FILES_BUCKET = "project-files";
 export const PROJECT_FILE_MAX_BYTES = 50 * 1024 * 1024;
 export const PROJECT_FILE_MAX_NAME_LENGTH = 255;
@@ -136,6 +142,16 @@ export interface ProjectFileRepository {
   downloadFile(
     input: ProjectFileScope & { fileId: string },
   ): Promise<ProjectFileDownload>;
+
+  listImageVariants(
+    input: ProjectFileScope & { fileId: string },
+  ): Promise<ProjectFileImageVariantMetadata[]>;
+  loadImageVariant(
+    input: ProjectFileScope & { fileId: string; targetMaxEdge: number },
+  ): Promise<ProjectFileImageVariantRecord | null>;
+  storeImageVariant(
+    input: StoreProjectFileImageVariantInput,
+  ): Promise<ProjectFileImageVariantMetadata>;
 
   invalidateAuthentication(): void;
 }
