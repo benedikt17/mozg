@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { createClient } from "@/lib/supabase/browser";
-import { SupabaseProjectFileRepository } from "@/lib/files/cloud-project-file-repository";
+import {
+  SupabaseProjectFileRepository,
+} from "@/lib/files/cloud-project-file-repository";
 import type {
   ProjectFileRecord,
   ProjectFolderRecord,
@@ -84,7 +86,8 @@ export function FilesWorkspace({
   const childFolders = query.trim()
     ? []
     : folders.filter(
-        (folder) => folder.parentFolderId === activeFolderId && !folder.deletedAt,
+        (folder) =>
+          folder.parentFolderId === activeFolderId && !folder.deletedAt,
       );
   const hasEntries = childFolders.length > 0 || files.length > 0;
 
@@ -152,7 +155,9 @@ export function FilesWorkspace({
 
         {status === "ready" && !hasEntries ? (
           <div className={styles.stateMessage} role="status">
-            <strong>{query.trim() ? "Ничего не найдено" : "Папка пуста"}</strong>
+            <strong>
+              {query.trim() ? "Ничего не найдено" : "Папка пуста"}
+            </strong>
             <span>
               {query.trim()
                 ? "Попробуйте изменить поисковый запрос."
