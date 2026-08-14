@@ -6,7 +6,9 @@ import {
   type ProjectFileUploadProgress,
 } from "./project-file-repository";
 
-export const PROJECT_FILE_TUS_RETRY_DELAYS = [0, 3_000, 5_000, 10_000, 20_000] as const;
+export const PROJECT_FILE_TUS_RETRY_DELAYS = [
+  0, 3_000, 5_000, 10_000, 20_000,
+] as const;
 
 export type ProjectFileResumableReservationStorage = Pick<
   Storage,
@@ -20,7 +22,9 @@ export class ProjectFileUploadCancelledError extends Error {
   }
 }
 
-export function projectFileResumableUploadEndpoint(supabaseUrl: string): string {
+export function projectFileResumableUploadEndpoint(
+  supabaseUrl: string,
+): string {
   const url = new URL(supabaseUrl);
   const suffix = ".supabase.co";
   if (url.protocol === "https:" && url.hostname.endsWith(suffix)) {
