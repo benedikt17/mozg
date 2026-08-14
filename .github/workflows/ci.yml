@@ -1,4 +1,4 @@
-name: Files A4 Test Format Helper
+name: Files Delete INP Fix Helper
 
 on:
   pull_request:
@@ -7,12 +7,12 @@ permissions:
   contents: write
 
 jobs:
-  format:
+  fix:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: feat/project-files-stage-a4-lifecycle
+          ref: feat/project-files-stage-a3-core-actions
           fetch-depth: 0
       - uses: pnpm/action-setup@v4
         with:
@@ -22,8 +22,39 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec prettier --write src/prototype/files/files-workspace.test.ts tests/e2e/files-desktop.spec.ts
-      - name: Commit canonical test formatting to A4
+      - name: Replace blocking delete confirmation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          workspace = Path("src/prototype/files/files-workspace.tsx")
+          text = workspace.read_text()
+
+          old_state = '  const [targetFolderId, setTargetFolderId] = useState(file.folderId ?? "");\n'
+          new_state = old_state + '  const [confirmingDelete, setConfirmingDelete] = useState(false);\n'
+          if old_state not in text:
+              raise SystemExit("ProjectFilePreview state anchor not found")
+          text = text.replace(old_state, new_state, 1)
+
+          old_delete = '''      <div className={styles.previewActions}>\n        <PrototypeButton\n          disabled={!canMutate}\n          onClick={() => {\n            if (\n              typeof window !== "undefined" &&\n              window.confirm(`Переместить «${file.name}» в корзину?`)\n            ) {\n              void onDelete(file);\n            }\n          }}\n          size="compact"\n          variant="quiet"\n        >\n          <UiIcon name="trash" />\n          <span>В корзину</span>\n        </PrototypeButton>\n      </div>'''
+          new_delete = '''      <div className={styles.previewActions}>\n        {confirmingDelete ? (\n          <>\n            <span className={styles.previewState}>\n              Переместить файл в корзину?\n            </span>\n            <PrototypeButton\n              disabled={!canMutate}\n              onClick={() => void onDelete(file)}\n              size="compact"\n              variant="default"\n            >\n              Да, в корзину\n            </PrototypeButton>\n            <PrototypeButton\n              onClick={() => setConfirmingDelete(false)}\n              size="compact"\n              variant="quiet"\n            >\n              Отмена\n            </PrototypeButton>\n          </>\n        ) : (\n          <PrototypeButton\n            disabled={!canMutate}\n            onClick={() => setConfirmingDelete(true)}\n            size="compact"\n            variant="quiet"\n          >\n            <UiIcon name="trash" />\n            <span>В корзину</span>\n          </PrototypeButton>\n        )}\n      </div>'''
+          if old_delete not in text:
+              raise SystemExit("Blocking delete confirmation block not found")
+          text = text.replace(old_delete, new_delete, 1)
+          workspace.write_text(text)
+
+          e2e = Path("tests/e2e/files-desktop.spec.ts")
+          tests = e2e.read_text()
+          old_test = '''  page.once("dialog", (dialog) => void dialog.accept());\n  await preview.getByRole("button", { name: "В корзину", exact: true }).click();\n  await expect(\n    page.getByText("Перемещён в корзину: renamed-lifecycle.txt", {\n      exact: true,\n    }),\n  ).toBeVisible();'''
+          new_test = '''  await preview.getByRole("button", { name: "В корзину", exact: true }).click();\n  await expect(\n    preview.getByText("Переместить файл в корзину?", { exact: true }),\n  ).toBeVisible();\n  await preview.getByRole("button", { name: "Отмена", exact: true }).click();\n  await expect(\n    preview.getByText("Переместить файл в корзину?", { exact: true }),\n  ).toHaveCount(0);\n  await preview.getByRole("button", { name: "В корзину", exact: true }).click();\n  await preview\n    .getByRole("button", { name: "Да, в корзину", exact: true })\n    .click();\n  await expect(\n    page.getByText("Перемещён в корзину: renamed-lifecycle.txt", {\n      exact: true,\n    }),\n  ).toBeVisible();'''
+          if old_test not in tests:
+              raise SystemExit("E2E dialog block not found")
+          tests = tests.replace(old_test, new_test, 1)
+          e2e.write_text(tests)
+          PY
+      - run: pnpm exec prettier --write src/prototype/files/files-workspace.tsx tests/e2e/files-desktop.spec.ts
+      - name: Commit fix to A3 Preview branch
         shell: bash
         run: |
           if git diff --quiet; then
@@ -31,6 +62,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/prototype/files/files-workspace.test.ts tests/e2e/files-desktop.spec.ts
-          git commit -m "Files: apply canonical A4 test formatting"
-          git push origin HEAD:feat/project-files-stage-a4-lifecycle
+          git add src/prototype/files/files-workspace.tsx tests/e2e/files-desktop.spec.ts
+          git commit -m "Files: replace blocking delete confirmation"
+          git push origin HEAD:feat/project-files-stage-a3-core-actions
