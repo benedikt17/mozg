@@ -113,7 +113,10 @@ export function FilesWorkspace({
     <div className={styles.workspace}>
       <aside className={styles.sidebar} aria-label="Навигация по файлам">
         <header className={styles.sidebarHeader}>
-          <div className={styles.sidebarToolbar} aria-label="Действия с файлами">
+          <div
+            className={styles.sidebarToolbar}
+            aria-label="Действия с файлами"
+          >
             <IconButton
               disabled
               icon={<UiIcon name="file-plus" />}
