@@ -678,6 +678,7 @@ export function FilesWorkspace({
             {activeFolder && canMutate ? (
               <FolderHeaderActions
                 folder={activeFolder}
+                key={activeFolder.id}
                 folders={folders}
                 onMove={moveFolder}
                 onRename={renameFolder}
@@ -906,11 +907,6 @@ function FolderHeaderActions({
     folder.parentFolderId ?? "",
   );
 
-  useEffect(() => {
-    setName(folder.name);
-    setTargetParentId(folder.parentFolderId ?? "");
-  }, [folder.id, folder.name, folder.parentFolderId]);
-
   const moveTargets = getProjectFolderMoveTargets(folders, folder.id);
 
   if (editing) {
@@ -1015,17 +1011,8 @@ function ProjectFilePreview({
   const [targetFolderId, setTargetFolderId] = useState(file.folderId ?? "");
 
   useEffect(() => {
-    setName(file.name);
-    setTargetFolderId(file.folderId ?? "");
-  }, [file.folderId, file.id, file.name]);
-
-  useEffect(() => {
     let cancelled = false;
     let objectUrl: string | null = null;
-    setDownload(null);
-    setImageUrl(null);
-    setLoadError(false);
-
     void repository
       .downloadFile({ workspaceId, projectId, fileId: file.id })
       .then((nextDownload) => {
@@ -1134,7 +1121,10 @@ function ProjectFilePreview({
         </PrototypeButton>
         <PrototypeButton
           disabled={!canMutate}
-          onClick={() => setEditingName(true)}
+          onClick={() => {
+            setName(file.name);
+            setEditingName(true);
+          }}
           size="compact"
           variant="quiet"
         >
