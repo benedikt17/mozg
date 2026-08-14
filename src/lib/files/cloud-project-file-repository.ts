@@ -297,6 +297,44 @@ export class SupabaseProjectFileRepository implements ProjectFileRepository {
     }
   }
 
+  async listPendingFiles(
+    input: ProjectFileScope & { folderId?: string | null },
+  ): Promise<ProjectFileRecord[]> {
+    try {
+      await this.assertAuthenticated();
+      const userId = this.authenticatedUserId;
+      if (!userId) {
+        throw new CloudProjectFileRepositoryError(
+          "unauthenticated",
+          "Project Files requires an authenticated session.",
+        );
+      }
+      const scope = projectFileScope(input);
+      let query = this.supabase
+        .from("project_files")
+        .select(PROJECT_FILE_SELECT)
+        .eq("workspace_id", scope.workspaceId)
+        .eq("project_id", scope.projectId)
+        .eq("created_by", userId)
+        .is("ready_at", null)
+        .is("deleted_at", null);
+      if (input.folderId !== undefined) {
+        const folderId = projectFileFolderId(input.folderId);
+        query =
+          folderId === null
+            ? query.is("folder_id", null)
+            : query.eq("folder_id", folderId);
+      }
+      const { data, error } = await query.order("created_at", {
+        ascending: false,
+      });
+      if (error) throw error;
+      return (data ?? []).map((row) => mapProjectFile(row, scope));
+    } catch (cause) {
+      throw projectFileRepositoryError(cause, "metadata");
+    }
+  }
+
   async getFile(
     input: ProjectFileScope & { fileId: string },
   ): Promise<ProjectFileRecord> {
@@ -358,25 +396,59 @@ export class SupabaseProjectFileRepository implements ProjectFileRepository {
           folderId: validated.folderId,
           resumeKey,
         });
-        const previousFileId = this.readResumableFileId(
-          resumableReservationKey,
-        );
-        if (previousFileId) {
-          const previous = await this.findProjectFileReservation(
+
+        if (input.fileId) {
+          const explicitReservation = await this.findProjectFileReservation(
             scope,
-            previousFileId,
+            validated.fileId,
           );
-          if (previous && projectFileReservationMatches(previous, validated)) {
-            if (previous.readyAt !== null && previous.deletedAt === null) {
+          if (explicitReservation) {
+            if (
+              !projectFileReservationMatches(explicitReservation, validated)
+            ) {
+              throw new CloudProjectFileRepositoryError(
+                "invalid-input",
+                "The selected file does not match the pending upload.",
+              );
+            }
+            if (explicitReservation.deletedAt !== null) {
+              throw new CloudProjectFileRepositoryError(
+                "invalid-input",
+                "The pending upload is no longer active.",
+              );
+            }
+            if (explicitReservation.readyAt !== null) {
               this.removeResumableFileId(resumableReservationKey);
-              return previous;
+              return explicitReservation;
             }
-            if (previous.readyAt === null && previous.deletedAt === null) {
-              reserved = previous;
-            }
+            reserved = explicitReservation;
           }
-          if (!reserved) {
-            this.removeResumableFileId(resumableReservationKey);
+        }
+
+        if (!reserved) {
+          const previousFileId = this.readResumableFileId(
+            resumableReservationKey,
+          );
+          if (previousFileId) {
+            const previous = await this.findProjectFileReservation(
+              scope,
+              previousFileId,
+            );
+            if (
+              previous &&
+              projectFileReservationMatches(previous, validated)
+            ) {
+              if (previous.readyAt !== null && previous.deletedAt === null) {
+                this.removeResumableFileId(resumableReservationKey);
+                return previous;
+              }
+              if (previous.readyAt === null && previous.deletedAt === null) {
+                reserved = previous;
+              }
+            }
+            if (!reserved) {
+              this.removeResumableFileId(resumableReservationKey);
+            }
           }
         }
       }
@@ -418,6 +490,10 @@ export class SupabaseProjectFileRepository implements ProjectFileRepository {
         if (resumableReservationKey) {
           this.writeResumableFileId(resumableReservationKey, reserved.id);
         }
+      }
+
+      if (resumableReservationKey) {
+        this.writeResumableFileId(resumableReservationKey, reserved.id);
       }
 
       reservedForCancellation = reserved;

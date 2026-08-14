@@ -17,7 +17,10 @@ import {
   type ProjectFileUploadTransport,
   type ProjectFolderRecord,
 } from "@/lib/files/project-file-repository";
-import { projectFileResumableUploadEndpoint } from "@/lib/files/project-file-resumable-upload";
+import {
+  findProjectFileResumableResumeKey,
+  projectFileResumableUploadEndpoint,
+} from "@/lib/files/project-file-resumable-upload";
 import { projectFileUploadTransport } from "@/lib/files/project-file-upload-limit";
 import { createClient } from "@/lib/supabase/browser";
 import { UiIcon } from "@/prototype/desktop-icons";
@@ -72,9 +75,12 @@ export function FilesWorkspace({
     });
   }, []);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const resumeInputRef = useRef<HTMLInputElement>(null);
+  const resumeTargetFileRef = useRef<ProjectFileRecord | null>(null);
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
   const [folders, setFolders] = useState<ProjectFolderRecord[]>([]);
   const [files, setFiles] = useState<ProjectFileRecord[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<ProjectFileRecord[]>([]);
   const [location, setLocation] = useState<FilesLocation>({ kind: "inbox" });
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -109,12 +115,24 @@ export function FilesWorkspace({
               ? { query: trimmedQuery }
               : { folderId: activeFolderId }),
           });
+    const pendingFilesPromise =
+      location.kind === "trash" || trimmedQuery
+        ? Promise.resolve<ProjectFileRecord[]>([])
+        : repository.listPendingFiles({
+            ...scope,
+            folderId: activeFolderId,
+          });
 
-    void Promise.all([repository.listFolders(scope), filesPromise])
-      .then(([nextFolders, nextFiles]) => {
+    void Promise.all([
+      repository.listFolders(scope),
+      filesPromise,
+      pendingFilesPromise,
+    ])
+      .then(([nextFolders, nextFiles, nextPendingFiles]) => {
         if (cancelled) return;
         setFolders(nextFolders);
         setFiles(nextFiles);
+        setPendingFiles(nextPendingFiles);
         setSelectedFileId((currentFileId) =>
           currentFileId && nextFiles.some((file) => file.id === currentFileId)
             ? currentFileId
@@ -126,6 +144,7 @@ export function FilesWorkspace({
         if (cancelled) return;
         setFolders([]);
         setFiles([]);
+        setPendingFiles([]);
         setSelectedFileId(null);
         setStatus("error");
       });
@@ -158,7 +177,7 @@ export function FilesWorkspace({
       : location.kind === "trash"
         ? "Корзина"
         : (activeFolder?.name ?? "Папка");
-  const hasEntries = files.length > 0;
+  const hasEntries = files.length > 0 || pendingFiles.length > 0;
   const canMutate =
     Boolean(workspaceId) &&
     effectiveStatus === "ready" &&
@@ -225,14 +244,19 @@ export function FilesWorkspace({
     }
   };
 
-  const uploadFiles = async (browserFiles: readonly File[]) => {
+  const uploadFiles = async (
+    browserFiles: readonly File[],
+    resumeFile?: ProjectFileRecord,
+  ) => {
     if (!workspaceId || !canMutate || browserFiles.length === 0) return;
+    if (resumeFile && browserFiles.length !== 1) return;
 
     setActionState("uploading");
     setActionMessage({
       kind: "info",
-      text:
-        browserFiles.length === 1
+      text: resumeFile
+        ? `Продолжение загрузки: ${resumeFile.name}…`
+        : browserFiles.length === 1
           ? "Загрузка файла…"
           : `Загрузка файлов: ${browserFiles.length}…`,
     });
@@ -242,6 +266,28 @@ export function FilesWorkspace({
       let lastUploadedFile: ProjectFileRecord | null = null;
       for (const [index, browserFile] of browserFiles.entries()) {
         const prepared = await prepareProjectFileBrowserUpload(browserFile);
+        if (resumeFile) {
+          const expectedResumeKey = findProjectFileResumableResumeKey({
+            workspaceId,
+            projectId,
+            folderId: resumeFile.folderId,
+            fileId: resumeFile.id,
+          });
+          if (
+            expectedResumeKey === null ||
+            expectedResumeKey !== prepared.resumeKey ||
+            resumeFile.name !== prepared.name ||
+            resumeFile.originalName !== prepared.originalName ||
+            resumeFile.byteSize !== prepared.byteSize ||
+            resumeFile.mimeType !== prepared.mimeType
+          ) {
+            throw new ProjectFileBrowserUploadError(
+              expectedResumeKey === null
+                ? "Не удалось найти данные незавершённой загрузки. Загрузите файл заново."
+                : "Выберите тот же исходный файл, загрузка которого была прервана.",
+            );
+          }
+        }
         const transport = projectFileUploadTransport(prepared.byteSize);
         const abortController = new AbortController();
         uploadAbortControllerRef.current = abortController;
@@ -251,14 +297,15 @@ export function FilesWorkspace({
           totalFiles: browserFiles.length,
           percentage: 0,
           transport,
-          resumed: false,
+          resumed: Boolean(resumeFile),
           retryAttempt: 0,
         });
 
         const uploaded = await repository.uploadFile({
           workspaceId,
           projectId,
-          folderId: activeFolderId,
+          ...(resumeFile ? { fileId: resumeFile.id } : {}),
+          folderId: resumeFile ? resumeFile.folderId : activeFolderId,
           ...prepared,
           signal: abortController.signal,
           onProgress: (progress) => {
@@ -285,6 +332,11 @@ export function FilesWorkspace({
         });
         completedCount += 1;
         lastUploadedFile = uploaded;
+        if (resumeFile) {
+          setPendingFiles((current) =>
+            current.filter((file) => file.id !== resumeFile.id),
+          );
+        }
         setFiles((current) => [
           uploaded,
           ...current.filter((file) => file.id !== uploaded.id),
@@ -604,6 +656,21 @@ export function FilesWorkspace({
             }}
             type="file"
           />
+          <input
+            ref={resumeInputRef}
+            accept={PROJECT_FILE_MIME_TYPES.join(",")}
+            aria-label="Выбрать исходный файл для продолжения"
+            className={styles.hiddenFileInput}
+            onChange={(event) => {
+              const browserFile = event.currentTarget.files?.[0] ?? null;
+              const resumeFile = resumeTargetFileRef.current;
+              event.currentTarget.value = "";
+              resumeTargetFileRef.current = null;
+              if (!browserFile || !resumeFile) return;
+              void uploadFiles([browserFile], resumeFile);
+            }}
+            type="file"
+          />
         </header>
 
         <label className={styles.sidebarSearch}>
@@ -740,7 +807,11 @@ export function FilesWorkspace({
         </nav>
       </aside>
 
-      <main className={styles.contentPane}>
+      <main
+        className={`${styles.contentPane} ${
+          activeUpload ? styles.contentPaneUploading : ""
+        }`}
+      >
         <header className={styles.contentHeader}>
           <div className={styles.headingBlock}>
             <h2>{title}</h2>
@@ -939,6 +1010,34 @@ export function FilesWorkspace({
                 <span>Изменён</span>
               </div>
               <div className={styles.entries}>
+                {pendingFiles.map((file) => (
+                  <div
+                    className={`${styles.entryRow} ${styles.pendingEntryRow}`}
+                    key={`pending-${file.id}`}
+                  >
+                    <span className={styles.nameCell}>
+                      <span className={styles.entryIcon} aria-hidden="true">
+                        ↻
+                      </span>
+                      <span className={styles.fileName} title={file.name}>
+                        {file.name}
+                      </span>
+                    </span>
+                    <span className={styles.pendingState}>Не завершено</span>
+                    <span>{formatProjectFileSize(file.byteSize)}</span>
+                    <button
+                      className={styles.pendingResumeButton}
+                      disabled={!canMutate}
+                      onClick={() => {
+                        resumeTargetFileRef.current = file;
+                        resumeInputRef.current?.click();
+                      }}
+                      type="button"
+                    >
+                      Продолжить
+                    </button>
+                  </div>
+                ))}
                 {files.map((file) => (
                   <button
                     aria-pressed={file.id === selectedFileId}

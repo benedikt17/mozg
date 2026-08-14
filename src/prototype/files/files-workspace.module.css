@@ -215,6 +215,10 @@
   background: var(--surface);
 }
 
+.contentPaneUploading {
+  grid-template-rows: 38px auto 34px minmax(0, 1fr);
+}
+
 .contentHeader,
 .previewHeader {
   min-width: 0;
@@ -385,6 +389,42 @@
 
 .entryRowSelected {
   box-shadow: inset 2px 0 0 #ff5200;
+}
+
+.pendingEntryRow {
+  background: color-mix(in srgb, var(--surface-2) 72%, var(--surface) 28%);
+}
+
+.pendingEntryRow:hover {
+  background: color-mix(in srgb, var(--surface-2) 88%, var(--surface) 12%);
+}
+
+.pendingState {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.pendingResumeButton {
+  justify-self: start;
+  min-height: 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 0 9px;
+  color: var(--text-2);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.pendingResumeButton:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.pendingResumeButton:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 .nameCell {
@@ -604,6 +644,18 @@
   .entryRow > :last-child {
     display: none;
   }
+
+  .pendingEntryRow {
+    grid-template-columns: minmax(200px, 1fr) 100px auto;
+  }
+
+  .pendingEntryRow > :nth-child(3) {
+    display: none;
+  }
+
+  .pendingEntryRow > :last-child {
+    display: inline-flex;
+  }
 }
 
 @media (max-width: 1023px) {
@@ -634,6 +686,10 @@
 
   .contentPane {
     grid-template-rows: 38px 34px minmax(0, 1fr);
+  }
+
+  .contentPaneUploading {
+    grid-template-rows: 38px auto 34px minmax(0, 1fr);
   }
 
   .breadcrumbs {

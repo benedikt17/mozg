@@ -1,3 +1,6 @@
+import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+
 import { expect, test, type Page } from "@playwright/test";
 
 import { E2E_USER_EMAIL, E2E_USER_PASSWORD } from "./test-user";
@@ -146,6 +149,81 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
     page.getByRole("button", { name: /large-note\.txt/ }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: /pixel\.gif/ })).toHaveCount(0);
+});
+
+test("keeps an interrupted TUS upload visible after F5 and resumes the same reservation", async ({
+  page,
+}, testInfo) => {
+  await signIn(page);
+  await openFiles(page);
+
+  const filePath = testInfo.outputPath("resume-after-reload.txt");
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(filePath, Buffer.alloc(20 * 1024 * 1024, "R"));
+  const stableTimestamp = new Date("2026-08-14T12:00:00.000Z");
+  utimesSync(filePath, stableTimestamp, stableTimestamp);
+
+  let delayTusPatches = true;
+  await page.route("**/storage/v1/upload/resumable**", async (route) => {
+    if (delayTusPatches && route.request().method() === "PATCH") {
+      await new Promise((resolve) => setTimeout(resolve, 1_200));
+    }
+    try {
+      await route.continue();
+    } catch {
+      // Reload intentionally abandons the in-flight request.
+    }
+  });
+
+  const uploadButton = page.getByRole("button", {
+    name: "Загрузить файл",
+    exact: true,
+  });
+  const firstPatch = page.waitForRequest(
+    (request) =>
+      request.url().includes("/storage/v1/upload/resumable") &&
+      request.method() === "PATCH",
+  );
+  const chooserPromise = page.waitForEvent("filechooser");
+  await uploadButton.click();
+  const chooser = await chooserPromise;
+  await chooser.setFiles(filePath);
+  await firstPatch;
+  await expect(
+    page.getByRole("status", { name: "Прогресс загрузки" }),
+  ).toBeVisible();
+
+  await page.reload();
+  await openFiles(page);
+
+  await expect(
+    page.getByText("resume-after-reload.txt", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Не завершено", { exact: true })).toBeVisible();
+  const continueButton = page.getByRole("button", {
+    name: "Продолжить",
+    exact: true,
+  });
+  await expect(continueButton).toBeEnabled();
+
+  const resumeChooserPromise = page.waitForEvent("filechooser");
+  await continueButton.click();
+  const resumeChooser = await resumeChooserPromise;
+  await resumeChooser.setFiles(filePath);
+
+  await expect(
+    page.getByText("Продолжение загрузки", { exact: true }),
+  ).toBeVisible({
+    timeout: 10_000,
+  });
+  delayTusPatches = false;
+  await expect(
+    page.getByText("Загружен: resume-after-reload.txt", { exact: true }),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Не завершено", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: /resume-after-reload\.txt/ }),
+  ).toHaveCount(1);
 });
 
 test("renames, moves, drags, trashes and restores files and reorganizes folders", async ({

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  findProjectFileResumableResumeKey,
   projectFileResumableReservationKey,
   projectFileResumableUploadEndpoint,
   projectFileTusFingerprint,
@@ -50,6 +51,36 @@ describe("Project Files resumable upload helpers", () => {
 
     expect(folderKey).not.toBe(inboxKey);
     expect(otherProjectKey).not.toBe(inboxKey);
+  });
+
+  it("recovers the persisted resume key for the same pending reservation", () => {
+    const key = projectFileResumableReservationKey({
+      workspaceId,
+      projectId: "project-a",
+      folderId: null,
+      resumeKey,
+    });
+    const values = new Map([[key, fileId]]);
+    const keys = [...values.keys()];
+    const storage = {
+      get length() {
+        return keys.length;
+      },
+      getItem: (candidate: string) => values.get(candidate) ?? null,
+      key: (index: number) => keys[index] ?? null,
+    };
+
+    expect(
+      findProjectFileResumableResumeKey(
+        {
+          workspaceId,
+          projectId: "project-a",
+          folderId: null,
+          fileId,
+        },
+        storage,
+      ),
+    ).toBe(resumeKey);
   });
 
   it("binds the TUS fingerprint to the immutable reserved file id", () => {

@@ -114,6 +114,9 @@ export interface ProjectFileRepository {
   moveFolder(input: MoveProjectFolderInput): Promise<ProjectFolderRecord>;
 
   listFiles(input: ListProjectFilesInput): Promise<ProjectFileRecord[]>;
+  listPendingFiles(
+    input: ProjectFileScope & { folderId?: string | null },
+  ): Promise<ProjectFileRecord[]>;
   getFile(
     input: ProjectFileScope & { fileId: string },
   ): Promise<ProjectFileRecord>;

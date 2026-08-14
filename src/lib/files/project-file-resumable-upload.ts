@@ -52,6 +52,42 @@ export function projectFileResumableReservationKey(input: {
   ].join(":");
 }
 
+export function findProjectFileResumableResumeKey(
+  input: {
+    workspaceId: string;
+    projectId: string;
+    folderId: string | null;
+    fileId: string;
+  },
+  storage?: Pick<Storage, "getItem" | "key" | "length"> | null,
+): string | null {
+  const resolvedStorage =
+    storage === undefined
+      ? (getProjectFileResumableReservationStorage() as Storage | null)
+      : storage;
+  if (!resolvedStorage) return null;
+
+  const prefix =
+    [
+      "mozg:project-files:resumable:v1",
+      input.workspaceId,
+      encodeURIComponent(input.projectId),
+      input.folderId ?? "inbox",
+    ].join(":") + ":";
+
+  for (let index = 0; index < resolvedStorage.length; index += 1) {
+    const key = resolvedStorage.key(index);
+    if (!key || !key.startsWith(prefix)) continue;
+    if (resolvedStorage.getItem(key) !== input.fileId) continue;
+    try {
+      return decodeURIComponent(key.slice(prefix.length));
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 export function projectFileTusFingerprint(input: {
   workspaceId: string;
   fileId: string;
