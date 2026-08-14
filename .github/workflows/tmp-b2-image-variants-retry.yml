@@ -1,0 +1,96 @@
+name: tmp-b2-image-variants-retry
+
+on:
+  push:
+    branches:
+      - feat/project-files-b2-image-variants
+
+permissions:
+  contents: write
+
+jobs:
+  wire-and-check:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Type the B2 preview variant cache in the transient wiring
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/tmp-b2-wire.py')
+          text = path.read_text()
+          text = text.replace(
+              '  chooseProjectFilePreviewVariant,\n  type ProjectFileImageVariantRepository,',
+              '  chooseProjectFilePreviewVariant,\n  type ProjectFileImageVariantMetadata,\n  type ProjectFileImageVariantRepository,',
+              1,
+          )
+          text = text.replace(
+              '        let variants = [];',
+              '        let variants: ProjectFileImageVariantMetadata[] = [];',
+              1,
+          )
+          path.write_text(text)
+          PY
+      - name: Wire B2 image variants
+        run: python scripts/tmp-b2-wire.py
+      - name: Format B2 source
+        run: >-
+          pnpm exec prettier --write
+          src/lib/files/cloud-project-file-image-variant-repository.ts
+          src/lib/files/project-file-image-variant-generation.ts
+          src/lib/files/project-file-image-variants.ts
+          src/lib/files/project-file-image-variants.test.ts
+          src/prototype/files/files-workspace.tsx
+          tests/e2e/files-desktop.spec.ts
+      - run: pnpm supabase start
+      - name: Regenerate Supabase types
+        shell: bash
+        run: |
+          pnpm supabase gen types typescript --local --schema public > /tmp/database.types.ts
+          perl -0pi -e 's/\n\n\z/\n/' /tmp/database.types.ts
+          cp /tmp/database.types.ts src/lib/supabase/database.types.ts
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm test:rls
+      - name: Export local Supabase browser-test environment
+        shell: bash
+        run: |
+          pnpm supabase status -o env > /tmp/supabase.env
+          set -a
+          source /tmp/supabase.env
+          set +a
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "E2E_SUPABASE_URL=$API_URL"
+            echo "E2E_SUPABASE_ANON_KEY=$ANON_KEY"
+          } >> "$GITHUB_ENV"
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - run: pnpm build
+      - if: always()
+        run: pnpm supabase stop --no-backup
+      - name: Commit validated B2 slice
+        if: success()
+        shell: bash
+        run: |
+          rm -f scripts/tmp-b2-wire.py
+          rm -f .github/workflows/tmp-b2-image-variants.yml
+          rm -f .github/workflows/tmp-b2-image-variants-retry.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Files B2: generate and serve image variants"
+          git push
