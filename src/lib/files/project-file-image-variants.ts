@@ -166,10 +166,20 @@ async function decodeProjectFileImage(blob: Blob): Promise<{
   close?: () => void;
 }> {
   if (typeof createImageBitmap === "function") {
-    const bitmap = await createImageBitmap(blob, {
-      imageOrientation: "from-image",
-    });
-    return { source: bitmap, close: () => bitmap.close() };
+    try {
+      const bitmap = await createImageBitmap(blob, {
+        imageOrientation: "from-image",
+      });
+      return { source: bitmap, close: () => bitmap.close() };
+    } catch {
+      try {
+        const bitmap = await createImageBitmap(blob);
+        return { source: bitmap, close: () => bitmap.close() };
+      } catch {
+        // Fall through to HTMLImageElement. Some browser engines accept the
+        // source image but reject one or both createImageBitmap paths.
+      }
+    }
   }
   if (
     typeof Image === "undefined" ||
