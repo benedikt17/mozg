@@ -1,1 +1,1 @@
-Trigger helper validation after Files B2 image decode fallback.
+Trigger helper validation after Files B2 pending derivative Storage INSERT RLS fix.
