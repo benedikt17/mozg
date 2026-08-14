@@ -33,6 +33,7 @@ export function FilesWorkspace({
   const [folders, setFolders] = useState<ProjectFolderRecord[]>([]);
   const [files, setFiles] = useState<ProjectFileRecord[]>([]);
   const [location, setLocation] = useState<FilesLocation>({ kind: "inbox" });
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<FilesLoadStatus>("loading");
   const [reloadToken, setReloadToken] = useState(0);
@@ -58,12 +59,18 @@ export function FilesWorkspace({
         if (cancelled) return;
         setFolders(nextFolders);
         setFiles(nextFiles);
+        setSelectedFileId((currentFileId) =>
+          currentFileId && nextFiles.some((file) => file.id === currentFileId)
+            ? currentFileId
+            : null,
+        );
         setStatus("ready");
       })
       .catch(() => {
         if (cancelled) return;
         setFolders([]);
         setFiles([]);
+        setSelectedFileId(null);
         setStatus("error");
       });
 
@@ -78,6 +85,8 @@ export function FilesWorkspace({
     location.kind === "folder"
       ? (folders.find((folder) => folder.id === location.folderId) ?? null)
       : null;
+  const selectedFile =
+    files.find((file) => file.id === selectedFileId) ?? null;
   const folderTree = getProjectFolderTree(folders);
   const title = query.trim()
     ? "Результаты поиска"
@@ -89,23 +98,39 @@ export function FilesWorkspace({
   const openInbox = () => {
     setStatus("loading");
     setQuery("");
+    setSelectedFileId(null);
     setLocation({ kind: "inbox" });
   };
 
   const openFolder = (folderId: string) => {
     setStatus("loading");
     setQuery("");
+    setSelectedFileId(null);
     setLocation({ kind: "folder", folderId });
   };
 
   return (
     <div className={styles.workspace}>
       <aside className={styles.sidebar} aria-label="Навигация по файлам">
-        <div className={styles.sidebarHeader}>
+        <header className={styles.sidebarHeader}>
           <strong>Файлы</strong>
-        </div>
+        </header>
 
-        <div className={styles.sidebarContent}>
+        <label className={styles.sidebarSearch}>
+          <span className={styles.visuallyHidden}>Поиск файлов</span>
+          <input
+            onChange={(event) => {
+              setStatus("loading");
+              setSelectedFileId(null);
+              setQuery(event.currentTarget.value);
+            }}
+            placeholder="Файл или папка"
+            type="search"
+            value={query}
+          />
+        </label>
+
+        <nav className={styles.sidebarNavigation} aria-label="Разделы файлов">
           <button
             aria-current={location.kind === "inbox" ? "page" : undefined}
             className={`${styles.sidebarRow} ${
@@ -149,29 +174,17 @@ export function FilesWorkspace({
               <div className={styles.sidebarEmpty}>Папок пока нет</div>
             )}
           </div>
-        </div>
+        </nav>
       </aside>
 
-      <main className={styles.main}>
-        <header className={styles.header}>
+      <main className={styles.contentPane}>
+        <header className={styles.contentHeader}>
           <div className={styles.headingBlock}>
             <h2>{title}</h2>
             {location.kind === "inbox" && !query.trim() ? (
-              <span>Файлы, которые ещё не разложены по папкам</span>
+              <span>Неразобранные файлы</span>
             ) : null}
           </div>
-          <label className={styles.search}>
-            <span className={styles.visuallyHidden}>Поиск файлов</span>
-            <input
-              onChange={(event) => {
-                setStatus("loading");
-                setQuery(event.currentTarget.value);
-              }}
-              placeholder="Поиск файлов"
-              type="search"
-              value={query}
-            />
-          </label>
         </header>
 
         {location.kind === "folder" && !query.trim() ? (
@@ -255,7 +268,15 @@ export function FilesWorkspace({
               </div>
               <div className={styles.entries}>
                 {files.map((file) => (
-                  <div className={styles.entryRow} key={file.id}>
+                  <button
+                    aria-pressed={file.id === selectedFileId}
+                    className={`${styles.entryRow} ${
+                      file.id === selectedFileId ? styles.entryRowSelected : ""
+                    }`}
+                    key={file.id}
+                    onClick={() => setSelectedFileId(file.id)}
+                    type="button"
+                  >
                     <span className={styles.nameCell}>
                       <span className={styles.entryIcon} aria-hidden="true">
                         {file.mimeType.startsWith("image/") ? "▧" : "▤"}
@@ -267,13 +288,49 @@ export function FilesWorkspace({
                     <span>{projectFileTypeLabel(file.mimeType)}</span>
                     <span>{formatProjectFileSize(file.byteSize)}</span>
                     <span>{formatProjectFileDate(file.updatedAt)}</span>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
           ) : null}
         </section>
       </main>
+
+      <aside className={styles.previewPane} aria-label="Предпросмотр файла">
+        <header className={styles.previewHeader}>
+          <strong>Предпросмотр</strong>
+        </header>
+        {selectedFile ? (
+          <div className={styles.previewContent}>
+            <div className={styles.previewPlaceholder} aria-hidden="true">
+              <UiIcon
+                name={selectedFile.mimeType.startsWith("image/") ? "image" : "file"}
+              />
+            </div>
+            <div className={styles.previewTitle}>{selectedFile.name}</div>
+            <dl className={styles.previewMetadata}>
+              <div>
+                <dt>Тип</dt>
+                <dd>{projectFileTypeLabel(selectedFile.mimeType)}</dd>
+              </div>
+              <div>
+                <dt>Размер</dt>
+                <dd>{formatProjectFileSize(selectedFile.byteSize)}</dd>
+              </div>
+              <div>
+                <dt>Изменён</dt>
+                <dd>{formatProjectFileDate(selectedFile.updatedAt)}</dd>
+              </div>
+            </dl>
+          </div>
+        ) : (
+          <div className={styles.previewEmpty}>
+            <UiIcon name="file" />
+            <strong>Выберите файл</strong>
+            <span>Здесь будет предпросмотр и информация о файле.</span>
+          </div>
+        )}
+      </aside>
     </div>
   );
 }
