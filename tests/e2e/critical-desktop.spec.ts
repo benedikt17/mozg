@@ -76,6 +76,9 @@ test("opens Project Files inside the normal Desktop shell", async ({
   await filesButton.click();
 
   await expect(filesButton).toHaveAttribute("aria-current", "page");
+  await expect(
+    page.locator(".section-workspace.section-files .main-workspace"),
+  ).toHaveCSS("padding", "0px");
   const filesNavigation = page.getByRole("complementary", {
     name: "Навигация по файлам",
   });
