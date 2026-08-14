@@ -32,7 +32,7 @@ jobs:
           text = path.read_text()
           text = text.replace(
           'import { SupabaseProjectFileRepository } from "@/lib/files/cloud-project-file-repository";\n',
-          'import {\n  CloudProjectFileRepositoryError,\n  SupabaseProjectFileRepository,\n} from "@/lib/files/cloud-project-file-repository";\nimport { getPublicEnv } from "@/lib/env";\n'
+          'import { SupabaseProjectFileRepository } from "@/lib/files/cloud-project-file-repository";\nimport { getPublicEnv } from "@/lib/env";\nimport { CloudProjectFileRepositoryError } from "@/lib/files/project-file-runtime";\n'
           )
           text = text.replace(
           '  type ProjectFileRepository,\n  type ProjectFolderRecord,\n} from "@/lib/files/project-file-repository";\n',
