@@ -1,0 +1,38 @@
+name: Files A2 one-time format
+
+on:
+  push:
+    branches:
+      - feat/project-files-stage-a2-preview
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/project-files-stage-a2-preview
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Format Files workspace exactly once
+        shell: bash
+        run: |
+          pnpm exec prettier --write src/prototype/files/files-workspace.tsx
+          git diff --check
+          if git diff --quiet -- src/prototype/files/files-workspace.tsx; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/prototype/files/files-workspace.tsx
+          git commit -m "Files A2: apply canonical workspace formatting"
+          git push origin HEAD:feat/project-files-stage-a2-preview
