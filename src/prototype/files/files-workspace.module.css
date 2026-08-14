@@ -3,70 +3,70 @@
   min-height: 0;
   height: 100%;
   flex-direction: column;
-  background: var(--workspace-surface, #fff);
+  background: var(--surface);
+  color: var(--text);
 }
 
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
-  padding: 28px 32px 18px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  gap: 20px;
+  padding: 18px 24px 14px;
+  border-bottom: 1px solid var(--border);
 }
 
 .headingBlock {
   display: flex;
   min-width: 0;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
 }
 
 .headingBlock h2 {
   margin: 0;
-  font-size: 22px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-}
-
-.headingBlock span {
-  overflow: hidden;
-  color: rgba(15, 23, 42, 0.5);
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 20px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .search {
-  width: min(320px, 42vw);
+  width: min(300px, 40vw);
 }
 
 .search input {
   width: 100%;
-  height: 36px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  border-radius: 9px;
-  background: rgba(248, 250, 252, 0.86);
-  padding: 0 12px;
-  color: inherit;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 0 10px;
+  color: var(--text);
   font: inherit;
   outline: none;
 }
 
+.search input::placeholder {
+  color: var(--text-3);
+}
+
+.search input:hover {
+  border-color: var(--border-strong);
+}
+
 .search input:focus {
-  border-color: rgba(15, 23, 42, 0.28);
-  background: #fff;
+  border-color: var(--focus);
 }
 
 .breadcrumbs {
   display: flex;
-  min-height: 44px;
+  min-height: 40px;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   overflow-x: auto;
-  padding: 0 32px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
-  color: rgba(15, 23, 42, 0.56);
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-3);
   font-size: 13px;
   scrollbar-width: none;
 }
@@ -85,29 +85,33 @@
   white-space: nowrap;
 }
 
+.breadcrumbs button:hover {
+  color: var(--text);
+}
+
 .breadcrumbs button[aria-current="page"] {
-  color: rgba(15, 23, 42, 0.92);
+  color: var(--text);
   font-weight: 600;
 }
 
 .breadcrumbPart {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
 }
 
 .content {
   min-height: 0;
   flex: 1;
   overflow: auto;
-  padding: 20px 32px 32px;
+  padding: 16px 24px 24px;
 }
 
 .tableWrap {
   overflow: hidden;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 12px;
-  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
 }
 
 .tableHeader,
@@ -119,12 +123,12 @@
 }
 
 .tableHeader {
-  min-height: 38px;
-  padding: 0 16px;
-  background: rgba(248, 250, 252, 0.9);
-  color: rgba(15, 23, 42, 0.44);
+  min-height: 36px;
+  padding: 0 14px;
+  background: var(--surface-2);
+  color: var(--text-3);
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -135,12 +139,12 @@
 }
 
 .entryRow {
-  min-height: 52px;
+  min-height: 48px;
   border: 0;
-  border-top: 1px solid rgba(15, 23, 42, 0.06);
-  background: #fff;
-  padding: 0 16px;
-  color: rgba(15, 23, 42, 0.78);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding: 0 14px;
+  color: var(--text-2);
   font: inherit;
   font-size: 13px;
   text-align: left;
@@ -152,7 +156,7 @@ button.entryRow {
 
 button.entryRow:hover,
 button.entryRow:focus-visible {
-  background: rgba(248, 250, 252, 0.95);
+  background: var(--surface-hover);
 }
 
 .nameCell {
@@ -160,8 +164,8 @@ button.entryRow:focus-visible {
   min-width: 0;
   align-items: center;
   gap: 10px;
-  color: rgba(15, 23, 42, 0.94);
-  font-weight: 520;
+  color: var(--text);
+  font-weight: 500;
 }
 
 .entryIcon {
@@ -170,7 +174,7 @@ button.entryRow:focus-visible {
   flex: 0 0 22px;
   align-items: center;
   justify-content: center;
-  color: rgba(15, 23, 42, 0.52);
+  color: var(--text-3);
   font-size: 17px;
 }
 
@@ -182,36 +186,42 @@ button.entryRow:focus-visible {
 
 .stateMessage {
   display: flex;
-  min-height: 220px;
+  min-height: 180px;
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  gap: 8px;
-  border: 1px dashed rgba(15, 23, 42, 0.12);
-  border-radius: 12px;
-  color: rgba(15, 23, 42, 0.55);
+  gap: 6px;
+  color: var(--text-3);
   text-align: center;
 }
 
 .stateMessage strong {
-  color: rgba(15, 23, 42, 0.88);
-  font-size: 15px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .stateMessage span {
-  max-width: 460px;
+  max-width: 440px;
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 18px;
 }
 
 .stateMessage button {
-  margin-top: 8px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  border-radius: 8px;
-  background: #fff;
-  padding: 7px 12px;
+  min-height: 28px;
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 0 10px;
+  color: var(--text-2);
   cursor: pointer;
   font: inherit;
+}
+
+.stateMessage button:hover {
+  background: var(--surface-hover);
+  color: var(--text);
 }
 
 .visuallyHidden {
@@ -230,8 +240,8 @@ button.entryRow:focus-visible {
   .header {
     align-items: stretch;
     flex-direction: column;
-    gap: 14px;
-    padding: 20px 18px 14px;
+    gap: 12px;
+    padding: 16px 16px 12px;
   }
 
   .search {
@@ -239,11 +249,11 @@ button.entryRow:focus-visible {
   }
 
   .breadcrumbs {
-    padding: 0 18px;
+    padding: 0 16px;
   }
 
   .content {
-    padding: 14px 18px 24px;
+    padding: 12px 16px 20px;
   }
 
   .tableHeader {
@@ -253,7 +263,7 @@ button.entryRow:focus-visible {
   .entryRow {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px 16px;
-    padding: 10px 14px;
+    padding: 10px 12px;
   }
 
   .entryRow > :nth-child(3),
@@ -262,7 +272,7 @@ button.entryRow:focus-visible {
   }
 
   .entryRow > :nth-child(2) {
-    color: rgba(15, 23, 42, 0.46);
+    color: var(--text-3);
     font-size: 12px;
   }
 }
