@@ -87,27 +87,31 @@ export async function prepareProjectFileBrowserUpload(
     );
   }
 
+  const blob =
+    file.type.trim().toLowerCase() === mimeType
+      ? file
+      : new Blob([file], { type: mimeType });
   const dimensions = isProjectFileImageMimeType(mimeType)
-    ? await readProjectImageDimensions(file)
+    ? await readProjectImageDimensions(blob)
     : null;
 
   return {
     name: fileName,
     originalName: fileName,
-    blob: file,
+    blob,
     mimeType,
-    byteSize: file.size,
+    byteSize: blob.size,
     width: dimensions?.width ?? null,
     height: dimensions?.height ?? null,
   };
 }
 
 async function readProjectImageDimensions(
-  file: File,
+  blob: Blob,
 ): Promise<{ width: number; height: number }> {
   if (typeof createImageBitmap === "function") {
     try {
-      const bitmap = await createImageBitmap(file);
+      const bitmap = await createImageBitmap(blob);
       const dimensions = { width: bitmap.width, height: bitmap.height };
       bitmap.close();
       return dimensions;
@@ -123,7 +127,7 @@ async function readProjectImageDimensions(
     );
   }
 
-  const objectUrl = URL.createObjectURL(file);
+  const objectUrl = URL.createObjectURL(blob);
   try {
     return await new Promise((resolve, reject) => {
       const image = new Image();
