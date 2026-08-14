@@ -110,7 +110,9 @@ export function FilesWorkspace({
         <div className={styles.sidebarContent}>
           <button
             aria-current={location.kind === "inbox" ? "page" : undefined}
-            className={`${styles.sidebarRow} ${location.kind === "inbox" ? styles.sidebarRowActive : ""}`}
+            className={`${styles.sidebarRow} ${
+              location.kind === "inbox" ? styles.sidebarRowActive : ""
+            }`}
             onClick={openInbox}
             type="button"
           >
@@ -130,7 +132,12 @@ export function FilesWorkspace({
                       ? "page"
                       : undefined
                   }
-                  className={`${styles.sidebarRow} ${location.kind === "folder" && location.folderId === folder.id ? styles.sidebarRowActive : ""}`}
+                  className={`${styles.sidebarRow} ${
+                    location.kind === "folder" &&
+                    location.folderId === folder.id
+                      ? styles.sidebarRowActive
+                      : ""
+                  }`}
                   key={folder.id}
                   onClick={() => openFolder(folder.id)}
                   style={{ paddingLeft: `${8 + depth * 14}px` }}
