@@ -121,6 +121,7 @@ export async function uploadProjectFileResumable(input: {
       onBeforeRequest: async (request) => {
         const accessToken = await input.getAccessToken();
         request.setHeader("authorization", `Bearer ${accessToken}`);
+        request.setHeader("x-upsert", "false");
       },
       onProgress: (bytesUploaded, bytesTotal) => {
         input.onProgress?.({
