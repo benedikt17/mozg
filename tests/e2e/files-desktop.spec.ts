@@ -30,9 +30,12 @@ test("uploads to Inbox, creates a folder, previews and downloads an original", a
     exact: true,
   });
   await expect(uploadButton).toBeEnabled();
+  await expect(uploadButton).toContainText("Загрузить");
 
-  const fileInput = page.getByLabel("Выбрать файлы для загрузки");
-  await fileInput.setInputFiles({
+  const inboxFileChooserPromise = page.waitForEvent("filechooser");
+  await uploadButton.click();
+  const inboxFileChooser = await inboxFileChooserPromise;
+  await inboxFileChooser.setFiles({
     name: "inbox-note.txt",
     mimeType: "text/plain",
     buffer: Buffer.from("Inbox upload contract."),
@@ -63,7 +66,10 @@ test("uploads to Inbox, creates a folder, previews and downloads an original", a
   await expect(page.getByText("Папка пуста", { exact: true })).toBeVisible();
   await expect(uploadButton).toBeEnabled();
 
-  await fileInput.setInputFiles({
+  const folderFileChooserPromise = page.waitForEvent("filechooser");
+  await uploadButton.click();
+  const folderFileChooser = await folderFileChooserPromise;
+  await folderFileChooser.setFiles({
     name: "pixel.gif",
     mimeType: "image/gif",
     buffer: Buffer.from(

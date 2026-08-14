@@ -32,7 +32,8 @@ export type UiIconName =
   | "sort"
   | "split"
   | "text"
-  | "trash";
+  | "trash"
+  | "upload";
 
 export function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
   const commonProps = {
@@ -238,6 +239,13 @@ export function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
         <path d="M7 7l1 13h8l1-13" />
         <path d="M10 11v5" />
         <path d="M14 11v5" />
+      </>
+    ),
+    upload: (
+      <>
+        <path d="M12 16V4" />
+        <path d="M7 9l5-5 5 5" />
+        <path d="M5 14v5h14v-5" />
       </>
     ),
   };

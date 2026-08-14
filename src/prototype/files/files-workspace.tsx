@@ -216,24 +216,28 @@ export function FilesWorkspace({
     <div className={styles.workspace}>
       <aside className={styles.sidebar} aria-label="Навигация по файлам">
         <header className={styles.sidebarHeader}>
+          <PrototypeButton
+            aria-label="Загрузить файл"
+            disabled={!canMutate}
+            onClick={() => uploadInputRef.current?.click()}
+            size="compact"
+            style={{ justifySelf: "start" }}
+            title={
+              query.trim()
+                ? "Завершите поиск, чтобы выбрать папку для загрузки"
+                : activeFolder
+                  ? `Загрузить в «${activeFolder.name}»`
+                  : "Загрузить во Входящие"
+            }
+            variant="quiet"
+          >
+            <UiIcon name="upload" />
+            <span>Загрузить</span>
+          </PrototypeButton>
           <div
             className={styles.sidebarToolbar}
-            aria-label="Действия с файлами"
+            aria-label="Действия с папками"
           >
-            <IconButton
-              disabled={!canMutate}
-              icon={<UiIcon name="file-plus" />}
-              label="Загрузить файл"
-              onClick={() => uploadInputRef.current?.click()}
-              title={
-                query.trim()
-                  ? "Завершите поиск, чтобы выбрать папку для загрузки"
-                  : activeFolder
-                    ? `Загрузить в «${activeFolder.name}»`
-                    : "Загрузить во Входящие"
-              }
-              variant="ghost"
-            />
             <IconButton
               disabled={!canMutate || isCreatingFolder}
               icon={<UiIcon name="folder-plus" />}
