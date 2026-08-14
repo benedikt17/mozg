@@ -33,7 +33,11 @@ export function FilesPreviewShell({
     <main className={styles.shell}>
       <header className={styles.applicationHeader}>
         <div className={styles.identity}>
-          <Link aria-label="Вернуться в MOZG" className={styles.brand} href="/prototype/desktop">
+          <Link
+            aria-label="Вернуться в MOZG"
+            className={styles.brand}
+            href="/prototype/desktop"
+          >
             M
           </Link>
           <div className={styles.workspaceTitle}>
