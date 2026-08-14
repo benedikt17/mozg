@@ -8,6 +8,7 @@ import type {
   ProjectFileRecord,
   ProjectFolderRecord,
 } from "@/lib/files/project-file-repository";
+import { UiIcon } from "@/prototype/desktop-icons";
 
 import styles from "./files-workspace.module.css";
 
@@ -18,6 +19,9 @@ type FilesWorkspaceProps = {
 };
 
 type FilesLoadStatus = "loading" | "ready" | "error";
+type FilesLocation =
+  | { kind: "inbox" }
+  | { kind: "folder"; folderId: string };
 
 export function FilesWorkspace({
   workspaceId,
@@ -30,10 +34,12 @@ export function FilesWorkspace({
   );
   const [folders, setFolders] = useState<ProjectFolderRecord[]>([]);
   const [files, setFiles] = useState<ProjectFileRecord[]>([]);
-  const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  const [location, setLocation] = useState<FilesLocation>({ kind: "inbox" });
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<FilesLoadStatus>("loading");
   const [reloadToken, setReloadToken] = useState(0);
+
+  const activeFolderId = location.kind === "folder" ? location.folderId : null;
 
   useEffect(() => {
     if (!workspaceId) return;
@@ -70,152 +76,199 @@ export function FilesWorkspace({
 
   const effectiveStatus: FilesLoadStatus = workspaceId ? status : "error";
   const breadcrumbs = getProjectFolderBreadcrumbs(folders, activeFolderId);
-  const childFolders = query.trim()
-    ? []
-    : folders.filter(
-        (folder) =>
-          folder.parentFolderId === activeFolderId && !folder.deletedAt,
-      );
-  const hasEntries = childFolders.length > 0 || files.length > 0;
+  const activeFolder =
+    location.kind === "folder"
+      ? folders.find((folder) => folder.id === location.folderId) ?? null
+      : null;
+  const folderTree = getProjectFolderTree(folders);
+  const title = query.trim()
+    ? "Результаты поиска"
+    : location.kind === "inbox"
+      ? "Входящие"
+      : (activeFolder?.name ?? "Папка");
+  const hasEntries = files.length > 0;
 
-  const openFolder = (folderId: string | null) => {
+  const openInbox = () => {
     setStatus("loading");
-    setActiveFolderId(folderId);
+    setQuery("");
+    setLocation({ kind: "inbox" });
+  };
+
+  const openFolder = (folderId: string) => {
+    setStatus("loading");
+    setQuery("");
+    setLocation({ kind: "folder", folderId });
   };
 
   return (
     <div className={styles.workspace}>
-      <header className={styles.header}>
-        <div className={styles.headingBlock}>
-          <h2>Файлы</h2>
+      <aside className={styles.sidebar} aria-label="Навигация по файлам">
+        <div className={styles.sidebarHeader}>
+          <strong>Файлы</strong>
         </div>
-        <label className={styles.search}>
-          <span className={styles.visuallyHidden}>Поиск файлов</span>
-          <input
-            onChange={(event) => {
-              setStatus("loading");
-              setQuery(event.currentTarget.value);
-            }}
-            placeholder="Поиск файлов"
-            type="search"
-            value={query}
-          />
-        </label>
-      </header>
 
-      <nav aria-label="Путь к папке" className={styles.breadcrumbs}>
-        <button
-          aria-current={activeFolderId === null ? "page" : undefined}
-          onClick={() => openFolder(null)}
-          type="button"
-        >
-          {projectName}
-        </button>
-        {breadcrumbs.map((folder) => (
-          <span className={styles.breadcrumbPart} key={folder.id}>
-            <span aria-hidden="true">/</span>
-            <button
-              aria-current={folder.id === activeFolderId ? "page" : undefined}
-              onClick={() => openFolder(folder.id)}
-              type="button"
-            >
-              {folder.name}
-            </button>
-          </span>
-        ))}
-      </nav>
+        <div className={styles.sidebarContent}>
+          <button
+            aria-current={location.kind === "inbox" ? "page" : undefined}
+            className={`${styles.sidebarRow} ${location.kind === "inbox" ? styles.sidebarRowActive : ""}`}
+            onClick={openInbox}
+            type="button"
+          >
+            <UiIcon name="inbox" />
+            <span>Входящие</span>
+          </button>
 
-      <section
-        aria-busy={effectiveStatus === "loading"}
-        className={styles.content}
-      >
-        {effectiveStatus === "loading" ? (
-          <div className={styles.stateMessage} role="status">
-            Загрузка файлов…
+          <div className={styles.sidebarSectionLabel}>Папки</div>
+
+          <div className={styles.folderTree}>
+            {folderTree.length > 0 ? (
+              folderTree.map(({ folder, depth }) => (
+                <button
+                  aria-current={
+                    location.kind === "folder" &&
+                    location.folderId === folder.id
+                      ? "page"
+                      : undefined
+                  }
+                  className={`${styles.sidebarRow} ${location.kind === "folder" && location.folderId === folder.id ? styles.sidebarRowActive : ""}`}
+                  key={folder.id}
+                  onClick={() => openFolder(folder.id)}
+                  style={{ paddingLeft: `${8 + depth * 14}px` }}
+                  type="button"
+                >
+                  <UiIcon name="folder" />
+                  <span>{folder.name}</span>
+                </button>
+              ))
+            ) : (
+              <div className={styles.sidebarEmpty}>Папок пока нет</div>
+            )}
           </div>
-        ) : null}
+        </div>
+      </aside>
 
-        {effectiveStatus === "error" ? (
-          <div className={styles.stateMessage} role="alert">
-            <strong>Файлы пока недоступны</strong>
-            <span>
-              {workspaceId
-                ? "Не удалось загрузить файлы проекта. Попробуйте ещё раз."
-                : "Файлы доступны в облачном рабочем пространстве."}
-            </span>
-            {workspaceId ? (
-              <button
-                onClick={() => {
-                  setStatus("loading");
-                  setReloadToken((value) => value + 1);
-                }}
-                type="button"
-              >
-                Повторить
-              </button>
+      <main className={styles.main}>
+        <header className={styles.header}>
+          <div className={styles.headingBlock}>
+            <h2>{title}</h2>
+            {location.kind === "inbox" && !query.trim() ? (
+              <span>Файлы, которые ещё не разложены по папкам</span>
             ) : null}
           </div>
-        ) : null}
+          <label className={styles.search}>
+            <span className={styles.visuallyHidden}>Поиск файлов</span>
+            <input
+              onChange={(event) => {
+                setStatus("loading");
+                setQuery(event.currentTarget.value);
+              }}
+              placeholder="Поиск файлов"
+              type="search"
+              value={query}
+            />
+          </label>
+        </header>
 
-        {effectiveStatus === "ready" && !hasEntries ? (
-          <div className={styles.stateMessage} role="status">
-            <strong>
-              {query.trim() ? "Ничего не найдено" : "Папка пуста"}
-            </strong>
-            <span>
-              {query.trim()
-                ? "Попробуйте изменить поисковый запрос."
-                : "Здесь появятся папки и файлы проекта."}
-            </span>
-          </div>
-        ) : null}
-
-        {effectiveStatus === "ready" && hasEntries ? (
-          <div className={styles.tableWrap}>
-            <div className={styles.tableHeader} aria-hidden="true">
-              <span>Имя</span>
-              <span>Тип</span>
-              <span>Размер</span>
-              <span>Изменён</span>
-            </div>
-            <div className={styles.entries}>
-              {childFolders.map((folder) => (
+        {location.kind === "folder" && !query.trim() ? (
+          <nav aria-label="Путь к папке" className={styles.breadcrumbs}>
+            <span>{projectName}</span>
+            {breadcrumbs.map((folder) => (
+              <span className={styles.breadcrumbPart} key={folder.id}>
+                <span aria-hidden="true">/</span>
                 <button
-                  className={styles.entryRow}
-                  key={folder.id}
+                  aria-current={
+                    folder.id === activeFolderId ? "page" : undefined
+                  }
                   onClick={() => openFolder(folder.id)}
                   type="button"
                 >
-                  <span className={styles.nameCell}>
-                    <span className={styles.entryIcon} aria-hidden="true">
-                      ▰
-                    </span>
-                    <span>{folder.name}</span>
-                  </span>
-                  <span>Папка</span>
-                  <span>—</span>
-                  <span>{formatProjectFileDate(folder.updatedAt)}</span>
+                  {folder.name}
                 </button>
-              ))}
-              {files.map((file) => (
-                <div className={styles.entryRow} key={file.id}>
-                  <span className={styles.nameCell}>
-                    <span className={styles.entryIcon} aria-hidden="true">
-                      {file.mimeType.startsWith("image/") ? "▧" : "▤"}
-                    </span>
-                    <span className={styles.fileName} title={file.name}>
-                      {file.name}
-                    </span>
-                  </span>
-                  <span>{projectFileTypeLabel(file.mimeType)}</span>
-                  <span>{formatProjectFileSize(file.byteSize)}</span>
-                  <span>{formatProjectFileDate(file.updatedAt)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+              </span>
+            ))}
+          </nav>
         ) : null}
-      </section>
+
+        <section
+          aria-busy={effectiveStatus === "loading"}
+          className={styles.content}
+        >
+          {effectiveStatus === "loading" ? (
+            <div className={styles.stateMessage} role="status">
+              Загрузка файлов…
+            </div>
+          ) : null}
+
+          {effectiveStatus === "error" ? (
+            <div className={styles.stateMessage} role="alert">
+              <strong>Файлы пока недоступны</strong>
+              <span>
+                {workspaceId
+                  ? "Не удалось загрузить файлы проекта. Попробуйте ещё раз."
+                  : "Файлы доступны в облачном рабочем пространстве."}
+              </span>
+              {workspaceId ? (
+                <button
+                  onClick={() => {
+                    setStatus("loading");
+                    setReloadToken((value) => value + 1);
+                  }}
+                  type="button"
+                >
+                  Повторить
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {effectiveStatus === "ready" && !hasEntries ? (
+            <div className={styles.stateMessage} role="status">
+              <strong>
+                {query.trim()
+                  ? "Ничего не найдено"
+                  : location.kind === "inbox"
+                    ? "Входящие пусты"
+                    : "Папка пуста"}
+              </strong>
+              <span>
+                {query.trim()
+                  ? "Попробуйте изменить поисковый запрос."
+                  : location.kind === "inbox"
+                    ? "Новые файлы без выбранной папки будут попадать сюда."
+                    : "Здесь появятся файлы этой папки."}
+              </span>
+            </div>
+          ) : null}
+
+          {effectiveStatus === "ready" && hasEntries ? (
+            <div className={styles.tableWrap}>
+              <div className={styles.tableHeader} aria-hidden="true">
+                <span>Имя</span>
+                <span>Тип</span>
+                <span>Размер</span>
+                <span>Изменён</span>
+              </div>
+              <div className={styles.entries}>
+                {files.map((file) => (
+                  <div className={styles.entryRow} key={file.id}>
+                    <span className={styles.nameCell}>
+                      <span className={styles.entryIcon} aria-hidden="true">
+                        {file.mimeType.startsWith("image/") ? "▧" : "▤"}
+                      </span>
+                      <span className={styles.fileName} title={file.name}>
+                        {file.name}
+                      </span>
+                    </span>
+                    <span>{projectFileTypeLabel(file.mimeType)}</span>
+                    <span>{formatProjectFileSize(file.byteSize)}</span>
+                    <span>{formatProjectFileDate(file.updatedAt)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </section>
+      </main>
     </div>
   );
 }
@@ -239,6 +292,37 @@ export function getProjectFolderBreadcrumbs(
   }
 
   return path;
+}
+
+export function getProjectFolderTree(
+  folders: readonly ProjectFolderRecord[],
+): Array<{ folder: ProjectFolderRecord; depth: number }> {
+  const activeFolders = folders.filter((folder) => !folder.deletedAt);
+  const childrenByParent = new Map<string | null, ProjectFolderRecord[]>();
+  for (const folder of activeFolders) {
+    const siblings = childrenByParent.get(folder.parentFolderId) ?? [];
+    siblings.push(folder);
+    childrenByParent.set(folder.parentFolderId, siblings);
+  }
+  for (const siblings of childrenByParent.values()) {
+    siblings.sort(
+      (left, right) =>
+        left.sortOrder - right.sortOrder || left.name.localeCompare(right.name),
+    );
+  }
+
+  const result: Array<{ folder: ProjectFolderRecord; depth: number }> = [];
+  const visited = new Set<string>();
+  const visit = (parentFolderId: string | null, depth: number) => {
+    for (const folder of childrenByParent.get(parentFolderId) ?? []) {
+      if (visited.has(folder.id)) continue;
+      visited.add(folder.id);
+      result.push({ folder, depth });
+      visit(folder.id, depth + 1);
+    }
+  };
+  visit(null, 0);
+  return result;
 }
 
 export function formatProjectFileSize(byteSize: number): string {
