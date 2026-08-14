@@ -13,7 +13,16 @@ jobs:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out clean B2 branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/project-files-b2-image-variants-clean
+          path: work
+      - name: Check out disposable helper branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/project-files-b2-image-variants
+          path: helper
       - uses: pnpm/action-setup@v4
         with:
           version: 11.11.0
@@ -21,13 +30,17 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Type the B2 preview variant cache in the transient wiring
+          cache-dependency-path: work/pnpm-lock.yaml
+      - name: Install dependencies
+        working-directory: work
+        run: pnpm install --frozen-lockfile
+      - name: Wire B2 image variants into clean branch
         shell: bash
+        working-directory: work
         run: |
           python - <<'PY'
           from pathlib import Path
-          path = Path('scripts/tmp-b2-wire.py')
+          path = Path('../helper/scripts/tmp-b2-wire.py')
           text = path.read_text()
           text = text.replace(
               '  chooseProjectFilePreviewVariant,\n  type ProjectFileImageVariantRepository,',
@@ -41,9 +54,39 @@ jobs:
           )
           path.write_text(text)
           PY
-      - name: Wire B2 image variants
-        run: python scripts/tmp-b2-wire.py
+          python ../helper/scripts/tmp-b2-wire.py
+      - name: Add transient B2 diagnostics
+        shell: bash
+        working-directory: work
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          generation = Path('src/lib/files/project-file-image-variant-generation.ts')
+          text = generation.read_text()
+          text = text.replace(
+              '  } catch {\n    // Derivatives are disposable caches.',
+              '  } catch (error) {\n    console.error("B2_VARIANT_GENERATION_ERROR", error);\n    // Derivatives are disposable caches.',
+              1,
+          )
+          generation.write_text(text)
+
+          e2e = Path('tests/e2e/files-desktop.spec.ts')
+          text = e2e.read_text()
+          marker = '  let sawResumableUpload = false;\n'
+          replacement = marker + '  page.on("console", (message) => console.log("B2_BROWSER_CONSOLE", message.type(), message.text()));\n'
+          if marker not in text:
+              raise SystemExit('E2E console marker missing')
+          text = text.replace(marker, replacement, 1)
+          request_marker = '    const url = decodeURIComponent(request.url());\n'
+          request_replacement = request_marker + '    if (url.includes("/project-files/")) console.log("B2_PROJECT_FILES_REQUEST", request.method(), url);\n'
+          if request_marker not in text:
+              raise SystemExit('E2E request marker missing')
+          text = text.replace(request_marker, request_replacement, 1)
+          e2e.write_text(text)
+          PY
       - name: Format B2 source
+        working-directory: work
         run: >-
           pnpm exec prettier --write
           src/lib/files/cloud-project-file-image-variant-repository.ts
@@ -52,19 +95,31 @@ jobs:
           src/lib/files/project-file-image-variants.test.ts
           src/prototype/files/files-workspace.tsx
           tests/e2e/files-desktop.spec.ts
-      - run: pnpm supabase start
+      - name: Start local Supabase
+        working-directory: work
+        run: pnpm supabase start
       - name: Regenerate Supabase types
         shell: bash
+        working-directory: work
         run: |
           pnpm supabase gen types typescript --local --schema public > /tmp/database.types.ts
           perl -0pi -e 's/\n\n\z/\n/' /tmp/database.types.ts
           cp /tmp/database.types.ts src/lib/supabase/database.types.ts
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm test:rls
+      - name: Lint
+        working-directory: work
+        run: pnpm lint
+      - name: Typecheck
+        working-directory: work
+        run: pnpm typecheck
+      - name: Unit tests
+        working-directory: work
+        run: pnpm test
+      - name: RLS tests
+        working-directory: work
+        run: pnpm test:rls
       - name: Export local Supabase browser-test environment
         shell: bash
+        working-directory: work
         run: |
           pnpm supabase status -o env > /tmp/supabase.env
           set -a
@@ -76,21 +131,52 @@ jobs:
             echo "E2E_SUPABASE_URL=$API_URL"
             echo "E2E_SUPABASE_ANON_KEY=$ANON_KEY"
           } >> "$GITHUB_ENV"
-      - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:e2e
-      - run: pnpm build
-      - if: always()
+      - name: Install Playwright
+        working-directory: work
+        run: pnpm exec playwright install --with-deps chromium
+      - name: E2E
+        working-directory: work
+        run: pnpm test:e2e
+      - name: Build
+        working-directory: work
+        run: pnpm build
+      - name: Stop Supabase
+        if: always()
+        working-directory: work
         run: pnpm supabase stop --no-backup
-      - name: Commit validated B2 slice
+      - name: Commit validated B2 slice to clean branch
         if: success()
         shell: bash
+        working-directory: work
         run: |
-          rm -f scripts/tmp-b2-wire.py
-          rm -f .github/workflows/tmp-b2-image-variants.yml
-          rm -f .github/workflows/tmp-b2-image-variants-retry.yml
+          python - <<'PY'
+          from pathlib import Path
+          generation = Path('src/lib/files/project-file-image-variant-generation.ts')
+          text = generation.read_text().replace(
+              '  } catch (error) {\n    console.error("B2_VARIANT_GENERATION_ERROR", error);\n    // Derivatives are disposable caches.',
+              '  } catch {\n    // Derivatives are disposable caches.',
+              1,
+          )
+          generation.write_text(text)
+
+          e2e = Path('tests/e2e/files-desktop.spec.ts')
+          text = e2e.read_text()
+          text = text.replace(
+              '  page.on("console", (message) =>\n    console.log("B2_BROWSER_CONSOLE", message.type(), message.text()),\n  );\n',
+              '',
+              1,
+          )
+          text = text.replace(
+              '    if (url.includes("/project-files/"))\n      console.log("B2_PROJECT_FILES_REQUEST", request.method(), url);\n',
+              '',
+              1,
+          )
+          e2e.write_text(text)
+          PY
+          pnpm exec prettier --write src/lib/files/project-file-image-variant-generation.ts tests/e2e/files-desktop.spec.ts
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add src/lib/supabase/database.types.ts src/prototype/files/files-workspace.tsx tests/e2e/files-desktop.spec.ts src/lib/files/project-file-image-variant-generation.ts
           git diff --cached --check
-          git commit -m "Files B2: generate and serve image variants"
-          git push
+          git commit -m "Files B2: wire image variants into Files UI"
+          git push origin HEAD:feat/project-files-b2-image-variants-clean
