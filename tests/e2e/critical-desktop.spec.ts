@@ -76,8 +76,15 @@ test("opens Project Files inside the normal Desktop shell", async ({
   await filesButton.click();
 
   await expect(filesButton).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("heading", { name: "Файлы" })).toBeVisible();
-  await expect(page.getByText("Папка пуста", { exact: true })).toBeVisible();
+  const filesNavigation = page.getByRole("complementary", {
+    name: "Навигация по файлам",
+  });
+  await expect(filesNavigation).toBeVisible();
+  await expect(
+    filesNavigation.getByRole("button", { name: "Входящие", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("heading", { name: "Входящие" })).toBeVisible();
+  await expect(page.getByText("Входящие пусты", { exact: true })).toBeVisible();
   await expect(page.getByText("Preview · Файлы", { exact: true })).toHaveCount(
     0,
   );
