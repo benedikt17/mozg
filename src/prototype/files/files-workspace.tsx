@@ -17,10 +17,7 @@ import {
   type ProjectFileUploadTransport,
   type ProjectFolderRecord,
 } from "@/lib/files/project-file-repository";
-import {
-  findProjectFileResumableResumeKey,
-  projectFileResumableUploadEndpoint,
-} from "@/lib/files/project-file-resumable-upload";
+import { projectFileResumableUploadEndpoint } from "@/lib/files/project-file-resumable-upload";
 import { projectFileUploadTransport } from "@/lib/files/project-file-upload-limit";
 import { createClient } from "@/lib/supabase/browser";
 import { UiIcon } from "@/prototype/desktop-icons";
@@ -266,27 +263,18 @@ export function FilesWorkspace({
       let lastUploadedFile: ProjectFileRecord | null = null;
       for (const [index, browserFile] of browserFiles.entries()) {
         const prepared = await prepareProjectFileBrowserUpload(browserFile);
-        if (resumeFile) {
-          const expectedResumeKey = findProjectFileResumableResumeKey({
-            workspaceId,
-            projectId,
-            folderId: resumeFile.folderId,
-            fileId: resumeFile.id,
-          });
-          if (
-            expectedResumeKey === null ||
-            expectedResumeKey !== prepared.resumeKey ||
-            resumeFile.name !== prepared.name ||
+        if (
+          resumeFile &&
+          (resumeFile.name !== prepared.name ||
             resumeFile.originalName !== prepared.originalName ||
             resumeFile.byteSize !== prepared.byteSize ||
-            resumeFile.mimeType !== prepared.mimeType
-          ) {
-            throw new ProjectFileBrowserUploadError(
-              expectedResumeKey === null
-                ? "Не удалось найти данные незавершённой загрузки. Загрузите файл заново."
-                : "Выберите тот же исходный файл, загрузка которого была прервана.",
-            );
-          }
+            resumeFile.mimeType !== prepared.mimeType ||
+            resumeFile.width !== prepared.width ||
+            resumeFile.height !== prepared.height)
+        ) {
+          throw new ProjectFileBrowserUploadError(
+            "Выберите тот же исходный файл, загрузка которого была прервана.",
+          );
         }
         const transport = projectFileUploadTransport(prepared.byteSize);
         const abortController = new AbortController();
@@ -297,7 +285,7 @@ export function FilesWorkspace({
           totalFiles: browserFiles.length,
           percentage: 0,
           transport,
-          resumed: Boolean(resumeFile),
+          resumed: false,
           retryAttempt: 0,
         });
 

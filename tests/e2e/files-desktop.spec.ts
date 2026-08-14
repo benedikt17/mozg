@@ -194,6 +194,14 @@ test("keeps an interrupted TUS upload visible after F5 and resumes the same rese
   ).toBeVisible();
 
   await page.reload();
+  await page.evaluate(() => {
+    for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+      const key = localStorage.key(index);
+      if (key?.startsWith("mozg:project-files:resumable:v1:")) {
+        localStorage.removeItem(key);
+      }
+    }
+  });
   await openFiles(page);
 
   await expect(
