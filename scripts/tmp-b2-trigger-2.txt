@@ -1,0 +1,1 @@
+Trigger helper validation after Files B2 image decode fallback.
