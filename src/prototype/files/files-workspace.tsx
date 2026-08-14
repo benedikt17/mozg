@@ -6,12 +6,18 @@ import {
   prepareProjectFileBrowserUpload,
   ProjectFileBrowserUploadError,
 } from "@/lib/files/project-file-browser-upload";
+import { SupabaseProjectFileImageVariantRepository } from "@/lib/files/cloud-project-file-image-variant-repository";
 import { SupabaseProjectFileRepository } from "@/lib/files/cloud-project-file-repository";
+import { generateAndStoreProjectFileImageVariantsBestEffort } from "@/lib/files/project-file-image-variant-generation";
+import {
+  chooseProjectFilePreviewVariant,
+  type ProjectFileImageVariantMetadata,
+  type ProjectFileImageVariantRepository,
+} from "@/lib/files/project-file-image-variants";
 import { getPublicEnv } from "@/lib/env";
 import { CloudProjectFileRepositoryError } from "@/lib/files/project-file-runtime";
 import {
   PROJECT_FILE_MIME_TYPES,
-  type ProjectFileDownload,
   type ProjectFileRecord,
   type ProjectFileRepository,
   type ProjectFileUploadTransport,
@@ -62,14 +68,20 @@ export function FilesWorkspace({
   projectId,
   projectName,
 }: FilesWorkspaceProps): React.JSX.Element {
-  const repository = useMemo(() => {
+  const { repository, imageVariantRepository } = useMemo(() => {
     const env = getPublicEnv();
-    return new SupabaseProjectFileRepository({
-      supabase: createClient(),
-      resumableUploadEndpoint: projectFileResumableUploadEndpoint(
-        env.NEXT_PUBLIC_SUPABASE_URL,
+    const supabase = createClient();
+    return {
+      repository: new SupabaseProjectFileRepository({
+        supabase,
+        resumableUploadEndpoint: projectFileResumableUploadEndpoint(
+          env.NEXT_PUBLIC_SUPABASE_URL,
+        ),
+      }),
+      imageVariantRepository: new SupabaseProjectFileImageVariantRepository(
+        supabase,
       ),
-    });
+    };
   }, []);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const resumeInputRef = useRef<HTMLInputElement>(null);
@@ -317,6 +329,12 @@ export function FilesWorkspace({
               current ? { ...current, retryAttempt } : current,
             );
           },
+        });
+        await generateAndStoreProjectFileImageVariantsBestEffort({
+          repository: imageVariantRepository,
+          file: uploaded,
+          sourceBlob: prepared.blob,
+          signal: abortController.signal,
         });
         completedCount += 1;
         lastUploadedFile = uploaded;
@@ -1082,6 +1100,7 @@ export function FilesWorkspace({
               onRename={renameFile}
               projectId={projectId}
               repository={repository}
+              imageVariantRepository={imageVariantRepository}
               workspaceId={workspaceId}
             />
           )
@@ -1191,6 +1210,7 @@ function FolderHeaderActions({
 
 function ProjectFilePreview({
   repository,
+  imageVariantRepository,
   workspaceId,
   projectId,
   file,
@@ -1201,6 +1221,7 @@ function ProjectFilePreview({
   onDelete,
 }: {
   repository: ProjectFileRepository;
+  imageVariantRepository: ProjectFileImageVariantRepository;
   workspaceId: string;
   projectId: string;
   file: ProjectFileRecord;
@@ -1213,61 +1234,119 @@ function ProjectFilePreview({
   ) => Promise<boolean>;
   onDelete: (file: ProjectFileRecord) => Promise<boolean>;
 }): React.JSX.Element {
-  const [download, setDownload] = useState<ProjectFileDownload | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [downloadingOriginal, setDownloadingOriginal] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState(file.name);
   const [targetFolderId, setTargetFolderId] = useState(file.folderId ?? "");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const isImage = file.mimeType.startsWith("image/");
 
   useEffect(() => {
+    if (!isImage) return;
     let cancelled = false;
     let objectUrl: string | null = null;
-    void repository
-      .downloadFile({ workspaceId, projectId, fileId: file.id })
-      .then((nextDownload) => {
-        if (cancelled) return;
-        setDownload(nextDownload);
-        if (file.mimeType.startsWith("image/")) {
-          objectUrl = URL.createObjectURL(nextDownload.blob);
-          setImageUrl(objectUrl);
+
+    void (async () => {
+      try {
+        let variants: ProjectFileImageVariantMetadata[] = [];
+        try {
+          variants = await imageVariantRepository.listImageVariants({
+            workspaceId,
+            projectId,
+            fileId: file.id,
+          });
+        } catch {
+          // Variant cache is optional. A ready original remains the fallback.
         }
-      })
-      .catch(() => {
+        const preferred = chooseProjectFilePreviewVariant(variants);
+        if (preferred) {
+          try {
+            const variant = await imageVariantRepository.loadImageVariant({
+              workspaceId,
+              projectId,
+              fileId: file.id,
+              targetMaxEdge: preferred.targetMaxEdge,
+            });
+            if (cancelled) return;
+            if (variant) {
+              objectUrl = URL.createObjectURL(variant.blob);
+              setImageUrl(objectUrl);
+              return;
+            }
+          } catch {
+            // A stale/missing disposable derivative falls back to the original.
+          }
+        }
+
+        if (cancelled) return;
+        const original = await repository.downloadFile({
+          workspaceId,
+          projectId,
+          fileId: file.id,
+        });
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(original.blob);
+        setImageUrl(objectUrl);
+      } catch {
         if (!cancelled) setLoadError(true);
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [file.id, file.mimeType, projectId, repository, workspaceId]);
+  }, [
+    file.id,
+    imageVariantRepository,
+    isImage,
+    projectId,
+    repository,
+    workspaceId,
+  ]);
 
-  const downloadOriginal = () => {
-    if (!download) return;
-    const objectUrl = URL.createObjectURL(download.blob);
-    const anchor = document.createElement("a");
-    anchor.href = objectUrl;
-    anchor.download = file.originalName;
-    document.body.append(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(objectUrl);
+  const downloadOriginal = async () => {
+    if (downloadingOriginal) return;
+    setDownloadingOriginal(true);
+    try {
+      const download = await repository.downloadFile({
+        workspaceId,
+        projectId,
+        fileId: file.id,
+      });
+      const objectUrl = URL.createObjectURL(download.blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = file.originalName;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+    } finally {
+      setDownloadingOriginal(false);
+    }
   };
 
   return (
     <div className={styles.previewContent}>
       <div className={styles.previewPlaceholder}>
-        {imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- preview uses a local authenticated Blob URL.
-          <img alt={file.name} className={styles.previewImage} src={imageUrl} />
-        ) : loadError ? (
-          <span className={styles.previewState}>Предпросмотр недоступен</span>
-        ) : download ? (
-          <UiIcon name="file" />
+        {isImage ? (
+          imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- preview uses a local authenticated Blob URL.
+            <img
+              alt={file.name}
+              className={styles.previewImage}
+              src={imageUrl}
+            />
+          ) : loadError ? (
+            <span className={styles.previewState}>Предпросмотр недоступен</span>
+          ) : (
+            <span className={styles.previewState}>Загрузка предпросмотра…</span>
+          )
         ) : (
-          <span className={styles.previewState}>Загрузка предпросмотра…</span>
+          <UiIcon name="file" />
         )}
       </div>
 
@@ -1323,12 +1402,12 @@ function ProjectFilePreview({
         style={{ flexWrap: "wrap", gap: 6 }}
       >
         <PrototypeButton
-          disabled={!download}
-          onClick={downloadOriginal}
+          disabled={downloadingOriginal}
+          onClick={() => void downloadOriginal()}
           size="compact"
           variant="default"
         >
-          Скачать оригинал
+          {downloadingOriginal ? "Скачивание…" : "Скачать оригинал"}
         </PrototypeButton>
         <PrototypeButton
           disabled={!canMutate}

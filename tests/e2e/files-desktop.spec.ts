@@ -5,6 +5,11 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { E2E_USER_EMAIL, E2E_USER_PASSWORD } from "./test-user";
 
+const PREVIEW_IMAGE_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAyAAAAJYCAIAAAAVFBUnAAAIzUlEQVR42u3WMREAAAjEMMC/2JeACY4pkdCpnaQAALgzEgAAGCwAAIMFAGCwAAAwWAAABgsAwGABAGCwAAAMFgCAwQIAwGABABgsAACDBQBgsAAAMFgAAAYLAMBgAQBgsAAADBYAgMECAMBgAQAYLAAAgwUAgMECADBYAAAGCwDAYAEAYLAAAAwWAIDBAgDAYAEAGCwAAIMFAIDBAgAwWAAABgsAAIMFAGCwAAAMFgCAwQIAwGABABgsAACDBQCAwQIAMFgAAAYLAACDBQBgsAAADBYAAAYLAMBgAQAYLAAAgwUAgMECADBYAAAGCwAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAIMFAIDBAgAwWAAABgsAAIMFAGCwAAAMFgAABgsAwGABABgsAAAMFgCAwQIAMFgAAAYLAACDBQBgsAAADBYAAAYLAMBgAQAYLAAADBYAgMECADBYAAAYLAAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAAwWAIDBAgAwWAAAGCwAAIMFAGCwAAAwWAAABgsAwGABABgsAAAMFgCAwQIAMFgAABgsAACDBQBgsAAAMFgAAAYLAMBgAQAYLAAADBYAgMECADBYAAAYLAAAgwUAYLAAADBYAAAGCwDAYAEAYLAAAAwWAIDBAgAwWAAAGCwAAIMFAGCwAAAwWAAABgsAwGABAGCwAAAMFgCAwQIAwGABABgsAACDBQBgsAAAMFgAAAYLAMBgAQBgsAAADBYAgMECAMBgAQAYLAAAgwUAgMECADBYAAAGCwDAYAEAYLAAAAwWAIDBAgDAYAEAGCwAAIMFAIDBAgAwWAAABgsAwGABAGCwAAAMFgCAwQIAwGABABgsAACDBQBgsAAAMFgAAAYLAMBgAQBgsAAADBYAgMECAMBgAQAYLAAAgwUAgMECADBYAAAGCwAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAIMFAIDBAgAwWAAABgsAAIMFAGCwAAAMFgAABgsAwGABABgsAAAMFgCAwQIAMFgAAAYLAACDBQBgsAAADBYAAAYLAMBgAQAYLAAADBYAgMECADBYAAAGCwAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAAwWAIDBAgAwWAAAGCwAAIMFAGCwAAAMFgAABgsAwGABABgsAAAMFgCAwQIAMFgAABgsAACDBQBgsAAAMFgAAAYLAMBgAQAYLAAADBYAgMECADBYAAAYLAAAgwUAYLAAADBYAAAGCwDAYAEAYLAAAAwWAIDBAgAwWAAAGCwAAIMFAGCwAAAwWAAABgsAwGABAGCwAAAMFgCAwQIAwGABABgsAACDBQCAwQIAMFgAAAYLAMBgAQBgsAAADBYAgMECAMBgAQAYLAAAgwUAgMECADBYAAAGCwDAYAEAYLAAAAwWAIDBAgDAYAEAGCwAAIMFAIDBAgAwWAAABgsAAIMFAGCwAAAMFgCAwQIAwGABABgsAACDBQCAwQIAMFgAAAYLAACDBQBgsAAADBYAAAYLAMBgAQAYLAAAgwUAgMECADBYAAAGCwAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAAwWAIDBAgAwWAAABgsAAIMFAGCwAAAMFgAABgsAwGABABgsAAAMFgCAwQIAMFgAAAYLAACDBQBgsAAADBYAAAYLAMBgAQAYLAAADBYAgMECADBYAAAYLAAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAAwWAIDBAgAwWAAAGCwAAIMFAGCwAAAwWAAABgsAwGABABgsAAAMFgCAwQIAMFgAABgsAACDBQBgsAAAMFgAAAYLAMBgAQBgsAAADBYAgMECADBYAAAYLAAAgwUAYLAAADBYAAAGCwDAYAEAYLAAAAwWAIDBAgAwWBIAABgsAACDBQBgsAAAMFgAAAYLAMBgAQBgsAAADBYAgMECAMBgAQAYLAAAgwUAYLAAADBYAAAGCwDAYAEAYLAAAAwWAIDBAgDAYAEAGCwAAIMFAIDBAgAwWAAABgsAwGABAGCwAAAMFgCAwQIAwGABABgsAACDBQCAwQIAMFgAAAYLAACDBQBgsAAADBYAgMECAMBgAQAYLAAAgwUAgMECADBYAAAGCwAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAIMFAIDBAgAwWAAABgsAAIMFAGCwAAAMFgAABgsAwGABABgsAACDBQCAwQIAMFgAAAYLAACDBQBgsAAADBYAAAYLAMBgAQAYLAAADBYAgMECADBYAAAGCwAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAAwWAMCfBZlEB4Aye4RvAAAAAElFTkSuQmCC",
+  "base64",
+);
+
 async function signIn(page: Page): Promise<void> {
   await page.goto("/prototype/desktop");
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fprototype%2Fdesktop$/);
@@ -47,9 +52,18 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
   page,
 }) => {
   let sawResumableUpload = false;
+  let sawImageVariantDownload = false;
+  let originalImageDownloadRequests = 0;
   page.on("request", (request) => {
-    if (request.url().includes("/storage/v1/upload/resumable")) {
+    const url = decodeURIComponent(request.url());
+    if (url.includes("/storage/v1/upload/resumable")) {
       sawResumableUpload = true;
+    }
+    if (request.method() === "GET" && url.includes("/variants/edge-")) {
+      sawImageVariantDownload = true;
+    }
+    if (request.method() === "GET" && url.includes("/original")) {
+      originalImageDownloadRequests += 1;
     }
   });
 
@@ -109,25 +123,31 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
   await uploadButton.click();
   const folderFileChooser = await folderFileChooserPromise;
   await folderFileChooser.setFiles({
-    name: "pixel.gif",
-    mimeType: "image/gif",
-    buffer: Buffer.from(
-      "R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
-      "base64",
-    ),
+    name: "preview-image.png",
+    mimeType: "image/png",
+    buffer: PREVIEW_IMAGE_PNG,
   });
 
   await expect(
-    page.getByText("Загружен: pixel.gif", { exact: true }),
+    page.getByText("Загружен: preview-image.png", { exact: true }),
   ).toBeVisible();
-  const imageRow = page.getByRole("button", { name: /pixel\.gif/ });
+  const imageRow = page.getByRole("button", { name: /preview-image\.png/ });
   await expect(imageRow).toBeVisible();
   await imageRow.click();
 
   const preview = page.getByRole("complementary", {
     name: "Предпросмотр файла",
   });
-  await expect(preview.getByRole("img", { name: "pixel.gif" })).toBeVisible();
+  const previewImage = preview.getByRole("img", { name: "preview-image.png" });
+  await expect(previewImage).toBeVisible();
+  await expect(previewImage).toHaveAttribute("src", /^blob:/);
+  await expect
+    .poll(() => sawImageVariantDownload, {
+      message: "Files preview must GET a /variants/edge-* derivative",
+      timeout: 10_000,
+    })
+    .toBe(true);
+  expect(originalImageDownloadRequests).toBe(0);
   const downloadButton = preview.getByRole("button", {
     name: "Скачать оригинал",
     exact: true,
@@ -137,7 +157,13 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
   const downloadPromise = page.waitForEvent("download");
   await downloadButton.click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe("pixel.gif");
+  expect(download.suggestedFilename()).toBe("preview-image.png");
+  await expect
+    .poll(() => originalImageDownloadRequests, {
+      message: "Explicit download must GET the immutable original",
+      timeout: 10_000,
+    })
+    .toBeGreaterThan(0);
 
   await filesNavigation
     .getByRole("button", { name: "Входящие", exact: true })
@@ -148,7 +174,9 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
   await expect(
     page.getByRole("button", { name: /large-note\.txt/ }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: /pixel\.gif/ })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: /preview-image\.png/ }),
+  ).toHaveCount(0);
 });
 
 test("keeps an interrupted TUS upload visible after F5 and resumes the same reservation", async ({
