@@ -3,9 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { createClient } from "@/lib/supabase/browser";
-import {
-  SupabaseProjectFileRepository,
-} from "@/lib/files/cloud-project-file-repository";
+import { SupabaseProjectFileRepository } from "@/lib/files/cloud-project-file-repository";
 import type {
   ProjectFileRecord,
   ProjectFolderRecord,
