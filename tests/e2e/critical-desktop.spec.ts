@@ -89,7 +89,9 @@ test("opens Project Files inside the normal Desktop shell", async ({
     name: "Предпросмотр файла",
   });
   await expect(filePreview).toBeVisible();
-  await expect(filePreview.getByText("Выберите файл", { exact: true })).toBeVisible();
+  await expect(
+    filePreview.getByText("Выберите файл", { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText("Preview · Файлы", { exact: true })).toHaveCount(
     0,
   );
