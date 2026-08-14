@@ -4,6 +4,7 @@ import type { ProjectFolderRecord } from "@/lib/files/project-file-repository";
 import {
   formatProjectFileSize,
   getProjectFolderBreadcrumbs,
+  getProjectFolderMoveTargets,
   getProjectFolderTree,
 } from "@/prototype/files/files-workspace";
 
@@ -63,6 +64,23 @@ describe("getProjectFolderTree", () => {
       ["a", 0],
       ["c", 1],
     ]);
+  });
+});
+
+describe("getProjectFolderMoveTargets", () => {
+  it("excludes the moving folder and all of its descendants", () => {
+    const folders = [
+      folder("a", "A", null),
+      folder("b", "B", "a"),
+      folder("c", "C", "b"),
+      folder("d", "D", null),
+    ];
+
+    expect(
+      getProjectFolderMoveTargets(folders, "a").map(({ folder: item }) =>
+        item.id,
+      ),
+    ).toEqual(["d"]);
   });
 });
 
