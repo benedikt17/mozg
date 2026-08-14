@@ -38,9 +38,7 @@ type FilesActionState =
   | "renaming-folder"
   | "moving-folder";
 type FilesLocation =
-  | { kind: "inbox" }
-  | { kind: "folder"; folderId: string }
-  | { kind: "trash" };
+  { kind: "inbox" } | { kind: "folder"; folderId: string } | { kind: "trash" };
 type FilesActionMessage = { kind: "error" | "info"; text: string };
 
 const MOZG_FILE_DRAG_TYPE = "application/x-mozg-project-file-id";
@@ -374,7 +372,10 @@ export function FilesWorkspace({
       });
       setFiles((current) => current.filter((row) => row.id !== restored.id));
       setSelectedFileId(null);
-      setActionMessage({ kind: "info", text: `Восстановлен: ${restored.name}` });
+      setActionMessage({
+        kind: "info",
+        text: `Восстановлен: ${restored.name}`,
+      });
       return true;
     } catch {
       setActionMessage({
@@ -621,10 +622,7 @@ export function FilesWorkspace({
                   key={folder.id}
                   onClick={() => openFolder(folder.id)}
                   onDragOver={(event) => {
-                    if (
-                      !hasProjectFileDrag(event.dataTransfer) ||
-                      !canMutate
-                    ) {
+                    if (!hasProjectFileDrag(event.dataTransfer) || !canMutate) {
                       return;
                     }
                     event.preventDefault();
@@ -1122,7 +1120,10 @@ function ProjectFilePreview({
         </div>
       </dl>
 
-      <div className={styles.previewActions} style={{ flexWrap: "wrap", gap: 6 }}>
+      <div
+        className={styles.previewActions}
+        style={{ flexWrap: "wrap", gap: 6 }}
+      >
         <PrototypeButton
           disabled={!download}
           onClick={downloadOriginal}
