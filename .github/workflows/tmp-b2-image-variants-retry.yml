@@ -39,6 +39,7 @@ jobs:
         run: |
           python ../helper/scripts/tmp-b2-wire.py
           python ../helper/scripts/tmp-b2-harden.py
+          sed -i 's/Загружен: pixel.gif/Загружен: preview-image.png/g' tests/e2e/files-desktop.spec.ts
       - name: Format changed product code
         working-directory: work
         run: >-
