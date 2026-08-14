@@ -40,9 +40,16 @@ async function createFolder(page: Page, name: string): Promise<void> {
   ).toHaveAttribute("aria-current", "page");
 }
 
-test("uploads to Inbox, accepts a file above 6 MiB, creates a folder, previews and downloads an original", async ({
+test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder, previews and downloads an original", async ({
   page,
 }) => {
+  let sawResumableUpload = false;
+  page.on("request", (request) => {
+    if (request.url().includes("/storage/v1/upload/resumable")) {
+      sawResumableUpload = true;
+    }
+  });
+
   await signIn(page);
   await openFiles(page);
 
@@ -68,6 +75,7 @@ test("uploads to Inbox, accepts a file above 6 MiB, creates a folder, previews a
   await expect(
     page.getByRole("button", { name: /inbox-note\.txt/ }),
   ).toBeVisible();
+  expect(sawResumableUpload).toBe(false);
 
   const largeFileChooserPromise = page.waitForEvent("filechooser");
   await uploadButton.click();
@@ -84,6 +92,7 @@ test("uploads to Inbox, accepts a file above 6 MiB, creates a folder, previews a
   await expect(
     page.getByRole("button", { name: /large-note\.txt/ }),
   ).toBeVisible();
+  expect(sawResumableUpload).toBe(true);
 
   await createFolder(page, "E2E Assets");
 

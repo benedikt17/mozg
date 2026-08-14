@@ -12,9 +12,9 @@ const fileId = "84000000-0000-4000-8000-000000000021";
 
 describe("Project Files browser upload limit", () => {
   it("routes files up to 6 MiB through standard upload", () => {
-    expect(projectFileUploadTransport(PROJECT_FILE_STANDARD_UPLOAD_MAX_BYTES)).toBe(
-      "standard",
-    );
+    expect(
+      projectFileUploadTransport(PROJECT_FILE_STANDARD_UPLOAD_MAX_BYTES),
+    ).toBe("standard");
   });
 
   it("routes files above 6 MiB through resumable upload", () => {
