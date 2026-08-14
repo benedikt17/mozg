@@ -1,0 +1,91 @@
+name: tmp-b1-core
+
+on:
+  push:
+    branches:
+      - tmp/project-files-b1-deps
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-check:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Patch B1 core
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          runtime = Path('src/lib/files/project-file-runtime.ts')
+          text = runtime.read_text()
+          text = text.replace('import { PROJECT_FILE_STANDARD_UPLOAD_MAX_BYTES } from "./project-file-upload-limit";\n', '')
+          text = text.replace('  PROJECT_FILE_MAX_CHECKSUM_LENGTH,\n', '  PROJECT_FILE_MAX_BYTES,\n  PROJECT_FILE_MAX_CHECKSUM_LENGTH,\n')
+          text = text.replace('  | "conflict"\n', '  | "conflict"\n  | "cancelled"\n')
+          text = text.replace('    input.byteSize > PROJECT_FILE_STANDARD_UPLOAD_MAX_BYTES ||\n', '    input.byteSize > PROJECT_FILE_MAX_BYTES ||\n')
+          runtime.write_text(text)
+
+          repo = Path('src/lib/files/cloud-project-file-repository.ts')
+          text = repo.read_text()
+          marker = '} from "./project-file-runtime";\n'
+          addition = '''} from "./project-file-runtime";\nimport {\n  getProjectFileResumableReservationStorage,\n  projectFileResumableReservationKey,\n  projectFileTusFingerprint,\n  ProjectFileUploadCancelledError,\n  uploadProjectFileResumable,\n  type ProjectFileResumableReservationStorage,\n} from "./project-file-resumable-upload";\nimport { projectFileUploadTransport } from "./project-file-upload-limit";\n'''
+          if marker not in text:
+              raise SystemExit('runtime import marker missing')
+          text = text.replace(marker, addition, 1)
+
+          old_options = '''export type CloudProjectFileRepositoryOptions = {\n  supabase: SupabaseClient<Database>;\n  idGenerator?: () => string;\n};\n'''
+          new_options = '''export type CloudProjectFileRepositoryOptions = {\n  supabase: SupabaseClient<Database>;\n  idGenerator?: () => string;\n  resumableUploadEndpoint?: string | null;\n  resumableReservationStorage?: ProjectFileResumableReservationStorage | null;\n};\n\nfunction projectFileReservationMatches(\n  record: ProjectFileRecord,\n  input: UploadProjectFileInput & { folderId: string | null },\n): boolean {\n  return (\n    record.folderId === input.folderId &&\n    record.name === input.name &&\n    record.originalName === input.originalName &&\n    record.mimeType === input.mimeType &&\n    record.byteSize === input.byteSize &&\n    record.checksum === (input.checksum ?? null) &&\n    record.width === (input.width ?? null) &&\n    record.height === (input.height ?? null)\n  );\n}\n'''
+          if old_options not in text:
+              raise SystemExit('options marker missing')
+          text = text.replace(old_options, new_options, 1)
+
+          old_fields = '''  private readonly supabase: SupabaseClient<Database>;\n  private readonly idGenerator: () => string;\n  private authenticatedUserId: string | null = null;\n'''
+          new_fields = '''  private readonly supabase: SupabaseClient<Database>;\n  private readonly idGenerator: () => string;\n  private readonly resumableUploadEndpoint: string | null;\n  private readonly resumableReservationStorage: ProjectFileResumableReservationStorage | null;\n  private authenticatedUserId: string | null = null;\n'''
+          if old_fields not in text:
+              raise SystemExit('field marker missing')
+          text = text.replace(old_fields, new_fields, 1)
+
+          old_ctor = '''  constructor(options: CloudProjectFileRepositoryOptions) {\n    this.supabase = options.supabase;\n    this.idGenerator = options.idGenerator ?? defaultProjectFileId;\n  }\n'''
+          new_ctor = '''  constructor(options: CloudProjectFileRepositoryOptions) {\n    this.supabase = options.supabase;\n    this.idGenerator = options.idGenerator ?? defaultProjectFileId;\n    this.resumableUploadEndpoint = options.resumableUploadEndpoint ?? null;\n    this.resumableReservationStorage =\n      options.resumableReservationStorage === undefined\n        ? getProjectFileResumableReservationStorage()\n        : options.resumableReservationStorage;\n  }\n'''
+          if old_ctor not in text:
+              raise SystemExit('constructor marker missing')
+          text = text.replace(old_ctor, new_ctor, 1)
+
+          list_marker = '''  async listFolders(\n'''
+          helpers = '''  private async getAccessToken(): Promise<string> {\n    const { data, error } = await this.supabase.auth.getSession();\n    if (error) throw error;\n    const accessToken = data.session?.access_token;\n    if (!accessToken) {\n      throw new CloudProjectFileRepositoryError(\n        "unauthenticated",\n        "Project Files requires an authenticated session.",\n      );\n    }\n    return accessToken;\n  }\n\n  private readResumableFileId(key: string): string | null {\n    try {\n      const value = this.resumableReservationStorage?.getItem(key);\n      if (!value) return null;\n      return projectFileUuid(value, "resumableFileId");\n    } catch {\n      this.removeResumableFileId(key);\n      return null;\n    }\n  }\n\n  private writeResumableFileId(key: string, fileId: string): void {\n    try {\n      this.resumableReservationStorage?.setItem(key, fileId);\n    } catch {\n      // Network retries still work even when browser persistence is unavailable.\n    }\n  }\n\n  private removeResumableFileId(key: string): void {\n    try {\n      this.resumableReservationStorage?.removeItem(key);\n    } catch {\n      // Best-effort cleanup for privacy modes and restricted Storage contexts.\n    }\n  }\n\n  private async findProjectFileReservation(\n    scope: ProjectFileScope,\n    fileId: string,\n  ): Promise<ProjectFileRecord | null> {\n    const { data, error } = await this.supabase\n      .from("project_files")\n      .select(PROJECT_FILE_SELECT)\n      .eq("workspace_id", scope.workspaceId)\n      .eq("project_id", scope.projectId)\n      .eq("id", fileId)\n      .maybeSingle();\n    if (error) throw error;\n    return data === null\n      ? null\n      : mapProjectFile(data, { ...scope, fileId });\n  }\n\n'''
+          if list_marker not in text:
+              raise SystemExit('list marker missing')
+          text = text.replace(list_marker, helpers + list_marker, 1)
+
+          start = text.index('  async uploadFile(input: UploadProjectFileInput): Promise<ProjectFileRecord> {')
+          end = text.index('\n  async renameFile(', start)
+          new_upload = '''  async uploadFile(input: UploadProjectFileInput): Promise<ProjectFileRecord> {\n    let resumableReservationKey: string | null = null;\n    let reservedForCancellation: ProjectFileRecord | null = null;\n\n    try {\n      await this.assertAuthenticated();\n      const validated = validateProjectFileUpload(input, this.idGenerator);\n      const transport = projectFileUploadTransport(validated.byteSize);\n      const scope = {\n        workspaceId: validated.workspaceId,\n        projectId: validated.projectId,\n      };\n\n      if (input.signal?.aborted) {\n        throw new ProjectFileUploadCancelledError();\n      }\n\n      let reserved: ProjectFileRecord | null = null;\n      if (transport === "resumable") {\n        const resumeKey = validated.resumeKey?.trim();\n        if (!this.resumableUploadEndpoint || !resumeKey) {\n          throw new CloudProjectFileRepositoryError(\n            "invalid-input",\n            "Resumable Project file upload is not configured.",\n          );\n        }\n\n        resumableReservationKey = projectFileResumableReservationKey({\n          ...scope,\n          folderId: validated.folderId,\n          resumeKey,\n        });\n        const previousFileId = this.readResumableFileId(\n          resumableReservationKey,\n        );\n        if (previousFileId) {\n          const previous = await this.findProjectFileReservation(\n            scope,\n            previousFileId,\n          );\n          if (previous && projectFileReservationMatches(previous, validated)) {\n            if (previous.readyAt !== null && previous.deletedAt === null) {\n              this.removeResumableFileId(resumableReservationKey);\n              return previous;\n            }\n            if (previous.readyAt === null && previous.deletedAt === null) {\n              reserved = previous;\n            }\n          }\n          if (!reserved) {\n            this.removeResumableFileId(resumableReservationKey);\n          }\n        }\n      }\n\n      if (!reserved) {\n        const { data: reservedData, error: reserveError } =\n          await this.supabase.rpc("reserve_project_file", {\n            target_workspace_id: validated.workspaceId,\n            target_project_id: validated.projectId,\n            target_file_id: validated.fileId,\n            target_name: validated.name,\n            target_original_name: validated.originalName,\n            target_mime_type: validated.mimeType,\n            target_byte_size: validated.byteSize,\n            ...(validated.folderId === null\n              ? {}\n              : { target_folder_id: validated.folderId }),\n            ...(validated.width == null\n              ? {}\n              : { target_width: validated.width }),\n            ...(validated.height == null\n              ? {}\n              : { target_height: validated.height }),\n            ...(validated.checksum == null\n              ? {}\n              : { target_checksum: validated.checksum }),\n          });\n        if (reserveError) throw reserveError;\n        reserved = mapProjectFile(\n          projectFileRpcRow(reservedData, "reserve file"),\n          { ...scope, fileId: validated.fileId },\n        );\n        if (reserved.readyAt !== null || reserved.deletedAt !== null) {\n          throw new CloudProjectFileRepositoryError(\n            "invalid-server-metadata",\n            "Reserved Project file metadata is invalid.",\n          );\n        }\n        if (resumableReservationKey) {\n          this.writeResumableFileId(resumableReservationKey, reserved.id);\n        }\n      }\n\n      reservedForCancellation = reserved;\n      const expected = { ...scope, fileId: reserved.id };\n\n      if (transport === "standard") {\n        input.onProgress?.({\n          transport,\n          bytesUploaded: 0,\n          bytesTotal: validated.byteSize,\n          percentage: 0,\n        });\n        const { error: uploadError } = await this.supabase.storage\n          .from(PROJECT_FILES_BUCKET)\n          .upload(reserved.storageKey, validated.blob, {\n            cacheControl: "3600",\n            contentType: validated.mimeType,\n            upsert: false,\n            metadata: {\n              fileId: reserved.id,\n              projectId: reserved.projectId,\n              originalName: reserved.originalName,\n            },\n          });\n        if (uploadError) throw uploadError;\n        input.onProgress?.({\n          transport,\n          bytesUploaded: validated.byteSize,\n          bytesTotal: validated.byteSize,\n          percentage: 100,\n        });\n      } else {\n        const resumeKey = validated.resumeKey?.trim();\n        if (!resumeKey || !this.resumableUploadEndpoint) {\n          throw new CloudProjectFileRepositoryError(\n            "invalid-input",\n            "Resumable Project file upload is not configured.",\n          );\n        }\n        await uploadProjectFileResumable({\n          blob: validated.blob,\n          endpoint: this.resumableUploadEndpoint,\n          storageKey: reserved.storageKey,\n          mimeType: validated.mimeType,\n          fingerprint: projectFileTusFingerprint({\n            workspaceId: validated.workspaceId,\n            fileId: reserved.id,\n            resumeKey,\n          }),\n          getAccessToken: () => this.getAccessToken(),\n          signal: input.signal,\n          onProgress: input.onProgress,\n          onResume: input.onResume,\n          onRetry: input.onRetry,\n        });\n        if (input.signal?.aborted) {\n          throw new ProjectFileUploadCancelledError();\n        }\n      }\n\n      const { data: finalizedData, error: finalizeError } =\n        await this.supabase.rpc("finalize_project_file", {\n          target_workspace_id: validated.workspaceId,\n          target_project_id: validated.projectId,\n          target_file_id: reserved.id,\n        });\n      if (finalizeError) throw finalizeError;\n      const finalized = mapProjectFile(\n        projectFileRpcRow(finalizedData, "finalize file"),\n        expected,\n      );\n      if (finalized.readyAt === null || finalized.deletedAt !== null) {\n        throw new CloudProjectFileRepositoryError(\n          "invalid-server-metadata",\n          "Finalized Project file metadata is invalid.",\n        );\n      }\n      if (resumableReservationKey) {\n        this.removeResumableFileId(resumableReservationKey);\n      }\n      return finalized;\n    } catch (cause) {\n      if (\n        cause instanceof ProjectFileUploadCancelledError ||\n        input.signal?.aborted\n      ) {\n        if (resumableReservationKey) {\n          this.removeResumableFileId(resumableReservationKey);\n        }\n        if (reservedForCancellation?.readyAt === null) {\n          try {\n            await this.supabase.rpc("delete_project_file", {\n              target_workspace_id: reservedForCancellation.workspaceId,\n              target_project_id: reservedForCancellation.projectId,\n              target_file_id: reservedForCancellation.id,\n            });\n          } catch {\n            // Cancellation should remain responsive even if metadata cleanup fails.\n          }\n        }\n        throw new CloudProjectFileRepositoryError(\n          "cancelled",\n          "Project file upload was cancelled.",\n        );\n      }\n      throw projectFileRepositoryError(cause, "upload");\n    }\n  }\n'''
+          text = text[:start] + new_upload + text[end:]
+          repo.write_text(text)
+          PY
+      - run: pnpm exec prettier --write src/lib/files/project-file-runtime.ts src/lib/files/cloud-project-file-repository.ts src/lib/files/project-file-resumable-upload.ts src/lib/files/project-file-repository.ts src/lib/files/project-file-upload-limit.ts src/lib/files/project-file-browser-upload.ts
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - name: Commit core
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/lib/files
+          git commit -m 'Files B1: implement resumable upload core'
+          git push
