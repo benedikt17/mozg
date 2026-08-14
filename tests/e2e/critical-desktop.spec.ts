@@ -55,17 +55,20 @@ test("authenticates and navigates the four primary Desktop sections", async ({
   await expect(page).toHaveURL(/\/sign-in$/);
 });
 
-test("opens the authenticated Project Files preview through the cloud repository", async ({
-  page,
-}) => {
-  await signIn(page);
-  await page.goto("/prototype/desktop/files");
+test(
+  "opens the authenticated Project Files preview through the cloud repository",
+  async ({ page }) => {
+    await signIn(page);
+    await page.goto("/prototype/desktop/files");
 
-  await expect(page.getByText("Preview · Файлы", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Файлы" })).toBeVisible();
-  await expect(page.getByRole("combobox")).toHaveValue("lukomorie");
-  await expect(page.getByText("Папка пуста", { exact: true })).toBeVisible();
-});
+    await expect(
+      page.getByText("Preview · Файлы", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Файлы" })).toBeVisible();
+    await expect(page.getByRole("combobox")).toHaveValue("lukomorie");
+    await expect(page.getByText("Папка пуста", { exact: true })).toBeVisible();
+  },
+);
 
 test("persists a Knowledge Markdown edit through cloud snapshot reload", async ({
   page,
