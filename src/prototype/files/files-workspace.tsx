@@ -309,7 +309,9 @@ export function FilesWorkspace({
                 aria-label="Название новой папки"
                 autoFocus
                 disabled={actionState === "creating-folder"}
-                onChange={(event) => setNewFolderName(event.currentTarget.value)}
+                onChange={(event) =>
+                  setNewFolderName(event.currentTarget.value)
+                }
                 onKeyDown={(event) => {
                   if (event.key === "Escape") {
                     event.preventDefault();

@@ -15,8 +15,11 @@ export type PreparedProjectFileUpload = {
   height: number | null;
 };
 
-const PROJECT_FILE_EXTENSION_MIME_TYPES: Readonly<Record<string, ProjectFileMimeType>> = {
-  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+const PROJECT_FILE_EXTENSION_MIME_TYPES: Readonly<
+  Record<string, ProjectFileMimeType>
+> = {
+  ".docx":
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   ".gif": "image/gif",
   ".jpeg": "image/jpeg",
   ".jpg": "image/jpeg",
@@ -24,7 +27,8 @@ const PROJECT_FILE_EXTENSION_MIME_TYPES: Readonly<Record<string, ProjectFileMime
   ".md": "text/markdown",
   ".pdf": "application/pdf",
   ".png": "image/png",
-  ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ".pptx":
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   ".txt": "text/plain",
   ".webp": "image/webp",
   ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -49,14 +53,22 @@ export function resolveProjectFileBrowserMimeType(
   const normalizedFileName = fileName.trim().toLowerCase();
   const dotIndex = normalizedFileName.lastIndexOf(".");
   if (dotIndex < 0) return null;
-  return PROJECT_FILE_EXTENSION_MIME_TYPES[normalizedFileName.slice(dotIndex)] ?? null;
+  return (
+    PROJECT_FILE_EXTENSION_MIME_TYPES[normalizedFileName.slice(dotIndex)] ??
+    null
+  );
 }
 
 export async function prepareProjectFileBrowserUpload(
   file: File,
 ): Promise<PreparedProjectFileUpload> {
   const fileName = file.name.trim();
-  if (fileName.length === 0 || fileName !== file.name || fileName.includes("/") || fileName.includes("\\")) {
+  if (
+    fileName.length === 0 ||
+    fileName !== file.name ||
+    fileName.includes("/") ||
+    fileName.includes("\\")
+  ) {
     throw new ProjectFileBrowserUploadError("Имя файла недопустимо.");
   }
   if (file.size <= 0) {
@@ -70,7 +82,9 @@ export async function prepareProjectFileBrowserUpload(
 
   const mimeType = resolveProjectFileBrowserMimeType(fileName, file.type);
   if (!mimeType) {
-    throw new ProjectFileBrowserUploadError("Этот формат файла пока не поддерживается.");
+    throw new ProjectFileBrowserUploadError(
+      "Этот формат файла пока не поддерживается.",
+    );
   }
 
   const dimensions = isProjectFileImageMimeType(mimeType)
@@ -104,7 +118,9 @@ async function readProjectImageDimensions(
   }
 
   if (typeof Image === "undefined" || typeof URL === "undefined") {
-    throw new ProjectFileBrowserUploadError("Не удалось прочитать размеры изображения.");
+    throw new ProjectFileBrowserUploadError(
+      "Не удалось прочитать размеры изображения.",
+    );
   }
 
   const objectUrl = URL.createObjectURL(file);
@@ -115,7 +131,11 @@ async function readProjectImageDimensions(
         resolve({ width: image.naturalWidth, height: image.naturalHeight });
       };
       image.onerror = () => {
-        reject(new ProjectFileBrowserUploadError("Не удалось прочитать изображение."));
+        reject(
+          new ProjectFileBrowserUploadError(
+            "Не удалось прочитать изображение.",
+          ),
+        );
       };
       image.src = objectUrl;
     });

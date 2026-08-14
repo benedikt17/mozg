@@ -25,8 +25,8 @@ describe("resolveProjectFileBrowserMimeType", () => {
   });
 
   it("rejects unsupported formats", () => {
-    expect(resolveProjectFileBrowserMimeType("archive.zip", "application/zip")).toBe(
-      null,
-    );
+    expect(
+      resolveProjectFileBrowserMimeType("archive.zip", "application/zip"),
+    ).toBe(null);
   });
 });

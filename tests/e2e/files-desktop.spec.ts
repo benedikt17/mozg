@@ -32,10 +32,16 @@ test("uploads to Inbox, creates a folder, previews and downloads an original", a
     buffer: Buffer.from("Inbox upload contract."),
   });
 
-  await expect(page.getByText("Загружен: inbox-note.txt", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /inbox-note\.txt/ })).toBeVisible();
+  await expect(
+    page.getByText("Загружен: inbox-note.txt", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /inbox-note\.txt/ }),
+  ).toBeVisible();
 
-  await page.getByRole("button", { name: "Создать папку", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Создать папку", exact: true })
+    .click();
   const folderNameInput = page.getByRole("textbox", {
     name: "Название новой папки",
   });
@@ -53,10 +59,15 @@ test("uploads to Inbox, creates a folder, previews and downloads an original", a
   await fileInput.setInputFiles({
     name: "pixel.gif",
     mimeType: "image/gif",
-    buffer: Buffer.from("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==", "base64"),
+    buffer: Buffer.from(
+      "R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
+      "base64",
+    ),
   });
 
-  await expect(page.getByText("Загружен: pixel.gif", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Загружен: pixel.gif", { exact: true }),
+  ).toBeVisible();
   const imageRow = page.getByRole("button", { name: /pixel\.gif/ });
   await expect(imageRow).toBeVisible();
   await imageRow.click();
@@ -79,6 +90,8 @@ test("uploads to Inbox, creates a folder, previews and downloads an original", a
   await filesNavigation
     .getByRole("button", { name: "Входящие", exact: true })
     .click();
-  await expect(page.getByRole("button", { name: /inbox-note\.txt/ })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /inbox-note\.txt/ }),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: /pixel\.gif/ })).toHaveCount(0);
 });
