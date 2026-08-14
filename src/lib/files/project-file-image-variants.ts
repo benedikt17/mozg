@@ -2,7 +2,6 @@ import {
   CANVAS_IMAGE_PYRAMID_RECOMMENDED_TARGET_MAX_EDGES,
   CANVAS_IMAGE_VARIANT_MIME_TYPE,
   generateCanvasImagePyramidProgressively,
-  isCanvasImagePyramidTargetMaxEdge,
   planCanvasImagePyramidTiers,
   type GeneratedCanvasImagePyramidTier,
 } from "@/lib/canvas/canvas-image-variants";
@@ -14,6 +13,8 @@ export const PROJECT_FILE_IMAGE_VARIANT_TARGET_MAX_EDGES =
 export const PROJECT_FILE_PREVIEW_PREFERRED_MAX_EDGE = 1024;
 export const PROJECT_FILE_IMAGE_VARIANT_MAX_BYTES = 20 * 1024 * 1024;
 export const PROJECT_FILE_IMAGE_VARIANT_MAX_DIMENSION = 16_384;
+export const PROJECT_FILE_IMAGE_VARIANT_MIN_TARGET_MAX_EDGE = 64;
+export const PROJECT_FILE_IMAGE_VARIANT_MAX_TARGET_MAX_EDGE = 16_384;
 
 export type ProjectFileImageVariantMetadata = {
   workspaceId: string;
@@ -46,8 +47,37 @@ export type StoreProjectFileImageVariantInput = {
   pixelHeight: number;
 };
 
+export interface ProjectFileImageVariantRepository {
+  listImageVariants(input: {
+    workspaceId: string;
+    projectId: string;
+    fileId: string;
+  }): Promise<ProjectFileImageVariantMetadata[]>;
+  loadImageVariant(input: {
+    workspaceId: string;
+    projectId: string;
+    fileId: string;
+    targetMaxEdge: number;
+  }): Promise<ProjectFileImageVariantRecord | null>;
+  storeImageVariant(
+    input: StoreProjectFileImageVariantInput,
+  ): Promise<ProjectFileImageVariantMetadata>;
+  invalidateAuthentication(): void;
+}
+
+export function isProjectFileImageVariantTargetMaxEdge(
+  value: unknown,
+): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= PROJECT_FILE_IMAGE_VARIANT_MIN_TARGET_MAX_EDGE &&
+    value <= PROJECT_FILE_IMAGE_VARIANT_MAX_TARGET_MAX_EDGE
+  );
+}
+
 export function projectFileImageVariantKind(targetMaxEdge: number): string {
-  if (!isCanvasImagePyramidTargetMaxEdge(targetMaxEdge)) {
+  if (!isProjectFileImageVariantTargetMaxEdge(targetMaxEdge)) {
     throw new Error("Project file image variant target edge is invalid.");
   }
   return `edge-${targetMaxEdge}`;
