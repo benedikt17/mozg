@@ -65,7 +65,11 @@ function mapVariant(
   if (
     row.kind !== projectFileImageVariantKind(targetMaxEdge) ||
     row.storage_path !==
-      projectFileImageVariantStoragePath({ workspaceId, fileId, targetMaxEdge }) ||
+      projectFileImageVariantStoragePath({
+        workspaceId,
+        fileId,
+        targetMaxEdge,
+      }) ||
     row.mime_type !== PROJECT_FILE_IMAGE_VARIANT_MIME_TYPE ||
     !Number.isSafeInteger(row.byte_size) ||
     row.byte_size <= 0 ||
@@ -100,9 +104,7 @@ function mapVariant(
   };
 }
 
-export class SupabaseProjectFileImageVariantRepository
-  implements ProjectFileImageVariantRepository
-{
+export class SupabaseProjectFileImageVariantRepository implements ProjectFileImageVariantRepository {
   private authenticatedUserId: string | null = null;
   private authenticationPromise: Promise<void> | null = null;
   private authenticationGeneration = 0;
@@ -200,7 +202,10 @@ export class SupabaseProjectFileImageVariantRepository
         .from(PROJECT_FILES_BUCKET)
         .download(metadata.storagePath);
       if (downloadError) throw downloadError;
-      if (!(blob instanceof Blob) || blob.type !== PROJECT_FILE_IMAGE_VARIANT_MIME_TYPE) {
+      if (
+        !(blob instanceof Blob) ||
+        blob.type !== PROJECT_FILE_IMAGE_VARIANT_MIME_TYPE
+      ) {
         throw new CloudProjectFileRepositoryError(
           "invalid-server-metadata",
           "Project File image variant download returned invalid binary content.",
@@ -243,7 +248,9 @@ export class SupabaseProjectFileImageVariantRepository
 
       const { data: original, error: originalError } = await this.supabase
         .from("project_files")
-        .select("id,workspace_id,project_id,mime_type,width,height,ready_at,deleted_at")
+        .select(
+          "id,workspace_id,project_id,mime_type,width,height,ready_at,deleted_at",
+        )
         .eq("workspace_id", scope.workspaceId)
         .eq("project_id", scope.projectId)
         .eq("id", fileId)
@@ -260,7 +267,8 @@ export class SupabaseProjectFileImageVariantRepository
         input.pixelWidth > original.width ||
         input.pixelHeight > original.height ||
         Math.abs(
-          input.pixelWidth * original.height - original.width * input.pixelHeight,
+          input.pixelWidth * original.height -
+            original.width * input.pixelHeight,
         ) > original.height
       ) {
         throw new CloudProjectFileRepositoryError(
@@ -269,9 +277,8 @@ export class SupabaseProjectFileImageVariantRepository
         );
       }
 
-      const { data: reservedData, error: reserveError } = await this.supabase.rpc(
-        "reserve_project_file_variant",
-        {
+      const { data: reservedData, error: reserveError } =
+        await this.supabase.rpc("reserve_project_file_variant", {
           target_workspace_id: scope.workspaceId,
           target_project_id: scope.projectId,
           target_file_id: fileId,
@@ -279,8 +286,7 @@ export class SupabaseProjectFileImageVariantRepository
           target_byte_size: input.byteSize,
           target_pixel_width: input.pixelWidth,
           target_pixel_height: input.pixelHeight,
-        },
-      );
+        });
       if (reserveError) throw reserveError;
       if (!reservedData || reservedData.length !== 1) {
         throw new CloudProjectFileRepositoryError(
@@ -288,11 +294,7 @@ export class SupabaseProjectFileImageVariantRepository
           "Project File image variant reserve returned invalid metadata.",
         );
       }
-      const reserved = mapVariant(
-        reservedData[0],
-        { ...scope, fileId },
-        true,
-      );
+      const reserved = mapVariant(reservedData[0], { ...scope, fileId }, true);
       if (reserved.readyAt !== null) return reserved;
 
       const { error: uploadError } = await this.supabase.storage
@@ -309,15 +311,13 @@ export class SupabaseProjectFileImageVariantRepository
         });
       if (uploadError && statusCode(uploadError) !== "409") throw uploadError;
 
-      const { data: finalizedData, error: finalizeError } = await this.supabase.rpc(
-        "finalize_project_file_variant",
-        {
+      const { data: finalizedData, error: finalizeError } =
+        await this.supabase.rpc("finalize_project_file_variant", {
           target_workspace_id: scope.workspaceId,
           target_project_id: scope.projectId,
           target_file_id: fileId,
           requested_max_edge: input.targetMaxEdge,
-        },
-      );
+        });
       if (finalizeError) throw finalizeError;
       if (!finalizedData || finalizedData.length !== 1) {
         throw new CloudProjectFileRepositoryError(

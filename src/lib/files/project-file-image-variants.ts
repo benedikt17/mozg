@@ -94,9 +94,9 @@ export function projectFileImageVariantStoragePath(input: {
 function normalizeProjectFileImageVariantTargetMaxEdges(
   values: readonly unknown[],
 ): number[] {
-  return [...new Set(values.filter(isProjectFileImageVariantTargetMaxEdge))].sort(
-    (left, right) => left - right,
-  );
+  return [
+    ...new Set(values.filter(isProjectFileImageVariantTargetMaxEdge)),
+  ].sort((left, right) => left - right);
 }
 
 export function planProjectFileImageVariants(input: {
@@ -121,7 +121,8 @@ export function planProjectFileImageVariants(input: {
   return normalizeProjectFileImageVariantTargetMaxEdges(
     PROJECT_FILE_IMAGE_VARIANT_TARGET_MAX_EDGES,
   ).filter(
-    (targetMaxEdge) => targetMaxEdge < originalMaxEdge && !ready.has(targetMaxEdge),
+    (targetMaxEdge) =>
+      targetMaxEdge < originalMaxEdge && !ready.has(targetMaxEdge),
   );
 }
 
@@ -206,9 +207,7 @@ export async function generateProjectFileImageVariantsProgressively(
   blob: Blob,
   dimensions: { width: number; height: number },
   readyTargetMaxEdges: readonly number[],
-  onTier: (
-    tier: GeneratedProjectFileImageVariantTier,
-  ) => Promise<void> | void,
+  onTier: (tier: GeneratedProjectFileImageVariantTier) => Promise<void> | void,
   signal?: AbortSignal,
 ): Promise<void> {
   const planned = planProjectFileImageVariants({
@@ -241,9 +240,7 @@ export async function generateProjectFileImageVariantsProgressively(
             })
           : new OffscreenCanvas(target.width, target.height);
       const context = canvas.getContext("2d") as
-        | CanvasRenderingContext2D
-        | OffscreenCanvasRenderingContext2D
-        | null;
+        CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
       if (!context) {
         throw new Error("Project File image 2D context is unavailable.");
       }

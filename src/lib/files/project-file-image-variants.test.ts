@@ -38,9 +38,9 @@ describe("Project File image variants", () => {
   });
 
   it("plans only useful pyramid tiers below the original max edge", () => {
-    expect(planProjectFileImageVariants({ width: 3000, height: 2000 })).toEqual([
-      256, 512, 1024, 2048,
-    ]);
+    expect(planProjectFileImageVariants({ width: 3000, height: 2000 })).toEqual(
+      [256, 512, 1024, 2048],
+    );
     expect(
       planProjectFileImageVariants({
         width: 3000,
