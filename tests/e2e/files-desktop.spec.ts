@@ -211,8 +211,18 @@ test("renames, moves, drags, trashes and restores files and reorganizes folders"
   await expect(lifecycleRow).toBeVisible();
   await lifecycleRow.click();
 
-  page.once("dialog", (dialog) => void dialog.accept());
   await preview.getByRole("button", { name: "В корзину", exact: true }).click();
+  await expect(
+    preview.getByText("Переместить файл в корзину?", { exact: true }),
+  ).toBeVisible();
+  await preview.getByRole("button", { name: "Отмена", exact: true }).click();
+  await expect(
+    preview.getByText("Переместить файл в корзину?", { exact: true }),
+  ).toHaveCount(0);
+  await preview.getByRole("button", { name: "В корзину", exact: true }).click();
+  await preview
+    .getByRole("button", { name: "Да, в корзину", exact: true })
+    .click();
   await expect(
     page.getByText("Перемещён в корзину: renamed-lifecycle.txt", {
       exact: true,

@@ -1009,6 +1009,7 @@ function ProjectFilePreview({
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState(file.name);
   const [targetFolderId, setTargetFolderId] = useState(file.folderId ?? "");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1167,22 +1168,38 @@ function ProjectFilePreview({
       </div>
 
       <div className={styles.previewActions}>
-        <PrototypeButton
-          disabled={!canMutate}
-          onClick={() => {
-            if (
-              typeof window !== "undefined" &&
-              window.confirm(`Переместить «${file.name}» в корзину?`)
-            ) {
-              void onDelete(file);
-            }
-          }}
-          size="compact"
-          variant="quiet"
-        >
-          <UiIcon name="trash" />
-          <span>В корзину</span>
-        </PrototypeButton>
+        {confirmingDelete ? (
+          <>
+            <span className={styles.previewState}>
+              Переместить файл в корзину?
+            </span>
+            <PrototypeButton
+              disabled={!canMutate}
+              onClick={() => void onDelete(file)}
+              size="compact"
+              variant="default"
+            >
+              Да, в корзину
+            </PrototypeButton>
+            <PrototypeButton
+              onClick={() => setConfirmingDelete(false)}
+              size="compact"
+              variant="quiet"
+            >
+              Отмена
+            </PrototypeButton>
+          </>
+        ) : (
+          <PrototypeButton
+            disabled={!canMutate}
+            onClick={() => setConfirmingDelete(true)}
+            size="compact"
+            variant="quiet"
+          >
+            <UiIcon name="trash" />
+            <span>В корзину</span>
+          </PrototypeButton>
+        )}
       </div>
     </div>
   );
