@@ -1,0 +1,115 @@
+name: tmp-b1-resume-gate-fix
+
+on:
+  push:
+    branches:
+      - feat/project-files-b1-resumable-uploads
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-check:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Patch real-browser resume gate
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          workspace = Path('src/prototype/files/files-workspace.tsx')
+          text = workspace.read_text()
+          old_import = '''import {
+            findProjectFileResumableResumeKey,
+            projectFileResumableUploadEndpoint,
+          } from "@/lib/files/project-file-resumable-upload";'''
+          new_import = '''import { projectFileResumableUploadEndpoint } from "@/lib/files/project-file-resumable-upload";'''
+          if old_import not in text:
+              raise SystemExit('expected resumable import block not found')
+          text = text.replace(old_import, new_import, 1)
+
+          old_gate = '''        if (resumeFile) {
+            const expectedResumeKey = findProjectFileResumableResumeKey({
+              workspaceId,
+              projectId,
+              folderId: resumeFile.folderId,
+              fileId: resumeFile.id,
+            });
+            if (
+              expectedResumeKey === null ||
+              expectedResumeKey !== prepared.resumeKey ||
+              resumeFile.name !== prepared.name ||
+              resumeFile.originalName !== prepared.originalName ||
+              resumeFile.byteSize !== prepared.byteSize ||
+              resumeFile.mimeType !== prepared.mimeType
+            ) {
+              throw new ProjectFileBrowserUploadError(
+                expectedResumeKey === null
+                  ? "Не удалось найти данные незавершённой загрузки. Загрузите файл заново."
+                  : "Выберите тот же исходный файл, загрузка которого была прервана.",
+              );
+            }
+          }'''
+          new_gate = '''        if (
+            resumeFile &&
+            (resumeFile.name !== prepared.name ||
+              resumeFile.originalName !== prepared.originalName ||
+              resumeFile.byteSize !== prepared.byteSize ||
+              resumeFile.mimeType !== prepared.mimeType ||
+              resumeFile.width !== prepared.width ||
+              resumeFile.height !== prepared.height)
+          ) {
+            throw new ProjectFileBrowserUploadError(
+              "Выберите тот же исходный файл, загрузка которого была прервана.",
+            );
+          }'''
+          if old_gate not in text:
+              raise SystemExit('expected resume gate block not found')
+          text = text.replace(old_gate, new_gate, 1)
+          text = text.replace('          resumed: Boolean(resumeFile),', '          resumed: false,', 1)
+          workspace.write_text(text)
+
+          e2e = Path('tests/e2e/files-desktop.spec.ts')
+          text = e2e.read_text()
+          old_reload = '''  await page.reload();
+          await openFiles(page);'''
+          new_reload = '''  await page.reload();
+          await page.evaluate(() => {
+            for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+              const key = localStorage.key(index);
+              if (key?.startsWith("mozg:project-files:resumable:v1:")) {
+                localStorage.removeItem(key);
+              }
+            }
+          });
+          await openFiles(page);'''
+          if old_reload not in text:
+              raise SystemExit('expected reload block not found')
+          text = text.replace(old_reload, new_reload, 1)
+          e2e.write_text(text)
+          PY
+      - run: pnpm exec prettier --write src/prototype/files/files-workspace.tsx tests/e2e/files-desktop.spec.ts
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - name: Commit B1 resume gate fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/prototype/files/files-workspace.tsx tests/e2e/files-desktop.spec.ts
+          git diff --cached --check
+          git commit -m "Files B1: resume from TUS state without helper key"
+          git push
