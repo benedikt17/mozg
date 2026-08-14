@@ -19,9 +19,7 @@ type FilesWorkspaceProps = {
 };
 
 type FilesLoadStatus = "loading" | "ready" | "error";
-type FilesLocation =
-  | { kind: "inbox" }
-  | { kind: "folder"; folderId: string };
+type FilesLocation = { kind: "inbox" } | { kind: "folder"; folderId: string };
 
 export function FilesWorkspace({
   workspaceId,
@@ -78,7 +76,7 @@ export function FilesWorkspace({
   const breadcrumbs = getProjectFolderBreadcrumbs(folders, activeFolderId);
   const activeFolder =
     location.kind === "folder"
-      ? folders.find((folder) => folder.id === location.folderId) ?? null
+      ? (folders.find((folder) => folder.id === location.folderId) ?? null)
       : null;
   const folderTree = getProjectFolderTree(folders);
   const title = query.trim()
