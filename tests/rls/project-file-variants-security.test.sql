@@ -97,6 +97,22 @@ select is(
   'pending derivative metadata is not exposed through the normal select policy'
 );
 
+select lives_ok(
+  $$ insert into storage.objects (
+       id, bucket_id, name, owner, metadata, version, owner_id, user_metadata
+     ) values (
+       gen_random_uuid(),
+       'project-files',
+       '89000000-0000-4000-8000-000000000001/8a000000-0000-4000-8000-000000000001/variants/edge-512.webp',
+       '88000000-0000-4000-8000-000000000001',
+       '{"mimetype":"image/webp","size":128}',
+       'project-file-variant-version',
+       '88000000-0000-4000-8000-000000000001',
+       '{}'
+     ) $$,
+  'owner can insert the exact pending derivative object through Storage RLS'
+);
+
 select throws_ok(
   $$ insert into public.file_variants (
        workspace_id, project_id, file_id, kind, storage_path, mime_type,
@@ -164,23 +180,6 @@ select throws_ok(
   'variant reserve cannot cross the Product Project boundary'
 );
 
-reset role;
-insert into storage.objects (
-  id, bucket_id, name, owner, metadata, version, owner_id, user_metadata
-)
-values (
-  gen_random_uuid(),
-  'project-files',
-  '89000000-0000-4000-8000-000000000001/8a000000-0000-4000-8000-000000000001/variants/edge-512.webp',
-  '88000000-0000-4000-8000-000000000001',
-  '{"mimetype":"image/webp","size":128}',
-  'project-file-variant-version',
-  '88000000-0000-4000-8000-000000000001',
-  '{}'
-);
-
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '88000000-0000-4000-8000-000000000001', true);
 select results_eq(
   $$ select kind || ':' || (ready_at is not null)::text
      from public.finalize_project_file_variant(
