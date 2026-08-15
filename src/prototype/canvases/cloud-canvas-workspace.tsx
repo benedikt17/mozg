@@ -6,6 +6,11 @@ import { createCloudCanvasRepository } from "@/lib/canvas/cloud-canvas-repositor
 import { createProjectScopedCloudCanvasRepository } from "@/lib/canvas/project-scoped-cloud-canvas-repository";
 import { CloudCanvasShellRepository } from "@/lib/canvas/cloud-canvas-shell-adapter";
 import { CloudCanvasRuntimeCache } from "@/lib/canvas/cloud-canvas-runtime-cache";
+import { createProjectFileBackedCanvasShellRepository } from "@/lib/canvas/project-file-backed-canvas-shell-repository";
+import { getPublicEnv } from "@/lib/env";
+import { SupabaseProjectFileRepository } from "@/lib/files/cloud-project-file-repository";
+import { SupabaseProjectFileImageVariantRepository } from "@/lib/files/cloud-project-file-image-variant-repository";
+import { projectFileResumableUploadEndpoint } from "@/lib/files/project-file-resumable-upload";
 import { createClient } from "@/lib/supabase/browser";
 import {
   InfiniteCanvasLocalShell,
@@ -31,8 +36,7 @@ function projectRuntimeCache(
   projectRuntimeCaches.set(key, created);
   while (projectRuntimeCaches.size > PROJECT_RUNTIME_CACHE_LIMIT) {
     const oldest = projectRuntimeCaches.entries().next().value as
-      | [string, CloudCanvasRuntimeCache]
-      | undefined;
+      [string, CloudCanvasRuntimeCache] | undefined;
     if (!oldest) break;
     projectRuntimeCaches.delete(oldest[0]);
     oldest[1].clearAllExcept(null);
@@ -86,6 +90,19 @@ export function CloudCanvasWorkspace({
     () => createCloudCanvasAssetRepository({ supabase }),
     [supabase],
   );
+  const projectFileRepository = useMemo(() => {
+    const env = getPublicEnv();
+    return new SupabaseProjectFileRepository({
+      supabase,
+      resumableUploadEndpoint: projectFileResumableUploadEndpoint(
+        env.NEXT_PUBLIC_SUPABASE_URL,
+      ),
+    });
+  }, [supabase]);
+  const projectFileVariantRepository = useMemo(
+    () => new SupabaseProjectFileImageVariantRepository(supabase),
+    [supabase],
+  );
   const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -95,6 +112,8 @@ export function CloudCanvasWorkspace({
     });
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       cloudAssetRepository.invalidateAuthentication();
+      projectFileRepository.invalidateAuthentication();
+      projectFileVariantRepository.invalidateAuthentication();
       clearProjectRuntimeCachesExcept(session?.user.id ?? null);
       if (active) setUserId(session?.user.id ?? null);
     });
@@ -102,7 +121,12 @@ export function CloudCanvasWorkspace({
       active = false;
       data.subscription.unsubscribe();
     };
-  }, [cloudAssetRepository, supabase]);
+  }, [
+    cloudAssetRepository,
+    projectFileRepository,
+    projectFileVariantRepository,
+    supabase,
+  ]);
 
   const dependencies = useMemo(() => {
     try {
@@ -113,12 +137,19 @@ export function CloudCanvasWorkspace({
         workspaceId,
         projectId,
       });
-      const shellRepository = new CloudCanvasShellRepository(
+      const baseShellRepository = new CloudCanvasShellRepository(
         workspaceId,
         canvasRepository,
         cloudAssetRepository,
         runtimeCache,
       );
+      const shellRepository = createProjectFileBackedCanvasShellRepository({
+        repository: baseShellRepository,
+        projectFileRepository,
+        projectFileVariantRepository,
+        workspaceId,
+        projectId,
+      });
       return {
         assetRepository: shellRepository,
         repository: shellRepository,
@@ -131,7 +162,15 @@ export function CloudCanvasWorkspace({
         error: "Не удалось настроить облачное хранилище холстов.",
       };
     }
-  }, [cloudAssetRepository, projectId, runtimeCache, supabase, workspaceId]);
+  }, [
+    cloudAssetRepository,
+    projectFileRepository,
+    projectFileVariantRepository,
+    projectId,
+    runtimeCache,
+    supabase,
+    workspaceId,
+  ]);
 
   if (!workspaceId.trim()) {
     return (
@@ -165,6 +204,9 @@ export function CloudCanvasWorkspace({
       key={`${workspaceId}:${projectId}`}
       repository={dependencies.repository}
       groupRepository={dependencies.repository}
+      projectFileRepository={projectFileRepository}
+      projectFileVariantRepository={projectFileVariantRepository}
+      projectId={projectId}
       runtimeCache={runtimeCache}
       showDiagnostics={false}
       taskBridge={taskBridge}

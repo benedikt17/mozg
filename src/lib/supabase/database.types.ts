@@ -960,6 +960,15 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      delete_project_file_variant: {
+        Args: {
+          requested_max_edge: number
+          target_file_id: string
+          target_project_id: string
+          target_workspace_id: string
+        }
+        Returns: boolean
+      }
       finalize_canvas_asset: {
         Args: {
           target_asset_id: string
@@ -1055,6 +1064,34 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "project_files"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      finalize_project_file_variant: {
+        Args: {
+          requested_max_edge: number
+          target_file_id: string
+          target_project_id: string
+          target_workspace_id: string
+        }
+        Returns: {
+          byte_size: number
+          created_at: string
+          file_id: string
+          kind: string
+          mime_type: string
+          pixel_height: number | null
+          pixel_width: number | null
+          project_id: string
+          ready_at: string | null
+          storage_path: string
+          target_max_edge: number | null
+          workspace_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "file_variants"
           isOneToOne: false
           isSetofReturn: true
         }
@@ -1368,6 +1405,37 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "project_files"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      reserve_project_file_variant: {
+        Args: {
+          requested_max_edge: number
+          target_byte_size: number
+          target_file_id: string
+          target_pixel_height: number
+          target_pixel_width: number
+          target_project_id: string
+          target_workspace_id: string
+        }
+        Returns: {
+          byte_size: number
+          created_at: string
+          file_id: string
+          kind: string
+          mime_type: string
+          pixel_height: number | null
+          pixel_width: number | null
+          project_id: string
+          ready_at: string | null
+          storage_path: string
+          target_max_edge: number | null
+          workspace_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "file_variants"
           isOneToOne: false
           isSetofReturn: true
         }

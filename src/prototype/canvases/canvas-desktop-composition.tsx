@@ -1,6 +1,8 @@
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CanvasTaskProjection } from "@/lib/canvas/canvas-task-bridge";
+import type { ProjectFileRecord } from "@/lib/files/project-file-repository";
+import { CanvasProjectFilePicker } from "@/prototype/canvases/canvas-project-file-picker";
 import type { LocalCanvasShellStatus } from "@/lib/canvas/local-canvas-shell-controller";
 import type { CanvasSummary } from "@/lib/canvas/local-canvas-repository";
 import {
@@ -311,15 +313,24 @@ export function CanvasDesktopToolbar({
   interactive,
   onAddImage,
   onAddText,
+  onCloseFilePicker,
   onCloseTaskPicker,
+  onFileQueryChange,
   onRedo,
   onReloadWinner,
   onRetry,
+  onSelectFile,
   onSelectTask,
   onTaskQueryChange,
+  onToggleFilePicker,
   onToggleSidebar,
   onToggleTaskPicker,
   onUndo,
+  filePickerOpen,
+  fileQuery,
+  fileResults,
+  fileSearchStatus,
+  fileToolsReady,
   sidebarOpen,
   status,
   taskPickerOpen,
@@ -335,15 +346,24 @@ export function CanvasDesktopToolbar({
   interactive: boolean;
   onAddImage: (files: File[]) => void;
   onAddText: () => void;
+  onCloseFilePicker: () => void;
   onCloseTaskPicker: () => void;
+  onFileQueryChange: (query: string) => void;
   onRedo: () => void;
   onReloadWinner: () => void;
   onRetry: () => void;
+  onSelectFile: (file: ProjectFileRecord) => void;
   onSelectTask: (task: CanvasTaskProjection) => void;
   onTaskQueryChange: (query: string) => void;
+  onToggleFilePicker: () => void;
   onToggleSidebar: () => void;
   onToggleTaskPicker: () => void;
   onUndo: () => void;
+  filePickerOpen: boolean;
+  fileQuery: string;
+  fileResults: readonly ProjectFileRecord[];
+  fileSearchStatus: "idle" | "loading" | "ready" | "error";
+  fileToolsReady: boolean;
   sidebarOpen: boolean;
   status: LocalCanvasShellStatus;
   taskPickerOpen: boolean;
@@ -471,6 +491,18 @@ export function CanvasDesktopToolbar({
           }}
           ref={fileInputRef}
           type="file"
+        />
+        <CanvasProjectFilePicker
+          interactive={isReady}
+          onClose={onCloseFilePicker}
+          onQueryChange={onFileQueryChange}
+          onSelect={onSelectFile}
+          onToggle={onToggleFilePicker}
+          open={filePickerOpen}
+          query={fileQuery}
+          results={fileResults}
+          searchStatus={fileSearchStatus}
+          toolsReady={fileToolsReady}
         />
         <IconButton
           disabled={!isReady}

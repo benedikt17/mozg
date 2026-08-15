@@ -68,8 +68,11 @@ const NODE_STAGGER = 32;
 export type FlowPosition = { x: number; y: number };
 
 export type CanvasImageNodeData = {
+  /** Runtime cache identity. For Project File nodes this equals fileId. */
   assetId: string;
-  mimeType: CanvasAssetRecord["mimeType"];
+  /** Canonical shared-asset identity; absent for legacy canvas_assets nodes. */
+  fileId?: string;
+  mimeType: string;
   intrinsicWidth: number;
   intrinsicHeight: number;
   objectUrl: string;
@@ -511,7 +514,8 @@ export function canvasDocumentToImageNodes(
       height: node.size.height,
       style: { width: node.size.width, height: node.size.height },
       data: {
-        assetId: node.assetId,
+        assetId: "fileId" in node ? node.fileId : node.assetId,
+        ...("fileId" in node ? { fileId: node.fileId } : {}),
         mimeType: "image/png",
         intrinsicWidth: node.size.width,
         intrinsicHeight: node.size.height,
@@ -865,7 +869,8 @@ export async function restoreCanvasImageNodes(
   options: RestoreCanvasImageOptions = {},
 ): Promise<RestoreCanvasImageResult> {
   const imageNodes = document.nodes.filter(
-    (node): node is CanvasImageNode => node.kind === "image",
+    (node): node is Extract<CanvasImageNode, { assetId: string }> =>
+      node.kind === "image" && "assetId" in node,
   );
   const concurrency = Math.max(
     1,

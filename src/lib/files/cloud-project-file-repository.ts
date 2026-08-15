@@ -28,15 +28,44 @@ import {
   projectFileUuid,
   validateProjectFileUpload,
 } from "./project-file-runtime";
+import {
+  getProjectFileResumableReservationStorage,
+  projectFileResumableReservationKey,
+  projectFileTusFingerprint,
+  ProjectFileUploadCancelledError,
+  uploadProjectFileResumable,
+  type ProjectFileResumableReservationStorage,
+} from "./project-file-resumable-upload";
+import { projectFileUploadTransport } from "./project-file-upload-limit";
 
 export type CloudProjectFileRepositoryOptions = {
   supabase: SupabaseClient<Database>;
   idGenerator?: () => string;
+  resumableUploadEndpoint?: string | null;
+  resumableReservationStorage?: ProjectFileResumableReservationStorage | null;
 };
+
+function projectFileReservationMatches(
+  record: ProjectFileRecord,
+  input: UploadProjectFileInput & { folderId: string | null },
+): boolean {
+  return (
+    record.folderId === input.folderId &&
+    record.name === input.name &&
+    record.originalName === input.originalName &&
+    record.mimeType === input.mimeType &&
+    record.byteSize === input.byteSize &&
+    record.checksum === (input.checksum ?? null) &&
+    record.width === (input.width ?? null) &&
+    record.height === (input.height ?? null)
+  );
+}
 
 export class SupabaseProjectFileRepository implements ProjectFileRepository {
   private readonly supabase: SupabaseClient<Database>;
   private readonly idGenerator: () => string;
+  private readonly resumableUploadEndpoint: string | null;
+  private readonly resumableReservationStorage: ProjectFileResumableReservationStorage | null;
   private authenticatedUserId: string | null = null;
   private authenticationPromise: Promise<void> | null = null;
   private authenticationGeneration = 0;
@@ -44,6 +73,11 @@ export class SupabaseProjectFileRepository implements ProjectFileRepository {
   constructor(options: CloudProjectFileRepositoryOptions) {
     this.supabase = options.supabase;
     this.idGenerator = options.idGenerator ?? defaultProjectFileId;
+    this.resumableUploadEndpoint = options.resumableUploadEndpoint ?? null;
+    this.resumableReservationStorage =
+      options.resumableReservationStorage === undefined
+        ? getProjectFileResumableReservationStorage()
+        : options.resumableReservationStorage;
   }
 
   invalidateAuthentication(): void {
@@ -77,6 +111,61 @@ export class SupabaseProjectFileRepository implements ProjectFileRepository {
       });
     this.authenticationPromise = pending;
     return pending;
+  }
+
+  private async getAccessToken(): Promise<string> {
+    const { data, error } = await this.supabase.auth.getSession();
+    if (error) throw error;
+    const accessToken = data.session?.access_token;
+    if (!accessToken) {
+      throw new CloudProjectFileRepositoryError(
+        "unauthenticated",
+        "Project Files requires an authenticated session.",
+      );
+    }
+    return accessToken;
+  }
+
+  private readResumableFileId(key: string): string | null {
+    try {
+      const value = this.resumableReservationStorage?.getItem(key);
+      if (!value) return null;
+      return projectFileUuid(value, "resumableFileId");
+    } catch {
+      this.removeResumableFileId(key);
+      return null;
+    }
+  }
+
+  private writeResumableFileId(key: string, fileId: string): void {
+    try {
+      this.resumableReservationStorage?.setItem(key, fileId);
+    } catch {
+      // Network retries still work even when browser persistence is unavailable.
+    }
+  }
+
+  private removeResumableFileId(key: string): void {
+    try {
+      this.resumableReservationStorage?.removeItem(key);
+    } catch {
+      // Best-effort cleanup for privacy modes and restricted Storage contexts.
+    }
+  }
+
+  private async findProjectFileReservation(
+    scope: ProjectFileScope,
+    fileId: string,
+  ): Promise<ProjectFileRecord | null> {
+    const { data, error } = await this.supabase
+      .from("project_files")
+      .select(PROJECT_FILE_SELECT)
+      .eq("workspace_id", scope.workspaceId)
+      .eq("project_id", scope.projectId)
+      .eq("id", fileId)
+      .maybeSingle();
+    if (error) throw error;
+    return data === null ? null : mapProjectFile(data, { ...scope, fileId });
   }
 
   async listFolders(
@@ -208,6 +297,44 @@ export class SupabaseProjectFileRepository implements ProjectFileRepository {
     }
   }
 
+  async listPendingFiles(
+    input: ProjectFileScope & { folderId?: string | null },
+  ): Promise<ProjectFileRecord[]> {
+    try {
+      await this.assertAuthenticated();
+      const userId = this.authenticatedUserId;
+      if (!userId) {
+        throw new CloudProjectFileRepositoryError(
+          "unauthenticated",
+          "Project Files requires an authenticated session.",
+        );
+      }
+      const scope = projectFileScope(input);
+      let query = this.supabase
+        .from("project_files")
+        .select(PROJECT_FILE_SELECT)
+        .eq("workspace_id", scope.workspaceId)
+        .eq("project_id", scope.projectId)
+        .eq("created_by", userId)
+        .is("ready_at", null)
+        .is("deleted_at", null);
+      if (input.folderId !== undefined) {
+        const folderId = projectFileFolderId(input.folderId);
+        query =
+          folderId === null
+            ? query.is("folder_id", null)
+            : query.eq("folder_id", folderId);
+      }
+      const { data, error } = await query.order("created_at", {
+        ascending: false,
+      });
+      if (error) throw error;
+      return (data ?? []).map((row) => mapProjectFile(row, scope));
+    } catch (cause) {
+      throw projectFileRepositoryError(cause, "metadata");
+    }
+  }
+
   async getFile(
     input: ProjectFileScope & { fileId: string },
   ): Promise<ProjectFileRecord> {
@@ -238,63 +365,200 @@ export class SupabaseProjectFileRepository implements ProjectFileRepository {
   }
 
   async uploadFile(input: UploadProjectFileInput): Promise<ProjectFileRecord> {
+    let resumableReservationKey: string | null = null;
+    let reservedForCancellation: ProjectFileRecord | null = null;
+
     try {
       await this.assertAuthenticated();
       const validated = validateProjectFileUpload(input, this.idGenerator);
-      const { data: reservedData, error: reserveError } =
-        await this.supabase.rpc("reserve_project_file", {
-          target_workspace_id: validated.workspaceId,
-          target_project_id: validated.projectId,
-          target_file_id: validated.fileId,
-          target_name: validated.name,
-          target_original_name: validated.originalName,
-          target_mime_type: validated.mimeType,
-          target_byte_size: validated.byteSize,
-          ...(validated.folderId === null
-            ? {}
-            : { target_folder_id: validated.folderId }),
-          ...(validated.width == null ? {} : { target_width: validated.width }),
-          ...(validated.height == null
-            ? {}
-            : { target_height: validated.height }),
-          ...(validated.checksum == null
-            ? {}
-            : { target_checksum: validated.checksum }),
-        });
-      if (reserveError) throw reserveError;
-      const expected = {
+      const transport = projectFileUploadTransport(validated.byteSize);
+      const scope = {
         workspaceId: validated.workspaceId,
         projectId: validated.projectId,
-        fileId: validated.fileId,
       };
-      const reserved = mapProjectFile(
-        projectFileRpcRow(reservedData, "reserve file"),
-        expected,
-      );
-      if (reserved.readyAt !== null || reserved.deletedAt !== null) {
-        throw new CloudProjectFileRepositoryError(
-          "invalid-server-metadata",
-          "Reserved Project file metadata is invalid.",
-        );
+
+      if (input.signal?.aborted) {
+        throw new ProjectFileUploadCancelledError();
       }
-      const { error: uploadError } = await this.supabase.storage
-        .from(PROJECT_FILES_BUCKET)
-        .upload(reserved.storageKey, validated.blob, {
-          cacheControl: "3600",
-          contentType: validated.mimeType,
-          upsert: false,
-          metadata: {
-            fileId: reserved.id,
-            projectId: reserved.projectId,
-            originalName: reserved.originalName,
-          },
+
+      let reserved: ProjectFileRecord | null = null;
+      if (transport === "resumable") {
+        const resumeKey = validated.resumeKey?.trim();
+        if (!this.resumableUploadEndpoint || !resumeKey) {
+          throw new CloudProjectFileRepositoryError(
+            "invalid-input",
+            "Resumable Project file upload is not configured.",
+          );
+        }
+
+        resumableReservationKey = projectFileResumableReservationKey({
+          ...scope,
+          folderId: validated.folderId,
+          resumeKey,
         });
-      if (uploadError) throw uploadError;
+
+        if (input.fileId) {
+          const explicitReservation = await this.findProjectFileReservation(
+            scope,
+            validated.fileId,
+          );
+          if (explicitReservation) {
+            if (
+              !projectFileReservationMatches(explicitReservation, validated)
+            ) {
+              throw new CloudProjectFileRepositoryError(
+                "invalid-input",
+                "The selected file does not match the pending upload.",
+              );
+            }
+            if (explicitReservation.deletedAt !== null) {
+              throw new CloudProjectFileRepositoryError(
+                "invalid-input",
+                "The pending upload is no longer active.",
+              );
+            }
+            if (explicitReservation.readyAt !== null) {
+              this.removeResumableFileId(resumableReservationKey);
+              return explicitReservation;
+            }
+            reserved = explicitReservation;
+          }
+        }
+
+        if (!reserved) {
+          const previousFileId = this.readResumableFileId(
+            resumableReservationKey,
+          );
+          if (previousFileId) {
+            const previous = await this.findProjectFileReservation(
+              scope,
+              previousFileId,
+            );
+            if (
+              previous &&
+              projectFileReservationMatches(previous, validated)
+            ) {
+              if (previous.readyAt !== null && previous.deletedAt === null) {
+                this.removeResumableFileId(resumableReservationKey);
+                return previous;
+              }
+              if (previous.readyAt === null && previous.deletedAt === null) {
+                reserved = previous;
+              }
+            }
+            if (!reserved) {
+              this.removeResumableFileId(resumableReservationKey);
+            }
+          }
+        }
+      }
+
+      if (!reserved) {
+        const { data: reservedData, error: reserveError } =
+          await this.supabase.rpc("reserve_project_file", {
+            target_workspace_id: validated.workspaceId,
+            target_project_id: validated.projectId,
+            target_file_id: validated.fileId,
+            target_name: validated.name,
+            target_original_name: validated.originalName,
+            target_mime_type: validated.mimeType,
+            target_byte_size: validated.byteSize,
+            ...(validated.folderId === null
+              ? {}
+              : { target_folder_id: validated.folderId }),
+            ...(validated.width == null
+              ? {}
+              : { target_width: validated.width }),
+            ...(validated.height == null
+              ? {}
+              : { target_height: validated.height }),
+            ...(validated.checksum == null
+              ? {}
+              : { target_checksum: validated.checksum }),
+          });
+        if (reserveError) throw reserveError;
+        reserved = mapProjectFile(
+          projectFileRpcRow(reservedData, "reserve file"),
+          { ...scope, fileId: validated.fileId },
+        );
+        if (reserved.readyAt !== null || reserved.deletedAt !== null) {
+          throw new CloudProjectFileRepositoryError(
+            "invalid-server-metadata",
+            "Reserved Project file metadata is invalid.",
+          );
+        }
+        if (resumableReservationKey) {
+          this.writeResumableFileId(resumableReservationKey, reserved.id);
+        }
+      }
+
+      if (resumableReservationKey) {
+        this.writeResumableFileId(resumableReservationKey, reserved.id);
+      }
+
+      reservedForCancellation = reserved;
+      const expected = { ...scope, fileId: reserved.id };
+
+      if (transport === "standard") {
+        input.onProgress?.({
+          transport,
+          bytesUploaded: 0,
+          bytesTotal: validated.byteSize,
+          percentage: 0,
+        });
+        const { error: uploadError } = await this.supabase.storage
+          .from(PROJECT_FILES_BUCKET)
+          .upload(reserved.storageKey, validated.blob, {
+            cacheControl: "3600",
+            contentType: validated.mimeType,
+            upsert: false,
+            metadata: {
+              fileId: reserved.id,
+              projectId: reserved.projectId,
+              originalName: reserved.originalName,
+            },
+          });
+        if (uploadError) throw uploadError;
+        input.onProgress?.({
+          transport,
+          bytesUploaded: validated.byteSize,
+          bytesTotal: validated.byteSize,
+          percentage: 100,
+        });
+      } else {
+        const resumeKey = validated.resumeKey?.trim();
+        if (!resumeKey || !this.resumableUploadEndpoint) {
+          throw new CloudProjectFileRepositoryError(
+            "invalid-input",
+            "Resumable Project file upload is not configured.",
+          );
+        }
+        await uploadProjectFileResumable({
+          blob: validated.blob,
+          endpoint: this.resumableUploadEndpoint,
+          storageKey: reserved.storageKey,
+          mimeType: validated.mimeType,
+          fingerprint: projectFileTusFingerprint({
+            workspaceId: validated.workspaceId,
+            fileId: reserved.id,
+            resumeKey,
+          }),
+          getAccessToken: () => this.getAccessToken(),
+          signal: input.signal,
+          onProgress: input.onProgress,
+          onResume: input.onResume,
+          onRetry: input.onRetry,
+        });
+        if (input.signal?.aborted) {
+          throw new ProjectFileUploadCancelledError();
+        }
+      }
+
       const { data: finalizedData, error: finalizeError } =
         await this.supabase.rpc("finalize_project_file", {
           target_workspace_id: validated.workspaceId,
           target_project_id: validated.projectId,
-          target_file_id: validated.fileId,
+          target_file_id: reserved.id,
         });
       if (finalizeError) throw finalizeError;
       const finalized = mapProjectFile(
@@ -307,8 +571,34 @@ export class SupabaseProjectFileRepository implements ProjectFileRepository {
           "Finalized Project file metadata is invalid.",
         );
       }
+      if (resumableReservationKey) {
+        this.removeResumableFileId(resumableReservationKey);
+      }
       return finalized;
     } catch (cause) {
+      if (
+        cause instanceof ProjectFileUploadCancelledError ||
+        input.signal?.aborted
+      ) {
+        if (resumableReservationKey) {
+          this.removeResumableFileId(resumableReservationKey);
+        }
+        if (reservedForCancellation?.readyAt === null) {
+          try {
+            await this.supabase.rpc("delete_project_file", {
+              target_workspace_id: reservedForCancellation.workspaceId,
+              target_project_id: reservedForCancellation.projectId,
+              target_file_id: reservedForCancellation.id,
+            });
+          } catch {
+            // Cancellation should remain responsive even if metadata cleanup fails.
+          }
+        }
+        throw new CloudProjectFileRepositoryError(
+          "cancelled",
+          "Project file upload was cancelled.",
+        );
+      }
       throw projectFileRepositoryError(cause, "upload");
     }
   }

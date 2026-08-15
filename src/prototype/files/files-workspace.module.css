@@ -68,6 +68,16 @@
   opacity: 0.42;
 }
 
+.hiddenFileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .sidebarSearch {
   display: grid;
   border-bottom: 1px solid var(--border);
@@ -156,6 +166,36 @@
   background: var(--border);
 }
 
+.newFolderRow {
+  min-height: var(--sidebar-row-regular-height);
+  display: grid;
+  grid-template-columns: var(--sidebar-leading-slot) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--sidebar-slot-gap);
+  padding: 4px 8px;
+}
+
+.newFolderRow :global(.ui-icon) {
+  width: var(--sidebar-leading-slot);
+  height: var(--sidebar-leading-slot);
+  color: var(--text-2);
+}
+
+.newFolderRow input {
+  min-width: 0;
+  height: 28px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 0 4px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  outline: 2px solid #8cc3f6;
+  outline-offset: 0;
+}
+
 .folderTree {
   display: grid;
   gap: 2px;
@@ -175,6 +215,10 @@
   background: var(--surface);
 }
 
+.contentPaneUploading {
+  grid-template-rows: 38px auto 34px minmax(0, 1fr);
+}
+
 .contentHeader,
 .previewHeader {
   min-width: 0;
@@ -186,6 +230,8 @@
 }
 
 .contentHeader {
+  justify-content: space-between;
+  gap: 12px;
   padding: 0 12px;
 }
 
@@ -204,6 +250,21 @@
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.actionMessage {
+  min-width: 0;
+  max-width: 55%;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actionMessageError {
+  color: var(--danger);
 }
 
 .breadcrumbs {
@@ -254,9 +315,27 @@
 }
 
 .content {
+  position: relative;
   min-height: 0;
   overflow: auto;
   background: var(--surface);
+}
+
+.contentDropTarget {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.dropOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  color: var(--accent-2);
+  font-size: 14px;
+  font-weight: 600;
+  pointer-events: none;
 }
 
 .tableWrap {
@@ -310,6 +389,42 @@
 
 .entryRowSelected {
   box-shadow: inset 2px 0 0 #ff5200;
+}
+
+.pendingEntryRow {
+  background: color-mix(in srgb, var(--surface-2) 72%, var(--surface) 28%);
+}
+
+.pendingEntryRow:hover {
+  background: color-mix(in srgb, var(--surface-2) 88%, var(--surface) 12%);
+}
+
+.pendingState {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.pendingResumeButton {
+  justify-self: start;
+  min-height: 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 0 9px;
+  color: var(--text-2);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.pendingResumeButton:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.pendingResumeButton:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 .nameCell {
@@ -406,6 +521,7 @@
 .previewPlaceholder {
   min-height: 220px;
   display: grid;
+  overflow: hidden;
   place-items: center;
   border: 1px solid var(--border);
   background: var(--surface-2);
@@ -415,6 +531,21 @@
 .previewPlaceholder :global(.ui-icon) {
   width: 42px;
   height: 42px;
+}
+
+.previewImage {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+}
+
+.previewState {
+  padding: 16px;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
 }
 
 .previewTitle {
@@ -450,6 +581,11 @@
   margin: 0;
   color: var(--text-2);
   overflow-wrap: anywhere;
+}
+
+.previewActions {
+  display: flex;
+  margin-top: 16px;
 }
 
 .previewEmpty {
@@ -508,6 +644,18 @@
   .entryRow > :last-child {
     display: none;
   }
+
+  .pendingEntryRow {
+    grid-template-columns: minmax(200px, 1fr) 100px auto;
+  }
+
+  .pendingEntryRow > :nth-child(3) {
+    display: none;
+  }
+
+  .pendingEntryRow > :last-child {
+    display: inline-flex;
+  }
 }
 
 @media (max-width: 1023px) {
@@ -540,9 +688,17 @@
     grid-template-rows: 38px 34px minmax(0, 1fr);
   }
 
+  .contentPaneUploading {
+    grid-template-rows: 38px auto 34px minmax(0, 1fr);
+  }
+
   .breadcrumbs {
     justify-content: flex-start;
     padding: 0 12px;
+  }
+
+  .actionMessage {
+    display: none;
   }
 
   .tableHeader {
@@ -564,4 +720,68 @@
     color: var(--text-3);
     font-size: 12px;
   }
+}
+
+.uploadProgress {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(120px, 220px) 42px auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  border-bottom: 1px solid var(--border);
+  padding: 6px 12px;
+  background: var(--surface-2);
+}
+
+.uploadProgressMeta {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.uploadProgressMeta strong,
+.uploadProgressMeta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uploadProgressMeta strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.uploadProgressMeta span,
+.uploadProgressPercent {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.uploadProgressTrack {
+  width: 100%;
+  height: 6px;
+  accent-color: var(--focus);
+}
+
+.uploadProgressPercent {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.uploadCancelButton {
+  min-height: 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 0 8px;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.uploadCancelButton:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
 }
