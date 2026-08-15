@@ -1,7 +1,6 @@
 import type { ProjectFileScope } from "./project-file-repository";
 
-const PROJECT_FILE_SEARCH_INDEX_BATCH = 8;
-const PROJECT_FILE_SEARCH_MAX_BATCHES = 64;
+const PROJECT_FILE_SEARCH_INDEX_BATCH = 24;
 
 const inFlightScopeIndexes = new Map<string, Promise<void>>();
 const completedScopeIndexes = new Set<string>();
@@ -39,7 +38,7 @@ async function requestIndex(body: {
 async function completeProjectFileSearchIndex(
   scope: ProjectFileScope,
 ): Promise<boolean> {
-  for (let batch = 0; batch < PROJECT_FILE_SEARCH_MAX_BATCHES; batch += 1) {
+  while (true) {
     const result = await requestIndex({
       ...scope,
       limit: PROJECT_FILE_SEARCH_INDEX_BATCH,
@@ -53,8 +52,6 @@ async function completeProjectFileSearchIndex(
     if (retryableFailures) return false;
     if (result.attempted < PROJECT_FILE_SEARCH_INDEX_BATCH) return true;
   }
-
-  return false;
 }
 
 export function ensureProjectFileSearchIndex(
