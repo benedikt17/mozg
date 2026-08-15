@@ -134,11 +134,7 @@ export async function extractProjectFileSearchText(
 
 async function extractPdfText(blob: Blob): Promise<string> {
   const data = new Uint8Array(await blob.arrayBuffer());
-  const pdf = await getDocumentProxy(data, {
-    isEvalSupported: false,
-    maxImageSize: 0,
-    useSystemFonts: false,
-  });
+  const pdf = await getDocumentProxy(data);
 
   try {
     if (pdf.numPages > PROJECT_FILE_SEARCH_MAX_PDF_PAGES) {
