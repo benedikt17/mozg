@@ -1,5 +1,3 @@
-import "server-only";
-
 import { inflateRawSync } from "node:zlib";
 
 import { getDocumentProxy } from "unpdf";
@@ -99,7 +97,10 @@ export function chunkProjectFileSearchText(value: string): string[] {
     chunks.push(chunk);
 
     if (end >= text.length) break;
-    const nextStart = Math.max(start + 1, end - PROJECT_FILE_SEARCH_CHUNK_OVERLAP_CHARS);
+    const nextStart = Math.max(
+      start + 1,
+      end - PROJECT_FILE_SEARCH_CHUNK_OVERLAP_CHARS,
+    );
     start = nextStart;
   }
 
@@ -176,7 +177,9 @@ async function extractOoxmlText(
   const xmlParts: string[] = [];
   for (const entry of relevant) {
     if (entry.uncompressedSize > OOXML_MAX_RELEVANT_ENTRY_BYTES) {
-      throw new Error("Office document XML entry exceeds the search extraction limit.");
+      throw new Error(
+        "Office document XML entry exceeds the search extraction limit.",
+      );
     }
     totalUncompressedBytes += entry.uncompressedSize;
     if (totalUncompressedBytes > OOXML_MAX_RELEVANT_TOTAL_BYTES) {
@@ -236,7 +239,9 @@ function readZipEntries(archive: Buffer): ZipEntry[] {
     if (next > archive.length) {
       throw new Error("Office document ZIP entry is truncated.");
     }
-    const name = archive.subarray(offset + 46, offset + 46 + nameLength).toString("utf8");
+    const name = archive
+      .subarray(offset + 46, offset + 46 + nameLength)
+      .toString("utf8");
     entries.push({
       name,
       flags,
@@ -286,7 +291,9 @@ function readZipEntry(archive: Buffer, entry: ZipEntry): Buffer {
       maxOutputLength: OOXML_MAX_RELEVANT_ENTRY_BYTES,
     });
   } else {
-    throw new Error(`Unsupported Office document ZIP compression: ${entry.method}`);
+    throw new Error(
+      `Unsupported Office document ZIP compression: ${entry.method}`,
+    );
   }
 
   if (
