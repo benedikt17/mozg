@@ -450,7 +450,9 @@ export class LocalCanvasShellController {
       .map((node) => ({
         id: node.id,
         kind: "image" as const,
-        assetId: node.data.assetId,
+        ...(node.data.fileId
+          ? { fileId: node.data.fileId }
+          : { assetId: node.data.assetId }),
         position: { ...node.position },
         size: {
           width: typeof node.style?.width === "number" ? node.style.width : 160,

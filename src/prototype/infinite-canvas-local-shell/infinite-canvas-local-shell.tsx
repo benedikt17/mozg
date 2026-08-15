@@ -174,6 +174,16 @@ import {
   canvasImageResolutionSourceFromLegacyKind,
 } from "@/lib/canvas/canvas-image-variants";
 import { CanvasImagePyramidScheduler } from "@/lib/canvas/canvas-image-pyramid";
+import {
+  createCanvasProjectFileImageNode,
+  restoreProjectFileCanvasImageNodes,
+} from "@/lib/canvas/project-file-canvas-image-adapter";
+import type { ProjectFileImageVariantRepository } from "@/lib/files/project-file-image-variants";
+import {
+  isProjectFileImageMimeType,
+  type ProjectFileRecord,
+  type ProjectFileRepository,
+} from "@/lib/files/project-file-repository";
 import { shouldCloseCanvasTaskDetails } from "@/lib/canvas/canvas-task-selection";
 import {
   CanvasEdgeMarkerDefinitions,
@@ -1263,6 +1273,9 @@ function InfiniteCanvasLocalShellSurface({
   embedded = false,
   copy,
   groupRepository,
+  projectFileRepository,
+  projectFileVariantRepository,
+  projectId,
   repository: providedRepository,
   runtimeCache,
   showDiagnostics,
@@ -1276,6 +1289,9 @@ function InfiniteCanvasLocalShellSurface({
   embedded?: boolean;
   copy: CanvasShellCopy;
   groupRepository?: CanvasGroupRepository;
+  projectFileRepository?: ProjectFileRepository;
+  projectFileVariantRepository?: ProjectFileImageVariantRepository;
+  projectId?: string;
   repository: CanvasShellRepository;
   runtimeCache?: CloudCanvasRuntimeCache;
   showDiagnostics: boolean;
@@ -1360,6 +1376,12 @@ function InfiniteCanvasLocalShellSurface({
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [taskQuery, setTaskQuery] = useState("");
   const [taskResults, setTaskResults] = useState<CanvasTaskProjection[]>([]);
+  const [filePickerOpen, setFilePickerOpen] = useState(false);
+  const [fileQuery, setFileQuery] = useState("");
+  const [fileCatalog, setFileCatalog] = useState<ProjectFileRecord[]>([]);
+  const [fileSearchStatus, setFileSearchStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
   const [taskSearchStatus, setTaskSearchStatus] = useState<
     "idle" | "loading" | "ready" | "error"
   >("idle");
@@ -1542,6 +1564,82 @@ function InfiniteCanvasLocalShellSurface({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [taskPickerOpen]);
+
+  useEffect(() => {
+    if (!filePickerOpen || !projectFileRepository || !projectId) {
+      setFileCatalog([]);
+      setFileSearchStatus("idle");
+      return;
+    }
+    let active = true;
+    setFileSearchStatus("loading");
+    void projectFileRepository
+      .listFiles({ workspaceId: shellWorkspaceId, projectId })
+      .then(
+        (files) => {
+          if (!active) return;
+          setFileCatalog(
+            files.filter(
+              (file) =>
+                file.readyAt !== null &&
+                file.deletedAt === null &&
+                file.width !== null &&
+                file.height !== null &&
+                isProjectFileImageMimeType(file.mimeType),
+            ),
+          );
+          setFileSearchStatus("ready");
+        },
+        () => {
+          if (!active) return;
+          setFileCatalog([]);
+          setFileSearchStatus("error");
+        },
+      );
+    return () => {
+      active = false;
+    };
+  }, [filePickerOpen, projectFileRepository, projectId, shellWorkspaceId]);
+
+  useEffect(() => {
+    if (!filePickerOpen) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setFilePickerOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [filePickerOpen]);
+
+  const fileResults = useMemo(() => {
+    const query = fileQuery.trim().toLocaleLowerCase("ru");
+    if (!query) return fileCatalog;
+    return fileCatalog.filter((file) =>
+      file.name.toLocaleLowerCase("ru").includes(query),
+    );
+  }, [fileCatalog, fileQuery]);
+
+  const projectFileImageDependenciesForCanvas = useCallback(
+    (canvasId: string) =>
+      projectFileRepository && projectFileVariantRepository && projectId
+        ? {
+            fileRepository: projectFileRepository,
+            variantRepository: projectFileVariantRepository,
+            objectUrls,
+            workspaceId: shellWorkspaceId,
+            projectId,
+            canvasId,
+          }
+        : null,
+    [
+      objectUrls,
+      projectFileRepository,
+      projectFileVariantRepository,
+      projectId,
+      shellWorkspaceId,
+    ],
+  );
 
   const syncState = useCallback(
     () => setShellState(controller.state),
@@ -1736,6 +1834,22 @@ function InfiniteCanvasLocalShellSurface({
         adapterDependencies,
         nextState.canvasId,
       );
+      const applyRestoredNode = (node: CanvasImageFlowNode): void => {
+        if (signal.aborted) return;
+        setNodes((current) => {
+          const index = current.findIndex((item) => item.id === node.id);
+          if (index < 0) return [...current, node];
+          const copy = [...current];
+          const existing = copy[index];
+          if (existing?.type !== CANVAS_IMAGE_NODE_TYPE) return current;
+          rememberImageRuntimePayload(variantPayloadsRef.current, node, {
+            workspaceId: shellWorkspaceId,
+            canvasId: nextState.canvasId ?? "",
+          });
+          copy[index] = { ...existing, data: { ...node.data } };
+          return copy;
+        });
+      };
       const result = await restoreCanvasImageNodes(
         nextState.document,
         restoreDependencies,
@@ -1743,29 +1857,40 @@ function InfiniteCanvasLocalShellSurface({
           signal,
           concurrency: 4,
           viewportZoom: nextState.viewport.zoom,
-          onNode: (node) => {
-            if (signal.aborted) return;
-            setNodes((current) => {
-              const index = current.findIndex((item) => item.id === node.id);
-              if (index < 0) return [...current, node];
-              const copy = [...current];
-              const existing = copy[index];
-              if (existing?.type !== CANVAS_IMAGE_NODE_TYPE) return current;
-              rememberImageRuntimePayload(variantPayloadsRef.current, node, {
-                workspaceId: shellWorkspaceId,
-                canvasId: nextState.canvasId ?? "",
-              });
-              copy[index] = { ...existing, data: { ...node.data } };
-              return copy;
-            });
-          },
+          onNode: applyRestoredNode,
         },
       );
+      const projectFileDependencies = nextState.canvasId
+        ? projectFileImageDependenciesForCanvas(nextState.canvasId)
+        : null;
+      const projectFileResult = projectFileDependencies
+        ? await restoreProjectFileCanvasImageNodes(
+            nextState.document,
+            projectFileDependencies,
+            {
+              signal,
+              concurrency: 4,
+              viewportZoom: nextState.viewport.zoom,
+              cachedAssetPayloads: variantPayloadsRef.current,
+              onNode: applyRestoredNode,
+            },
+          )
+        : {
+            nodes: [],
+            missingFileIds: [],
+            fileReadCount: 0,
+            maxConcurrentFileReads: 0,
+          };
       if (signal.aborted) return;
       setRestoreStats({
-        reads: result.assetReadCount,
-        maxConcurrency: result.maxConcurrentAssetReads,
-        missing: result.missingAssetIds.length,
+        reads: result.assetReadCount + projectFileResult.fileReadCount,
+        maxConcurrency: Math.max(
+          result.maxConcurrentAssetReads,
+          projectFileResult.maxConcurrentFileReads,
+        ),
+        missing:
+          result.missingAssetIds.length +
+          projectFileResult.missingFileIds.length,
       });
       hydratingRef.current = false;
       if (pendingContentHeightSaveRef.current) {
@@ -1778,6 +1903,7 @@ function InfiniteCanvasLocalShellSurface({
       handleEdgeUpdate,
       handleTaskNodeContentHeightChange,
       objectUrls,
+      projectFileImageDependenciesForCanvas,
       setEdges,
       setNodes,
       shellUserId,
@@ -1893,6 +2019,59 @@ function InfiniteCanvasLocalShellSurface({
       const controller = new AbortController();
       const sequence = ++variantRefreshSequenceRef.current;
       variantRefreshControllerRef.current = controller;
+      const projectFileDependencies = adapterDependencies.canvasId
+        ? projectFileImageDependenciesForCanvas(adapterDependencies.canvasId)
+        : null;
+      if (projectFileDependencies) {
+        void restoreProjectFileCanvasImageNodes(
+          shellStateRef.current.document,
+          projectFileDependencies,
+          {
+            signal: controller.signal,
+            viewportZoom,
+            devicePixelRatio: window.devicePixelRatio,
+            renderedCssSizes: renderedImageCssSizes(),
+            currentResolutionSources: new Map(
+              nodesRef.current.flatMap((node) =>
+                node.type === CANVAS_IMAGE_NODE_TYPE && node.data.fileId
+                  ? [
+                      [
+                        node.id,
+                        node.data.resolutionSource ??
+                          canvasImageResolutionSourceFromLegacyKind(
+                            node.data.variantKind ?? "original",
+                          ),
+                      ] as const,
+                    ]
+                  : [],
+              ),
+            ),
+            cachedAssetPayloads: variantPayloadsRef.current,
+            allowDowngrade,
+            concurrency: 4,
+            onNode: (node) => {
+              if (
+                controller.signal.aborted ||
+                sequence !== variantRefreshSequenceRef.current
+              )
+                return;
+              setNodes((current) => {
+                const index = current.findIndex((item) => item.id === node.id);
+                const existing = current[index];
+                if (index < 0 || existing?.type !== CANVAS_IMAGE_NODE_TYPE)
+                  return current;
+                rememberImageRuntimePayload(variantPayloadsRef.current, node, {
+                  workspaceId: shellWorkspaceId,
+                  canvasId: adapterDependencies.canvasId ?? "",
+                });
+                const next = [...current];
+                next[index] = { ...existing, data: { ...node.data } };
+                return next;
+              });
+            },
+          },
+        ).catch(() => undefined);
+      }
       void restoreCanvasImageNodes(
         shellStateRef.current.document,
         adapterDependencies,
@@ -1947,7 +2126,12 @@ function InfiniteCanvasLocalShellSurface({
             variantRefreshControllerRef.current = null;
         });
     },
-    [adapterDependencies, setNodes, shellWorkspaceId],
+    [
+      adapterDependencies,
+      projectFileImageDependenciesForCanvas,
+      setNodes,
+      shellWorkspaceId,
+    ],
   );
   refreshImageVariantsRef.current = refreshImageVariants;
 
@@ -2496,7 +2680,7 @@ function InfiniteCanvasLocalShellSurface({
         );
         const restoredImages =
           imageNodes.length === 0
-            ? { nodes: [], missingAssetIds: [] }
+            ? { nodes: [] }
             : await restoreCanvasImageNodes(
                 { schemaVersion: 2 as const, nodes: imageNodes, edges: [] },
                 canvasImageAdapterDependenciesForCanvas(
@@ -2509,10 +2693,26 @@ function InfiniteCanvasLocalShellSurface({
                   allowDowngrade: false,
                 },
               );
+        const projectFileDependencies =
+          projectFileImageDependenciesForCanvas(canvasId);
+        const restoredProjectFileImages = projectFileDependencies
+          ? await restoreProjectFileCanvasImageNodes(
+              { schemaVersion: 2 as const, nodes: imageNodes, edges: [] },
+              projectFileDependencies,
+              {
+                cachedAssetPayloads: variantPayloadsRef.current,
+                viewportZoom: shellStateRef.current.viewport.zoom,
+                allowDowngrade: false,
+              },
+            )
+          : { nodes: [] };
         const canonicalImagesById = new Map(
           imageNodes.map((node) => [node.id, node]),
         );
-        for (const image of restoredImages.nodes) {
+        for (const image of [
+          ...restoredImages.nodes,
+          ...restoredProjectFileImages.nodes,
+        ]) {
           const canonical = canonicalImagesById.get(image.id);
           const runtimeImage = canonical
             ? { ...image, zIndex: canonical.zIndex }
@@ -2553,12 +2753,77 @@ function InfiniteCanvasLocalShellSurface({
       centerPosition,
       controller,
       handleTaskNodeContentHeightChange,
+      projectFileImageDependenciesForCanvas,
       scheduleSave,
       setNodes,
       shellWorkspaceId,
       syncState,
       taskBridge,
       taskWorkspaceId,
+    ],
+  );
+
+  const createProjectFileNode = useCallback(
+    async (file: ProjectFileRecord) => {
+      const canvasId = shellStateRef.current.canvasId;
+      if (!canvasId) return;
+      const dependencies = projectFileImageDependenciesForCanvas(canvasId);
+      if (!dependencies) return;
+      try {
+        const zIndex =
+          Math.max(
+            0,
+            ...controller.state.document.nodes.map((node) => node.zIndex),
+          ) + 1;
+        const canonical = createCanvasProjectFileImageNode({
+          file,
+          position: centerPosition(),
+          zIndex,
+        });
+        const restored = await restoreProjectFileCanvasImageNodes(
+          { schemaVersion: 2, nodes: [canonical], edges: [] },
+          dependencies,
+          {
+            cachedAssetPayloads: variantPayloadsRef.current,
+            viewportZoom: shellStateRef.current.viewport.zoom,
+            allowDowngrade: false,
+          },
+        );
+        const runtime = restored.nodes[0];
+        if (!runtime) throw new Error("Project File image is unavailable.");
+        rememberImageRuntimePayload(variantPayloadsRef.current, runtime, {
+          workspaceId: shellWorkspaceId,
+          canvasId,
+        });
+        setNodes((current) => [
+          ...current.map((node) =>
+            node.selected ? { ...node, selected: false } : node,
+          ),
+          { ...runtime, selected: true },
+        ]);
+        controller.insertCanvasNodes([canonical]);
+        syncState();
+        scheduleSave();
+        setFilePickerOpen(false);
+      } catch (error: unknown) {
+        setShellState((current) => ({
+          ...current,
+          status: "error",
+          error:
+            error instanceof Error
+              ? error.message
+              : "Не удалось добавить файл на холст.",
+        }));
+      }
+    },
+    [
+      centerPosition,
+      controller,
+      projectFileImageDependenciesForCanvas,
+      scheduleSave,
+      setNodes,
+      shellWorkspaceId,
+      syncState,
     ],
   );
 
@@ -2784,6 +3049,7 @@ function InfiniteCanvasLocalShellSurface({
       setNodes([]);
       setEdges([]);
       hydratingRef.current = false;
+      setLoadingLifecycle("ready");
       setViewportInitialization({
         canvasId: created.canvasId,
         generation,
@@ -3222,7 +3488,9 @@ function InfiniteCanvasLocalShellSurface({
         )
       }
       onAddText={() => createTextNode(null, "", true)}
+      onCloseFilePicker={() => setFilePickerOpen(false)}
       onCloseTaskPicker={() => setTaskPickerOpen(false)}
+      onFileQueryChange={setFileQuery}
       onRedo={() => applyCanvasHistory("redo")}
       onReloadWinner={() => {
         if (shellState.canvasId) void openCanvas(shellState.canvasId);
@@ -3231,11 +3499,26 @@ function InfiniteCanvasLocalShellSurface({
         if (shellState.canvasId) void openCanvas(shellState.canvasId);
         else window.location.reload();
       }}
+      onSelectFile={(file) => void createProjectFileNode(file)}
       onSelectTask={createTaskNode}
       onTaskQueryChange={setTaskQuery}
+      onToggleFilePicker={() => {
+        setTaskPickerOpen(false);
+        setFilePickerOpen((current) => !current);
+      }}
       onToggleSidebar={() => setDesktopSidebarOpen((current) => !current)}
-      onToggleTaskPicker={() => setTaskPickerOpen((current) => !current)}
+      onToggleTaskPicker={() => {
+        setFilePickerOpen(false);
+        setTaskPickerOpen((current) => !current);
+      }}
       onUndo={() => applyCanvasHistory("undo")}
+      filePickerOpen={filePickerOpen}
+      fileQuery={fileQuery}
+      fileResults={fileResults}
+      fileSearchStatus={fileSearchStatus}
+      fileToolsReady={Boolean(
+        projectFileRepository && projectFileVariantRepository && projectId,
+      )}
       sidebarOpen={desktopSidebarOpen}
       status={shellState.status}
       taskPickerOpen={taskPickerOpen}
@@ -3723,6 +4006,9 @@ export function InfiniteCanvasLocalShell({
   copy,
   embedded,
   groupRepository,
+  projectFileRepository,
+  projectFileVariantRepository,
+  projectId,
   repository,
   runtimeCache,
   showDiagnostics,
@@ -3736,6 +4022,9 @@ export function InfiniteCanvasLocalShell({
   copy: CanvasShellCopy;
   embedded?: boolean;
   groupRepository?: CanvasGroupRepository;
+  projectFileRepository?: ProjectFileRepository;
+  projectFileVariantRepository?: ProjectFileImageVariantRepository;
+  projectId?: string;
   repository: CanvasShellRepository;
   runtimeCache?: CloudCanvasRuntimeCache;
   showDiagnostics: boolean;
@@ -3752,6 +4041,9 @@ export function InfiniteCanvasLocalShell({
         copy={copy}
         embedded={embedded}
         groupRepository={groupRepository}
+        projectFileRepository={projectFileRepository}
+        projectFileVariantRepository={projectFileVariantRepository}
+        projectId={projectId}
         repository={repository}
         runtimeCache={runtimeCache}
         showDiagnostics={showDiagnostics}

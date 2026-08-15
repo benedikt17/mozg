@@ -64,11 +64,20 @@ export type CanvasTextNode = CanvasNodeBase & {
   style?: CanvasTextStyle;
 };
 
-export type CanvasImageNode = CanvasNodeBase & {
+export type CanvasLegacyImageNode = CanvasNodeBase & {
   kind: "image";
   assetId: string;
   aspectRatioLocked: boolean;
 };
+
+export type CanvasProjectFileImageNode = CanvasNodeBase & {
+  kind: "image";
+  fileId: string;
+  aspectRatioLocked: boolean;
+};
+
+export type CanvasImageNode =
+  CanvasLegacyImageNode | CanvasProjectFileImageNode;
 
 export type CanvasNode =
   CanvasTaskNode | CanvasArticleNode | CanvasTextNode | CanvasImageNode;
@@ -393,6 +402,17 @@ function parseNode(value: unknown, path: string): CanvasNode {
       : kind === "text"
         ? ["style"]
         : [];
+  const hasImageAssetId =
+    kind === "image" && Object.prototype.hasOwnProperty.call(node, "assetId");
+  const hasImageFileId =
+    kind === "image" && Object.prototype.hasOwnProperty.call(node, "fileId");
+  if (kind === "image" && hasImageAssetId === hasImageFileId) {
+    fail(
+      "invalid_image_source",
+      path,
+      "Canvas image must reference exactly one assetId or fileId",
+    );
+  }
   const specificKey =
     kind === "task"
       ? "taskId"
@@ -401,7 +421,9 @@ function parseNode(value: unknown, path: string): CanvasNode {
         : kind === "text"
           ? "markdown"
           : kind === "image"
-            ? "assetId"
+            ? hasImageFileId
+              ? "fileId"
+              : "assetId"
             : null;
   if (specificKey === null) {
     fail(
@@ -488,7 +510,9 @@ function parseNode(value: unknown, path: string): CanvasNode {
     position,
     size,
     zIndex,
-    assetId: requireIdentifier(node.assetId, `${path}.assetId`),
+    ...(hasImageFileId
+      ? { fileId: requireIdentifier(node.fileId, `${path}.fileId`) }
+      : { assetId: requireIdentifier(node.assetId, `${path}.assetId`) }),
     aspectRatioLocked,
   };
 }
