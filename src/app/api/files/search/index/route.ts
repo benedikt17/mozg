@@ -108,37 +108,51 @@ export async function POST(request: Request): Promise<Response> {
       continue;
     }
 
-    try {
-      const { data: original, error: downloadError } = await supabase.storage
-        .from(PROJECT_FILES_BUCKET)
-        .download(candidate.storage_key);
-      if (downloadError || !(original instanceof Blob)) {
-        throw downloadError ?? new Error("Project file download returned no Blob.");
-      }
+    const { data: original, error: downloadError } = await supabase.storage
+      .from(PROJECT_FILES_BUCKET)
+      .download(candidate.storage_key);
+    if (downloadError || !(original instanceof Blob)) {
+      failures.push({
+        fileId: candidate.id,
+        reason:
+          downloadError?.message ?? "Project file download returned no Blob.",
+      });
+      continue;
+    }
 
+    let chunks: string[];
+    try {
       const extractedText = await extractProjectFileSearchText(
         original,
         candidate.mime_type,
       );
-      const chunks = chunkProjectFileSearchText(extractedText);
-      const { error: indexError } = await supabase.rpc(
-        "upsert_project_file_search_content",
-        {
-          target_workspace_id: input.workspaceId,
-          target_project_id: input.projectId,
-          target_file_id: candidate.id,
-          target_chunks: chunks,
-          target_extractor_version: PROJECT_FILE_SEARCH_EXTRACTOR_VERSION,
-        },
-      );
-      if (indexError) throw indexError;
-      indexed += 1;
+      chunks = chunkProjectFileSearchText(extractedText);
     } catch (cause) {
       failures.push({
         fileId: candidate.id,
-        reason: cause instanceof Error ? cause.message : "indexing-failed",
+        reason: cause instanceof Error ? cause.message : "extraction-failed",
       });
+      // An empty chunk records that this extractor version attempted the file.
+      // It prevents a corrupt/unsupported document from being retried for every
+      // keystroke. Bumping the extractor version makes it eligible again.
+      chunks = [""];
     }
+
+    const { error: indexError } = await supabase.rpc(
+      "upsert_project_file_search_content",
+      {
+        target_workspace_id: input.workspaceId,
+        target_project_id: input.projectId,
+        target_file_id: candidate.id,
+        target_chunks: chunks,
+        target_extractor_version: PROJECT_FILE_SEARCH_EXTRACTOR_VERSION,
+      },
+    );
+    if (indexError) {
+      failures.push({ fileId: candidate.id, reason: indexError.message });
+      continue;
+    }
+    indexed += 1;
   }
 
   return NextResponse.json({ indexed, failures, readOnly: false });
