@@ -6,8 +6,11 @@ import { createCloudCanvasRepository } from "@/lib/canvas/cloud-canvas-repositor
 import { createProjectScopedCloudCanvasRepository } from "@/lib/canvas/project-scoped-cloud-canvas-repository";
 import { CloudCanvasShellRepository } from "@/lib/canvas/cloud-canvas-shell-adapter";
 import { CloudCanvasRuntimeCache } from "@/lib/canvas/cloud-canvas-runtime-cache";
+import { createProjectFileBackedCanvasShellRepository } from "@/lib/canvas/project-file-backed-canvas-shell-repository";
+import { getPublicEnv } from "@/lib/env";
 import { SupabaseProjectFileRepository } from "@/lib/files/cloud-project-file-repository";
 import { SupabaseProjectFileImageVariantRepository } from "@/lib/files/cloud-project-file-image-variant-repository";
+import { projectFileResumableUploadEndpoint } from "@/lib/files/project-file-resumable-upload";
 import { createClient } from "@/lib/supabase/browser";
 import {
   InfiniteCanvasLocalShell,
@@ -87,10 +90,15 @@ export function CloudCanvasWorkspace({
     () => createCloudCanvasAssetRepository({ supabase }),
     [supabase],
   );
-  const projectFileRepository = useMemo(
-    () => new SupabaseProjectFileRepository({ supabase }),
-    [supabase],
-  );
+  const projectFileRepository = useMemo(() => {
+    const env = getPublicEnv();
+    return new SupabaseProjectFileRepository({
+      supabase,
+      resumableUploadEndpoint: projectFileResumableUploadEndpoint(
+        env.NEXT_PUBLIC_SUPABASE_URL,
+      ),
+    });
+  }, [supabase]);
   const projectFileVariantRepository = useMemo(
     () => new SupabaseProjectFileImageVariantRepository(supabase),
     [supabase],
@@ -129,12 +137,19 @@ export function CloudCanvasWorkspace({
         workspaceId,
         projectId,
       });
-      const shellRepository = new CloudCanvasShellRepository(
+      const baseShellRepository = new CloudCanvasShellRepository(
         workspaceId,
         canvasRepository,
         cloudAssetRepository,
         runtimeCache,
       );
+      const shellRepository = createProjectFileBackedCanvasShellRepository({
+        repository: baseShellRepository,
+        projectFileRepository,
+        projectFileVariantRepository,
+        workspaceId,
+        projectId,
+      });
       return {
         assetRepository: shellRepository,
         repository: shellRepository,
@@ -147,7 +162,15 @@ export function CloudCanvasWorkspace({
         error: "Не удалось настроить облачное хранилище холстов.",
       };
     }
-  }, [cloudAssetRepository, projectId, runtimeCache, supabase, workspaceId]);
+  }, [
+    cloudAssetRepository,
+    projectFileRepository,
+    projectFileVariantRepository,
+    projectId,
+    runtimeCache,
+    supabase,
+    workspaceId,
+  ]);
 
   if (!workspaceId.trim()) {
     return (

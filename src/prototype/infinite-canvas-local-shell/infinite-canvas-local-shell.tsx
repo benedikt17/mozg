@@ -3040,6 +3040,16 @@ function InfiniteCanvasLocalShellSurface({
       const generation = ++canvasGenerationRef.current;
       const created = await controller.createCanvas(title, groupId);
       if (!created.canvasId) return;
+      restoreControllerRef.current?.abort();
+      variantRefreshControllerRef.current?.abort();
+      if (variantRefreshFrameRef.current !== null) {
+        window.cancelAnimationFrame(variantRefreshFrameRef.current);
+        variantRefreshFrameRef.current = null;
+      }
+      if (variantDowngradeTimerRef.current !== null) {
+        clearTimeout(variantDowngradeTimerRef.current);
+        variantDowngradeTimerRef.current = null;
+      }
       repository.setActiveCanvas?.(created.canvasId);
       programmaticViewportRef.current = null;
       setViewportVisible(false);

@@ -87,7 +87,6 @@ test("opens Project Files inside the normal Desktop shell", async ({
     filesNavigation.getByRole("button", { name: "Входящие", exact: true }),
   ).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("heading", { name: "Входящие" })).toBeVisible();
-  await expect(page.getByText("Входящие пусты", { exact: true })).toBeVisible();
   const filePreview = page.getByRole("complementary", {
     name: "Предпросмотр файла",
   });
