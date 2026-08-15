@@ -26,7 +26,7 @@ test("finds a phrase inside a Project file whose name does not contain the query
   page,
 }) => {
   const phrase = "Кощей обсуждает архитектуру поискового индекса";
-  const filename = "neutral-e2e-note.txt";
+  const filename = `neutral-e2e-note-${Date.now()}.txt`;
 
   await signIn(page);
   await openFiles(page);
