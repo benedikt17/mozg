@@ -1335,7 +1335,14 @@ function ProjectFilePreview({
         projectId,
         fileId: file.id,
       });
-      const objectUrl = URL.createObjectURL(download.blob);
+      const browserBlob =
+        file.mimeType.startsWith("text/") ||
+        file.mimeType === "application/json"
+          ? new Blob([download.blob], {
+              type: `${file.mimeType};charset=utf-8`,
+            })
+          : download.blob;
+      const objectUrl = URL.createObjectURL(browserBlob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
       anchor.target = "_blank";
