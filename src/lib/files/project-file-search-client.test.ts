@@ -31,8 +31,8 @@ describe("Project file search index client", () => {
   it("drains every available batch before resolving a Project search index", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(indexResponse({ attempted: 8, indexed: 8 }))
-      .mockResolvedValueOnce(indexResponse({ attempted: 8, indexed: 8 }))
+      .mockResolvedValueOnce(indexResponse({ attempted: 24, indexed: 24 }))
+      .mockResolvedValueOnce(indexResponse({ attempted: 24, indexed: 24 }))
       .mockResolvedValueOnce(indexResponse({ attempted: 3, indexed: 3 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -47,9 +47,9 @@ describe("Project file search index client", () => {
     expect(
       fetchMock.mock.calls.map((call) => JSON.parse(call[1].body)),
     ).toEqual([
-      { ...scope, limit: 8 },
-      { ...scope, limit: 8 },
-      { ...scope, limit: 8 },
+      { ...scope, limit: 24 },
+      { ...scope, limit: 24 },
+      { ...scope, limit: 24 },
     ]);
   });
 
