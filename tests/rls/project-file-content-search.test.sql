@@ -4,13 +4,13 @@ select no_plan();
 
 select has_table(
   'public',
-  'project_file_search_content',
-  'Project file content search table exists'
+  'project_file_search_chunks',
+  'Project file content search chunks table exists'
 );
 select has_function(
   'public',
   'upsert_project_file_search_content',
-  array['uuid', 'text', 'uuid', 'text', 'integer'],
+  array['uuid', 'text', 'uuid', 'text[]', 'integer'],
   'Project-qualified content-index upsert RPC exists'
 );
 select has_function(
@@ -26,12 +26,12 @@ select has_function(
   'Project-qualified Files search RPC exists'
 );
 select is(
-  has_table_privilege('authenticated', 'public.project_file_search_content', 'SELECT'),
+  has_table_privilege('authenticated', 'public.project_file_search_chunks', 'SELECT'),
   true,
   'authenticated clients may read derived search metadata through RLS'
 );
 select is(
-  has_table_privilege('authenticated', 'public.project_file_search_content', 'INSERT'),
+  has_table_privilege('authenticated', 'public.project_file_search_chunks', 'INSERT'),
   false,
   'authenticated clients cannot bypass the search-index upsert RPC'
 );
@@ -66,7 +66,7 @@ values
   ),
   (
     '95000000-0000-4000-8000-000000000002',
-    '00000000-0000-0000-8000-000000000000',
+    '00000000-0000-0000-0000-000000000000',
     'authenticated', 'authenticated', 'search-viewer@example.test', '', now(), '{}', '{}', now(), now()
   ),
   (
@@ -152,14 +152,14 @@ select public.upsert_project_file_search_content(
   '96000000-0000-4000-8000-000000000001'::uuid,
   'project-a',
   '97000000-0000-4000-8000-000000000001'::uuid,
-  'Здесь описана архитектура приложения и поиск по содержимому файлов.',
+  array['Здесь описана архитектура приложения и поиск по содержимому файлов.'],
   1
 );
 select public.upsert_project_file_search_content(
   '96000000-0000-4000-8000-000000000001'::uuid,
   'project-b',
   '97000000-0000-4000-8000-000000000002'::uuid,
-  'Здесь тоже описана архитектура приложения, но это другой проект.',
+  array['Здесь тоже описана архитектура приложения, но это другой проект.'],
   1
 );
 
@@ -255,12 +255,24 @@ select throws_ok(
        '96000000-0000-4000-8000-000000000001'::uuid,
        'project-a',
        '97000000-0000-4000-8000-000000000005'::uuid,
-       'viewer must not index files',
+       array['viewer must not index files'],
        1
      ) $$,
   '42501',
   'Project file search content access denied',
   'viewer cannot write derived search content'
+);
+select throws_ok(
+  $$ select *
+     from public.list_project_files_needing_search_content(
+       '96000000-0000-4000-8000-000000000001'::uuid,
+       'project-a',
+       1,
+       24
+     ) $$,
+  '42501',
+  'Project file search content access denied',
+  'viewer cannot trigger search-content backfill writes'
 );
 
 select set_config('request.jwt.claim.sub', '95000000-0000-4000-8000-000000000003', true);
