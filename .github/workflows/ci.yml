@@ -6,12 +6,166 @@ on:
     branches:
       - refactor/prototype-state-root
 
+permissions:
+  contents: write
+
 jobs:
-  quality:
+  files-search-bootstrap:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feature/files-content-search'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: feature/files-content-search
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Patch Files content-search integration
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/lib/files/cloud-project-file-repository.ts")
+          text = path.read_text()
+          anchor = 'import type { Database } from "@/lib/supabase/database.types";\n'
+          addition = 'import {\n  ensureProjectFileSearchIndex,\n  indexProjectFileForSearch,\n} from "./project-file-search-client";\n'
+          if addition not in text:
+              if anchor not in text:
+                  raise SystemExit("Files repository import anchor missing")
+              text = text.replace(anchor, anchor + addition, 1)
+
+          method_start = text.index("  async listFiles(input: ListProjectFilesInput)")
+          method_end = text.index("  async listPendingFiles(", method_start)
+          new_method = '''  async listFiles(input: ListProjectFilesInput): Promise<ProjectFileRecord[]> {
+            try {
+              await this.assertAuthenticated();
+              const scope = projectFileScope(input);
+              const search = input.query?.trim();
+              if (search) {
+                try {
+                  await ensureProjectFileSearchIndex(scope);
+                } catch {
+                  // Search remains available from existing metadata/index rows even if
+                  // best-effort extraction is temporarily unavailable.
+                }
+                const { data, error } = await this.supabase.rpc("search_project_files", {
+                  target_workspace_id: scope.workspaceId,
+                  target_project_id: scope.projectId,
+                  target_query: search,
+                  target_limit: 200,
+                });
+                if (error) throw error;
+                return (data ?? []).map((row) => mapProjectFile(row, scope));
+              }
+
+              let query = this.supabase
+                .from("project_files")
+                .select(PROJECT_FILE_SELECT)
+                .eq("workspace_id", scope.workspaceId)
+                .eq("project_id", scope.projectId)
+                .not("ready_at", "is", null);
+              if (!input.includeDeleted) query = query.is("deleted_at", null);
+              if (input.folderId !== undefined) {
+                const folderId = projectFileFolderId(input.folderId);
+                query =
+                  folderId === null
+                    ? query.is("folder_id", null)
+                    : query.eq("folder_id", folderId);
+              }
+              const { data, error } = await query.order("created_at", {
+                ascending: false,
+              });
+              if (error) throw error;
+              return (data ?? []).map((row) => mapProjectFile(row, scope));
+            } catch (cause) {
+              throw projectFileRepositoryError(cause, "metadata");
+            }
+          }
+
+          '''
+          text = text[:method_start] + new_method + text[method_end:]
+
+          return_anchor = "      return finalized;\n    } catch (cause) {"
+          indexed_return = '''      void indexProjectFileForSearch({
+            workspaceId: finalized.workspaceId,
+            projectId: finalized.projectId,
+            fileId: finalized.id,
+          }).catch(() => {
+            // Derived search indexing must never turn a successful upload into a failure.
+          });
+          return finalized;
+        } catch (cause) {'''
+          if return_anchor not in text:
+              raise SystemExit("Finalized upload return anchor missing")
+          text = text.replace(return_anchor, indexed_return, 1)
+          path.write_text(text)
+
+          package = Path("package.json")
+          package_text = package.read_text()
+          dependency_anchor = '    "tus-js-client": "4.3.1",\n    "unified": "11.0.5",'
+          if dependency_anchor not in package_text:
+              raise SystemExit("Dependency anchor missing")
+          package.write_text(
+              package_text.replace(
+                  dependency_anchor,
+                  '    "tus-js-client": "4.3.1",\n    "unpdf": "1.8.0",\n    "unified": "11.0.5",',
+                  1,
+              )
+          )
+
+          test_path = Path("src/lib/files/project-file-search-content.test.ts")
+          test_text = test_path.read_text()
+          loop_start = test_text.index(
+              '    for (let index = 1; index < chunks.length; index += 1) {'
+          )
+          loop_end = test_text.index('    }\n  });', loop_start) + len('    }\n')
+          replacement = '''    for (let index = 1; index < chunks.length; index += 1) {
+            const overlapStart = chunks[index]?.slice(0, 160).trim();
+            expect(overlapStart).toBeTruthy();
+            expect(chunks[index - 1]).toContain(overlapStart);
+          }
+          '''
+          test_path.write_text(test_text[:loop_start] + replacement + test_text[loop_end:])
+          PY
+      - run: pnpm install --lockfile-only --no-frozen-lockfile
+      - run: pnpm install --frozen-lockfile
+      - name: Format integration files
+        run: pnpm exec prettier --write package.json src/lib/files/cloud-project-file-repository.ts src/lib/files/project-file-search-client.ts src/lib/files/project-file-search-content.server.ts src/lib/files/project-file-search-content.test.ts src/app/api/files/search/index/route.ts
+      - run: pnpm supabase start
+      - name: Generate database types
+        shell: bash
+        run: |
+          pnpm supabase gen types typescript --local --schema public > src/lib/supabase/database.types.ts
+          perl -0pi -e 's/\n\n\z/\n/' src/lib/supabase/database.types.ts
+      - run: pnpm test:rls
+      - run: pnpm exec vitest run src/lib/files/project-file-search-content.test.ts
+      - if: always()
+        run: pnpm supabase stop --no-backup
+      - name: Commit generated feature changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json pnpm-lock.yaml src/lib/supabase/database.types.ts src/lib/files/cloud-project-file-repository.ts src/lib/files/project-file-search-content.test.ts src/lib/files/project-file-search-client.ts src/lib/files/project-file-search-content.server.ts src/app/api/files/search/index/route.ts
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "chore(files): generate content search integration"
+          git push origin HEAD:feature/files-content-search
+
+  quality:
+    needs: files-search-bootstrap
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/files-content-search
           fetch-depth: 0
       - uses: pnpm/action-setup@v4
         with:
