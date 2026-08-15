@@ -2,6 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/supabase/database.types";
 import {
+  ensureProjectFileSearchIndex,
+  indexProjectFileForSearch,
+} from "./project-file-search-client";
+import {
   PROJECT_FILES_BUCKET,
   type CreateProjectFolderInput,
   type ListProjectFilesInput,
@@ -266,6 +270,27 @@ export class SupabaseProjectFileRepository implements ProjectFileRepository {
     try {
       await this.assertAuthenticated();
       const scope = projectFileScope(input);
+      const search = input.query?.trim();
+      if (search) {
+        try {
+          await ensureProjectFileSearchIndex(scope);
+        } catch {
+          // Search remains available from existing metadata/index rows even if
+          // best-effort extraction is temporarily unavailable.
+        }
+        const { data, error } = await this.supabase.rpc(
+          "search_project_files",
+          {
+            target_workspace_id: scope.workspaceId,
+            target_project_id: scope.projectId,
+            target_query: search,
+            target_limit: 200,
+          },
+        );
+        if (error) throw error;
+        return (data ?? []).map((row) => mapProjectFile(row, scope));
+      }
+
       let query = this.supabase
         .from("project_files")
         .select(PROJECT_FILE_SELECT)
@@ -279,13 +304,6 @@ export class SupabaseProjectFileRepository implements ProjectFileRepository {
           folderId === null
             ? query.is("folder_id", null)
             : query.eq("folder_id", folderId);
-      }
-      const search = input.query?.trim();
-      if (search) {
-        query = query.textSearch("search_tsv", search, {
-          config: "simple",
-          type: "websearch",
-        });
       }
       const { data, error } = await query.order("created_at", {
         ascending: false,
@@ -574,6 +592,13 @@ export class SupabaseProjectFileRepository implements ProjectFileRepository {
       if (resumableReservationKey) {
         this.removeResumableFileId(resumableReservationKey);
       }
+      void indexProjectFileForSearch({
+        workspaceId: finalized.workspaceId,
+        projectId: finalized.projectId,
+        fileId: finalized.id,
+      }).catch(() => {
+        // Derived search indexing must never turn a successful upload into a failure.
+      });
       return finalized;
     } catch (cause) {
       if (

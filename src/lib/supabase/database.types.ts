@@ -448,6 +448,50 @@ export type Database = {
           },
         ]
       }
+      project_file_search_chunks: {
+        Row: {
+          chunk_index: number
+          extracted_text: string
+          extractor_version: number
+          file_id: string
+          indexed_at: string
+          project_id: string
+          search_tsv: unknown
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          chunk_index: number
+          extracted_text?: string
+          extractor_version?: number
+          file_id: string
+          indexed_at?: string
+          project_id: string
+          search_tsv?: unknown
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          chunk_index?: number
+          extracted_text?: string
+          extractor_version?: number
+          file_id?: string
+          indexed_at?: string
+          project_id?: string
+          search_tsv?: unknown
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_file_search_chunks_parent_fkey"
+            columns: ["workspace_id", "project_id", "file_id"]
+            isOneToOne: false
+            referencedRelation: "project_files"
+            referencedColumns: ["workspace_id", "project_id", "id"]
+          },
+        ]
+      }
       project_files: {
         Row: {
           byte_size: number
@@ -1112,6 +1156,40 @@ export type Database = {
         Args: { target_workspace_id: string }
         Returns: boolean
       }
+      list_project_files_needing_search_content: {
+        Args: {
+          target_extractor_version?: number
+          target_limit?: number
+          target_project_id: string
+          target_workspace_id: string
+        }
+        Returns: {
+          byte_size: number
+          checksum: string | null
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          folder_id: string | null
+          height: number | null
+          id: string
+          mime_type: string
+          name: string
+          original_name: string
+          project_id: string
+          ready_at: string | null
+          search_tsv: unknown
+          storage_key: string
+          updated_at: string
+          width: number | null
+          workspace_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "project_files"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       move_canvas_group: {
         Args: { target_group_id: string; target_parent_group_id: string }
         Returns: {
@@ -1496,6 +1574,50 @@ export type Database = {
           revision: number
           status: string
         }[]
+      }
+      search_project_files: {
+        Args: {
+          target_limit?: number
+          target_project_id: string
+          target_query: string
+          target_workspace_id: string
+        }
+        Returns: {
+          byte_size: number
+          checksum: string | null
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          folder_id: string | null
+          height: number | null
+          id: string
+          mime_type: string
+          name: string
+          original_name: string
+          project_id: string
+          ready_at: string | null
+          search_tsv: unknown
+          storage_key: string
+          updated_at: string
+          width: number | null
+          workspace_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "project_files"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      upsert_project_file_search_content: {
+        Args: {
+          target_chunks: string[]
+          target_extractor_version?: number
+          target_file_id: string
+          target_project_id: string
+          target_workspace_id: string
+        }
+        Returns: undefined
       }
       validate_canvas_document_v1: {
         Args: { target_document: Json; target_schema_version: number }

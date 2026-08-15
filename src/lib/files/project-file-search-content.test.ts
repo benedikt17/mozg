@@ -10,7 +10,9 @@ import {
 
 import type { ProjectFileMimeType } from "./project-file-repository";
 
-function createStoredZip(entries: Array<{ name: string; content: string }>): Buffer {
+function createStoredZip(
+  entries: Array<{ name: string; content: string }>,
+): Buffer {
   const localParts: Buffer[] = [];
   const centralParts: Buffer[] = [];
   let localOffset = 0;
@@ -78,9 +80,9 @@ describe("Project file content search extraction", () => {
   });
 
   it("normalizes line endings and repeated whitespace", () => {
-    expect(normalizeProjectFileSearchText("  Один\r\n\tдва   три\n\n\nчетыре  ")).toBe(
-      "Один\nдва три\n\nчетыре",
-    );
+    expect(
+      normalizeProjectFileSearchText("  Один\r\n\tдва   три\n\n\nчетыре  "),
+    ).toBe("Один\nдва три\n\nчетыре");
   });
 
   it("keeps chunks within the database byte limit and overlaps boundaries", () => {
@@ -91,14 +93,16 @@ describe("Project file content search extraction", () => {
     expect(chunks.length).toBeGreaterThan(1);
     expect(
       chunks.every(
-        (chunk) => Buffer.byteLength(chunk, "utf8") <= PROJECT_FILE_SEARCH_CHUNK_MAX_BYTES,
+        (chunk) =>
+          Buffer.byteLength(chunk, "utf8") <=
+          PROJECT_FILE_SEARCH_CHUNK_MAX_BYTES,
       ),
     ).toBe(true);
     expect(chunks.some((chunk) => chunk.includes(marker))).toBe(true);
     for (let index = 1; index < chunks.length; index += 1) {
-      expect(chunks[index - 1]?.slice(-120)).toContain(
-        chunks[index]?.slice(0, 120).trim().slice(0, 24),
-      );
+      const overlapStart = chunks[index]?.slice(0, 160).trim();
+      expect(overlapStart).toBeTruthy();
+      expect(chunks[index - 1]).toContain(overlapStart);
     }
   });
 
@@ -108,7 +112,9 @@ describe("Project file content search extraction", () => {
 
   it("extracts text from plain text documents", async () => {
     const text = await extractProjectFileSearchText(
-      new Blob(["Кощей   ищет\nархитектуру приложения"], { type: "text/plain" }),
+      new Blob(["Кощей   ищет\nархитектуру приложения"], {
+        type: "text/plain",
+      }),
       "text/plain",
     );
     expect(text).toBe("Кощей ищет\nархитектуру приложения");
@@ -123,7 +129,10 @@ describe("Project file content search extraction", () => {
         content:
           '<?xml version="1.0"?><w:document xmlns:w="x"><w:body><w:p><w:r><w:t>Архитектура приложения</w:t></w:r></w:p><w:p><w:r><w:t>Кощей &amp; Яга</w:t></w:r></w:p></w:body></w:document>',
       },
-      { name: "docProps/core.xml", content: "<root>СЕКРЕТНЫЕ МЕТАДАННЫЕ</root>" },
+      {
+        name: "docProps/core.xml",
+        content: "<root>СЕКРЕТНЫЕ МЕТАДАННЫЕ</root>",
+      },
     ]);
 
     const text = await extractProjectFileSearchText(blob, mimeType);
@@ -138,11 +147,12 @@ describe("Project file content search extraction", () => {
     const blob = officeBlob(mimeType, [
       {
         name: "xl/sharedStrings.xml",
-        content: '<sst><si><t>Поиск по содержимому</t></si></sst>',
+        content: "<sst><si><t>Поиск по содержимому</t></si></sst>",
       },
       {
         name: "xl/worksheets/sheet1.xml",
-        content: '<worksheet><sheetData><row><c><v>42</v></c></row></sheetData></worksheet>',
+        content:
+          "<worksheet><sheetData><row><c><v>42</v></c></row></sheetData></worksheet>",
       },
     ]);
 
@@ -157,11 +167,13 @@ describe("Project file content search extraction", () => {
     const blob = officeBlob(mimeType, [
       {
         name: "ppt/slides/slide1.xml",
-        content: '<p:sld><a:p><a:r><a:t>Фраза на слайде</a:t></a:r></a:p></p:sld>',
+        content:
+          "<p:sld><a:p><a:r><a:t>Фраза на слайде</a:t></a:r></a:p></p:sld>",
       },
       {
         name: "ppt/notesSlides/notesSlide1.xml",
-        content: '<p:notes><a:p><a:r><a:t>Заметка докладчика</a:t></a:r></a:p></p:notes>',
+        content:
+          "<p:notes><a:p><a:r><a:t>Заметка докладчика</a:t></a:r></a:p></p:notes>",
       },
     ]);
 

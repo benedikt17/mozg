@@ -91,7 +91,9 @@ export function chunkProjectFileSearchText(value: string): string[] {
     }
 
     const chunk = text.slice(start, end).trim();
-    if (Buffer.byteLength(chunk, "utf8") > PROJECT_FILE_SEARCH_CHUNK_MAX_BYTES) {
+    if (
+      Buffer.byteLength(chunk, "utf8") > PROJECT_FILE_SEARCH_CHUNK_MAX_BYTES
+    ) {
       throw new Error("Project file search chunk exceeds the database limit.");
     }
     chunks.push(chunk);
@@ -368,7 +370,8 @@ function decodeXmlEntities(value: string): string {
     /&(?:#(\d+)|#x([0-9a-f]+)|amp|lt|gt|quot|apos);/gi,
     (entity, decimal: string | undefined, hexadecimal: string | undefined) => {
       if (decimal) return String.fromCodePoint(Number.parseInt(decimal, 10));
-      if (hexadecimal) return String.fromCodePoint(Number.parseInt(hexadecimal, 16));
+      if (hexadecimal)
+        return String.fromCodePoint(Number.parseInt(hexadecimal, 16));
       switch (entity.toLowerCase()) {
         case "&amp;":
           return "&";

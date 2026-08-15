@@ -56,7 +56,10 @@ export async function POST(request: Request): Promise<Response> {
     },
   );
   if (roleError) {
-    return NextResponse.json({ error: "authorization-failed" }, { status: 403 });
+    return NextResponse.json(
+      { error: "authorization-failed" },
+      { status: 403 },
+    );
   }
   if (!mayIndex) {
     return NextResponse.json({ indexed: 0, failures: [], readOnly: true });
@@ -80,7 +83,10 @@ export async function POST(request: Request): Promise<Response> {
       });
 
   if (candidatesResult.error) {
-    return NextResponse.json({ error: "candidate-query-failed" }, { status: 500 });
+    return NextResponse.json(
+      { error: "candidate-query-failed" },
+      { status: 500 },
+    );
   }
 
   const rawCandidates = input.fileId

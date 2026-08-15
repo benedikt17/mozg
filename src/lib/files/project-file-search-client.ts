@@ -18,7 +18,9 @@ async function requestIndex(body: {
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    throw new Error(`Project file search indexing failed with ${response.status}.`);
+    throw new Error(
+      `Project file search indexing failed with ${response.status}.`,
+    );
   }
 }
 
