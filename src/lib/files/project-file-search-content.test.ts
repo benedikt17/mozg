@@ -64,7 +64,8 @@ function officeBlob(
   mimeType: ProjectFileMimeType,
   entries: Array<{ name: string; content: string }>,
 ): Blob {
-  return new Blob([createStoredZip(entries)], { type: mimeType });
+  const archive = Uint8Array.from(createStoredZip(entries));
+  return new Blob([archive], { type: mimeType });
 }
 
 describe("Project file content search extraction", () => {
