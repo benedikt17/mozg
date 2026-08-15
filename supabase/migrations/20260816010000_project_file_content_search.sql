@@ -147,8 +147,8 @@ security definer
 set search_path = pg_catalog, public
 as $$
 begin
-  if not public.is_workspace_member(target_workspace_id) then
-    raise exception using errcode = '42501', message = 'Project file search access denied';
+  if not public.has_workspace_role(target_workspace_id, array['owner', 'editor']) then
+    raise exception using errcode = '42501', message = 'Project file search content access denied';
   end if;
 
   if target_extractor_version is null
