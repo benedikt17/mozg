@@ -70,42 +70,50 @@ export async function POST(request: Request): Promise<Response> {
     });
   }
 
-  const candidatesResult = input.fileId
-    ? await supabase
-        .from("project_files")
-        .select("id,workspace_id,project_id,storage_key,mime_type")
-        .eq("workspace_id", input.workspaceId)
-        .eq("project_id", input.projectId)
-        .eq("id", input.fileId)
-        .not("ready_at", "is", null)
-        .is("deleted_at", null)
-        .maybeSingle()
-    : await supabase.rpc("list_project_files_needing_search_content", {
+  let candidates: IndexCandidate[];
+  if (input.fileId) {
+    const { data, error } = await supabase
+      .from("project_files")
+      .select("id,workspace_id,project_id,storage_key,mime_type")
+      .eq("workspace_id", input.workspaceId)
+      .eq("project_id", input.projectId)
+      .eq("id", input.fileId)
+      .not("ready_at", "is", null)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (error) {
+      return NextResponse.json(
+        { error: "candidate-query-failed" },
+        { status: 500 },
+      );
+    }
+    candidates = data ? [data] : [];
+  } else {
+    const { data, error } = await supabase.rpc(
+      "list_project_files_needing_search_content",
+      {
         target_workspace_id: input.workspaceId,
         target_project_id: input.projectId,
         target_extractor_version: PROJECT_FILE_SEARCH_EXTRACTOR_VERSION,
-        target_limit: input.limit ?? 8,
-      });
-
-  if (candidatesResult.error) {
-    return NextResponse.json(
-      { error: "candidate-query-failed" },
-      { status: 500 },
+        target_limit: input.limit ?? 24,
+      },
     );
-  }
 
-  const rawCandidates = input.fileId
-    ? candidatesResult.data
-      ? [candidatesResult.data]
-      : []
-    : (candidatesResult.data ?? []);
-  const candidates: IndexCandidate[] = rawCandidates.map((row) => ({
-    id: row.id,
-    workspace_id: row.workspace_id,
-    project_id: row.project_id,
-    storage_key: row.storage_key,
-    mime_type: row.mime_type,
-  }));
+    if (error) {
+      return NextResponse.json(
+        { error: "candidate-query-failed" },
+        { status: 500 },
+      );
+    }
+    candidates = (data ?? []).map((row) => ({
+      id: row.id,
+      workspace_id: row.workspace_id,
+      project_id: row.project_id,
+      storage_key: row.storage_key,
+      mime_type: row.mime_type,
+    }));
+  }
 
   const failures: IndexFailure[] = [];
   let indexed = 0;
