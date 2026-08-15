@@ -62,7 +62,12 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
   if (!mayIndex) {
-    return NextResponse.json({ indexed: 0, failures: [], readOnly: true });
+    return NextResponse.json({
+      attempted: 0,
+      indexed: 0,
+      failures: [],
+      readOnly: true,
+    });
   }
 
   const candidatesResult = input.fileId
@@ -161,7 +166,12 @@ export async function POST(request: Request): Promise<Response> {
     indexed += 1;
   }
 
-  return NextResponse.json({ indexed, failures, readOnly: false });
+  return NextResponse.json({
+    attempted: candidates.length,
+    indexed,
+    failures,
+    readOnly: false,
+  });
 }
 
 async function readJson(request: Request): Promise<unknown> {
