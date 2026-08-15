@@ -1,6 +1,6 @@
 import type { ProjectFileScope } from "./project-file-repository";
 
-const PROJECT_FILE_SEARCH_INDEX_BATCH = 24;
+const PROJECT_FILE_SEARCH_INDEX_BATCH = 8;
 
 const inFlightScopeIndexes = new Map<string, Promise<void>>();
 const completedScopeIndexes = new Set<string>();
