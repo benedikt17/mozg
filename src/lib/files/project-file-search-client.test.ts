@@ -44,7 +44,9 @@ describe("Project file search index client", () => {
     await ensureProjectFileSearchIndex(scope);
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(fetchMock.mock.calls.map((call) => JSON.parse(call[1].body))).toEqual([
+    expect(
+      fetchMock.mock.calls.map((call) => JSON.parse(call[1].body)),
+    ).toEqual([
       { ...scope, limit: 8 },
       { ...scope, limit: 8 },
       { ...scope, limit: 8 },

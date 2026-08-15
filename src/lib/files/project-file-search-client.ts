@@ -48,7 +48,8 @@ async function completeProjectFileSearchIndex(
     if (result.readOnly) return true;
     if (result.attempted === 0) return true;
 
-    const retryableFailures = result.failures.length > 0 && result.indexed < result.attempted;
+    const retryableFailures =
+      result.failures.length > 0 && result.indexed < result.attempted;
     if (retryableFailures) return false;
     if (result.attempted < PROJECT_FILE_SEARCH_INDEX_BATCH) return true;
   }
