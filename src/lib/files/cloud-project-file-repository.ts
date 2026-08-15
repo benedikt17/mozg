@@ -278,17 +278,27 @@ export class SupabaseProjectFileRepository implements ProjectFileRepository {
           // Search remains available from existing metadata/index rows even if
           // best-effort extraction is temporarily unavailable.
         }
-        const { data, error } = await this.supabase.rpc(
-          "search_project_files",
-          {
-            target_workspace_id: scope.workspaceId,
-            target_project_id: scope.projectId,
-            target_query: search,
-            target_limit: 200,
-          },
-        );
-        if (error) throw error;
-        return (data ?? []).map((row) => mapProjectFile(row, scope));
+        const results: ProjectFileRecord[] = [];
+        const pageSize = 500;
+        let offset = 0;
+        while (true) {
+          const { data, error } = await this.supabase.rpc(
+            "search_project_files",
+            {
+              target_workspace_id: scope.workspaceId,
+              target_project_id: scope.projectId,
+              target_query: search,
+              target_limit: pageSize,
+              target_offset: offset,
+            },
+          );
+          if (error) throw error;
+          const page = data ?? [];
+          results.push(...page.map((row) => mapProjectFile(row, scope)));
+          if (page.length < pageSize) break;
+          offset += pageSize;
+        }
+        return results;
       }
 
       let query = this.supabase

@@ -1578,6 +1578,7 @@ export type Database = {
       search_project_files: {
         Args: {
           target_limit?: number
+          target_offset?: number
           target_project_id: string
           target_query: string
           target_workspace_id: string

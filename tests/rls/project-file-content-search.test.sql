@@ -22,7 +22,7 @@ select has_function(
 select has_function(
   'public',
   'search_project_files',
-  array['uuid', 'text', 'text', 'integer'],
+  array['uuid', 'text', 'text', 'integer', 'integer'],
   'Project-qualified Files search RPC exists'
 );
 select is(
@@ -38,7 +38,7 @@ select is(
 select is(
   has_function_privilege(
     'authenticated',
-    'public.search_project_files(uuid,text,text,integer)',
+    'public.search_project_files(uuid,text,text,integer,integer)',
     'EXECUTE'
   ),
   true,
@@ -47,7 +47,7 @@ select is(
 select is(
   has_function_privilege(
     'anon',
-    'public.search_project_files(uuid,text,text,integer)',
+    'public.search_project_files(uuid,text,text,integer,integer)',
     'EXECUTE'
   ),
   false,

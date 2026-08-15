@@ -206,7 +206,8 @@ create function public.search_project_files(
   target_workspace_id uuid,
   target_project_id text,
   target_query text,
-  target_limit integer default 200
+  target_limit integer default 500,
+  target_offset integer default 0
 )
 returns setof public.project_files
 language plpgsql
@@ -228,8 +229,9 @@ begin
     return;
   end if;
 
-  if target_limit is null or target_limit < 1 or target_limit > 500 then
-    raise exception using errcode = '22023', message = 'Project file search limit is invalid';
+  if target_limit is null or target_limit < 1 or target_limit > 500
+     or target_offset is null or target_offset < 0 then
+    raise exception using errcode = '22023', message = 'Project file search page is invalid';
   end if;
 
   russian_query := websearch_to_tsquery('russian'::regconfig, normalized_query);
@@ -272,7 +274,8 @@ begin
     ) desc,
     file_row.updated_at desc,
     file_row.id
-  limit target_limit;
+  limit target_limit
+  offset target_offset;
 end;
 $$;
 
@@ -280,12 +283,12 @@ revoke all on function public.upsert_project_file_search_content(uuid, text, uui
   from public, anon, authenticated;
 revoke all on function public.list_project_files_needing_search_content(uuid, text, integer, integer)
   from public, anon, authenticated;
-revoke all on function public.search_project_files(uuid, text, text, integer)
+revoke all on function public.search_project_files(uuid, text, text, integer, integer)
   from public, anon, authenticated;
 
 grant execute on function public.upsert_project_file_search_content(uuid, text, uuid, text[], integer)
   to authenticated;
 grant execute on function public.list_project_files_needing_search_content(uuid, text, integer, integer)
   to authenticated;
-grant execute on function public.search_project_files(uuid, text, text, integer)
+grant execute on function public.search_project_files(uuid, text, text, integer, integer)
   to authenticated;
