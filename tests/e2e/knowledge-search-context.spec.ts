@@ -63,16 +63,12 @@ test("Knowledge document Context follows the active article instead of the artic
     name: "Контекстная панель",
   });
   await expect(panel).toBeVisible();
-  await panel
-    .getByRole("tab", { name: "Исходящие", exact: true })
-    .click();
+  await panel.getByRole("tab", { name: "Исходящие", exact: true }).click();
   await expect(panel.getByText("Острова", { exact: true })).toBeVisible();
   await expect(
     panel.getByText("Пути между островами", { exact: true }),
   ).toBeVisible();
-  await expect(
-    panel.getByText("Правила магии", { exact: true }),
-  ).toBeVisible();
+  await expect(panel.getByText("Правила магии", { exact: true })).toBeVisible();
 
   const targetDocument = page.locator(
     '[data-knowledge-document-id="doc-l-routes"]',
