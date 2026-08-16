@@ -83,7 +83,7 @@ test("Knowledge document Context follows the active article instead of the artic
   await expect(
     panel.getByText("Исходящих ссылок нет.", { exact: true }),
   ).toBeVisible();
-  await expect(
-    panel.getByText("Правила магии", { exact: true }),
-  ).toHaveCount(0);
+  await expect(panel.getByText("Правила магии", { exact: true })).toHaveCount(
+    0,
+  );
 });
