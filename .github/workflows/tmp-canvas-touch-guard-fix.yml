@@ -23,12 +23,8 @@ jobs:
           from pathlib import Path
           path = Path("src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx")
           text = path.read_text()
-          old = '''      const guardedChanges = touchViewportGestureActiveRef.current
-                ? guardedChanges.filter(
-          '''
-          new = '''      const guardedChanges = touchViewportGestureActiveRef.current
-                ? changes.filter(
-          '''
+          old = "? guardedChanges.filter("
+          new = "? changes.filter("
           if text.count(old) != 1:
               raise SystemExit(f"expected one broken guard, found {text.count(old)}")
           path.write_text(text.replace(old, new, 1))
