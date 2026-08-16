@@ -182,7 +182,8 @@ function matchesSearchTerms(value: string, terms: readonly string[]): boolean {
 
 function getProjectName(state: CommandSearchState, projectId: string): string {
   return (
-    state.projects.find((project) => project.id === projectId)?.name ?? projectId
+    state.projects.find((project) => project.id === projectId)?.name ??
+    projectId
   );
 }
 
