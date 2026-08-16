@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./knowledge-annotations.module.css";
+import { reanchorKnowledgeAnnotation } from "./knowledge-annotation-reanchor";
 import {
   createKnowledgeAnnotation,
   createKnowledgeAnnotationSelection,
@@ -176,6 +177,7 @@ export function KnowledgeAnnotationsRuntime({
   const [commentDraft, setCommentDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [reanchorId, setReanchorId] = useState<string | null>(null);
   const [orphanIds, setOrphanIds] = useState<Set<string>>(new Set());
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pageRef = useRef<HTMLElement | null>(null);
@@ -230,6 +232,7 @@ export function KnowledgeAnnotationsRuntime({
       setSelectionAction(null);
       setDraftSelection(null);
       setCommentDraft("");
+      setReanchorId(null);
       setPanelOpen(false);
       setShowResolved(false);
       setError(null);
@@ -264,6 +267,18 @@ export function KnowledgeAnnotationsRuntime({
       cancelled = true;
     };
   }, [activeDocumentId, workspaceId]);
+
+  useEffect(() => {
+    if (isReading) return;
+    setReanchorId(null);
+    setSelectionAction(null);
+  }, [isReading]);
+
+  useEffect(() => {
+    if (panelOpen) return;
+    setReanchorId(null);
+    setSelectionAction(null);
+  }, [panelOpen]);
 
   useEffect(() => {
     if (!isReading || !activeDocumentId) return;
@@ -386,14 +401,45 @@ export function KnowledgeAnnotationsRuntime({
         }),
     [annotations, showResolved],
   );
+  const reanchorAnnotation = useMemo(
+    () =>
+      reanchorId
+        ? (annotations.find((annotation) => annotation.id === reanchorId) ?? null)
+        : null,
+    [annotations, reanchorId],
+  );
 
   if (!activeDocumentId) return null;
 
   const beginComment = (): void => {
     if (!selectionAction) return;
+    setReanchorId(null);
     setDraftSelection(selectionAction.selection);
     setCommentDraft("");
     setPanelOpen(true);
+    setSelectionAction(null);
+    window.getSelection()?.removeAllRanges();
+  };
+
+  const beginReanchor = (annotation: KnowledgeAnnotation): void => {
+    if (
+      !isReading ||
+      annotation.resolvedAt !== null ||
+      updatingId !== null
+    ) {
+      return;
+    }
+    setDraftSelection(null);
+    setCommentDraft("");
+    setReanchorId(annotation.id);
+    setSelectionAction(null);
+    setPanelOpen(true);
+    setError(null);
+    window.getSelection()?.removeAllRanges();
+  };
+
+  const cancelReanchor = (): void => {
+    setReanchorId(null);
     setSelectionAction(null);
     window.getSelection()?.removeAllRanges();
   };
@@ -428,6 +474,33 @@ export function KnowledgeAnnotationsRuntime({
     }
   };
 
+  const saveReanchor = async (): Promise<void> => {
+    if (!selectionAction || !reanchorId || updatingId !== null) return;
+    const annotation = annotations.find((item) => item.id === reanchorId);
+    if (!annotation) {
+      cancelReanchor();
+      return;
+    }
+    const updated = reanchorKnowledgeAnnotation(
+      annotation,
+      selectionAction.selection,
+      new Date().toISOString(),
+    );
+    setUpdatingId(annotation.id);
+    setError(null);
+    try {
+      await updateKnowledgeAnnotation(updated, persistenceMode);
+      setAnnotations((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      cancelReanchor();
+    } catch {
+      setError("Не удалось привязать комментарий.");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   const toggleResolved = async (
     annotation: KnowledgeAnnotation,
   ): Promise<void> => {
@@ -438,6 +511,7 @@ export function KnowledgeAnnotationsRuntime({
       updatedAt: now,
       resolvedAt: annotation.resolvedAt === null ? now : null,
     };
+    if (reanchorId === annotation.id) cancelReanchor();
     setUpdatingId(annotation.id);
     setError(null);
     try {
@@ -470,11 +544,15 @@ export function KnowledgeAnnotationsRuntime({
         <button
           className={styles.selectionAction}
           data-knowledge-annotations-ui="true"
-          onClick={beginComment}
+          disabled={Boolean(reanchorId && updatingId === reanchorId)}
+          onClick={() =>
+            reanchorId ? void saveReanchor() : beginComment()
+          }
           style={{ left: selectionAction.left, top: selectionAction.top }}
           type="button"
         >
-          <span aria-hidden="true">＋</span> Комментарий
+          <span aria-hidden="true">{reanchorId ? "↗" : "＋"}</span>{" "}
+          {reanchorId ? "Привязать" : "Комментарий"}
         </button>
       ) : null}
 
@@ -518,6 +596,28 @@ export function KnowledgeAnnotationsRuntime({
             <div className={styles.previewNotice}>
               Preview: комментарии пока сохраняются только в этом браузере.
             </div>
+          ) : null}
+
+          {reanchorAnnotation ? (
+            <section className={styles.composer}>
+              <div className={styles.quote}>
+                “{compactQuote(reanchorAnnotation.selectedText)}”
+              </div>
+              <div>
+                Выделите новый фрагмент текста и нажмите «Привязать» рядом с
+                выделением.
+              </div>
+              <div className={styles.composerActions}>
+                <button
+                  className={styles.secondaryButton}
+                  disabled={updatingId === reanchorAnnotation.id}
+                  onClick={cancelReanchor}
+                  type="button"
+                >
+                  Отмена
+                </button>
+              </div>
+            </section>
           ) : null}
 
           {draftSelection ? (
@@ -568,50 +668,64 @@ export function KnowledgeAnnotationsRuntime({
                 Выделите фрагмент текста и добавьте комментарий.
               </div>
             ) : (
-              visibleAnnotations.map((annotation) => (
-                <article
-                  className={`${styles.commentCard} ${
-                    annotation.resolvedAt ? styles.resolved : ""
-                  }`}
-                  key={annotation.id}
-                >
-                  <button
-                    className={styles.quoteButton}
-                    disabled={
-                      annotation.resolvedAt !== null ||
-                      orphanIds.has(annotation.id) ||
-                      !isReading
-                    }
-                    onClick={() => scrollToAnnotation(annotation)}
-                    title="Перейти к фрагменту"
-                    type="button"
+              visibleAnnotations.map((annotation) => {
+                const orphaned =
+                  orphanIds.has(annotation.id) && annotation.resolvedAt === null;
+                return (
+                  <article
+                    className={`${styles.commentCard} ${
+                      annotation.resolvedAt ? styles.resolved : ""
+                    }`}
+                    key={annotation.id}
                   >
-                    “{compactQuote(annotation.selectedText)}”
-                  </button>
-                  {orphanIds.has(annotation.id) &&
-                  annotation.resolvedAt === null ? (
-                    <span className={styles.orphan}>Фрагмент изменён</span>
-                  ) : null}
-                  <p>{annotation.comment}</p>
-                  <footer>
-                    <span>
-                      {new Intl.DateTimeFormat("ru", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      }).format(new Date(annotation.createdAt))}
-                    </span>
                     <button
-                      disabled={updatingId === annotation.id}
-                      onClick={() => void toggleResolved(annotation)}
+                      className={styles.quoteButton}
+                      disabled={
+                        annotation.resolvedAt !== null || orphaned || !isReading
+                      }
+                      onClick={() => scrollToAnnotation(annotation)}
+                      title="Перейти к фрагменту"
                       type="button"
                     >
-                      {annotation.resolvedAt ? "Вернуть" : "Решено ✓"}
+                      “{compactQuote(annotation.selectedText)}”
                     </button>
-                  </footer>
-                </article>
-              ))
+                    {orphaned ? (
+                      <span className={styles.orphan}>Фрагмент изменён</span>
+                    ) : null}
+                    <p>{annotation.comment}</p>
+                    <footer>
+                      <span>
+                        {new Intl.DateTimeFormat("ru", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        }).format(new Date(annotation.createdAt))}
+                      </span>
+                      <span>
+                        {orphaned ? (
+                          <button
+                            disabled={updatingId !== null}
+                            onClick={() => beginReanchor(annotation)}
+                            type="button"
+                          >
+                            {reanchorId === annotation.id
+                              ? "Привязка…"
+                              : "Привязать"}
+                          </button>
+                        ) : null}{" "}
+                        <button
+                          disabled={updatingId === annotation.id}
+                          onClick={() => void toggleResolved(annotation)}
+                          type="button"
+                        >
+                          {annotation.resolvedAt ? "Вернуть" : "Решено ✓"}
+                        </button>
+                      </span>
+                    </footer>
+                  </article>
+                );
+              })
             )}
           </div>
 
