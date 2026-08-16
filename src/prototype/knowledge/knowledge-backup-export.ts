@@ -54,6 +54,7 @@ type DocumentExport = {
 
 const textEncoder = new TextEncoder();
 const windowsReservedName = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
+const invalidWindowsPathCharacters = '<>:"/\\|?*';
 
 export function createKnowledgeBackup(
   source: KnowledgeBackupSource,
@@ -121,8 +122,9 @@ export function createKnowledgeBackupEntries(
     if (!projectRoot) continue;
     const originalFolderPath = getDocumentFolderPath(document);
     const folderPath =
-      folderPathByProject.get(folderMapKey(document.projectId, originalFolderPath)) ??
-      [];
+      folderPathByProject.get(
+        folderMapKey(document.projectId, originalFolderPath),
+      ) ?? [];
     const target = { document, folderPath, projectRoot };
     if (document.deletedAt === undefined) activeDocuments.push(target);
     else deletedDocuments.push(target);
@@ -210,7 +212,7 @@ function getProjectDescriptors(source: KnowledgeBackupSource): ProjectDescriptor
 
 function createProjectRoots(projects: ProjectDescriptor[]): Map<string, string> {
   const result = new Map<string, string>();
-  const usedRootNames = new Set<string>(["_Корзина"]);
+  const usedRootNames = new Set<string>(["_корзина"]);
   for (const project of projects) {
     result.set(
       project.id,
@@ -233,7 +235,7 @@ function createFolderPathMap(
       const parent = path.slice(0, -1);
       const parentExported =
         result.get(folderMapKey(project.id, parent)) ?? [];
-      const parentKey = parentExported.join("/");
+      const parentKey = JSON.stringify(parentExported);
       const usedNames = getOrCreateSet(usedNamesByParent, parentKey);
       const segment = createUniqueSegment(
         path.at(-1) ?? "Папка",
@@ -255,7 +257,7 @@ function getProjectFolderPaths(
   const addPath = (path: string[]): void => {
     for (let index = 1; index <= path.length; index += 1) {
       const prefix = path.slice(0, index);
-      paths.set(prefix.join("\u0000"), prefix);
+      paths.set(JSON.stringify(prefix), prefix);
     }
   };
   for (const folder of folders) {
@@ -266,7 +268,7 @@ function getProjectFolderPaths(
   }
   return [...paths.values()].sort((left, right) => {
     if (left.length !== right.length) return left.length - right.length;
-    return left.join("\u0000").localeCompare(right.join("\u0000"), "ru");
+    return JSON.stringify(left).localeCompare(JSON.stringify(right), "ru");
   });
 }
 
@@ -277,9 +279,10 @@ function getDocumentFolderPath(document: PrototypeDocument): string[] {
 function compareDocuments(left: PrototypeDocument, right: PrototypeDocument): number {
   const projectOrder = left.projectId.localeCompare(right.projectId);
   if (projectOrder !== 0) return projectOrder;
-  const folderOrder = getDocumentFolderPath(left)
-    .join("\u0000")
-    .localeCompare(getDocumentFolderPath(right).join("\u0000"), "ru");
+  const folderOrder = JSON.stringify(getDocumentFolderPath(left)).localeCompare(
+    JSON.stringify(getDocumentFolderPath(right)),
+    "ru",
+  );
   if (folderOrder !== 0) return folderOrder;
   const explicitOrder = (left.order ?? 0) - (right.order ?? 0);
   if (explicitOrder !== 0) return explicitOrder;
@@ -288,7 +291,7 @@ function compareDocuments(left: PrototypeDocument, right: PrototypeDocument): nu
 }
 
 function folderMapKey(projectId: string, path: string[]): string {
-  return `${projectId}\u0001${path.join("\u0000")}`;
+  return `${projectId}:${JSON.stringify(path)}`;
 }
 
 function createUniqueSegment(
@@ -297,45 +300,56 @@ function createUniqueSegment(
   fallback: string,
 ): string {
   const base = sanitizePathSegment(input, fallback);
-  if (!usedNames.has(base.toLocaleLowerCase("ru"))) {
-    usedNames.add(base.toLocaleLowerCase("ru"));
+  const normalizedBase = normalizeFileSystemName(base);
+  if (!usedNames.has(normalizedBase)) {
+    usedNames.add(normalizedBase);
     return base;
   }
   let suffix = 2;
-  while (usedNames.has(`${base} (${suffix})`.toLocaleLowerCase("ru"))) {
+  while (usedNames.has(normalizeFileSystemName(`${base} (${suffix})`))) {
     suffix += 1;
   }
   const unique = `${base} (${suffix})`;
-  usedNames.add(unique.toLocaleLowerCase("ru"));
+  usedNames.add(normalizeFileSystemName(unique));
   return unique;
 }
 
 function createUniqueMarkdownName(title: string, usedNames: Set<string>): string {
   const base = sanitizePathSegment(title, "document");
   const first = `${base}.md`;
-  if (!usedNames.has(first.toLocaleLowerCase("ru"))) {
-    usedNames.add(first.toLocaleLowerCase("ru"));
+  if (!usedNames.has(normalizeFileSystemName(first))) {
+    usedNames.add(normalizeFileSystemName(first));
     return first;
   }
   let suffix = 2;
-  while (usedNames.has(`${base} (${suffix}).md`.toLocaleLowerCase("ru"))) {
+  while (
+    usedNames.has(normalizeFileSystemName(`${base} (${suffix}).md`))
+  ) {
     suffix += 1;
   }
   const unique = `${base} (${suffix}).md`;
-  usedNames.add(unique.toLocaleLowerCase("ru"));
+  usedNames.add(normalizeFileSystemName(unique));
   return unique;
 }
 
 function sanitizePathSegment(input: string, fallback: string): string {
-  let value = input
-    .normalize("NFC")
-    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
+  let value = Array.from(input.normalize("NFC"), (character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return codePoint < 32 || invalidWindowsPathCharacters.includes(character)
+      ? "-"
+      : character;
+  })
+    .join("")
     .replace(/[ .]+$/g, "")
     .trim();
   if (value === "." || value === "..") value = "";
   if (!value) value = fallback;
   if (windowsReservedName.test(value)) value = `_${value}`;
   return value.slice(0, 120);
+}
+
+function normalizeFileSystemName(value: string): string {
+  return value.toLocaleLowerCase("ru");
 }
 
 function getOrCreateSet(
@@ -363,7 +377,10 @@ function joinPath(...segments: string[]): string {
   return segments.filter(Boolean).join("/");
 }
 
-function createStoreZip(entries: KnowledgeBackupEntry[], modifiedAt: Date): Uint8Array {
+function createStoreZip(
+  entries: KnowledgeBackupEntry[],
+  modifiedAt: Date,
+): Uint8Array {
   if (entries.length > 65_535) {
     throw new Error("Knowledge backup contains too many ZIP entries");
   }
@@ -375,7 +392,9 @@ function createStoreZip(entries: KnowledgeBackupEntry[], modifiedAt: Date): Uint
 
   for (const entry of entries) {
     const name = textEncoder.encode(entry.path);
-    const data = entry.directory ? new Uint8Array() : textEncoder.encode(entry.content);
+    const data = entry.directory
+      ? new Uint8Array()
+      : textEncoder.encode(entry.content);
     const checksum = crc32(data);
     const localHeader = new Uint8Array(30);
     const localView = new DataView(localHeader.buffer);
