@@ -7,6 +7,7 @@ import {
   createDesktopDomainSnapshot,
   parseDesktopDomainSnapshotV3,
 } from "@/prototype/persistence/domain-snapshot";
+import { refreshDesktopDomain } from "@/prototype/state/domain-refresh";
 
 function persistentlyValid(state: DesktopPrototypeState): boolean {
   return parseDesktopDomainSnapshotV3(createDesktopDomainSnapshot(state)).ok;
@@ -25,6 +26,11 @@ export function desktopRuntimeReducer(
   state: DesktopPrototypeState,
   action: DesktopPrototypeAction,
 ): DesktopPrototypeState {
+  if (action.type === "refresh-domain") {
+    const candidateState = refreshDesktopDomain(state, action.snapshot);
+    return persistentlyValid(candidateState) ? candidateState : state;
+  }
+
   if (action.type === "commit-knowledge-structural-transition") {
     return persistentlyValid(action.nextState) ? action.nextState : state;
   }
