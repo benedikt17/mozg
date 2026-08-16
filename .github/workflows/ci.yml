@@ -36,13 +36,9 @@ jobs:
       - name: Check formatting of changed files
         shell: bash
         run: |
-          pnpm exec prettier --write \
-            src/prototype/knowledge/knowledge-search-highlight.ts \
-            src/prototype/knowledge/knowledge-search-highlight.test.ts
-          git diff -- \
-            src/prototype/knowledge/knowledge-search-highlight.ts \
-            src/prototype/knowledge/knowledge-search-highlight.test.ts
-          exit 1
+          git diff --name-only -z --diff-filter=ACMR "$DIFF_BASE_SHA...HEAD" -- \
+            '*.js' '*.jsx' '*.ts' '*.tsx' '*.json' '*.css' '*.md' '*.yml' '*.yaml' \
+            | xargs -0 -r pnpm exec prettier --check
       - name: Check changed-file whitespace
         run: git diff --check "$DIFF_BASE_SHA...HEAD"
       - run: pnpm lint
