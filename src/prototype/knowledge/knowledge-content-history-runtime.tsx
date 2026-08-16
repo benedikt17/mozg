@@ -155,9 +155,7 @@ export function KnowledgeContentHistoryProvider({
   const [scope, setScope] = useState<KnowledgeUndoScope | null>(null);
   const hydratedRef = useRef(false);
   const editPreflightPendingRef = useRef(false);
-  const stateRef = useRef(state);
   const structuralWorkspaceRef = useRef<string | null>(null);
-  stateRef.current = state;
 
   useEffect(
     () => history.subscribe(() => setVersion(history.getVersion())),
@@ -278,18 +276,9 @@ export function KnowledgeContentHistoryProvider({
           .refreshFromSource()
           .then((result) => {
             if (result === "refreshed") hydratedRef.current = false;
-            const current = stateRef.current;
-            const activeDocumentId =
-              current.knowledgeSplitEnabled &&
-              current.activeKnowledgePane === "secondary"
-                ? current.splitViewDocumentId
-                : current.selectedDocumentId;
-            if (
-              activeDocumentId === action.documentId &&
-              current.editingKnowledgeDocumentId !== action.documentId
-            ) {
-              dispatch(action);
-            }
+            // The reducer itself validates that the requested document is still
+            // the active, non-deleted Knowledge pane after any fresh snapshot.
+            dispatch(action);
           })
           .finally(() => {
             editPreflightPendingRef.current = false;
