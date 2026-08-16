@@ -29,4 +29,13 @@ describe("Knowledge annotations runtime lifecycle", () => {
       'window.document.addEventListener("keyup", onKeyUp, true);',
     );
   });
+
+  it("reuses the existing annotation update path for explicit re-anchor", () => {
+    expect(runtimeSource).toContain("beginReanchor");
+    expect(runtimeSource).toContain("reanchorKnowledgeAnnotation");
+    expect(runtimeSource).toContain(
+      "updateKnowledgeAnnotation(updated, persistenceMode)",
+    );
+    expect(runtimeSource).toContain("Привязать");
+  });
 });
