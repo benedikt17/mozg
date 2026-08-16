@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { initialDesktopPrototypeState } from "@/prototype/desktop-state";
+import {
+  desktopPrototypeReducer,
+  initialDesktopPrototypeState,
+} from "@/prototype/desktop-state";
 import { createDesktopDomainSnapshot } from "@/prototype/persistence/domain-snapshot";
 import { desktopRuntimeReducer } from "@/prototype/state/desktop-runtime-reducer";
 import type { DesktopPrototypeState } from "@/prototype/state/types";
@@ -31,6 +34,22 @@ function knowledgeSessionState(): DesktopPrototypeState {
     activeKnowledgePane: "secondary",
     editingKnowledgeDocumentId: null,
   };
+}
+
+function snapshotAfterPermanentDelete(
+  state: DesktopPrototypeState,
+  documentId: string,
+) {
+  const trashed = desktopPrototypeReducer(state, {
+    type: "soft-delete-knowledge-document",
+    documentId,
+    deletedAt: "2026-08-16T14:00:00.000Z",
+  });
+  const deleted = desktopPrototypeReducer(trashed, {
+    type: "permanently-delete-knowledge-document",
+    documentId,
+  });
+  return createDesktopDomainSnapshot(deleted);
 }
 
 describe("desktop live domain refresh", () => {
@@ -73,10 +92,7 @@ describe("desktop live domain refresh", () => {
 
   it("drops stale Knowledge session references when the active document disappeared", () => {
     const state = knowledgeSessionState();
-    const snapshot = createDesktopDomainSnapshot(state);
-    snapshot.documents = snapshot.documents.filter(
-      (document) => document.id !== "doc-l-magic",
-    );
+    const snapshot = snapshotAfterPermanentDelete(state, "doc-l-magic");
 
     const next = desktopRuntimeReducer(state, {
       type: "refresh-domain",
@@ -92,10 +108,7 @@ describe("desktop live domain refresh", () => {
 
   it("closes split view if only the secondary document disappeared", () => {
     const state = knowledgeSessionState();
-    const snapshot = createDesktopDomainSnapshot(state);
-    snapshot.documents = snapshot.documents.filter(
-      (document) => document.id !== "doc-l-scenes",
-    );
+    const snapshot = snapshotAfterPermanentDelete(state, "doc-l-scenes");
 
     const next = desktopRuntimeReducer(state, {
       type: "refresh-domain",
