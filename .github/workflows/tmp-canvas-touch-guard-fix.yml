@@ -1,0 +1,45 @@
+name: Temporary Canvas touch guard fix
+
+on:
+  push:
+    branches:
+      - fix/canvas-touch-pinch-priority
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/canvas-touch-pinch-priority
+          fetch-depth: 0
+      - name: Correct guarded changes source
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          path = Path("src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx")
+          text = path.read_text()
+          old = '''      const guardedChanges = touchViewportGestureActiveRef.current
+                ? guardedChanges.filter(
+          '''
+          new = '''      const guardedChanges = touchViewportGestureActiveRef.current
+                ? changes.filter(
+          '''
+          if text.count(old) != 1:
+              raise SystemExit(f"expected one broken guard, found {text.count(old)}")
+          path.write_text(text.replace(old, new, 1))
+          PY
+          rm .github/workflows/tmp-canvas-touch-guard-fix.yml
+          git diff --check
+      - name: Commit correction
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx .github/workflows/tmp-canvas-touch-guard-fix.yml
+          git commit -m "Fix Canvas touch geometry guard"
+          git push origin HEAD:fix/canvas-touch-pinch-priority
