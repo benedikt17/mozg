@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { initialDesktopPrototypeState } from "@/prototype/desktop-state";
-import {
-  DesktopPersistenceRuntime,
-  type DesktopPersistenceRefreshResult,
-} from "@/prototype/persistence/desktop-persistence-runtime";
+import { DesktopPersistenceRuntime } from "@/prototype/persistence/desktop-persistence-runtime";
 import {
   createDesktopDomainSnapshot,
   type DesktopDomainSnapshot,
@@ -95,41 +92,28 @@ function createRuntime(
   });
 }
 
-async function refresh(
-  runtime: DesktopPersistenceRuntime,
-): Promise<DesktopPersistenceRefreshResult> {
-  await runtime.start();
-  return runtime.refreshFromSource();
-}
-
 describe("DesktopPersistenceRuntime live refresh", () => {
   it("adopts a newer server snapshot before the next local save", async () => {
     const adapter = new LiveRefreshAdapter();
-    const runtime = createRuntime(adapter);
+    const refreshed: DesktopDomainSnapshot[] = [];
+    const runtime = createRuntime(adapter, (snapshot) =>
+      refreshed.push(structuredClone(snapshot)),
+    );
     await runtime.start();
 
     adapter.snapshot = withTaskTitle(adapter.snapshot, "Remote device edit");
     adapter.revision = 10;
-    const refreshed: DesktopDomainSnapshot[] = [];
-    const secondRuntime = createRuntime(adapter, (snapshot) =>
-      refreshed.push(structuredClone(snapshot)),
-    );
-    adapter.revision = 9;
-    adapter.snapshot = baseSnapshot();
-    await secondRuntime.start();
-    adapter.snapshot = withTaskTitle(adapter.snapshot, "Remote device edit");
-    adapter.revision = 10;
 
-    expect(await secondRuntime.refreshFromSource()).toBe("refreshed");
+    expect(await runtime.refreshFromSource()).toBe("refreshed");
     expect(refreshed[0]?.tasks[0]?.title).toBe("Remote device edit");
 
     const local = withTaskTitle(adapter.snapshot, "Local edit after refresh");
-    secondRuntime.observeSnapshot(local);
-    await secondRuntime.flush();
+    runtime.observeSnapshot(local);
+    await runtime.flush();
 
     expect(adapter.saveExpectedRevisions.at(-1)).toBe(10);
     expect(adapter.snapshot.tasks[0]?.title).toBe("Local edit after refresh");
-    expect(secondRuntime.lifecycle).toMatchObject({
+    expect(runtime.lifecycle).toMatchObject({
       status: "ready",
       revision: 11,
     });
@@ -138,7 +122,9 @@ describe("DesktopPersistenceRuntime live refresh", () => {
   it("advances an identical newer revision without resetting content state", async () => {
     const adapter = new LiveRefreshAdapter();
     const refreshed: DesktopDomainSnapshot[] = [];
-    const runtime = createRuntime(adapter, (snapshot) => refreshed.push(snapshot));
+    const runtime = createRuntime(adapter, (snapshot) =>
+      refreshed.push(snapshot),
+    );
     await runtime.start();
 
     adapter.revision = 10;
