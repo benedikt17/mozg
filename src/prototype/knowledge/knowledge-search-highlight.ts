@@ -31,6 +31,7 @@ let waitObserver: MutationObserver | null = null;
 let activeObserver: MutationObserver | null = null;
 let waitTimeout: number | null = null;
 let activePage: HTMLElement | null = null;
+let activeDocumentId: string | null = null;
 
 export function getKnowledgeSearchMatchSpans(
   text: string,
@@ -61,6 +62,7 @@ export function clearKnowledgeSearchHighlight(): void {
   activeObserver?.disconnect();
   activeObserver = null;
   activePage = null;
+  activeDocumentId = null;
   getHighlightRegistry()?.delete(KNOWLEDGE_SEARCH_HIGHLIGHT_NAME);
 }
 
@@ -87,6 +89,7 @@ export function queueKnowledgeSearchHighlight(
     stopWaitingForDocument();
     applyHighlight(ranges);
     activePage = page;
+    activeDocumentId = result.id;
     ranges[0]?.startContainer.parentElement?.scrollIntoView({
       behavior: "smooth",
       block: "center",
@@ -241,7 +244,8 @@ function observeActiveDocument(): void {
   activeObserver = new MutationObserver(() => {
     if (
       !activePage?.isConnected ||
-      !activePage.classList.contains("is-active-pane")
+      !activePage.classList.contains("is-active-pane") ||
+      activePage.dataset.documentId !== activeDocumentId
     ) {
       clearKnowledgeSearchHighlight();
     }
