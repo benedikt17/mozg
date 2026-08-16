@@ -33,6 +33,18 @@ jobs:
           else
             echo "DIFF_BASE_SHA=$PUSH_BEFORE_SHA" >> "$GITHUB_ENV"
           fi
+      - name: Show exact Prettier diff for Search files
+        shell: bash
+        run: |
+          pnpm exec prettier --write \
+            src/prototype/state/selectors.ts \
+            tests/e2e/knowledge-search-context.spec.ts >/dev/null
+          git diff -- \
+            src/prototype/state/selectors.ts \
+            tests/e2e/knowledge-search-context.spec.ts
+          git checkout -- \
+            src/prototype/state/selectors.ts \
+            tests/e2e/knowledge-search-context.spec.ts
       - name: Check formatting of changed files
         shell: bash
         run: |
