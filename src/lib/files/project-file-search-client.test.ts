@@ -41,7 +41,6 @@ describe("Project file search index client", () => {
       projectId: "backfill-all-project-files",
     };
     await ensureProjectFileSearchIndex(scope);
-    await ensureProjectFileSearchIndex(scope);
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(
@@ -75,28 +74,41 @@ describe("Project file search index client", () => {
     await Promise.all([first, second]);
   });
 
-  it("reopens a completed Project backfill when exact upload indexing fails", async () => {
+  it("rechecks the database after a completed pass so later uploads become searchable", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(indexResponse({ attempted: 0, indexed: 0 }))
-      .mockResolvedValueOnce(
-        indexResponse({
-          attempted: 1,
-          indexed: 0,
-          failures: [{ fileId: "file-a", reason: "temporary failure" }],
-        }),
-      )
-      .mockResolvedValueOnce(indexResponse({ attempted: 0, indexed: 0 }));
+      .mockResolvedValueOnce(indexResponse({ attempted: 1, indexed: 1 }));
     vi.stubGlobal("fetch", fetchMock);
 
     const scope = {
       workspaceId: "10000000-0000-4000-8000-000000000003",
-      projectId: "upload-invalidates-index",
+      projectId: "later-upload-project",
     };
     await ensureProjectFileSearchIndex(scope);
-    await indexProjectFileForSearch({ ...scope, fileId: "file-a" });
     await ensureProjectFileSearchIndex(scope);
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      ...scope,
+      limit: 8,
+    });
+  });
+
+  it("supports exact indexing requests for a newly uploaded file", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(indexResponse({ attempted: 1, indexed: 1 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const scope = {
+      workspaceId: "10000000-0000-4000-8000-000000000004",
+      projectId: "exact-upload-index",
+      fileId: "20000000-0000-4000-8000-000000000001",
+    };
+    await indexProjectFileForSearch(scope);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual(scope);
   });
 });
