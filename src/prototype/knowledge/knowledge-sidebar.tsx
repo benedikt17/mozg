@@ -424,7 +424,8 @@ function KnowledgeTreeNodeView({
     "knowledge-document-row",
     documentIsActive ? "is-active" : "",
     documentPathIsSelected ? "is-path-selected" : "",
-    linkPickerSourceDocumentId && node.document.id !== linkPickerSourceDocumentId
+    linkPickerSourceDocumentId &&
+    node.document.id !== linkPickerSourceDocumentId
       ? "is-link-picker-target"
       : "",
     linkPickerSourceDocumentId === node.document.id
@@ -514,26 +515,26 @@ function KnowledgeTreeNodeView({
       </button>
       {!linkPickerSourceDocumentId ? (
         <IconButton
-        aria-expanded={
-          openKnowledgeMenu?.kind === "document" &&
-          openKnowledgeMenu.id === node.document.id
-        }
-        aria-haspopup="menu"
-        className="knowledge-folder-menu-trigger"
-        icon={<UiIcon name="more" />}
-        label={`Действия статьи ${node.title}`}
-        onClick={(event) => {
-          event.stopPropagation();
-          onKnowledgeMenuChange(
+          aria-expanded={
             openKnowledgeMenu?.kind === "document" &&
-              openKnowledgeMenu.id === node.document.id
-              ? null
-              : { kind: "document", id: node.document.id },
-          );
-        }}
-        onPointerDown={(event) => event.stopPropagation()}
-        title={`Действия статьи ${node.title}`}
-        variant="ghost"
+            openKnowledgeMenu.id === node.document.id
+          }
+          aria-haspopup="menu"
+          className="knowledge-folder-menu-trigger"
+          icon={<UiIcon name="more" />}
+          label={`Действия статьи ${node.title}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onKnowledgeMenuChange(
+              openKnowledgeMenu?.kind === "document" &&
+                openKnowledgeMenu.id === node.document.id
+                ? null
+                : { kind: "document", id: node.document.id },
+            );
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          title={`Действия статьи ${node.title}`}
+          variant="ghost"
         />
       ) : null}
       {!linkPickerSourceDocumentId &&

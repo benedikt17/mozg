@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = resolve(process.cwd());
-const read = (path: string): string => readFileSync(resolve(root, path), "utf8");
+const read = (path: string): string =>
+  readFileSync(resolve(root, path), "utf8");
 
 describe("Knowledge internal article link picker runtime", () => {
   it("uses the Knowledge tree instead of an article dropdown modal", () => {
@@ -14,7 +15,7 @@ describe("Knowledge internal article link picker runtime", () => {
     expect(editor).toContain("onBeginArticleLinkPick");
     expect(editor).toContain("openArticlePicker");
     expect(editor).not.toContain('setDialog("article")');
-    expect(editor).not.toContain("<option value=\"\">Выберите статью</option>");
+    expect(editor).not.toContain('<option value="">Выберите статью</option>');
     expect(sidebar).toContain("Выберите статью для ссылки");
     expect(sidebar).toContain("onPickLinkTarget?.(node.document.id)");
     expect(shell).toContain("knowledgeArticleLinkPicker");
