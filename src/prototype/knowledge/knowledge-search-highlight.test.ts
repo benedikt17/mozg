@@ -10,7 +10,8 @@ function matchedText(text: string, query: string): string[] {
 
 describe("Knowledge Search highlight matching", () => {
   it("highlights the full phrase when the phrase exists", () => {
-    const text = "Почему герои не могут уйти, и почему герои не могут вернуться.";
+    const text =
+      "Почему герои не могут уйти, и почему герои не могут вернуться.";
 
     expect(matchedText(text, "почему герои не могут")).toEqual([
       "Почему герои не могут",
