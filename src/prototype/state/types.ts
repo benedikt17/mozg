@@ -254,16 +254,10 @@ export type DesktopPrototypeAction =
   | {
       type: "rename-task-list";
       listId: string;
-      groupId?: string;
       title: string;
     }
-  | { type: "delete-task-list"; listId: string }
-  | { type: "toggle-task-list"; listId: string }
-  | {
-      type: "create-task-in-list";
-      listId: string;
-      title?: string;
-    }
+  | { type: "set-task-overview"; taskId: string; visible: boolean }
+  | { type: "move-task-list"; taskId: string; targetTaskId: string | null }
   | {
       type: "move-task-to-list";
       taskId: string;
