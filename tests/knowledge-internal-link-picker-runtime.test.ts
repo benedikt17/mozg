@@ -18,6 +18,10 @@ describe("Knowledge internal article link picker runtime", () => {
     expect(editor).not.toContain('<option value="">Выберите статью</option>');
     expect(sidebar).toContain("Выберите статью для ссылки");
     expect(sidebar).toContain("onPickLinkTarget?.(node.document.id)");
+    expect(sidebar).toContain("onClick={toggleFolder}");
+    expect(sidebar).toContain(
+      "disabled={linkPickerSourceDocumentId === node.document.id}",
+    );
     expect(shell).toContain("knowledgeArticleLinkPicker");
     expect(shell).toContain("pickKnowledgeArticleLinkTarget");
   });
