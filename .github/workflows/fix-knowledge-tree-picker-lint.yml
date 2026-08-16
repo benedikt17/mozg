@@ -1,0 +1,76 @@
+name: Fix Knowledge tree picker lint
+
+on:
+  push:
+    branches:
+      - fix/knowledge-internal-links-beside
+    paths:
+      - .github/workflows/fix-knowledge-tree-picker-lint.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/knowledge-internal-links-beside
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply lint-safe picker state
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"{path}: pattern not found: {old[:120]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          path = "src/prototype/desktop-shell.tsx"
+          replace(path,
+          '''  const knowledgeDispatch = knowledgeHistory.dispatchKnowledgeAction;\n\n  useEffect(() => {\n    setKnowledgeArticleLinkPicker(null);\n  }, [state.activeProjectId, state.activeSection]);\n\n  useEffect(() => {\n    if (!knowledgeArticleLinkPicker) return;\n''',
+          '''  const knowledgeDispatch = knowledgeHistory.dispatchKnowledgeAction;\n  const activeKnowledgeArticleLinkPicker =\n    state.activeSection === "knowledge" &&\n    knowledgeArticleLinkPicker &&\n    state.documents.some(\n      (document) =>\n        document.id === knowledgeArticleLinkPicker.sourceDocumentId &&\n        document.projectId === state.activeProjectId,\n    )\n      ? knowledgeArticleLinkPicker\n      : null;\n\n  useEffect(() => {\n    if (!activeKnowledgeArticleLinkPicker) return;\n''')
+          replace(path,
+          '''  }, [knowledgeArticleLinkPicker]);\n''',
+          '''  }, [activeKnowledgeArticleLinkPicker]);\n''')
+          replace(path,
+          '''  const pickKnowledgeArticleLinkTarget = (documentId: string): void => {\n    const picker = knowledgeArticleLinkPicker;\n''',
+          '''  const pickKnowledgeArticleLinkTarget = (documentId: string): void => {\n    const picker = activeKnowledgeArticleLinkPicker;\n''')
+          replace(path,
+          '''      linkPickerSourceDocumentId:\n        knowledgeArticleLinkPicker?.sourceDocumentId ?? null,\n''',
+          '''      linkPickerSourceDocumentId:\n        activeKnowledgeArticleLinkPicker?.sourceDocumentId ?? null,\n''')
+
+          path = "src/prototype/knowledge/markdown-source-editor.tsx"
+          replace(path,
+          '''  const markdown = document.content.join("\\n");\n  const markdownRef = useRef(markdown);\n  const documentsRef = useRef(documents);\n  const articleLinkSelectionRef = useRef<{\n    start: number;\n    end: number;\n    label: string;\n  } | null>(null);\n  markdownRef.current = markdown;\n  documentsRef.current = documents;\n''',
+          '''  const markdown = document.content.join("\\n");\n''')
+          replace(path,
+          '''    articleLinkSelectionRef.current = {\n      start: textarea.selectionStart,\n      end: textarea.selectionEnd,\n      label: markdown\n        .slice(textarea.selectionStart, textarea.selectionEnd)\n        .trim(),\n    };\n    onBeginArticleLinkPick({\n      sourceDocumentId: document.id,\n      onPick: (targetDocumentId) => {\n        const draft = articleLinkSelectionRef.current;\n        const target = documentsRef.current.find(\n          (item) =>\n            item.id === targetDocumentId &&\n            item.id !== document.id &&\n            item.projectId === document.projectId,\n        );\n        if (!draft || !target) return;\n        const label = draft.label || target.title;\n        const token = `[[doc:${target.id}|${label}]]`;\n        const currentMarkdown = markdownRef.current;\n        contentHistory.commitMarkdown(\n          document.id,\n          currentMarkdown.slice(0, draft.start) +\n            token +\n            currentMarkdown.slice(draft.end),\n''',
+          '''    const draft = {\n      start: textarea.selectionStart,\n      end: textarea.selectionEnd,\n      label: markdown\n        .slice(textarea.selectionStart, textarea.selectionEnd)\n        .trim(),\n    };\n    onBeginArticleLinkPick({\n      sourceDocumentId: document.id,\n      onPick: (targetDocumentId) => {\n        const target = documents.find(\n          (item) =>\n            item.id === targetDocumentId &&\n            item.id !== document.id &&\n            item.projectId === document.projectId,\n        );\n        if (!target) return;\n        const label = draft.label || target.title;\n        const token = `[[doc:${target.id}|${label}]]`;\n        contentHistory.commitMarkdown(\n          document.id,\n          markdown.slice(0, draft.start) + token + markdown.slice(draft.end),\n''')
+          replace(path,
+          '''        articleLinkSelectionRef.current = null;\n        restoreSelection(draft.start + token.length);\n''',
+          '''        restoreSelection(draft.start + token.length);\n''')
+          PY
+          pnpm exec prettier --write src/prototype/desktop-shell.tsx src/prototype/knowledge/markdown-source-editor.tsx
+          git diff --check
+      - name: Verify lint
+        run: pnpm lint
+      - name: Commit fix and remove workflow
+        run: |
+          git rm .github/workflows/fix-knowledge-tree-picker-lint.yml
+          git add src/prototype/desktop-shell.tsx src/prototype/knowledge/markdown-source-editor.tsx
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Knowledge: keep tree link picker lint-safe"
+          git push origin HEAD:fix/knowledge-internal-links-beside
