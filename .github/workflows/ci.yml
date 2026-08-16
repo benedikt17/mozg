@@ -33,12 +33,6 @@ jobs:
           else
             echo "DIFF_BASE_SHA=$PUSH_BEFORE_SHA" >> "$GITHUB_ENV"
           fi
-      - name: Diagnostic annotation reanchor Prettier diff
-        shell: bash
-        run: |
-          pnpm exec prettier --write src/prototype/knowledge/knowledge-annotations-runtime.tsx
-          git diff -- src/prototype/knowledge/knowledge-annotations-runtime.tsx
-          exit 1
       - name: Check formatting of changed files
         shell: bash
         run: |
