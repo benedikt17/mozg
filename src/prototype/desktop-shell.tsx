@@ -410,13 +410,19 @@ function SectionWorkspace({
   const [knowledgeArticleLinkPicker, setKnowledgeArticleLinkPicker] =
     useState<KnowledgeArticleLinkPickRequest | null>(null);
   const knowledgeDispatch = knowledgeHistory.dispatchKnowledgeAction;
+  const activeKnowledgeArticleLinkPicker =
+    state.activeSection === "knowledge" &&
+    knowledgeArticleLinkPicker &&
+    state.documents.some(
+      (document) =>
+        document.id === knowledgeArticleLinkPicker.sourceDocumentId &&
+        document.projectId === state.activeProjectId,
+    )
+      ? knowledgeArticleLinkPicker
+      : null;
 
   useEffect(() => {
-    setKnowledgeArticleLinkPicker(null);
-  }, [state.activeProjectId, state.activeSection]);
-
-  useEffect(() => {
-    if (!knowledgeArticleLinkPicker) return;
+    if (!activeKnowledgeArticleLinkPicker) return;
     const cancelOnEscape = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -424,7 +430,7 @@ function SectionWorkspace({
     };
     window.addEventListener("keydown", cancelOnEscape);
     return () => window.removeEventListener("keydown", cancelOnEscape);
-  }, [knowledgeArticleLinkPicker]);
+  }, [activeKnowledgeArticleLinkPicker]);
 
   const beginKnowledgeArticleLinkPick = (
     request: KnowledgeArticleLinkPickRequest,
@@ -440,7 +446,7 @@ function SectionWorkspace({
   };
 
   const pickKnowledgeArticleLinkTarget = (documentId: string): void => {
-    const picker = knowledgeArticleLinkPicker;
+    const picker = activeKnowledgeArticleLinkPicker;
     if (!picker || documentId === picker.sourceDocumentId) return;
     setKnowledgeArticleLinkPicker(null);
     picker.onPick(documentId);
@@ -452,7 +458,7 @@ function SectionWorkspace({
     {
       onCloseKnowledgeTree: () => setKnowledgeTreeOverlayOpen(false),
       linkPickerSourceDocumentId:
-        knowledgeArticleLinkPicker?.sourceDocumentId ?? null,
+        activeKnowledgeArticleLinkPicker?.sourceDocumentId ?? null,
       onCancelKnowledgeLinkPick: () => setKnowledgeArticleLinkPicker(null),
       onPickKnowledgeLinkTarget: pickKnowledgeArticleLinkTarget,
     },

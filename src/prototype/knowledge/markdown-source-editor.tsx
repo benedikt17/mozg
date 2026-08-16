@@ -120,15 +120,6 @@ export function MarkdownSourceEditor({
 }): React.JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const markdown = document.content.join("\n");
-  const markdownRef = useRef(markdown);
-  const documentsRef = useRef(documents);
-  const articleLinkSelectionRef = useRef<{
-    start: number;
-    end: number;
-    label: string;
-  } | null>(null);
-  markdownRef.current = markdown;
-  documentsRef.current = documents;
   const contentHistory = useKnowledgeContentHistory();
   const { getSelection, version } = contentHistory;
   const [dialog, setDialog] = useState<"external" | null>(null);
@@ -256,7 +247,7 @@ export function MarkdownSourceEditor({
   const openArticlePicker = (): void => {
     const textarea = textareaRef.current;
     if (!textarea || !onBeginArticleLinkPick) return;
-    articleLinkSelectionRef.current = {
+    const draft = {
       start: textarea.selectionStart,
       end: textarea.selectionEnd,
       label: markdown
@@ -266,29 +257,24 @@ export function MarkdownSourceEditor({
     onBeginArticleLinkPick({
       sourceDocumentId: document.id,
       onPick: (targetDocumentId) => {
-        const draft = articleLinkSelectionRef.current;
-        const target = documentsRef.current.find(
+        const target = documents.find(
           (item) =>
             item.id === targetDocumentId &&
             item.id !== document.id &&
             item.projectId === document.projectId,
         );
-        if (!draft || !target) return;
+        if (!target) return;
         const label = draft.label || target.title;
         const token = `[[doc:${target.id}|${label}]]`;
-        const currentMarkdown = markdownRef.current;
         contentHistory.commitMarkdown(
           document.id,
-          currentMarkdown.slice(0, draft.start) +
-            token +
-            currentMarkdown.slice(draft.end),
+          markdown.slice(0, draft.start) + token + markdown.slice(draft.end),
           {
             origin: "toolbar",
             selectionEnd: draft.start + token.length,
             selectionStart: draft.start + token.length,
           },
         );
-        articleLinkSelectionRef.current = null;
         restoreSelection(draft.start + token.length);
       },
     });
