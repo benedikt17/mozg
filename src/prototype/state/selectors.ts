@@ -111,8 +111,7 @@ export function getCommandResults(
 
   const taskResults: CommandResult[] = state.tasks
     .filter(
-      (task) =>
-        task.projectId === state.activeProjectId && matches(task.title),
+      (task) => task.projectId === state.activeProjectId && matches(task.title),
     )
     .map((task) => ({
       kind: "task",
