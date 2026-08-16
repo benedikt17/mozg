@@ -506,7 +506,10 @@ export function MarkdownSourceEditor({
             window.document.body,
           )
         : null}
-      <div className="markdown-source-content">
+      <div
+        className="markdown-source-content"
+        style={{ paddingBottom: "50vh" }}
+      >
         <textarea
           aria-label={`Markdown: ${document.title}`}
           className="markdown-source-textarea"
