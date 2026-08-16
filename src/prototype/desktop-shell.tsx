@@ -88,16 +88,31 @@ function DesktopPrototypeShellContent({
   const [mobileOverviewContextOpen, setMobileOverviewContextOpen] =
     useState(false);
   const seededFromUrl = useRef(false);
-  const { commandPaletteOpen, documents, inboxItems, projects, tasks } = state;
+  const {
+    activeProjectId,
+    commandPaletteOpen,
+    documents,
+    inboxItems,
+    projects,
+    tasks,
+  } = state;
   const commandResults = useMemo(
     () =>
       commandPaletteOpen
         ? getCommandResults(
-            { projects, tasks, documents, inboxItems },
+            { activeProjectId, projects, tasks, documents, inboxItems },
             commandQuery,
           )
         : [],
-    [commandPaletteOpen, documents, inboxItems, projects, tasks, commandQuery],
+    [
+      activeProjectId,
+      commandPaletteOpen,
+      documents,
+      inboxItems,
+      projects,
+      tasks,
+      commandQuery,
+    ],
   );
 
   useEffect(() => {

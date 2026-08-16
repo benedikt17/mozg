@@ -62,7 +62,7 @@ export function CommandPalette({
                 onClose();
               }
             }}
-            placeholder={`${activeProjectName}: проект, раздел, задача или документ`}
+            placeholder={`${activeProjectName}: слово или фраза в текущем проекте`}
             value={query}
           />
           <button onClick={onClose} type="button">

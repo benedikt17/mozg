@@ -10,11 +10,11 @@ import {
 import { UiIcon } from "@/prototype/desktop-icons";
 import { IconButton, PrototypeButton } from "@/prototype/desktop-ui";
 import {
-  DocumentContextPanel,
   KnowledgeTaskAttachmentPanel,
   KnowledgeTaskLinkPanel,
   KnowledgeTaskReferencePanel,
 } from "./knowledge-context-panels";
+import { LiveDocumentContextPanel } from "./live-document-context-panel";
 import { TaskDetailsPanel } from "./task-details-panel";
 import { AiPanel, InboxContextPanel } from "./utility-context-panels";
 
@@ -241,9 +241,9 @@ function renderContextPanelContent(
   if (contextPanel.kind === "document-context") {
     const document = getActiveDocumentById(state, contextPanel.documentId);
     return document ? (
-      <DocumentContextPanel
+      <LiveDocumentContextPanel
         dispatch={dispatch}
-        document={document}
+        fallbackDocument={document}
         state={state}
       />
     ) : (
