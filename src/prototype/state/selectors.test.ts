@@ -95,7 +95,9 @@ describe("global Knowledge search", () => {
     );
 
     expect(
-      results.filter((result) => result.kind === "document").map((result) => result.id),
+      results
+        .filter((result) => result.kind === "document")
+        .map((result) => result.id),
     ).toEqual(["current-project"]);
   });
 
@@ -155,7 +157,9 @@ describe("global Knowledge search", () => {
     );
 
     expect(
-      results.filter((result) => result.kind === "document").map((result) => result.id),
+      results
+        .filter((result) => result.kind === "document")
+        .map((result) => result.id),
     ).toEqual(["body-match", "title-only"]);
   });
 });
