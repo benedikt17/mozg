@@ -1,5 +1,6 @@
 import type {
   ProjectSection,
+  PrototypeDocument,
   PrototypeProject,
 } from "@/prototype/desktop-mock-data";
 import type {
@@ -17,9 +18,11 @@ import { getTaskById } from "@/prototype/state/tasks-state";
 
 export const MAX_VISIBLE_COMMAND_RESULTS = 10;
 
+const DOCUMENT_SEARCH_SNIPPET_RADIUS = 72;
+
 type CommandSearchState = Pick<
   DesktopPrototypeState,
-  "projects" | "tasks" | "documents" | "inboxItems"
+  "activeProjectId" | "projects" | "tasks" | "documents" | "inboxItems"
 >;
 
 export function getActiveProject(
@@ -69,26 +72,30 @@ export function getCommandResults(
   state: CommandSearchState,
   query: string,
 ): CommandResult[] {
-  const normalizedQuery = query.trim().toLocaleLowerCase("ru");
-  const matches = (value: string): boolean =>
-    normalizedQuery.length === 0 ||
-    value.toLocaleLowerCase("ru").includes(normalizedQuery);
+  const normalizedQuery = normalizeSearchValue(query.trim());
+  const terms = normalizedQuery.split(/\s+/).filter(Boolean);
+  const matches = (value: string): boolean => matchesSearchTerms(value, terms);
 
-  const projectResults: CommandResult[] = state.projects
-    .filter((project) => matches(project.name))
-    .map((project) => ({
-      kind: "project",
-      id: project.id,
-      title: project.name,
-      subtitle: "Проект",
-    }));
+  const activeProject = state.projects.find(
+    (project) => project.id === state.activeProjectId,
+  );
+  const projectResults: CommandResult[] = activeProject && matches(activeProject.name)
+    ? [
+        {
+          kind: "project",
+          id: activeProject.id,
+          title: activeProject.name,
+          subtitle: "Текущий проект",
+        },
+      ]
+    : [];
 
   const sectionResults: CommandResult[] = [
     ["overview", "Обзор"],
     ["knowledge", "Знания"],
     ["tasks", "Задачи"],
     ["canvases", "Холсты"],
-    ["inbox", "Входящие"],
+    ["files", "Файлы"],
   ]
     .filter(([id]) =>
       publicProjectSections.some((section) => section.id === id),
@@ -102,58 +109,152 @@ export function getCommandResults(
     }));
 
   const taskResults: CommandResult[] = state.tasks
-    .filter((task) => matches(task.title))
+    .filter(
+      (task) =>
+        task.projectId === state.activeProjectId && matches(task.title),
+    )
     .map((task) => ({
       kind: "task",
       id: task.id,
       title: task.title,
-      subtitle: `Задача · ${getProjectName(state, task.projectId)}`,
+      subtitle: "Задача текущего проекта",
     }));
 
   const documentResults: CommandResult[] = state.documents
     .filter(
       (document) =>
-        document.deletedAt === undefined &&
-        (matches(getDocumentTitle(document)) ||
-          matches(document.excerpt) ||
-          matches(getDocumentBreadcrumb(document))),
+        document.projectId === state.activeProjectId &&
+        document.deletedAt === undefined,
     )
     .map((document) => ({
-      kind: "document",
-      id: document.id,
-      title: getDocumentTitle(document),
-      subtitle: `Документ · ${getProjectName(state, document.projectId)} · ${getDocumentBreadcrumb(document)}`,
-    }));
+      document,
+      score: documentSearchScore(document, terms, normalizedQuery),
+    }))
+    .filter(({ score }) => terms.length === 0 || score > 0)
+    .sort(
+      (first, second) =>
+        second.score - first.score ||
+        getDocumentTitle(first.document).localeCompare(
+          getDocumentTitle(second.document),
+          "ru",
+        ),
+    )
+    .map(({ document }) => {
+      const snippet = getDocumentSearchSnippet(
+        document,
+        terms,
+        normalizedQuery,
+      );
+      return {
+        kind: "document" as const,
+        id: document.id,
+        title: getDocumentTitle(document),
+        subtitle: [
+          "Документ",
+          getDocumentBreadcrumb(document),
+          snippet,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      };
+    });
 
-  const inboxResults: CommandResult[] = state.inboxItems
-    .filter((item) => matches(item.title) || matches(item.preview))
-    .map((item) => ({
-      kind: "inbox",
-      id: item.id,
-      title: item.title,
-      subtitle: `Р’С…РѕРґСЏС‰РµРµ В· ${getProjectName(state, item.projectId)}`,
-    }));
-
-  return visibleCommandResults(
-    [
-      ...projectResults,
-      ...sectionResults,
-      ...taskResults,
+  if (terms.length > 0) {
+    return [
       ...documentResults,
-      ...inboxResults,
-    ].filter((result) => result.kind !== "inbox"),
-  );
+      ...visibleCommandResults([
+        ...projectResults,
+        ...sectionResults,
+        ...taskResults,
+      ]),
+    ];
+  }
+
+  return visibleCommandResults([
+    ...projectResults,
+    ...sectionResults,
+    ...taskResults,
+    ...documentResults,
+  ]);
 }
 
 export function visibleCommandResults<T>(results: T[]): T[] {
   return results.slice(0, MAX_VISIBLE_COMMAND_RESULTS);
 }
 
-function getProjectName(
-  state: CommandSearchState,
-  projectId: string,
+function normalizeSearchValue(value: string): string {
+  return value.normalize("NFC").toLocaleLowerCase("ru");
+}
+
+function matchesSearchTerms(value: string, terms: readonly string[]): boolean {
+  if (terms.length === 0) return true;
+  const normalizedValue = normalizeSearchValue(value);
+  return terms.every((term) => normalizedValue.includes(term));
+}
+
+function documentSearchScore(
+  document: PrototypeDocument,
+  terms: readonly string[],
+  normalizedQuery: string,
+): number {
+  if (terms.length === 0) return 1;
+
+  const title = getDocumentTitle(document);
+  const excerpt = document.excerpt;
+  const breadcrumb = getDocumentBreadcrumb(document);
+  const content = document.content.join("\n");
+  let score = 0;
+
+  if (matchesSearchTerms(content, terms)) score += 12;
+  if (
+    normalizedQuery.length > 0 &&
+    normalizeSearchValue(content).includes(normalizedQuery)
+  ) {
+    score += 6;
+  }
+  if (matchesSearchTerms(title, terms)) score += 8;
+  if (
+    normalizedQuery.length > 0 &&
+    normalizeSearchValue(title).includes(normalizedQuery)
+  ) {
+    score += 4;
+  }
+  if (matchesSearchTerms(excerpt, terms)) score += 3;
+  if (matchesSearchTerms(breadcrumb, terms)) score += 1;
+
+  return score;
+}
+
+function getDocumentSearchSnippet(
+  document: PrototypeDocument,
+  terms: readonly string[],
+  normalizedQuery: string,
 ): string {
-  return (
-    state.projects.find((project) => project.id === projectId)?.name ?? "Проект"
+  if (terms.length === 0) return "";
+  const text = document.content
+    .join(" ")
+    .replace(/[`*_>#\[\]()]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return "";
+
+  const normalizedText = normalizeSearchValue(text);
+  const phraseIndex =
+    normalizedQuery.length > 0 ? normalizedText.indexOf(normalizedQuery) : -1;
+  const termIndex = terms.reduce((best, term) => {
+    const index = normalizedText.indexOf(term);
+    if (index < 0) return best;
+    return best < 0 ? index : Math.min(best, index);
+  }, -1);
+  const matchIndex = phraseIndex >= 0 ? phraseIndex : termIndex;
+  if (matchIndex < 0) return "";
+
+  const start = Math.max(0, matchIndex - DOCUMENT_SEARCH_SNIPPET_RADIUS);
+  const end = Math.min(
+    text.length,
+    matchIndex + normalizedQuery.length + DOCUMENT_SEARCH_SNIPPET_RADIUS,
   );
+  return `${start > 0 ? "…" : ""}${text.slice(start, end).trim()}${
+    end < text.length ? "…" : ""
+  }`;
 }
