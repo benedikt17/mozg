@@ -131,7 +131,10 @@ describe("DesktopPersistenceRuntime live refresh", () => {
     expect(await runtime.refreshFromSource()).toBe("unchanged");
     expect(refreshed).toHaveLength(0);
 
-    const local = withTaskTitle(adapter.snapshot, "Edit after revision refresh");
+    const local = withTaskTitle(
+      adapter.snapshot,
+      "Edit after revision refresh",
+    );
     runtime.observeSnapshot(local);
     await runtime.flush();
     expect(adapter.saveExpectedRevisions).toEqual([10]);
