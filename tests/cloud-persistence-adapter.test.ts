@@ -3,8 +3,12 @@ import { initialDesktopPrototypeState } from "@/prototype/desktop-state";
 import { createDesktopDomainSnapshot } from "@/prototype/persistence/domain-snapshot";
 
 const rpc = vi.fn();
+const maybeSingle = vi.fn();
+const eq = vi.fn(() => ({ maybeSingle }));
+const select = vi.fn(() => ({ eq }));
+const from = vi.fn(() => ({ select }));
 vi.mock("@/lib/supabase/browser", () => ({
-  createClient: () => ({ rpc }),
+  createClient: () => ({ from, rpc }),
 }));
 
 const { CloudDesktopPersistenceAdapter } =
@@ -20,7 +24,13 @@ const bootstrap = {
 };
 
 describe("CloudDesktopPersistenceAdapter", () => {
-  beforeEach(() => rpc.mockReset());
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockClear();
+    select.mockClear();
+    eq.mockClear();
+    maybeSingle.mockReset();
+  });
 
   it("accepts saved result and returns the server revision", async () => {
     rpc.mockResolvedValue({
@@ -37,6 +47,46 @@ describe("CloudDesktopPersistenceAdapter", () => {
       target_expected_revision: 4,
       target_schema_version: 3,
       target_snapshot: bootstrap.snapshot,
+    });
+  });
+
+  it("reads and validates the latest workspace snapshot through RLS", async () => {
+    const freshSnapshot = structuredClone(bootstrap.snapshot);
+    freshSnapshot.tasks[0]!.title = "Fresh cloud task";
+    maybeSingle.mockResolvedValue({
+      data: {
+        workspace_id: "workspace-1",
+        schema_version: 3,
+        snapshot: freshSnapshot,
+        revision: 8,
+        updated_at: "2026-08-16T14:00:00.000Z",
+      },
+      error: null,
+    });
+    const adapter = new CloudDesktopPersistenceAdapter(bootstrap);
+
+    await expect(adapter.loadLatestWorkspace("ignored")).resolves.toEqual({
+      kind: "loaded",
+      snapshot: freshSnapshot,
+      revision: 8,
+      savedAt: "2026-08-16T14:00:00.000Z",
+    });
+    expect(from).toHaveBeenCalledWith("workspace_snapshots");
+    expect(select).toHaveBeenCalledWith(
+      "workspace_id, schema_version, snapshot, revision, updated_at",
+    );
+    expect(eq).toHaveBeenCalledWith("workspace_id", "workspace-1");
+  });
+
+  it("keeps a failed live snapshot read non-destructive", async () => {
+    maybeSingle.mockResolvedValue({
+      data: null,
+      error: { code: "42501", message: "private detail" },
+    });
+    const adapter = new CloudDesktopPersistenceAdapter(bootstrap);
+
+    await expect(adapter.loadLatestWorkspace("ignored")).rejects.toMatchObject({
+      code: "unavailable",
     });
   });
 
