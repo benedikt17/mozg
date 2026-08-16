@@ -23,6 +23,7 @@ describe("Knowledge internal article link picker runtime", () => {
       "disabled={linkPickerSourceDocumentId === node.document.id}",
     );
     expect(shell).toContain("knowledgeArticleLinkPicker");
+    expect(shell).toContain("activeKnowledgeArticleLinkPicker");
     expect(shell).toContain("pickKnowledgeArticleLinkTarget");
   });
 
