@@ -3,7 +3,6 @@ import type { ProjectFileScope } from "./project-file-repository";
 const PROJECT_FILE_SEARCH_INDEX_BATCH = 8;
 
 const inFlightScopeIndexes = new Map<string, Promise<void>>();
-const completedScopeIndexes = new Set<string>();
 
 function scopeKey(scope: ProjectFileScope): string {
   return `${scope.workspaceId}:${scope.projectId}`;
@@ -37,20 +36,19 @@ async function requestIndex(body: {
 
 async function completeProjectFileSearchIndex(
   scope: ProjectFileScope,
-): Promise<boolean> {
+): Promise<void> {
   while (true) {
     const result = await requestIndex({
       ...scope,
       limit: PROJECT_FILE_SEARCH_INDEX_BATCH,
     });
 
-    if (result.readOnly) return true;
-    if (result.attempted === 0) return true;
+    if (result.readOnly || result.attempted === 0) return;
 
     const retryableFailures =
       result.failures.length > 0 && result.indexed < result.attempted;
-    if (retryableFailures) return false;
-    if (result.attempted < PROJECT_FILE_SEARCH_INDEX_BATCH) return true;
+    if (retryableFailures) return;
+    if (result.attempted < PROJECT_FILE_SEARCH_INDEX_BATCH) return;
   }
 }
 
@@ -58,20 +56,14 @@ export function ensureProjectFileSearchIndex(
   scope: ProjectFileScope,
 ): Promise<void> {
   const key = scopeKey(scope);
-  if (completedScopeIndexes.has(key)) return Promise.resolve();
-
   const existing = inFlightScopeIndexes.get(key);
   if (existing) return existing;
 
-  const pending = completeProjectFileSearchIndex(scope)
-    .then((complete) => {
-      if (complete) completedScopeIndexes.add(key);
-    })
-    .finally(() => {
-      if (inFlightScopeIndexes.get(key) === pending) {
-        inFlightScopeIndexes.delete(key);
-      }
-    });
+  const pending = completeProjectFileSearchIndex(scope).finally(() => {
+    if (inFlightScopeIndexes.get(key) === pending) {
+      inFlightScopeIndexes.delete(key);
+    }
+  });
   inFlightScopeIndexes.set(key, pending);
   return pending;
 }
@@ -79,10 +71,5 @@ export function ensureProjectFileSearchIndex(
 export async function indexProjectFileForSearch(
   input: ProjectFileScope & { fileId: string },
 ): Promise<void> {
-  const key = scopeKey(input);
-  const wasComplete = completedScopeIndexes.delete(key);
-  const result = await requestIndex(input);
-  if (wasComplete && result.indexed === 1 && result.failures.length === 0) {
-    completedScopeIndexes.add(key);
-  }
+  await requestIndex(input);
 }
