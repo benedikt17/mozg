@@ -16,17 +16,20 @@ import {
 
 const MAX_TELEGRAM_DOCUMENT_BYTES = 49 * 1024 * 1024;
 
+const telegramChatIdSchema = z
+  .string()
+  .refine(
+    (value) => /^-?\d+$/.test(value) || /^@[A-Za-z0-9_]{5,}$/.test(value),
+    "Expected a numeric Telegram chat id or @channel username",
+  );
+
 const automaticBackupEnvSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   SUPABASE_BACKUP_SECRET_KEY: z.string().startsWith("sb_secret_"),
   MOZG_BACKUP_WORKSPACE_ID: z.string().uuid(),
   TELEGRAM_BACKUP_BOT_TOKEN: z.string().regex(/^\d+:[A-Za-z0-9_-]{20,}$/),
-  TELEGRAM_BACKUP_CHAT_ID: z
-    .string()
-    .refine(
-      (value) => /^-?\d+$/.test(value) || /^@[A-Za-z0-9_]{5,}$/.test(value),
-      "Expected a numeric Telegram chat id or @channel username",
-    ),
+  TELEGRAM_BACKUP_DAILY_CHAT_ID: telegramChatIdSchema,
+  TELEGRAM_BACKUP_WEEKLY_CHAT_ID: telegramChatIdSchema,
 });
 
 const telegramResponseSchema = z
@@ -121,7 +124,10 @@ export async function runAutomaticKnowledgeBackup(
     botToken: env.TELEGRAM_BACKUP_BOT_TOKEN,
     bytes: archive.bytes,
     caption,
-    chatId: env.TELEGRAM_BACKUP_CHAT_ID,
+    chatId:
+      kind === "daily"
+        ? env.TELEGRAM_BACKUP_DAILY_CHAT_ID
+        : env.TELEGRAM_BACKUP_WEEKLY_CHAT_ID,
     fileName,
   });
 
@@ -141,7 +147,8 @@ function getAutomaticBackupEnv(): z.infer<typeof automaticBackupEnvSchema> {
     SUPABASE_BACKUP_SECRET_KEY: process.env.SUPABASE_BACKUP_SECRET_KEY,
     MOZG_BACKUP_WORKSPACE_ID: process.env.MOZG_BACKUP_WORKSPACE_ID,
     TELEGRAM_BACKUP_BOT_TOKEN: process.env.TELEGRAM_BACKUP_BOT_TOKEN,
-    TELEGRAM_BACKUP_CHAT_ID: process.env.TELEGRAM_BACKUP_CHAT_ID,
+    TELEGRAM_BACKUP_DAILY_CHAT_ID: process.env.TELEGRAM_BACKUP_DAILY_CHAT_ID,
+    TELEGRAM_BACKUP_WEEKLY_CHAT_ID: process.env.TELEGRAM_BACKUP_WEEKLY_CHAT_ID,
   });
 }
 
