@@ -49,7 +49,9 @@ export function getKnowledgeSearchMatchSpans(
   return mergeSearchMatchSpans(
     terms
       .flatMap((term) => findAllMatches(normalizedText, term))
-      .sort((first, second) => first.start - second.start || first.end - second.end),
+      .sort(
+        (first, second) => first.start - second.start || first.end - second.end,
+      ),
   );
 }
 
@@ -100,7 +102,10 @@ export function queueKnowledgeSearchHighlight(
     childList: true,
     subtree: true,
   });
-  waitTimeout = window.setTimeout(stopWaitingForDocument, KNOWLEDGE_SEARCH_HIGHLIGHT_WAIT_MS);
+  waitTimeout = window.setTimeout(
+    stopWaitingForDocument,
+    KNOWLEDGE_SEARCH_HIGHLIGHT_WAIT_MS,
+  );
   window.requestAnimationFrame(tryApply);
 }
 
@@ -145,25 +150,21 @@ function collectTextSegments(root: HTMLElement): {
   text: string;
   segments: TextSegment[];
 } {
-  const walker = window.document.createTreeWalker(
-    root,
-    NodeFilter.SHOW_TEXT,
-    {
-      acceptNode(node) {
-        if (!(node instanceof Text) || node.data.length === 0) {
-          return NodeFilter.FILTER_REJECT;
-        }
-        const parent = node.parentElement;
-        if (
-          !parent ||
-          parent.closest('script, style, [aria-hidden="true"]') !== null
-        ) {
-          return NodeFilter.FILTER_REJECT;
-        }
-        return NodeFilter.FILTER_ACCEPT;
-      },
+  const walker = window.document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!(node instanceof Text) || node.data.length === 0) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      const parent = node.parentElement;
+      if (
+        !parent ||
+        parent.closest('script, style, [aria-hidden="true"]') !== null
+      ) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return NodeFilter.FILTER_ACCEPT;
     },
-  );
+  });
 
   const segments: TextSegment[] = [];
   let text = "";
@@ -201,7 +202,9 @@ function getActiveKnowledgeDocumentPage(
 ): HTMLElement | null {
   return (
     Array.from(
-      window.document.querySelectorAll<HTMLElement>(".document-page.is-active-pane"),
+      window.document.querySelectorAll<HTMLElement>(
+        ".document-page.is-active-pane",
+      ),
     ).find((page) => page.dataset.documentId === documentId) ?? null
   );
 }
