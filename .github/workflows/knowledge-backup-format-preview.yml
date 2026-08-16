@@ -1,0 +1,29 @@
+name: Knowledge backup format preview
+
+on:
+  push:
+    branches:
+      - feat/knowledge-backup-export
+
+jobs:
+  format-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Print Prettier diff
+        shell: bash
+        run: |
+          pnpm exec prettier --write \
+            src/prototype/knowledge/knowledge-backup-export.ts \
+            tests/knowledge-backup-export.test.ts
+          git diff -- \
+            src/prototype/knowledge/knowledge-backup-export.ts \
+            tests/knowledge-backup-export.test.ts
