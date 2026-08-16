@@ -16,6 +16,28 @@ async function signIn(page: Page): Promise<void> {
   ).toBeVisible();
 }
 
+async function getKnowledgeSearchHighlightText(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const registry = (
+      CSS as typeof CSS & {
+        highlights?: {
+          get: (name: string) =>
+            | {
+                values: () => IterableIterator<Range>;
+              }
+            | undefined;
+        };
+      }
+    ).highlights;
+    const highlight = registry?.get("knowledge-search-match");
+    return highlight
+      ? Array.from(highlight.values(), (range) =>
+          range.toString().toLocaleLowerCase("ru"),
+        )
+      : [];
+  });
+}
+
 test("global Search finds a current-Project Knowledge article by body text and opens it", async ({
   page,
 }) => {
@@ -43,6 +65,16 @@ test("global Search finds a current-Project Knowledge article by body text and o
   await expect(
     page.getByRole("heading", { level: 1, name: "Карта Лукоморья" }),
   ).toBeVisible();
+  await expect
+    .poll(() => getKnowledgeSearchHighlightText(page))
+    .toContain("почему герои не могут");
+
+  const tree = page.getByRole("navigation", { name: "Иерархия документов" });
+  await tree.getByRole("button", { name: "Острова", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Острова" }),
+  ).toBeVisible();
+  await expect.poll(() => getKnowledgeSearchHighlightText(page)).toEqual([]);
 });
 
 test("Knowledge document Context follows the active article instead of the article that opened it", async ({
