@@ -42,7 +42,9 @@ describe("Canvas Miro-style selection interaction", () => {
     expect(source).toContain("snapshotCanvasTouchGestureNodes");
     expect(source).toContain("touchViewportGestureActiveRef.current = true");
     expect(source).toContain('event.pointerType === "touch"');
-    expect(source).toContain('change.type !== "position" && change.type !== "dimensions"');
+    expect(source).toContain(
+      'change.type !== "position" && change.type !== "dimensions"',
+    );
     expect(
       source.match(/nodesDraggable=\{!touchViewportGestureActive\}/g),
     ).toHaveLength(2);

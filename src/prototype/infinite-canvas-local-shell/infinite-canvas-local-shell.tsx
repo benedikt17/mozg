@@ -3423,6 +3423,8 @@ function InfiniteCanvasLocalShellSurface({
   const beginTouchViewportGesture = useCallback((): void => {
     if (touchViewportGestureActiveRef.current) return;
     touchViewportGestureActiveRef.current = true;
+    nodeDragActiveRef.current = false;
+    edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
     setTouchViewportGestureActive(true);
 
     const snapshot = touchGestureNodesRef.current;
