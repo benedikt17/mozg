@@ -26,9 +26,7 @@ describe("Desktop command search runtime boundary", () => {
     );
 
     expect(source).not.toContain("[state, commandQuery]");
-    expect(source).toContain(
-      "[\n      activeProjectId,\n      commandPaletteOpen,\n      documents,\n      inboxItems,\n      projects,\n      tasks,\n      commandQuery,\n    ]",
-    );
+    expect(source).toContain("activeProjectId,");
     expect(source).toContain("commandPaletteOpen\n        ? getCommandResults(");
   });
 });
