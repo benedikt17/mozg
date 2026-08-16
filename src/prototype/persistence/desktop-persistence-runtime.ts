@@ -24,9 +24,7 @@ export type DesktopPersistenceLifecycle =
   | { status: "load-error"; error: DesktopPersistenceError };
 
 export type DesktopPersistenceRefreshResult =
-  | "unchanged"
-  | "refreshed"
-  | "skipped";
+  "unchanged" | "refreshed" | "skipped";
 
 export type DesktopPersistenceRuntimeOptions = {
   adapter: DesktopPersistenceAdapter;
@@ -201,9 +199,7 @@ export class DesktopPersistenceRuntime {
     void finalSave.finally(() => this.adapter.close());
   }
 
-  private async performRefreshFromSource(): Promise<
-    DesktopPersistenceRefreshResult
-  > {
+  private async performRefreshFromSource(): Promise<DesktopPersistenceRefreshResult> {
     await this.flush();
     if (
       this.disposed ||
