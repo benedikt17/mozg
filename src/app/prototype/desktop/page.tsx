@@ -1,5 +1,6 @@
 import type { DesktopCloudSnapshotLoadResult } from "@/lib/supabase/desktop-snapshot-loader";
 import { DesktopPrototypeShell } from "@/prototype/desktop-shell";
+import "@/prototype/knowledge/knowledge-editor-scroll.css";
 import { KnowledgeAnnotationsRuntime } from "@/prototype/knowledge/knowledge-annotations-runtime";
 import { redirect } from "next/navigation";
 

@@ -1,0 +1,6 @@
+@supports (field-sizing: content) {
+  .desktop-prototype .markdown-source-textarea {
+    height: auto !important;
+    field-sizing: content;
+  }
+}
