@@ -21,18 +21,6 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Show exact Prettier diff for refresh files
-        shell: bash
-        run: |
-          pnpm exec prettier --write \
-            src/prototype/persistence/desktop-persistence-runtime.ts \
-            src/prototype/state/domain-refresh.ts \
-            tests/desktop-persistence-refresh.test.ts
-          git diff -- \
-            src/prototype/persistence/desktop-persistence-runtime.ts \
-            src/prototype/state/domain-refresh.ts \
-            tests/desktop-persistence-refresh.test.ts
-          exit 1
       - name: Resolve changed range
         shell: bash
         env:
