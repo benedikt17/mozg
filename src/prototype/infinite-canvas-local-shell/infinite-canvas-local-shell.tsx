@@ -2925,7 +2925,7 @@ function InfiniteCanvasLocalShellSurface({
   const handleNodesChange = useCallback(
     (changes: NodeChange<CanvasFlowNode>[]) => {
       const guardedChanges = touchViewportGestureActiveRef.current
-        ? guardedChanges.filter(
+        ? changes.filter(
             (change) =>
               change.type !== "position" && change.type !== "dimensions",
           )
