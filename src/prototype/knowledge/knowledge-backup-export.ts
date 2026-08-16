@@ -60,7 +60,10 @@ export function createKnowledgeBackup(
   source: KnowledgeBackupSource,
   generatedAt = new Date(),
 ): KnowledgeBackupArchive {
-  const { entries, manifest } = createKnowledgeBackupEntries(source, generatedAt);
+  const { entries, manifest } = createKnowledgeBackupEntries(
+    source,
+    generatedAt,
+  );
   return {
     bytes: createStoreZip(entries, generatedAt),
     entries,
@@ -192,7 +195,9 @@ export function knowledgeBackupFileName(generatedAt: Date): string {
   return `MOZG-Knowledge-Backup-${date}.zip`;
 }
 
-function getProjectDescriptors(source: KnowledgeBackupSource): ProjectDescriptor[] {
+function getProjectDescriptors(
+  source: KnowledgeBackupSource,
+): ProjectDescriptor[] {
   const result: ProjectDescriptor[] = source.projects.map(({ id, name }) => ({
     id,
     name,
@@ -210,7 +215,9 @@ function getProjectDescriptors(source: KnowledgeBackupSource): ProjectDescriptor
   return result;
 }
 
-function createProjectRoots(projects: ProjectDescriptor[]): Map<string, string> {
+function createProjectRoots(
+  projects: ProjectDescriptor[],
+): Map<string, string> {
   const result = new Map<string, string>();
   const usedRootNames = new Set<string>(["_корзина"]);
   for (const project of projects) {
@@ -233,8 +240,7 @@ function createFolderPathMap(
     const usedNamesByParent = new Map<string, Set<string>>();
     for (const path of paths) {
       const parent = path.slice(0, -1);
-      const parentExported =
-        result.get(folderMapKey(project.id, parent)) ?? [];
+      const parentExported = result.get(folderMapKey(project.id, parent)) ?? [];
       const parentKey = JSON.stringify(parentExported);
       const usedNames = getOrCreateSet(usedNamesByParent, parentKey);
       const segment = createUniqueSegment(
@@ -264,7 +270,8 @@ function getProjectFolderPaths(
     if (folder.projectId === projectId) addPath(folder.path);
   }
   for (const document of documents) {
-    if (document.projectId === projectId) addPath(getDocumentFolderPath(document));
+    if (document.projectId === projectId)
+      addPath(getDocumentFolderPath(document));
   }
   return [...paths.values()].sort((left, right) => {
     if (left.length !== right.length) return left.length - right.length;
@@ -276,7 +283,10 @@ function getDocumentFolderPath(document: PrototypeDocument): string[] {
   return document.folderPath ?? (document.folder ? [document.folder] : []);
 }
 
-function compareDocuments(left: PrototypeDocument, right: PrototypeDocument): number {
+function compareDocuments(
+  left: PrototypeDocument,
+  right: PrototypeDocument,
+): number {
   const projectOrder = left.projectId.localeCompare(right.projectId);
   if (projectOrder !== 0) return projectOrder;
   const folderOrder = JSON.stringify(getDocumentFolderPath(left)).localeCompare(
@@ -314,7 +324,10 @@ function createUniqueSegment(
   return unique;
 }
 
-function createUniqueMarkdownName(title: string, usedNames: Set<string>): string {
+function createUniqueMarkdownName(
+  title: string,
+  usedNames: Set<string>,
+): string {
   const base = sanitizePathSegment(title, "document");
   const first = `${base}.md`;
   if (!usedNames.has(normalizeFileSystemName(first))) {
@@ -322,9 +335,7 @@ function createUniqueMarkdownName(title: string, usedNames: Set<string>): string
     return first;
   }
   let suffix = 2;
-  while (
-    usedNames.has(normalizeFileSystemName(`${base} (${suffix}).md`))
-  ) {
+  while (usedNames.has(normalizeFileSystemName(`${base} (${suffix}).md`))) {
     suffix += 1;
   }
   const unique = `${base} (${suffix}).md`;

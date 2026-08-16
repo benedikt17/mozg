@@ -73,9 +73,8 @@ describe("Knowledge backup export", () => {
     expect(paths).toContain("_Корзина/Проект- A/Корзина-/Удалённая-.md");
 
     expect(
-      entries.find(
-        (entry) => entry.path === "Проект- A/Папка-Одна/_CON.md",
-      )?.content,
+      entries.find((entry) => entry.path === "Проект- A/Папка-Одна/_CON.md")
+        ?.content,
     ).toBe("# Первая\n\nТекст");
     expect(manifest).toMatchObject({
       activeDocumentCount: 2,
@@ -104,15 +103,17 @@ describe("Knowledge backup export", () => {
     );
 
     expect(view.getUint32(0, true)).toBe(0x04034b50);
-    expect(view.getUint32(archive.bytes.byteLength - 22, true)).toBe(0x06054b50);
+    expect(view.getUint32(archive.bytes.byteLength - 22, true)).toBe(
+      0x06054b50,
+    );
     expect(archive.fileName).toBe("MOZG-Knowledge-Backup-2026-08-16.zip");
     expect(knowledgeBackupFileName(generatedAt)).toBe(archive.fileName);
 
     const files = readStoredZipFiles(archive.bytes);
-    expect(files.get("manifest.json")).toContain('"format": "mozg-knowledge-backup"');
-    expect(files.get("Проект- A/Папка-Одна/_CON.md")).toBe(
-      "# Первая\n\nТекст",
+    expect(files.get("manifest.json")).toContain(
+      '"format": "mozg-knowledge-backup"',
     );
+    expect(files.get("Проект- A/Папка-Одна/_CON.md")).toBe("# Первая\n\nТекст");
     expect(files.get("_Корзина/Проект- A/Корзина-/Удалённая-.md")).toBe(
       "Удалённый текст",
     );
