@@ -26,15 +26,13 @@ test("global Search finds a current-Project Knowledge article by body text and o
   await expect(palette).toBeVisible();
 
   const searchInput = palette.locator("input");
-  await searchInput.fill("забирает ресурс");
+  await searchInput.fill("почему герои не могут");
 
   const result = palette.getByRole("button", {
-    name: /Пути между островами/,
+    name: /Карта Лукоморья/,
   });
   await expect(result).toBeVisible();
-  await expect(result).toContainText(
-    "Переход между островами всегда забирает ресурс",
-  );
+  await expect(result).toContainText("почему герои не могут");
   await result.click();
 
   await expect(
@@ -43,7 +41,7 @@ test("global Search finds a current-Project Knowledge article by body text and o
       .getByRole("button", { name: "Знания", exact: true }),
   ).toHaveAttribute("aria-current", "page");
   await expect(
-    page.getByRole("heading", { level: 1, name: "Пути между островами" }),
+    page.getByRole("heading", { level: 1, name: "Карта Лукоморья" }),
   ).toBeVisible();
 });
 
@@ -63,27 +61,30 @@ test("Knowledge document Context follows the active article instead of the artic
     name: "Контекстная панель",
   });
   await expect(panel).toBeVisible();
+
   await panel.getByRole("tab", { name: "Исходящие", exact: true }).click();
   await expect(panel.getByText("Острова", { exact: true })).toBeVisible();
   await expect(
     panel.getByText("Пути между островами", { exact: true }),
   ).toBeVisible();
   await expect(panel.getByText("Правила магии", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Список сцен", { exact: true })).toHaveCount(0);
 
-  const targetDocument = page.locator(
-    '[data-knowledge-document-id="doc-l-routes"]',
-  );
-  await targetDocument
-    .getByRole("button", { name: "Пути между островами" })
-    .click();
+  await panel.getByRole("tab", { name: "Структура", exact: true }).click();
+  await expect(
+    panel.getByText("Мир / География / Карта Лукоморья", { exact: true }),
+  ).toBeVisible();
+
+  const tree = page.getByRole("navigation", { name: "Иерархия документов" });
+  await tree.getByRole("button", { name: "Острова", exact: true }).click();
 
   await expect(
-    page.getByRole("heading", { level: 1, name: "Пути между островами" }),
+    page.getByRole("heading", { level: 1, name: "Острова" }),
   ).toBeVisible();
   await expect(
-    panel.getByText("Исходящих ссылок нет.", { exact: true }),
+    panel.getByText("Мир / География / Острова", { exact: true }),
   ).toBeVisible();
-  await expect(panel.getByText("Правила магии", { exact: true })).toHaveCount(
-    0,
-  );
+  await expect(
+    panel.getByText("Мир / География / Карта Лукоморья", { exact: true }),
+  ).toHaveCount(0);
 });
