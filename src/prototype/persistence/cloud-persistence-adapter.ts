@@ -8,6 +8,7 @@ import {
   DesktopPersistenceError,
   type DesktopPersistenceAdapter,
   type DesktopPersistenceLoadResult,
+  type DesktopPersistenceSaveResult,
 } from "@/prototype/persistence/persistence-adapter";
 import {
   parseDesktopCloudSnapshotRow,
@@ -89,7 +90,7 @@ export class CloudDesktopPersistenceAdapter implements DesktopPersistenceAdapter
     };
   }
 
-  async initializeWorkspace(): Promise<DesktopPersistenceLoadResult & never> {
+  async initializeWorkspace(): Promise<DesktopPersistenceSaveResult> {
     throw new DesktopPersistenceError(
       "not-initialized",
       "Cloud workspace snapshot is not initialized.",
@@ -100,7 +101,7 @@ export class CloudDesktopPersistenceAdapter implements DesktopPersistenceAdapter
     _storageKey: string,
     snapshot: DesktopDomainSnapshot,
     expectedRevision: number,
-  ) {
+  ): Promise<DesktopPersistenceSaveResult> {
     const parsed = parseDesktopDomainSnapshotV3(snapshot);
     if (!parsed.ok) {
       throw new DesktopPersistenceError(
