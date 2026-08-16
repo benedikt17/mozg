@@ -260,7 +260,7 @@ export class DesktopPersistenceRuntime {
       this.onRefresh(loaded.snapshot);
     }
     this.setReadyLifecycle();
-    return "refreshed";
+    return freshFingerprint === baselineFingerprint ? "unchanged" : "refreshed";
   }
 
   private async loadOrInitialize(): Promise<void> {
