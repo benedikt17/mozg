@@ -71,7 +71,7 @@ export function refreshDesktopDomain(
   const openDocumentIds = uniqueDocumentIds([
     ...state.openDocumentIds.filter((id) => validDocumentIds.has(id)),
     selectedDocument.id,
-    splitEnabled ? splitDocument?.id ?? null : null,
+    splitEnabled ? (splitDocument?.id ?? null) : null,
   ]);
 
   return {
@@ -99,7 +99,7 @@ export function refreshDesktopDomain(
     ),
     knowledgeContextMode: state.knowledgeContextMode,
     knowledgeSplitEnabled: splitEnabled,
-    splitViewDocumentId: splitEnabled ? splitDocument?.id ?? null : null,
+    splitViewDocumentId: splitEnabled ? (splitDocument?.id ?? null) : null,
     activeKnowledgePane: activePane,
     editingKnowledgeDocumentId: null,
   };
