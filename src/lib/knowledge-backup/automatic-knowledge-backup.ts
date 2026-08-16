@@ -20,9 +20,7 @@ const automaticBackupEnvSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   SUPABASE_BACKUP_SECRET_KEY: z.string().startsWith("sb_secret_"),
   MOZG_BACKUP_WORKSPACE_ID: z.string().uuid(),
-  TELEGRAM_BACKUP_BOT_TOKEN: z
-    .string()
-    .regex(/^\d+:[A-Za-z0-9_-]{20,}$/),
+  TELEGRAM_BACKUP_BOT_TOKEN: z.string().regex(/^\d+:[A-Za-z0-9_-]{20,}$/),
   TELEGRAM_BACKUP_CHAT_ID: z
     .string()
     .refine(
