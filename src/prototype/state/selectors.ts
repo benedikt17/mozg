@@ -76,20 +76,14 @@ export function getCommandResults(
   const terms = normalizedQuery.split(/\s+/).filter(Boolean);
   const matches = (value: string): boolean => matchesSearchTerms(value, terms);
 
-  const activeProject = state.projects.find(
-    (project) => project.id === state.activeProjectId,
-  );
-  const projectResults: CommandResult[] =
-    activeProject && matches(activeProject.name)
-      ? [
-          {
-            kind: "project",
-            id: activeProject.id,
-            title: activeProject.name,
-            subtitle: "Текущий проект",
-          },
-        ]
-      : [];
+  const projectResults: CommandResult[] = state.projects
+    .filter((project) => matches(project.name))
+    .map((project) => ({
+      kind: "project",
+      id: project.id,
+      title: project.name,
+      subtitle: "Проект",
+    }));
 
   const sectionResults: CommandResult[] = [
     ["overview", "Обзор"],
@@ -110,14 +104,12 @@ export function getCommandResults(
     }));
 
   const taskResults: CommandResult[] = state.tasks
-    .filter(
-      (task) => task.projectId === state.activeProjectId && matches(task.title),
-    )
+    .filter((task) => matches(task.title))
     .map((task) => ({
       kind: "task",
       id: task.id,
       title: task.title,
-      subtitle: "Задача текущего проекта",
+      subtitle: `Задача · ${getProjectName(state, task.projectId)}`,
     }));
 
   const documentResults: CommandResult[] = state.documents
@@ -186,6 +178,12 @@ function matchesSearchTerms(value: string, terms: readonly string[]): boolean {
   if (terms.length === 0) return true;
   const normalizedValue = normalizeSearchValue(value);
   return terms.every((term) => normalizedValue.includes(term));
+}
+
+function getProjectName(state: CommandSearchState, projectId: string): string {
+  return (
+    state.projects.find((project) => project.id === projectId)?.name ?? projectId
+  );
 }
 
 function documentSearchScore(
