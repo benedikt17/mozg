@@ -33,7 +33,8 @@ export function refreshDesktopDomain(
   });
   if (hydrated === state) return state;
 
-  const activeProjectPreserved = hydrated.activeProjectId === state.activeProjectId;
+  const activeProjectPreserved =
+    hydrated.activeProjectId === state.activeProjectId;
   if (!activeProjectPreserved) return hydrated;
 
   const selectedDocument = getActiveDocumentById(
