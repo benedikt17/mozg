@@ -196,6 +196,10 @@ export function KnowledgeAnnotationsRuntime({
         current === documentId ? current : documentId,
       );
       setIsReading((current) => (current === reading ? current : reading));
+      if (!reading) {
+        setReanchorId(null);
+        setSelectionAction(null);
+      }
 
       const readingRoot = reading ? activeReadingRoot() : null;
       const text = readingRoot?.textContent ?? "";
@@ -267,18 +271,6 @@ export function KnowledgeAnnotationsRuntime({
       cancelled = true;
     };
   }, [activeDocumentId, workspaceId]);
-
-  useEffect(() => {
-    if (isReading) return;
-    setReanchorId(null);
-    setSelectionAction(null);
-  }, [isReading]);
-
-  useEffect(() => {
-    if (panelOpen) return;
-    setReanchorId(null);
-    setSelectionAction(null);
-  }, [panelOpen]);
 
   useEffect(() => {
     if (!isReading || !activeDocumentId) return;
@@ -422,11 +414,7 @@ export function KnowledgeAnnotationsRuntime({
   };
 
   const beginReanchor = (annotation: KnowledgeAnnotation): void => {
-    if (
-      !isReading ||
-      annotation.resolvedAt !== null ||
-      updatingId !== null
-    ) {
+    if (!isReading || annotation.resolvedAt !== null || updatingId !== null) {
       return;
     }
     setDraftSelection(null);
@@ -545,9 +533,7 @@ export function KnowledgeAnnotationsRuntime({
           className={styles.selectionAction}
           data-knowledge-annotations-ui="true"
           disabled={Boolean(reanchorId && updatingId === reanchorId)}
-          onClick={() =>
-            reanchorId ? void saveReanchor() : beginComment()
-          }
+          onClick={() => (reanchorId ? void saveReanchor() : beginComment())}
           style={{ left: selectionAction.left, top: selectionAction.top }}
           type="button"
         >
@@ -561,7 +547,10 @@ export function KnowledgeAnnotationsRuntime({
         aria-label={`Комментарии: ${unresolvedCount} открытых`}
         className={styles.toggle}
         data-knowledge-annotations-ui="true"
-        onClick={() => setPanelOpen((open) => !open)}
+        onClick={() => {
+          if (panelOpen) cancelReanchor();
+          setPanelOpen((open) => !open);
+        }}
         title="Комментарии к статье"
         type="button"
       >
@@ -585,7 +574,10 @@ export function KnowledgeAnnotationsRuntime({
             <button
               aria-label="Закрыть комментарии"
               className={styles.closeButton}
-              onClick={() => setPanelOpen(false)}
+              onClick={() => {
+                cancelReanchor();
+                setPanelOpen(false);
+              }}
               type="button"
             >
               ×
@@ -670,7 +662,8 @@ export function KnowledgeAnnotationsRuntime({
             ) : (
               visibleAnnotations.map((annotation) => {
                 const orphaned =
-                  orphanIds.has(annotation.id) && annotation.resolvedAt === null;
+                  orphanIds.has(annotation.id) &&
+                  annotation.resolvedAt === null;
                 return (
                   <article
                     className={`${styles.commentCard} ${
