@@ -6,7 +6,13 @@ import {
 import {
   createDesktopDomainSnapshot,
   parseDesktopDomainSnapshotV3,
+  type DesktopDomainSnapshot,
 } from "@/prototype/persistence/domain-snapshot";
+import { refreshDesktopDomain } from "@/prototype/state/domain-refresh";
+
+export type DesktopRuntimeAction =
+  | DesktopPrototypeAction
+  | { type: "refresh-domain"; snapshot: DesktopDomainSnapshot };
 
 function persistentlyValid(state: DesktopPrototypeState): boolean {
   return parseDesktopDomainSnapshotV3(createDesktopDomainSnapshot(state)).ok;
@@ -23,8 +29,13 @@ function persistentlyValid(state: DesktopPrototypeState): boolean {
  */
 export function desktopRuntimeReducer(
   state: DesktopPrototypeState,
-  action: DesktopPrototypeAction,
+  action: DesktopRuntimeAction,
 ): DesktopPrototypeState {
+  if (action.type === "refresh-domain") {
+    const candidateState = refreshDesktopDomain(state, action.snapshot);
+    return persistentlyValid(candidateState) ? candidateState : state;
+  }
+
   if (action.type === "commit-knowledge-structural-transition") {
     return persistentlyValid(action.nextState) ? action.nextState : state;
   }

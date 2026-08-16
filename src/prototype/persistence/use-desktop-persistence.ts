@@ -5,19 +5,19 @@ import { createDesktopDomainSnapshot } from "@/prototype/persistence/domain-snap
 import {
   DesktopPersistenceRuntime,
   type DesktopPersistenceLifecycle,
+  type DesktopPersistenceRefreshResult,
 } from "@/prototype/persistence/desktop-persistence-runtime";
 import { IndexedDbDesktopPersistenceAdapter } from "@/prototype/persistence/indexeddb-adapter";
 import { CloudDesktopPersistenceAdapter } from "@/prototype/persistence/cloud-persistence-adapter";
 import type { DesktopCloudBootstrap } from "@/prototype/persistence/cloud-snapshot-bridge";
 import type { DesktopRuntimeMode } from "@/lib/desktop-runtime-mode";
 import type { DesktopPersistenceAdapter } from "@/prototype/persistence/persistence-adapter";
-import type {
-  DesktopPrototypeAction,
-  DesktopPrototypeState,
-} from "@/prototype/state/types";
+import type { DesktopRuntimeAction } from "@/prototype/state/desktop-runtime-reducer";
+import type { DesktopPrototypeState } from "@/prototype/state/types";
 
 export type UseDesktopPersistenceResult = {
   lifecycle: DesktopPersistenceLifecycle;
+  refreshFromSource: () => Promise<DesktopPersistenceRefreshResult>;
   retryLoad: () => void;
   retrySave: () => void;
 };
@@ -38,7 +38,7 @@ export function createDesktopPersistenceAdapter({
 
 export function useDesktopPersistence(
   state: DesktopPrototypeState,
-  dispatch: React.Dispatch<DesktopPrototypeAction>,
+  dispatch: React.Dispatch<DesktopRuntimeAction>,
   options: {
     enabled?: boolean;
     cloudBootstrap?: DesktopCloudBootstrap;
@@ -104,6 +104,10 @@ export function useDesktopPersistence(
         if (active)
           dispatch({ type: "hydrate-domain", snapshot: loadedSnapshot });
       },
+      onRefresh: (loadedSnapshot) => {
+        if (active)
+          dispatch({ type: "refresh-domain", snapshot: loadedSnapshot });
+      },
       onLifecycleChange: (nextLifecycle) => {
         if (active) setLifecycle(nextLifecycle);
       },
@@ -134,6 +138,15 @@ export function useDesktopPersistence(
     runtime.current?.observeSnapshot(snapshot);
   }, [enabled, snapshot]);
 
+  const refreshFromSource = useCallback(() => {
+    if (!enabled) {
+      return Promise.resolve<DesktopPersistenceRefreshResult>("skipped");
+    }
+    return (
+      runtime.current?.refreshFromSource() ??
+      Promise.resolve<DesktopPersistenceRefreshResult>("skipped")
+    );
+  }, [enabled]);
   const retryLoad = useCallback(() => {
     if (!enabled) return;
     void runtime.current?.retryLoad();
@@ -143,5 +156,5 @@ export function useDesktopPersistence(
     void runtime.current?.retrySave();
   }, [enabled]);
 
-  return { lifecycle, retryLoad, retrySave };
+  return { lifecycle, refreshFromSource, retryLoad, retrySave };
 }

@@ -19,6 +19,9 @@ export type DesktopPersistenceSaveResult = {
 
 export interface DesktopPersistenceAdapter {
   loadWorkspace(storageKey: string): Promise<DesktopPersistenceLoadResult>;
+  loadLatestWorkspace?(
+    storageKey: string,
+  ): Promise<DesktopPersistenceLoadResult>;
   initializeWorkspace(
     storageKey: string,
     snapshot: DesktopDomainSnapshot,

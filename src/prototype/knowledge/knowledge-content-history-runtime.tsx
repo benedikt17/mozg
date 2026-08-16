@@ -154,6 +154,7 @@ export function KnowledgeContentHistoryProvider({
   const [version, setVersion] = useState(() => history.getVersion());
   const [scope, setScope] = useState<KnowledgeUndoScope | null>(null);
   const hydratedRef = useRef(false);
+  const editPreflightPendingRef = useRef(false);
   const structuralWorkspaceRef = useRef<string | null>(null);
 
   useEffect(
@@ -265,6 +266,25 @@ export function KnowledgeContentHistoryProvider({
     React.Dispatch<DesktopPrototypeAction>
   >(
     (action): void => {
+      if (
+        action.type === "toggle-knowledge-document-edit" &&
+        state.editingKnowledgeDocumentId !== action.documentId
+      ) {
+        if (editPreflightPendingRef.current) return;
+        editPreflightPendingRef.current = true;
+        void persistence
+          .refreshFromSource()
+          .then((result) => {
+            if (result === "refreshed") hydratedRef.current = false;
+            // The reducer itself validates that the requested document is still
+            // the active, non-deleted Knowledge pane after any fresh snapshot.
+            dispatch(action);
+          })
+          .finally(() => {
+            editPreflightPendingRef.current = false;
+          });
+        return;
+      }
       if (!isStructuralAction(action)) {
         dispatch(action);
         return;
@@ -284,7 +304,7 @@ export function KnowledgeContentHistoryProvider({
         type: "commit-knowledge-structural-transition",
       });
     },
-    [dispatch, state, structuralHistory],
+    [dispatch, persistence, state, structuralHistory],
   );
 
   const activeScope = useCallback(

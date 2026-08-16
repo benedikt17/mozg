@@ -23,10 +23,14 @@ export type DesktopPersistenceLifecycle =
     }
   | { status: "load-error"; error: DesktopPersistenceError };
 
+export type DesktopPersistenceRefreshResult =
+  "unchanged" | "refreshed" | "skipped";
+
 export type DesktopPersistenceRuntimeOptions = {
   adapter: DesktopPersistenceAdapter;
   initialSnapshot: DesktopDomainSnapshot;
   onHydrate: (snapshot: DesktopDomainSnapshot) => void;
+  onRefresh?: (snapshot: DesktopDomainSnapshot) => void;
   onLifecycleChange: (lifecycle: DesktopPersistenceLifecycle) => void;
   storageKey?: string;
   debounceMs?: number;
@@ -59,6 +63,7 @@ export class DesktopPersistenceRuntime {
   private readonly adapter: DesktopPersistenceAdapter;
   private readonly initialSnapshot: DesktopDomainSnapshot;
   private readonly onHydrate: (snapshot: DesktopDomainSnapshot) => void;
+  private readonly onRefresh: (snapshot: DesktopDomainSnapshot) => void;
   private readonly onLifecycleChange: (
     lifecycle: DesktopPersistenceLifecycle,
   ) => void;
@@ -76,6 +81,7 @@ export class DesktopPersistenceRuntime {
   private debounceTimer?: ReturnType<typeof setTimeout>;
   private startupPromise?: Promise<void>;
   private savePromise?: Promise<void>;
+  private refreshPromise?: Promise<DesktopPersistenceRefreshResult>;
   private disposed = false;
 
   constructor(options: DesktopPersistenceRuntimeOptions) {
@@ -86,6 +92,7 @@ export class DesktopPersistenceRuntime {
       options.initialSnapshot,
     );
     this.onHydrate = options.onHydrate;
+    this.onRefresh = options.onRefresh ?? options.onHydrate;
     this.onLifecycleChange = options.onLifecycleChange;
     this.storageKey = options.storageKey ?? DESKTOP_MVP_STORAGE_KEY;
     this.debounceMs = options.debounceMs ?? DESKTOP_AUTOSAVE_DEBOUNCE_MS;
@@ -152,6 +159,16 @@ export class DesktopPersistenceRuntime {
     return this.beginSave();
   }
 
+  refreshFromSource(): Promise<DesktopPersistenceRefreshResult> {
+    if (this.disposed) return Promise.resolve("skipped");
+    if (this.refreshPromise !== undefined) return this.refreshPromise;
+    const refresh = this.performRefreshFromSource().finally(() => {
+      if (this.refreshPromise === refresh) this.refreshPromise = undefined;
+    });
+    this.refreshPromise = refresh;
+    return refresh;
+  }
+
   flush(): Promise<void> {
     if (this.disposed) return this.savePromise ?? Promise.resolve();
     this.clearDebounce();
@@ -180,6 +197,68 @@ export class DesktopPersistenceRuntime {
       return;
     }
     void finalSave.finally(() => this.adapter.close());
+  }
+
+  private async performRefreshFromSource(): Promise<DesktopPersistenceRefreshResult> {
+    await this.flush();
+    if (
+      this.disposed ||
+      this.lifecycleValue.status !== "ready" ||
+      this.adapter.loadLatestWorkspace === undefined ||
+      this.revision === undefined ||
+      this.persistedFingerprint === undefined ||
+      this.savePromise !== undefined ||
+      this.pendingSnapshot !== undefined ||
+      this.latestFingerprint !== this.persistedFingerprint
+    ) {
+      return "skipped";
+    }
+
+    const baselineRevision = this.revision;
+    const baselineFingerprint = this.persistedFingerprint;
+    let loaded;
+    try {
+      loaded = await this.adapter.loadLatestWorkspace(this.storageKey);
+    } catch {
+      // A refresh is a safety preflight, not a replacement for CAS. If the
+      // network read is temporarily unavailable, keep the current state and
+      // let the normal save path remain the final concurrency guard.
+      return "skipped";
+    }
+
+    if (
+      this.disposed ||
+      this.lifecycleValue.status !== "ready" ||
+      this.revision !== baselineRevision ||
+      this.persistedFingerprint !== baselineFingerprint ||
+      this.savePromise !== undefined ||
+      this.pendingSnapshot !== undefined ||
+      this.latestFingerprint !== baselineFingerprint
+    ) {
+      return "skipped";
+    }
+    if (loaded.kind !== "loaded" || loaded.revision <= baselineRevision) {
+      return "unchanged";
+    }
+
+    try {
+      requireHydratableSnapshot(loaded.snapshot);
+    } catch {
+      return "skipped";
+    }
+    const freshFingerprint = fingerprintDesktopDomainSnapshot(loaded.snapshot);
+    this.revision = loaded.revision;
+    this.savedAt = loaded.savedAt;
+    this.persistedFingerprint = freshFingerprint;
+    this.latestSnapshot = loaded.snapshot;
+    this.latestFingerprint = freshFingerprint;
+    this.pendingSnapshot = undefined;
+    this.pendingFingerprint = undefined;
+    if (freshFingerprint !== baselineFingerprint) {
+      this.onRefresh(loaded.snapshot);
+    }
+    this.setReadyLifecycle();
+    return freshFingerprint === baselineFingerprint ? "unchanged" : "refreshed";
   }
 
   private async loadOrInitialize(): Promise<void> {
