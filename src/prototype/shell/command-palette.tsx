@@ -1,4 +1,8 @@
 import type { CommandResult } from "@/prototype/desktop-state";
+import {
+  clearKnowledgeSearchHighlight,
+  queueKnowledgeSearchHighlight,
+} from "@/prototype/knowledge/knowledge-search-highlight";
 
 const commandKindLabels: Record<CommandResult["kind"], string> = {
   project: "Проект",
@@ -31,6 +35,11 @@ export function CommandPalette({
     activeIndex,
     Math.max(results.length - 1, 0),
   );
+  const activateResult = (result: CommandResult): void => {
+    queueKnowledgeSearchHighlight(result, query);
+    onActivate(result);
+  };
+
   return (
     <div className="command-backdrop" role="presentation">
       <section className="command-palette" aria-label="Командная палитра">
@@ -39,6 +48,7 @@ export function CommandPalette({
           <input
             autoFocus
             onChange={(event) => {
+              clearKnowledgeSearchHighlight();
               onIndexChange(0);
               onQueryChange(event.target.value);
             }}
@@ -55,7 +65,7 @@ export function CommandPalette({
               }
               if (event.key === "Enter" && results[boundedActiveIndex]) {
                 event.preventDefault();
-                onActivate(results[boundedActiveIndex]);
+                activateResult(results[boundedActiveIndex]);
               }
               if (event.key === "Escape") {
                 event.preventDefault();
@@ -75,7 +85,7 @@ export function CommandPalette({
               <button
                 className={index === boundedActiveIndex ? "active" : ""}
                 key={`${result.kind}-${result.id}`}
-                onClick={() => onActivate(result)}
+                onClick={() => activateResult(result)}
                 onMouseEnter={() => onIndexChange(index)}
                 type="button"
               >
