@@ -79,16 +79,17 @@ export function getCommandResults(
   const activeProject = state.projects.find(
     (project) => project.id === state.activeProjectId,
   );
-  const projectResults: CommandResult[] = activeProject && matches(activeProject.name)
-    ? [
-        {
-          kind: "project",
-          id: activeProject.id,
-          title: activeProject.name,
-          subtitle: "Текущий проект",
-        },
-      ]
-    : [];
+  const projectResults: CommandResult[] =
+    activeProject && matches(activeProject.name)
+      ? [
+          {
+            kind: "project",
+            id: activeProject.id,
+            title: activeProject.name,
+            subtitle: "Текущий проект",
+          },
+        ]
+      : [];
 
   const sectionResults: CommandResult[] = [
     ["overview", "Обзор"],
