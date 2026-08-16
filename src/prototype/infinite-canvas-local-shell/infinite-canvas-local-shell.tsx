@@ -318,6 +318,17 @@ function canvasFlowNodeBoundsRecords(
   });
 }
 
+function snapshotCanvasTouchGestureNodes(
+  nodes: readonly CanvasFlowNode[],
+): CanvasFlowNode[] {
+  return nodes.map((node) => ({
+    ...node,
+    position: { ...node.position },
+    ...(node.measured ? { measured: { ...node.measured } } : {}),
+    ...(node.style ? { style: { ...node.style } } : {}),
+  }));
+}
+
 function autoAttachCanvasEdge(
   edge: CanvasEdgeV2,
   bounds: readonly CanvasNodeBoundsRecord[],
@@ -1338,6 +1349,9 @@ function InfiniteCanvasLocalShellSurface({
   const nodeGeometrySignatureRef = useRef("");
   const nodeDragActiveRef = useRef(false);
   const middlePanActiveRef = useRef(false);
+  const activeTouchPointersRef = useRef(new Set<number>());
+  const touchGestureNodesRef = useRef<CanvasFlowNode[] | null>(null);
+  const touchViewportGestureActiveRef = useRef(false);
   const panSamplesRef = useRef<CanvasPanSample[]>([]);
   const panInertiaFrameRef = useRef<number | null>(null);
   const panInertiaActiveRef = useRef(false);
@@ -1386,12 +1400,24 @@ function InfiniteCanvasLocalShellSurface({
     "idle" | "loading" | "ready" | "error"
   >("idle");
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
+  const [touchPrimaryInput, setTouchPrimaryInput] = useState(false);
+  const [touchViewportGestureActive, setTouchViewportGestureActive] =
+    useState(false);
   useEffect(() => {
     if (!window.matchMedia("(max-width: 767px)").matches) return;
     const frame = window.requestAnimationFrame(() => {
       setDesktopSidebarOpen(false);
     });
     return () => window.cancelAnimationFrame(frame);
+  }, []);
+  useEffect(() => {
+    const media = window.matchMedia("(pointer: coarse)");
+    const syncPrimaryTouchInput = (): void => {
+      setTouchPrimaryInput(media.matches);
+    };
+    syncPrimaryTouchInput();
+    media.addEventListener("change", syncPrimaryTouchInput);
+    return () => media.removeEventListener("change", syncPrimaryTouchInput);
   }, []);
   const [flowInstanceEpoch, setFlowInstanceEpoch] = useState(0);
   const [viewportInitialization, setViewportInitialization] =
@@ -1712,6 +1738,7 @@ function InfiniteCanvasLocalShellSurface({
 
   const handleConnect = useCallback(
     (connection: Connection) => {
+      if (touchViewportGestureActiveRef.current) return;
       const edge = createCanvasEdgeFromConnection(connection);
       if (!edge) return;
       const attachedEdge = autoAttachCanvasEdge(
@@ -1765,6 +1792,7 @@ function InfiniteCanvasLocalShellSurface({
   );
 
   const handleNodeDragStart = useCallback((): void => {
+    if (touchViewportGestureActiveRef.current) return;
     nodeDragActiveRef.current = true;
     edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
   }, []);
@@ -1772,6 +1800,7 @@ function InfiniteCanvasLocalShellSurface({
   const handleNodeDragStop = useCallback((): void => {
     nodeDragActiveRef.current = false;
     edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
+    if (touchViewportGestureActiveRef.current) return;
     window.setTimeout(() => {
       if (!shellStateRef.current.canvasId) return;
       controller.setRuntimeEdges(edgesRef.current);
@@ -2895,8 +2924,15 @@ function InfiniteCanvasLocalShellSurface({
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<CanvasFlowNode>[]) => {
+      const guardedChanges = touchViewportGestureActiveRef.current
+        ? guardedChanges.filter(
+            (change) =>
+              change.type !== "position" && change.type !== "dimensions",
+          )
+        : changes;
+      if (guardedChanges.length === 0) return;
       if (
-        changes.some(
+        guardedChanges.some(
           (change) => change.type === "position" && change.dragging === true,
         )
       ) {
@@ -2904,14 +2940,14 @@ function InfiniteCanvasLocalShellSurface({
         edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
       }
       if (
-        changes.some(
+        guardedChanges.some(
           (change) => change.type === "position" && change.dragging === false,
         )
       ) {
         nodeDragActiveRef.current = false;
         edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
       }
-      const removed = changes.filter(
+      const removed = guardedChanges.filter(
         (
           change,
         ): change is Extract<NodeChange<CanvasFlowNode>, { type: "remove" }> =>
@@ -2942,11 +2978,11 @@ function InfiniteCanvasLocalShellSurface({
         );
         syncState();
       }
-      const renderChanges = changes.filter(
+      const renderChanges = guardedChanges.filter(
         (change) =>
           change.type !== "dimensions" || change.setAttributes === true,
       );
-      if (changes.some((change) => change.type === "position")) {
+      if (guardedChanges.some((change) => change.type === "position")) {
         const transientNodes = applyNodeChanges(
           renderChanges,
           nodesRef.current,
@@ -2968,8 +3004,8 @@ function InfiniteCanvasLocalShellSurface({
       // React Flow must receive dimensions changes as well as positions. Filtering
       // them here leaves nodes uninitialized during a drag and causes connected
       // edges to be removed by the library's connection lifecycle.
-      onNodesChange(changes);
-      const shouldPersist = changes.some(
+      onNodesChange(guardedChanges);
+      const shouldPersist = guardedChanges.some(
         (change) =>
           change.type === "remove" ||
           (change.type === "position" && change.dragging === false) ||
@@ -2979,11 +3015,11 @@ function InfiniteCanvasLocalShellSurface({
         controller.setRuntimeNodes(
           projectExplicitCanvasResizes(
             applyNodeChanges(renderChanges, nodesRef.current),
-            changes,
+            guardedChanges,
           ),
         );
         if (
-          changes.some(
+          guardedChanges.some(
             (change) => change.type === "position" && change.dragging === false,
           )
         ) {
@@ -3384,8 +3420,36 @@ function InfiniteCanvasLocalShellSurface({
     [],
   );
 
+  const beginTouchViewportGesture = useCallback((): void => {
+    if (touchViewportGestureActiveRef.current) return;
+    touchViewportGestureActiveRef.current = true;
+    setTouchViewportGestureActive(true);
+
+    const snapshot = touchGestureNodesRef.current;
+    if (snapshot) {
+      nodesRef.current = snapshot;
+      setNodes(snapshot);
+    }
+    const canonicalEdges = canvasDocumentToEdges(
+      controller.state.document,
+      handleEdgeUpdate,
+    );
+    edgesRef.current = canonicalEdges;
+    setEdges(canonicalEdges);
+  }, [controller, handleEdgeUpdate, setEdges, setNodes]);
+
   const handleCanvasPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.pointerType === "touch") {
+        const activeTouchPointers = activeTouchPointersRef.current;
+        if (activeTouchPointers.size === 0) {
+          touchGestureNodesRef.current = snapshotCanvasTouchGestureNodes(
+            nodesRef.current,
+          );
+        }
+        activeTouchPointers.add(event.pointerId);
+        if (activeTouchPointers.size >= 2) beginTouchViewportGesture();
+      }
       cancelPanInertia(true);
       if (event.button !== 1) return;
       middlePanActiveRef.current = true;
@@ -3394,7 +3458,7 @@ function InfiniteCanvasLocalShellSurface({
         { x: viewport.x, y: viewport.y, at: performance.now() },
       ];
     },
-    [cancelPanInertia, reactFlow],
+    [beginTouchViewportGesture, cancelPanInertia, reactFlow],
   );
 
   const handleCanvasPointerMove = useCallback(
@@ -3409,7 +3473,20 @@ function InfiniteCanvasLocalShellSurface({
   }, [cancelPanInertia]);
 
   useEffect(() => {
+    const releaseTouchPointer = (event: PointerEvent): void => {
+      if (event.pointerType !== "touch") return;
+      activeTouchPointersRef.current.delete(event.pointerId);
+      if (activeTouchPointersRef.current.size > 0) return;
+      window.requestAnimationFrame(() => {
+        if (activeTouchPointersRef.current.size > 0) return;
+        touchGestureNodesRef.current = null;
+        if (!touchViewportGestureActiveRef.current) return;
+        touchViewportGestureActiveRef.current = false;
+        setTouchViewportGestureActive(false);
+      });
+    };
     const onPointerUp = (event: PointerEvent): void => {
+      releaseTouchPointer(event);
       if (event.button !== 1 || !middlePanActiveRef.current) return;
       middlePanActiveRef.current = false;
       const velocity = canvasPanReleaseVelocity(panSamplesRef.current);
@@ -3417,7 +3494,8 @@ function InfiniteCanvasLocalShellSurface({
       if (velocity) startPanInertia(velocity);
       else commitViewportMove(reactFlow.getViewport());
     };
-    const onPointerCancel = (): void => {
+    const onPointerCancel = (event: PointerEvent): void => {
+      releaseTouchPointer(event);
       if (!middlePanActiveRef.current) return;
       middlePanActiveRef.current = false;
       panSamplesRef.current = [];
@@ -3703,14 +3781,20 @@ function InfiniteCanvasLocalShellSurface({
             connectionLineComponent={CanvasConnectionLine}
             minZoom={CANVAS_VIEWPORT_LIMITS.minZoom}
             maxZoom={CANVAS_VIEWPORT_LIMITS.maxZoom}
-            panOnDrag={[1]}
-            selectionOnDrag
+            panOnDrag={touchPrimaryInput ? [0, 1] : [1]}
+            selectionOnDrag={!touchPrimaryInput}
             selectionMode={SelectionMode.Partial}
+            nodesDraggable={!touchViewportGestureActive}
+            nodesConnectable={!touchViewportGestureActive}
+            elementsSelectable={!touchViewportGestureActive}
+            nodeDragThreshold={touchPrimaryInput ? 8 : 1}
+            zoomOnPinch
             onMove={handleViewportMove}
             onMoveEnd={onMoveEnd}
             onInit={() => setFlowInstanceEpoch((current) => current + 1)}
             onPaneClick={(event) => {
-              if (event.detail !== 2) return;
+              if (touchViewportGestureActiveRef.current || event.detail !== 2)
+                return;
               createTextNode({ x: event.clientX, y: event.clientY }, "", true);
             }}
             deleteKeyCode={["Backspace", "Delete"]}
@@ -3929,14 +4013,20 @@ function InfiniteCanvasLocalShellSurface({
             connectionLineComponent={CanvasConnectionLine}
             minZoom={CANVAS_VIEWPORT_LIMITS.minZoom}
             maxZoom={CANVAS_VIEWPORT_LIMITS.maxZoom}
-            panOnDrag={[1]}
-            selectionOnDrag
+            panOnDrag={touchPrimaryInput ? [0, 1] : [1]}
+            selectionOnDrag={!touchPrimaryInput}
             selectionMode={SelectionMode.Partial}
+            nodesDraggable={!touchViewportGestureActive}
+            nodesConnectable={!touchViewportGestureActive}
+            elementsSelectable={!touchViewportGestureActive}
+            nodeDragThreshold={touchPrimaryInput ? 8 : 1}
+            zoomOnPinch
             onMove={handleViewportMove}
             onMoveEnd={onMoveEnd}
             onInit={() => setFlowInstanceEpoch((current) => current + 1)}
             onPaneClick={(event) => {
-              if (event.detail !== 2) return;
+              if (touchViewportGestureActiveRef.current || event.detail !== 2)
+                return;
               createTextNode({ x: event.clientX, y: event.clientY }, "", true);
             }}
             deleteKeyCode={["Backspace", "Delete"]}
