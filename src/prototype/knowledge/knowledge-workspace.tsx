@@ -18,6 +18,7 @@ import { MarkdownSourceEditor } from "./markdown-source-editor";
 import { KnowledgeTrashView } from "./knowledge-trash-view";
 import { getKnowledgeHistoryShortcutAction } from "./knowledge-content-history";
 import { useKnowledgeContentHistory } from "./knowledge-content-history-runtime";
+import { getKnowledgeInternalLinkNavigationActions } from "./knowledge-internal-link-navigation";
 import {
   getDocumentHeadings,
   MarkdownDocumentPreview,
@@ -645,6 +646,7 @@ function KnowledgeDocumentWorkspace({
                 activeProjectId={state.activeProjectId}
                 editing={editingDocumentId === selectedDocument.id}
                 onActivate={() => activatePane("primary")}
+                splitEnabled={splitEnabled}
               />
               {splitEnabled ? (
                 <DocumentArticle
@@ -659,6 +661,7 @@ function KnowledgeDocumentWorkspace({
                   }
                   onActivate={() => activatePane("secondary")}
                   secondary
+                  splitEnabled={splitEnabled}
                 />
               ) : null}
             </div>
@@ -796,6 +799,7 @@ function DocumentArticle({
   editing,
   dispatch,
   onActivate,
+  splitEnabled,
 }: {
   document: PrototypeDocument | undefined;
   documents: PrototypeDocument[];
@@ -805,6 +809,7 @@ function DocumentArticle({
   editing: boolean;
   dispatch: Dispatch;
   onActivate: () => void;
+  splitEnabled: boolean;
 }): React.JSX.Element {
   const contentHistory = useKnowledgeContentHistory();
 
@@ -869,10 +874,11 @@ function DocumentArticle({
                 target.id === document.id
               )
                 return;
-              dispatch({
-                type: "open-knowledge-document-in-active-pane",
-                documentId: target.id,
-              });
+              getKnowledgeInternalLinkNavigationActions({
+                sourcePane: secondary ? "secondary" : "primary",
+                splitEnabled,
+                targetDocumentId: target.id,
+              }).forEach(dispatch);
             }}
           />
         </div>
