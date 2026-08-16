@@ -1,12 +1,16 @@
-name: Knowledge backup format preview
+name: Knowledge backup format apply
 
 on:
   push:
     branches:
       - feat/knowledge-backup-export
 
+permissions:
+  contents: write
+
 jobs:
-  format-preview:
+  format-apply:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,12 +22,17 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Print Prettier diff
+      - name: Format and remove temporary workflow
         shell: bash
         run: |
           pnpm exec prettier --write \
             src/prototype/knowledge/knowledge-backup-export.ts \
             tests/knowledge-backup-export.test.ts
-          git diff -- \
+          git rm .github/workflows/knowledge-backup-format-preview.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
             src/prototype/knowledge/knowledge-backup-export.ts \
             tests/knowledge-backup-export.test.ts
+          git commit -m "format Knowledge backup export"
+          git push
