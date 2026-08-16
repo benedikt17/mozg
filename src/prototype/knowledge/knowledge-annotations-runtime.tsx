@@ -396,7 +396,8 @@ export function KnowledgeAnnotationsRuntime({
   const reanchorAnnotation = useMemo(
     () =>
       reanchorId
-        ? (annotations.find((annotation) => annotation.id === reanchorId) ?? null)
+        ? (annotations.find((annotation) => annotation.id === reanchorId) ??
+          null)
         : null,
     [annotations, reanchorId],
   );
