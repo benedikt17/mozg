@@ -161,7 +161,6 @@ export type DesktopPrototypeState = {
 
 export type DesktopPrototypeAction =
   | { type: "hydrate-domain"; snapshot: DesktopDomainSnapshot }
-  | { type: "refresh-domain"; snapshot: DesktopDomainSnapshot }
   | { type: "switch-project"; projectId: string }
   | { type: "toggle-project-rail" }
   | { type: "create-project" }
@@ -255,10 +254,16 @@ export type DesktopPrototypeAction =
   | {
       type: "rename-task-list";
       listId: string;
+      groupId?: string;
       title: string;
     }
-  | { type: "set-task-overview"; taskId: string; visible: boolean }
-  | { type: "move-task-list"; taskId: string; targetTaskId: string | null }
+  | { type: "delete-task-list"; listId: string }
+  | { type: "toggle-task-list"; listId: string }
+  | {
+      type: "create-task-in-list";
+      listId: string;
+      title?: string;
+    }
   | {
       type: "move-task-to-list";
       taskId: string;
