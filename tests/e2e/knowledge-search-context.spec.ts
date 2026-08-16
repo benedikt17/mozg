@@ -32,7 +32,9 @@ test("global Search finds a current-Project Knowledge article by body text and o
     name: /Пути между островами/,
   });
   await expect(result).toBeVisible();
-  await expect(result).toContainText("Переход между островами всегда забирает ресурс");
+  await expect(result).toContainText(
+    "Переход между островами всегда забирает ресурс",
+  );
   await result.click();
 
   await expect(
@@ -71,7 +73,9 @@ test("Knowledge document Context follows the active article instead of the artic
   const targetDocument = page.locator(
     '[data-knowledge-document-id="doc-l-routes"]',
   );
-  await targetDocument.getByRole("button", { name: "Пути между островами" }).click();
+  await targetDocument
+    .getByRole("button", { name: "Пути между островами" })
+    .click();
 
   await expect(
     page.getByRole("heading", { level: 1, name: "Пути между островами" }),
