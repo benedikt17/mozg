@@ -141,7 +141,11 @@ export function getCommandResults(
         ),
     )
     .map(({ document }) => {
-      const snippet = getDocumentSearchSnippet(document, terms, normalizedQuery);
+      const snippet = getDocumentSearchSnippet(
+        document,
+        terms,
+        normalizedQuery,
+      );
       return {
         kind: "document" as const,
         id: document.id,
