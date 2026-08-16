@@ -301,7 +301,7 @@ export function KnowledgeTaskReferencePanel({
             viewBox="0 0 24 24"
           >
             <path
-              d="m12 2.75 2.78 5.63 6.22.9-4.5 4.39 1.06 6.2L12 16.94l-5.56 2.93 1.06-6.2L3 9.28l6.22-.9L12 2.75Z"
+              d="m12 2.75 2.78 5.63 6.22.9-.9-4.5 4.39 1.06 6.2L12 16.94l-5.56 2.93 1.06-6.2L3 9.28l6.22-.9L12 2.75Z"
               stroke="currentColor"
               strokeLinejoin="round"
               strokeWidth="1"
@@ -401,13 +401,18 @@ export function DocumentContextPanel({
   document: PrototypeDocument;
   state: DesktopPrototypeState;
 }): React.JSX.Element {
-  const linkedTasks = getLinkedTaskIdsForDocument(state, document.id)
+  const contextDocument =
+    state.activeSection === "knowledge"
+      ? (getKnowledgePaneState(state).activeDocument ?? document)
+      : document;
+  const linkedTasks = getLinkedTaskIdsForDocument(state, contextDocument.id)
     .map((taskId) => getTaskById(state, taskId))
     .filter((task): task is PrototypeTask => Boolean(task));
-  const outgoingLinks = document.content
-    .join(" ")
-    .match(/\[\[([^\]]+)\]\]/g)
-    ?.map((link) => link.slice(2, -2)) ?? ["Правила магии", "Список сцен"];
+  const outgoingLinks =
+    contextDocument.content
+      .join(" ")
+      .match(/\[\[([^\]]+)\]\]/g)
+      ?.map((link) => link.slice(2, -2)) ?? [];
   const modes: { id: KnowledgeContextMode; label: string }[] = [
     { id: "outline", label: "Структура" },
     { id: "backlinks", label: "Обратные" },
@@ -439,26 +444,34 @@ export function DocumentContextPanel({
       </div>
       {state.knowledgeContextMode === "outline" ? (
         <ContextPanelSection title="Структура">
-          <p>{getDocumentBreadcrumb(document)}</p>
-          <p>{document.excerpt}</p>
+          <p>{getDocumentBreadcrumb(contextDocument)}</p>
+          <p>{contextDocument.excerpt}</p>
         </ContextPanelSection>
       ) : null}
       {state.knowledgeContextMode === "backlinks" ? (
         <ContextPanelSection title="Обратные ссылки">
-          {document.backlinks.map((backlink) => (
-            <span className="document-pill" key={backlink}>
-              {backlink}
-            </span>
-          ))}
+          {contextDocument.backlinks.length > 0 ? (
+            contextDocument.backlinks.map((backlink) => (
+              <span className="document-pill" key={backlink}>
+                {backlink}
+              </span>
+            ))
+          ) : (
+            <p>Обратных ссылок нет.</p>
+          )}
         </ContextPanelSection>
       ) : null}
       {state.knowledgeContextMode === "outgoing" ? (
         <ContextPanelSection title="Исходящие ссылки">
-          {outgoingLinks.map((link) => (
-            <span className="document-pill" key={link}>
-              {link}
-            </span>
-          ))}
+          {outgoingLinks.length > 0 ? (
+            outgoingLinks.map((link) => (
+              <span className="document-pill" key={link}>
+                {link}
+              </span>
+            ))
+          ) : (
+            <p>Исходящих ссылок нет.</p>
+          )}
         </ContextPanelSection>
       ) : null}
       {state.knowledgeContextMode === "tasks" ? (
@@ -466,7 +479,7 @@ export function DocumentContextPanel({
           {linkedTasks.length > 0 ? (
             linkedTasks.map((task) => <p key={task.id}>{task.title}</p>)
           ) : (
-            <p>Связанных mock-задач пока нет.</p>
+            <p>Связанных задач нет.</p>
           )}
         </ContextPanelSection>
       ) : null}
