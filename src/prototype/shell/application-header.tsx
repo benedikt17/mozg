@@ -9,6 +9,7 @@ import {
 } from "@/prototype/desktop-state";
 import { UiIcon } from "@/prototype/desktop-icons";
 import { PrototypeButton } from "@/prototype/desktop-ui";
+import { KnowledgeBackupButton } from "@/prototype/knowledge/knowledge-backup-button";
 import { createClient } from "@/lib/supabase/browser";
 import {
   shouldShowAuthenticatedAccountControls,
@@ -91,6 +92,9 @@ function ApplicationSectionActions({
   state: DesktopPrototypeState;
   dispatch: Dispatch;
 }): React.JSX.Element | null {
+  if (state.activeSection === "knowledge") {
+    return <KnowledgeBackupButton state={state} />;
+  }
   if (state.activeSection !== "overview") return null;
   return (
     <OverviewHeaderControls
