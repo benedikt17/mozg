@@ -37,7 +37,9 @@ describe("desktop live domain refresh", () => {
   it("adopts fresh persisted data while preserving valid Knowledge navigation", () => {
     const state = knowledgeSessionState();
     const snapshot = createDesktopDomainSnapshot(state);
-    const magic = snapshot.documents.find((document) => document.id === "doc-l-magic");
+    const magic = snapshot.documents.find(
+      (document) => document.id === "doc-l-magic",
+    );
     const task = snapshot.tasks[0];
     expect(magic).toBeDefined();
     expect(task).toBeDefined();
