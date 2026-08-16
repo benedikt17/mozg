@@ -14,10 +14,14 @@ import {
 import { IconButton, PrototypeButton } from "@/prototype/desktop-ui";
 import { UiIcon } from "@/prototype/desktop-icons";
 import { EmptySection } from "@/prototype/empty-section";
-import { MarkdownSourceEditor } from "./markdown-source-editor";
+import {
+  MarkdownSourceEditor,
+  type KnowledgeArticleLinkPickRequest,
+} from "./markdown-source-editor";
 import { KnowledgeTrashView } from "./knowledge-trash-view";
 import { getKnowledgeHistoryShortcutAction } from "./knowledge-content-history";
 import { useKnowledgeContentHistory } from "./knowledge-content-history-runtime";
+import { getKnowledgeInternalLinkNavigationActions } from "./knowledge-internal-link-navigation";
 import {
   getDocumentHeadings,
   MarkdownDocumentPreview,
@@ -62,6 +66,7 @@ type KnowledgeWorkspaceProps = {
   onOpenTree?: () => void;
   onToggleTree?: () => void;
   treeOpen?: boolean;
+  onBeginArticleLinkPick?: (request: KnowledgeArticleLinkPickRequest) => void;
 };
 
 export function KnowledgeWorkspace(
@@ -80,6 +85,7 @@ function KnowledgeDocumentWorkspace({
   onOpenTree,
   onToggleTree,
   treeOpen = true,
+  onBeginArticleLinkPick,
 }: KnowledgeWorkspaceProps): React.JSX.Element {
   const {
     primaryDocument: selectedDocument,
@@ -645,6 +651,8 @@ function KnowledgeDocumentWorkspace({
                 activeProjectId={state.activeProjectId}
                 editing={editingDocumentId === selectedDocument.id}
                 onActivate={() => activatePane("primary")}
+                onBeginArticleLinkPick={onBeginArticleLinkPick}
+                splitEnabled={splitEnabled}
               />
               {splitEnabled ? (
                 <DocumentArticle
@@ -658,7 +666,9 @@ function KnowledgeDocumentWorkspace({
                     editingDocumentId === splitDocument?.id
                   }
                   onActivate={() => activatePane("secondary")}
+                  onBeginArticleLinkPick={onBeginArticleLinkPick}
                   secondary
+                  splitEnabled={splitEnabled}
                 />
               ) : null}
             </div>
@@ -796,6 +806,8 @@ function DocumentArticle({
   editing,
   dispatch,
   onActivate,
+  onBeginArticleLinkPick,
+  splitEnabled,
 }: {
   document: PrototypeDocument | undefined;
   documents: PrototypeDocument[];
@@ -805,6 +817,8 @@ function DocumentArticle({
   editing: boolean;
   dispatch: Dispatch;
   onActivate: () => void;
+  onBeginArticleLinkPick?: (request: KnowledgeArticleLinkPickRequest) => void;
+  splitEnabled: boolean;
 }): React.JSX.Element {
   const contentHistory = useKnowledgeContentHistory();
 
@@ -843,6 +857,7 @@ function DocumentArticle({
           document={document}
           documents={documents}
           key={document.id}
+          onBeginArticleLinkPick={onBeginArticleLinkPick}
         />
       ) : (
         <div className="document-page-inner">
@@ -869,10 +884,11 @@ function DocumentArticle({
                 target.id === document.id
               )
                 return;
-              dispatch({
-                type: "open-knowledge-document-in-active-pane",
-                documentId: target.id,
-              });
+              getKnowledgeInternalLinkNavigationActions({
+                sourcePane: secondary ? "secondary" : "primary",
+                splitEnabled,
+                targetDocumentId: target.id,
+              }).forEach(dispatch);
             }}
           />
         </div>

@@ -19,6 +19,11 @@ import {
 } from "./markdown-source-selection";
 export { adjustListIndent } from "./markdown-source-selection";
 
+export type KnowledgeArticleLinkPickRequest = {
+  sourceDocumentId: string;
+  onPick: (documentId: string) => void;
+};
+
 type MarkdownEditAction =
   | "undo"
   | "redo"
@@ -107,19 +112,20 @@ function getInputOrigin(event: React.ChangeEvent<HTMLTextAreaElement>): {
 export function MarkdownSourceEditor({
   document,
   documents = [],
+  onBeginArticleLinkPick,
 }: {
   document: PrototypeDocument;
   documents?: PrototypeDocument[];
+  onBeginArticleLinkPick?: (request: KnowledgeArticleLinkPickRequest) => void;
 }): React.JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const markdown = document.content.join("\n");
   const contentHistory = useKnowledgeContentHistory();
   const { getSelection, version } = contentHistory;
-  const [dialog, setDialog] = useState<"external" | "article" | null>(null);
+  const [dialog, setDialog] = useState<"external" | null>(null);
   const [selection, setSelection] = useState({ start: 0, end: 0 });
   const [linkText, setLinkText] = useState("");
   const [url, setUrl] = useState("");
-  const [articleId, setArticleId] = useState("");
   const addressRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (dialog === "external") addressRef.current?.focus();
@@ -238,31 +244,47 @@ export function MarkdownSourceEditor({
     restoreSelection(result.selection.start, result.selection.end);
   };
 
-  const openArticleDialog = (): void => {
+  const openArticlePicker = (): void => {
     const textarea = textareaRef.current;
-    if (!textarea) return;
-    setSelection({
+    if (!textarea || !onBeginArticleLinkPick) return;
+    const draft = {
       start: textarea.selectionStart,
       end: textarea.selectionEnd,
+      label: markdown
+        .slice(textarea.selectionStart, textarea.selectionEnd)
+        .trim(),
+    };
+    onBeginArticleLinkPick({
+      sourceDocumentId: document.id,
+      onPick: (targetDocumentId) => {
+        const target = documents.find(
+          (item) =>
+            item.id === targetDocumentId &&
+            item.id !== document.id &&
+            item.projectId === document.projectId,
+        );
+        if (!target) return;
+        const label = draft.label || target.title;
+        const token = `[[doc:${target.id}|${label}]]`;
+        contentHistory.commitMarkdown(
+          document.id,
+          markdown.slice(0, draft.start) + token + markdown.slice(draft.end),
+          {
+            origin: "toolbar",
+            selectionEnd: draft.start + token.length,
+            selectionStart: draft.start + token.length,
+          },
+        );
+        restoreSelection(draft.start + token.length);
+      },
     });
-    setLinkText(markdown.slice(textarea.selectionStart, textarea.selectionEnd));
-    setArticleId("");
-    setDialog("article");
   };
 
   const insertLink = (): void => {
     const label = linkText.trim();
-    const target = dialog === "external" ? url.trim() : articleId;
-    if (
-      !label ||
-      !target ||
-      (dialog === "external" && !/^https?:\/\//i.test(target))
-    )
-      return;
-    const token =
-      dialog === "external"
-        ? `[${label}](${target})`
-        : `[[doc:${target}|${label}]]`;
+    const target = url.trim();
+    if (!label || !/^https?:\/\//i.test(target)) return;
+    const token = `[${label}](${target})`;
     updateMarkdown(
       markdown.slice(0, selection.start) +
         token +
@@ -396,7 +418,7 @@ export function MarkdownSourceEditor({
         <button
           aria-label="Ссылка на статью"
           className="markdown-toolbar-button"
-          onClick={openArticleDialog}
+          onClick={openArticlePicker}
           onMouseDown={(event) => event.preventDefault()}
           title="Ссылка на статью"
           type="button"
@@ -433,9 +455,7 @@ export function MarkdownSourceEditor({
                     }}
                   >
                     <h3 id="markdown-link-dialog-title">
-                      {dialog === "external"
-                        ? "Добавить внешнюю ссылку"
-                        : "Ссылка на статью"}
+                      Добавить внешнюю ссылку
                     </h3>
                     <label htmlFor="markdown-link-text">Текст</label>
                     <input
@@ -445,44 +465,14 @@ export function MarkdownSourceEditor({
                         setLinkText(event.currentTarget.value)
                       }
                     />
-                    <label htmlFor="markdown-link-target">
-                      {dialog === "external" ? "Адрес" : "Статья"}
-                    </label>
-                    {dialog === "external" ? (
-                      <input
-                        id="markdown-link-target"
-                        ref={addressRef}
-                        placeholder="https://…"
-                        value={url}
-                        onChange={(event) => setUrl(event.currentTarget.value)}
-                      />
-                    ) : (
-                      <select
-                        id="markdown-link-target"
-                        autoFocus
-                        value={articleId}
-                        onChange={(event) => {
-                          setArticleId(event.currentTarget.value);
-                          const item = documents.find(
-                            (entry) => entry.id === event.currentTarget.value,
-                          );
-                          if (item && !linkText) setLinkText(item.title);
-                        }}
-                      >
-                        <option value="">Выберите статью</option>
-                        {documents
-                          .filter(
-                            (item) =>
-                              item.id !== document.id &&
-                              item.projectId === document.projectId,
-                          )
-                          .map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {item.title}
-                            </option>
-                          ))}
-                      </select>
-                    )}
+                    <label htmlFor="markdown-link-target">Адрес</label>
+                    <input
+                      id="markdown-link-target"
+                      ref={addressRef}
+                      placeholder="https://…"
+                      value={url}
+                      onChange={(event) => setUrl(event.currentTarget.value)}
+                    />
                     <div className="markdown-link-dialog-actions">
                       <button type="button" onClick={() => setDialog(null)}>
                         Отмена
@@ -490,10 +480,7 @@ export function MarkdownSourceEditor({
                       <button
                         type="submit"
                         disabled={
-                          !linkText.trim() ||
-                          !(dialog === "external"
-                            ? /^https?:\/\//i.test(url.trim())
-                            : articleId)
+                          !linkText.trim() || !/^https?:\/\//i.test(url.trim())
                         }
                       >
                         Добавить
