@@ -19,6 +19,7 @@ import {
 import { OverviewSectionWorkspace } from "@/prototype/overview/overview-section-workspace";
 import { KnowledgeSidebar } from "@/prototype/knowledge/knowledge-sidebar";
 import { KnowledgeWorkspace } from "@/prototype/knowledge/knowledge-workspace";
+import type { KnowledgeArticleLinkPickRequest } from "@/prototype/knowledge/markdown-source-editor";
 import {
   KnowledgeContentHistoryProvider,
   useKnowledgeContentHistory,
@@ -406,12 +407,54 @@ function SectionWorkspace({
     useState(false);
   const [knowledgeSidebarCollapsed, setKnowledgeSidebarCollapsed] =
     useState(false);
+  const [knowledgeArticleLinkPicker, setKnowledgeArticleLinkPicker] =
+    useState<KnowledgeArticleLinkPickRequest | null>(null);
   const knowledgeDispatch = knowledgeHistory.dispatchKnowledgeAction;
+
+  useEffect(() => {
+    setKnowledgeArticleLinkPicker(null);
+  }, [state.activeProjectId, state.activeSection]);
+
+  useEffect(() => {
+    if (!knowledgeArticleLinkPicker) return;
+    const cancelOnEscape = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setKnowledgeArticleLinkPicker(null);
+    };
+    window.addEventListener("keydown", cancelOnEscape);
+    return () => window.removeEventListener("keydown", cancelOnEscape);
+  }, [knowledgeArticleLinkPicker]);
+
+  const beginKnowledgeArticleLinkPick = (
+    request: KnowledgeArticleLinkPickRequest,
+  ): void => {
+    setKnowledgeArticleLinkPicker(request);
+    setKnowledgeSidebarCollapsed(false);
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 1023px)").matches
+    ) {
+      setKnowledgeTreeOverlayOpen(true);
+    }
+  };
+
+  const pickKnowledgeArticleLinkTarget = (documentId: string): void => {
+    const picker = knowledgeArticleLinkPicker;
+    if (!picker || documentId === picker.sourceDocumentId) return;
+    setKnowledgeArticleLinkPicker(null);
+    picker.onPick(documentId);
+    setKnowledgeTreeOverlayOpen(false);
+  };
   const sidebar = renderToolSidebar(
     state,
     state.activeSection === "knowledge" ? knowledgeDispatch : dispatch,
     {
       onCloseKnowledgeTree: () => setKnowledgeTreeOverlayOpen(false),
+      linkPickerSourceDocumentId:
+        knowledgeArticleLinkPicker?.sourceDocumentId ?? null,
+      onCancelKnowledgeLinkPick: () => setKnowledgeArticleLinkPicker(null),
+      onPickKnowledgeLinkTarget: pickKnowledgeArticleLinkTarget,
     },
   );
   const overviewSourceTask = state.tasks.find(
@@ -491,6 +534,7 @@ function SectionWorkspace({
               ) : undefined,
               mobileOverviewContextOpen,
               onMobileOverviewContextOpenChange,
+              onBeginArticleLinkPick: beginKnowledgeArticleLinkPick,
               onOpenKnowledgeTree: () => {
                 setKnowledgeSidebarCollapsed(false);
                 setKnowledgeTreeOverlayOpen(true);
@@ -573,7 +617,12 @@ function getInitialCommandQuery(): string {
 function renderToolSidebar(
   state: DesktopPrototypeState,
   dispatch: Dispatch,
-  options?: { onCloseKnowledgeTree?: () => void },
+  options?: {
+    onCloseKnowledgeTree?: () => void;
+    linkPickerSourceDocumentId?: string | null;
+    onCancelKnowledgeLinkPick?: () => void;
+    onPickKnowledgeLinkTarget?: (documentId: string) => void;
+  },
 ): React.JSX.Element | null {
   if (state.activeSection === "knowledge") {
     return (
@@ -581,6 +630,9 @@ function renderToolSidebar(
         state={state}
         dispatch={dispatch}
         onClose={options?.onCloseKnowledgeTree}
+        linkPickerSourceDocumentId={options?.linkPickerSourceDocumentId}
+        onCancelLinkPick={options?.onCancelKnowledgeLinkPick}
+        onPickLinkTarget={options?.onPickKnowledgeLinkTarget}
       />
     );
   }
@@ -600,6 +652,7 @@ function renderMainWorkspace(
     aiPanel?: React.ReactNode;
     mobileOverviewContextOpen?: boolean;
     onMobileOverviewContextOpenChange?: (open: boolean) => void;
+    onBeginArticleLinkPick?: (request: KnowledgeArticleLinkPickRequest) => void;
     onOpenKnowledgeTree?: () => void;
     onToggleKnowledgeTree?: () => void;
     treeOpen?: boolean;
@@ -612,6 +665,7 @@ function renderMainWorkspace(
         state={state}
         dispatch={dispatch}
         aiPanel={options?.aiPanel}
+        onBeginArticleLinkPick={options?.onBeginArticleLinkPick}
         onOpenTree={options?.onOpenKnowledgeTree}
         onToggleTree={options?.onToggleKnowledgeTree}
         treeOpen={options?.treeOpen}

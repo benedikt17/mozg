@@ -30,10 +30,16 @@ export function KnowledgeSidebar({
   state,
   dispatch,
   onClose,
+  linkPickerSourceDocumentId,
+  onCancelLinkPick,
+  onPickLinkTarget,
 }: {
   state: DesktopPrototypeState;
   dispatch: Dispatch;
   onClose?: () => void;
+  linkPickerSourceDocumentId?: string | null;
+  onCancelLinkPick?: () => void;
+  onPickLinkTarget?: (documentId: string) => void;
 }): React.JSX.Element {
   const contentHistory = useKnowledgeContentHistory();
   const tree = getKnowledgeTree(state);
@@ -45,6 +51,7 @@ export function KnowledgeSidebar({
   const [openKnowledgeMenu, setOpenKnowledgeMenu] =
     useState<KnowledgeMenuTarget>(null);
   const treeCollapsed = state.knowledgeExpandedBeforeCollapse !== null;
+  const linkPickerActive = Boolean(linkPickerSourceDocumentId);
 
   useEffect(() => {
     if (!revealDocumentId) return;
@@ -87,7 +94,9 @@ export function KnowledgeSidebar({
 
   return (
     <aside
-      className="tool-sidebar knowledge-sidebar"
+      className={`tool-sidebar knowledge-sidebar ${
+        linkPickerActive ? "is-link-picker" : ""
+      }`}
       onKeyDown={(event) => {
         if (isEditableTarget(event.target)) return;
         const shortcut = getKnowledgeHistoryShortcutAction(event);
@@ -164,6 +173,14 @@ export function KnowledgeSidebar({
           value={state.knowledgeSearchQuery}
         />
       </div>
+      {linkPickerActive ? (
+        <div className="knowledge-link-picker-banner" role="status">
+          <span>Выберите статью для ссылки</span>
+          <button onClick={onCancelLinkPick} type="button">
+            Отмена
+          </button>
+        </div>
+      ) : null}
       <nav
         className="knowledge-tree"
         aria-label="Иерархия документов"
@@ -181,6 +198,8 @@ export function KnowledgeSidebar({
               onDropTargetChange={setKnowledgeDropTarget}
               openKnowledgeMenu={openKnowledgeMenu}
               state={state}
+              linkPickerSourceDocumentId={linkPickerSourceDocumentId}
+              onPickLinkTarget={onPickLinkTarget}
             />
           ))
         ) : (
@@ -234,6 +253,8 @@ function KnowledgeTreeNodeView({
   onKnowledgeMenuChange,
   onDropTargetChange,
   openKnowledgeMenu,
+  linkPickerSourceDocumentId,
+  onPickLinkTarget,
 }: {
   node: KnowledgeTreeNode;
   state: DesktopPrototypeState;
@@ -243,6 +264,8 @@ function KnowledgeTreeNodeView({
   onKnowledgeMenuChange: (target: KnowledgeMenuTarget) => void;
   onDropTargetChange: (target: KnowledgeDropTarget) => void;
   openKnowledgeMenu: KnowledgeMenuTarget;
+  linkPickerSourceDocumentId?: string | null;
+  onPickLinkTarget?: (documentId: string) => void;
 }): React.JSX.Element {
   const depth = Math.max(node.path.length - 1, 0);
 
@@ -382,6 +405,8 @@ function KnowledgeTreeNodeView({
                 onDropTargetChange={onDropTargetChange}
                 openKnowledgeMenu={openKnowledgeMenu}
                 state={state}
+                linkPickerSourceDocumentId={linkPickerSourceDocumentId}
+                onPickLinkTarget={onPickLinkTarget}
               />
             ))}
           </div>
@@ -399,6 +424,12 @@ function KnowledgeTreeNodeView({
     "knowledge-document-row",
     documentIsActive ? "is-active" : "",
     documentPathIsSelected ? "is-path-selected" : "",
+    linkPickerSourceDocumentId && node.document.id !== linkPickerSourceDocumentId
+      ? "is-link-picker-target"
+      : "",
+    linkPickerSourceDocumentId === node.document.id
+      ? "is-link-picker-source"
+      : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -421,7 +452,7 @@ function KnowledgeTreeNodeView({
         ]
           .filter(Boolean)
           .join(" ")}
-        draggable
+        draggable={!linkPickerSourceDocumentId}
         onDragEnd={() => onDropTargetChange(null)}
         onDragOver={(event) => {
           event.preventDefault();
@@ -464,18 +495,25 @@ function KnowledgeTreeNodeView({
             position,
           });
         }}
-        onClick={() =>
+        disabled={linkPickerSourceDocumentId === node.document.id}
+        onClick={() => {
+          if (linkPickerSourceDocumentId) {
+            if (node.document.id === linkPickerSourceDocumentId) return;
+            onPickLinkTarget?.(node.document.id);
+            return;
+          }
           dispatch({
             type: "open-knowledge-document-in-active-pane",
             documentId: node.document.id,
-          })
-        }
+          });
+        }}
         type="button"
       >
         <span className="tree-disclosure-spacer" />
         <span>{node.title}</span>
       </button>
-      <IconButton
+      {!linkPickerSourceDocumentId ? (
+        <IconButton
         aria-expanded={
           openKnowledgeMenu?.kind === "document" &&
           openKnowledgeMenu.id === node.document.id
@@ -496,8 +534,10 @@ function KnowledgeTreeNodeView({
         onPointerDown={(event) => event.stopPropagation()}
         title={`Действия статьи ${node.title}`}
         variant="ghost"
-      />
-      {openKnowledgeMenu?.kind === "document" &&
+        />
+      ) : null}
+      {!linkPickerSourceDocumentId &&
+      openKnowledgeMenu?.kind === "document" &&
       openKnowledgeMenu.id === node.document.id ? (
         <KnowledgeTreeActionMenu
           dispatch={dispatch}

@@ -95,6 +95,10 @@
     overflow: hidden;
   }
 
+  .knowledge-sidebar.is-link-picker {
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  }
+
   .knowledge-sidebar-header {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
@@ -167,6 +171,44 @@
     padding: 0 8px;
   }
 
+  .knowledge-link-picker-banner {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, #ff5200 7%, var(--surface) 93%);
+    color: var(--text-2);
+    padding: 7px 10px;
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .knowledge-link-picker-banner span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .knowledge-link-picker-banner button {
+    flex: 0 0 auto;
+    border: 0;
+    background: transparent;
+    color: #ff5200;
+    padding: 2px 4px;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .knowledge-link-picker-banner button:hover,
+  .knowledge-link-picker-banner button:focus-visible {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
   .knowledge-tree {
     min-height: 0;
     overflow: auto;
@@ -210,6 +252,27 @@
   .knowledge-tree-row:focus-visible {
     outline: 2px solid var(--sidebar-focus-ring);
     outline-offset: -1px;
+  }
+
+  .knowledge-action-row.is-link-picker-target .knowledge-tree-row.document {
+    cursor: pointer;
+  }
+
+  .knowledge-action-row.is-link-picker-target:hover {
+    background: color-mix(in srgb, #ff5200 9%, var(--surface) 91%);
+  }
+
+  .knowledge-action-row.is-link-picker-target:hover
+    .knowledge-tree-row.document {
+    color: #ff5200;
+  }
+
+  .knowledge-action-row.is-link-picker-source {
+    opacity: 0.42;
+  }
+
+  .knowledge-action-row.is-link-picker-source .knowledge-tree-row.document {
+    cursor: not-allowed;
   }
 
   .knowledge-tree-row.folder {
@@ -1335,6 +1398,34 @@
     color: var(--accent-2);
     text-decoration: underline;
     text-underline-offset: 2px;
+  }
+
+  .document-internal-link {
+    display: inline;
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: #ff5200;
+    margin: 0;
+    padding: 0;
+    font: inherit;
+    line-height: inherit;
+    text-align: inherit;
+    text-decoration: underline;
+    text-decoration-thickness: 0.08em;
+    text-underline-offset: 0.14em;
+    cursor: pointer;
+    vertical-align: baseline;
+  }
+
+  .document-internal-link:hover {
+    color: #d94800;
+  }
+
+  .document-internal-link:focus-visible {
+    border-radius: 2px;
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
   }
 
   .document-page p code,
