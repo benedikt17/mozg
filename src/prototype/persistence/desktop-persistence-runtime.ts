@@ -201,7 +201,9 @@ export class DesktopPersistenceRuntime {
     void finalSave.finally(() => this.adapter.close());
   }
 
-  private async performRefreshFromSource(): Promise<DesktopPersistenceRefreshResult> {
+  private async performRefreshFromSource(): Promise<
+    DesktopPersistenceRefreshResult
+  > {
     await this.flush();
     if (
       this.disposed ||
