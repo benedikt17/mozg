@@ -161,6 +161,7 @@ export type DesktopPrototypeState = {
 
 export type DesktopPrototypeAction =
   | { type: "hydrate-domain"; snapshot: DesktopDomainSnapshot }
+  | { type: "refresh-domain"; snapshot: DesktopDomainSnapshot }
   | { type: "switch-project"; projectId: string }
   | { type: "toggle-project-rail" }
   | { type: "create-project" }
