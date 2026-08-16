@@ -12,10 +12,8 @@ import { CloudDesktopPersistenceAdapter } from "@/prototype/persistence/cloud-pe
 import type { DesktopCloudBootstrap } from "@/prototype/persistence/cloud-snapshot-bridge";
 import type { DesktopRuntimeMode } from "@/lib/desktop-runtime-mode";
 import type { DesktopPersistenceAdapter } from "@/prototype/persistence/persistence-adapter";
-import type {
-  DesktopPrototypeAction,
-  DesktopPrototypeState,
-} from "@/prototype/state/types";
+import type { DesktopRuntimeAction } from "@/prototype/state/desktop-runtime-reducer";
+import type { DesktopPrototypeState } from "@/prototype/state/types";
 
 export type UseDesktopPersistenceResult = {
   lifecycle: DesktopPersistenceLifecycle;
@@ -40,7 +38,7 @@ export function createDesktopPersistenceAdapter({
 
 export function useDesktopPersistence(
   state: DesktopPrototypeState,
-  dispatch: React.Dispatch<DesktopPrototypeAction>,
+  dispatch: React.Dispatch<DesktopRuntimeAction>,
   options: {
     enabled?: boolean;
     cloudBootstrap?: DesktopCloudBootstrap;
