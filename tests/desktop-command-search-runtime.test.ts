@@ -8,10 +8,11 @@ import {
 
 describe("Desktop command search runtime boundary", () => {
   it("derives command results from searchable collections without global runtime state", () => {
-    const { projects, tasks, documents, inboxItems } = initialDesktopPrototypeState;
+    const { activeProjectId, projects, tasks, documents, inboxItems } =
+      initialDesktopPrototypeState;
 
     const results = getCommandResults(
-      { projects, tasks, documents, inboxItems },
+      { activeProjectId, projects, tasks, documents, inboxItems },
       "Лукоморье",
     );
 
@@ -26,7 +27,7 @@ describe("Desktop command search runtime boundary", () => {
 
     expect(source).not.toContain("[state, commandQuery]");
     expect(source).toContain(
-      "[commandPaletteOpen, documents, inboxItems, projects, tasks, commandQuery]",
+      "[\n      activeProjectId,\n      commandPaletteOpen,\n      documents,\n      inboxItems,\n      projects,\n      tasks,\n      commandQuery,\n    ]",
     );
     expect(source).toContain("commandPaletteOpen\n        ? getCommandResults(");
   });
