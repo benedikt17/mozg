@@ -21,7 +21,8 @@ describe("Miro-style Canvas text toolbar", () => {
     expect(shell).toContain('aria-label="Курсив"');
     expect(shell).toContain('aria-label="Подчеркнутый"');
     expect(shell).toContain('aria-label="Перечеркнутый"');
-    expect(shell.match(/type="color"/g)).toHaveLength(2);
+    expect(shell.match(/<CanvasColorPicker/g)).toHaveLength(2);
+    expect(shell).not.toContain('type="color"');
     expect(shell).toContain(
       "<TextAlignmentControls id={id} value={style.textAlign} />",
     );
