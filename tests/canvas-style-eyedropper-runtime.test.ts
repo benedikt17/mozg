@@ -49,6 +49,9 @@ describe("Canvas style eyedropper runtime", () => {
     expect(shellSource).toContain("event.preventDefault();");
     expect(shellSource).toContain("event.stopPropagation();");
     expect(cssSource).toContain(".canvasStyleEyedropperActive");
+    expect(cssSource).toContain(
+      ".canvasStyleEyedropperActive :global(.react-flow__pane)",
+    );
     expect(cssSource).toContain("data:image/svg+xml");
     expect(cssSource).toContain("4 20,");
     expect(cssSource).not.toContain("cursor: crosshair !important;");
