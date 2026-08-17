@@ -13,8 +13,14 @@ const cssSource = readFileSync(
 describe("Canvas style eyedropper runtime", () => {
   it("places an eyedropper directly after the two color swatches", () => {
     const backgroundPickerIndex = shellSource.indexOf('label="Цвет фона"');
-    const eyedropperIndex = shellSource.indexOf('aria-label="Пипетка"');
-    const alignmentIndex = shellSource.indexOf("<TextAlignmentControls");
+    const eyedropperIndex = shellSource.indexOf(
+      'aria-label="Пипетка"',
+      backgroundPickerIndex,
+    );
+    const alignmentIndex = shellSource.indexOf(
+      "<TextAlignmentControls",
+      eyedropperIndex,
+    );
 
     expect(backgroundPickerIndex).toBeGreaterThan(-1);
     expect(eyedropperIndex).toBeGreaterThan(backgroundPickerIndex);
@@ -35,6 +41,7 @@ describe("Canvas style eyedropper runtime", () => {
   it("intercepts target picking before normal React Flow selection", () => {
     expect(shellSource).toContain("onPointerDownCapture={handleCanvasPointerDown}");
     expect(shellSource).toContain('closest<HTMLElement>(".react-flow__node")');
+    expect(shellSource).toContain("reactFlow.getNodes()");
     expect(shellSource).toContain("event.preventDefault();");
     expect(shellSource).toContain("event.stopPropagation();");
     expect(cssSource).toContain(".canvasStyleEyedropperActive");
