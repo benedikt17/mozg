@@ -9,6 +9,10 @@ const pickerSource = readFileSync(
   "src/prototype/infinite-canvas-local-shell/canvas-color-picker.tsx",
   "utf8",
 );
+const pickerStyles = readFileSync(
+  "src/prototype/infinite-canvas-local-shell/canvas-color-picker.module.css",
+  "utf8",
+);
 
 describe("Canvas custom color picker runtime", () => {
   it("uses direct color swatches for text and background", () => {
@@ -21,6 +25,9 @@ describe("Canvas custom color picker runtime", () => {
     expect(shellSource).not.toContain('glyph="▣"');
     expect(pickerSource).not.toContain("styles.glyph");
     expect(pickerSource).toContain("className={styles.swatch}");
+    expect(pickerStyles).toContain(".swatch {");
+    expect(pickerStyles).toContain("width: 19px;");
+    expect(pickerStyles).toContain("height: 19px;");
   });
 
   it("keeps HEX visibly editable in the picker", () => {
