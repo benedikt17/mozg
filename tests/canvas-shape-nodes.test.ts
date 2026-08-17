@@ -138,7 +138,10 @@ describe("Canvas shape nodes", () => {
       style: canonical.style,
       isEditing: true,
     });
-    const runtimeDuplicate = createCanvasAltDragRuntimeNode(runtime, duplicate!);
+    const runtimeDuplicate = createCanvasAltDragRuntimeNode(
+      runtime,
+      duplicate!,
+    );
     expect(runtimeDuplicate.type).toBe(CANVAS_SHAPE_NODE_TYPE);
     if (runtimeDuplicate.type !== CANVAS_SHAPE_NODE_TYPE) {
       throw new Error("Expected an Alt-dragged Canvas shape runtime node");

@@ -25,7 +25,12 @@ function cloneNode(node: CanvasNode): CanvasNode {
 }
 
 function copyableNode(node: CanvasNode): boolean {
-  return node.kind === "image" || node.kind === "text" || node.kind === "task";
+  return (
+    node.kind === "image" ||
+    node.kind === "text" ||
+    node.kind === "shape" ||
+    node.kind === "task"
+  );
 }
 
 export function createCanvasNodeClipboardPayload(

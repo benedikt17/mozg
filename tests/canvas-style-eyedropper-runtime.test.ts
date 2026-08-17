@@ -40,9 +40,7 @@ describe("Canvas style eyedropper runtime", () => {
     expect(shellSource).toContain(
       "sourceNode?.type === CANVAS_TEXT_NODE_TYPE &&",
     );
-    expect(shellSource).toContain(
-      "targetNode?.type === CANVAS_TEXT_NODE_TYPE",
-    );
+    expect(shellSource).toContain("targetNode?.type === CANVAS_TEXT_NODE_TYPE");
     expect(shellSource).toContain(
       `updateTextStyle(sourceId, {
               color: targetNode.data.style.color,
@@ -95,9 +93,7 @@ describe("Canvas style eyedropper runtime", () => {
     expect(shellSource).toContain(
       "sourceNode?.type === CANVAS_TEXT_NODE_TYPE &&",
     );
-    expect(shellSource).toContain(
-      "targetNode?.type === CANVAS_TEXT_NODE_TYPE",
-    );
+    expect(shellSource).toContain("targetNode?.type === CANVAS_TEXT_NODE_TYPE");
     expect(shellSource).toContain(
       "sourceNode?.type === CANVAS_SHAPE_NODE_TYPE &&",
     );

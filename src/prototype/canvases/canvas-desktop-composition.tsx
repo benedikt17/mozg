@@ -313,6 +313,8 @@ export function CanvasDesktopToolbar({
   interactive,
   onAddImage,
   onAddText,
+  onAddRectangle,
+  onAddCircle,
   onCloseFilePicker,
   onCloseTaskPicker,
   onFileQueryChange,
@@ -346,6 +348,8 @@ export function CanvasDesktopToolbar({
   interactive: boolean;
   onAddImage: (files: File[]) => void;
   onAddText: () => void;
+  onAddRectangle: () => void;
+  onAddCircle: () => void;
   onCloseFilePicker: () => void;
   onCloseTaskPicker: () => void;
   onFileQueryChange: (query: string) => void;
@@ -510,6 +514,46 @@ export function CanvasDesktopToolbar({
           label={copy.text}
           onClick={onAddText}
           title={copy.text}
+          variant="quiet"
+        />
+        <IconButton
+          disabled={!isReady}
+          icon={
+            <svg aria-hidden="true" height="18" viewBox="0 0 18 18" width="18">
+              <rect
+                fill="none"
+                height="11"
+                rx="1"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                width="14"
+                x="2"
+                y="3.5"
+              />
+            </svg>
+          }
+          label="Добавить прямоугольник"
+          onClick={onAddRectangle}
+          title="Прямоугольник"
+          variant="quiet"
+        />
+        <IconButton
+          disabled={!isReady}
+          icon={
+            <svg aria-hidden="true" height="18" viewBox="0 0 18 18" width="18">
+              <circle
+                cx="9"
+                cy="9"
+                fill="none"
+                r="6"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              />
+            </svg>
+          }
+          label="Добавить круг"
+          onClick={onAddCircle}
+          title="Круг"
           variant="quiet"
         />
         <div

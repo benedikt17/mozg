@@ -11,6 +11,8 @@ import {
   type CanvasNode,
   type CanvasPoint,
   type CanvasSize,
+  type CanvasShapeNode,
+  type CanvasShapeVariant,
   type CanvasTextNode,
 } from "@/lib/canvas/canvas-document";
 import {
@@ -30,6 +32,10 @@ import {
   DEFAULT_CANVAS_TEXT_STYLE,
   type CanvasTextStyle,
 } from "@/lib/canvas/canvas-text-style";
+import {
+  DEFAULT_CANVAS_SHAPE_STYLE,
+  type CanvasShapeStyle,
+} from "@/lib/canvas/canvas-shape-style";
 import type { CanvasTaskBridge } from "@/lib/canvas/canvas-task-bridge";
 import { CanvasImageLoadCache } from "@/lib/canvas/canvas-image-load-cache";
 import {
@@ -57,6 +63,7 @@ import {
 
 export const CANVAS_IMAGE_NODE_TYPE = "canvasImage";
 export const CANVAS_TEXT_NODE_TYPE = "canvasText";
+export const CANVAS_SHAPE_NODE_TYPE = "canvasShape";
 export const CANVAS_TASK_NODE_TYPE = "canvasTask";
 export const CANVAS_EDGE_TYPE = "canvasEdge";
 const MAX_INITIAL_WIDTH = 640;
@@ -98,6 +105,18 @@ export type CanvasTextFlowNode = Node<
   typeof CANVAS_TEXT_NODE_TYPE
 >;
 
+export type CanvasShapeNodeData = {
+  shape: CanvasShapeVariant;
+  markdown: string;
+  style: CanvasShapeStyle;
+  isEditing?: boolean;
+};
+
+export type CanvasShapeFlowNode = Node<
+  CanvasShapeNodeData,
+  typeof CANVAS_SHAPE_NODE_TYPE
+>;
+
 export type CanvasTaskNodeData = {
   taskId: string;
   lastKnownTitle?: string;
@@ -112,7 +131,10 @@ export type CanvasTaskFlowNode = Node<
 >;
 
 export type CanvasFlowNode =
-  CanvasImageFlowNode | CanvasTextFlowNode | CanvasTaskFlowNode;
+  | CanvasImageFlowNode
+  | CanvasTextFlowNode
+  | CanvasShapeFlowNode
+  | CanvasTaskFlowNode;
 
 export type CanvasEdgeFlowData = {
   routing: CanvasEdgeRouting;
@@ -554,6 +576,46 @@ export function createCanvasTextFlowNode(input: {
   };
 }
 
+export function createCanvasShapeId(
+  idGenerator: () => string = () =>
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+): string {
+  return `shape-${idGenerator()}`;
+}
+
+export function createCanvasShapeFlowNode(input: {
+  id: string;
+  shape: CanvasShapeVariant;
+  markdown: string;
+  position?: FlowPosition;
+  size?: CanvasSize;
+  zIndex?: number;
+  style?: CanvasShapeStyle;
+  isEditing?: boolean;
+}): CanvasShapeFlowNode {
+  const defaultSize =
+    input.shape === "circle"
+      ? { width: 160, height: 160 }
+      : { width: 220, height: 120 };
+  const size = input.size ?? defaultSize;
+  return {
+    id: input.id,
+    type: CANVAS_SHAPE_NODE_TYPE,
+    position: { ...(input.position ?? { x: 0, y: 0 }) },
+    width: size.width,
+    height: size.height,
+    style: { width: size.width, height: size.height },
+    zIndex: input.zIndex,
+    data: {
+      shape: input.shape,
+      markdown: input.markdown,
+      style: { ...(input.style ?? DEFAULT_CANVAS_SHAPE_STYLE) },
+      isEditing: input.isEditing,
+    },
+  };
+}
+
 export function createCanvasTaskId(
   idGenerator: () => string = () =>
     globalThis.crypto?.randomUUID?.() ??
@@ -606,6 +668,24 @@ export function canvasDocumentToTextNodes(
     .map((node) =>
       createCanvasTextFlowNode({
         id: node.id,
+        markdown: node.markdown,
+        position: node.position,
+        size: node.size,
+        zIndex: node.zIndex,
+        style: node.style,
+      }),
+    );
+}
+
+export function canvasDocumentToShapeNodes(
+  document: CanvasDocument,
+): CanvasShapeFlowNode[] {
+  return document.nodes
+    .filter((node): node is CanvasShapeNode => node.kind === "shape")
+    .map((node) =>
+      createCanvasShapeFlowNode({
+        id: node.id,
+        shape: node.shape,
         markdown: node.markdown,
         position: node.position,
         size: node.size,
@@ -700,6 +780,16 @@ export function runtimeNodesToCanvasDocument(
     if (node.kind === "text" && runtime.type === CANVAS_TEXT_NODE_TYPE) {
       return {
         ...node,
+        markdown: runtime.data.markdown,
+        style: { ...runtime.data.style },
+        position: { ...runtime.position },
+        size: runtimeNodeSize(runtime),
+      };
+    }
+    if (node.kind === "shape" && runtime.type === CANVAS_SHAPE_NODE_TYPE) {
+      return {
+        ...node,
+        shape: runtime.data.shape,
         markdown: runtime.data.markdown,
         style: { ...runtime.data.style },
         position: { ...runtime.position },

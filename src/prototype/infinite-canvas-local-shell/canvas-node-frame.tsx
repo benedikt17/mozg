@@ -29,6 +29,7 @@ export type CanvasNodeFrameProps = {
   minWidth: number;
   minHeight: number;
   keepAspectRatio?: boolean;
+  centerTextContent?: boolean;
   className?: string;
   toolbar?: ReactNode;
   contextMenu?: ReactNode;
@@ -188,9 +189,11 @@ function dispatchCanvasTextAlignment(
 export function TextAlignmentControls({
   id,
   value,
+  onChange,
 }: {
   id: string;
   value: CanvasTextAlignment;
+  onChange?: (alignment: CanvasTextAlignment) => void;
 }): React.JSX.Element {
   const labels: Record<CanvasTextAlignment, string> = {
     left: "Выровнять текст по левому краю",
@@ -205,7 +208,10 @@ export function TextAlignmentControls({
           aria-pressed={value === alignment}
           className={styles.textToolbarButton}
           key={alignment}
-          onClick={() => dispatchCanvasTextAlignment(id, alignment)}
+          onClick={() => {
+            if (onChange) onChange(alignment);
+            else dispatchCanvasTextAlignment(id, alignment);
+          }}
           title={labels[alignment]}
           type="button"
         >
@@ -278,6 +284,7 @@ export function CanvasNodeFrame({
   minWidth,
   minHeight,
   keepAspectRatio = false,
+  centerTextContent,
   className,
   toolbar,
   contextMenu,
@@ -285,7 +292,8 @@ export function CanvasNodeFrame({
 }: CanvasNodeFrameProps): React.JSX.Element {
   const nodeId = useNodeId();
   const internalNode = useInternalNode(nodeId ?? "");
-  const isTextFrame = Boolean(className?.includes(styles.textNodeFrame));
+  const isTextFrame =
+    centerTextContent ?? Boolean(className?.includes(styles.textNodeFrame));
   const textAlign =
     (
       internalNode?.data as {

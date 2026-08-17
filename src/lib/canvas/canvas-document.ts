@@ -7,6 +7,7 @@ import {
   type CanvasTextFontSize,
   type CanvasTextStyle,
 } from "@/lib/canvas/canvas-text-style";
+import type { CanvasShapeStyle } from "@/lib/canvas/canvas-shape-style";
 
 export const CANVAS_DOCUMENT_SCHEMA_VERSION = 1 as const;
 export const CANVAS_DOCUMENT_V2_SCHEMA_VERSION = 2 as const;
@@ -64,6 +65,16 @@ export type CanvasTextNode = CanvasNodeBase & {
   style?: CanvasTextStyle;
 };
 
+export const CANVAS_SHAPE_VARIANTS = ["rectangle", "circle"] as const;
+export type CanvasShapeVariant = (typeof CANVAS_SHAPE_VARIANTS)[number];
+
+export type CanvasShapeNode = CanvasNodeBase & {
+  kind: "shape";
+  shape: CanvasShapeVariant;
+  markdown: string;
+  style: CanvasShapeStyle;
+};
+
 export type CanvasLegacyImageNode = CanvasNodeBase & {
   kind: "image";
   assetId: string;
@@ -80,7 +91,11 @@ export type CanvasImageNode =
   CanvasLegacyImageNode | CanvasProjectFileImageNode;
 
 export type CanvasNode =
-  CanvasTaskNode | CanvasArticleNode | CanvasTextNode | CanvasImageNode;
+  | CanvasTaskNode
+  | CanvasArticleNode
+  | CanvasTextNode
+  | CanvasShapeNode
+  | CanvasImageNode;
 
 export type CanvasEdge = {
   id: string;
@@ -196,6 +211,17 @@ const TEXT_STYLE_KEYS = [
   "backgroundColor",
 ];
 const TEXT_STYLE_OPTIONAL_KEYS = ["textAlign"];
+const SHAPE_STYLE_KEYS = [
+  "fontFamily",
+  "fontSize",
+  "bold",
+  "italic",
+  "underline",
+  "strikethrough",
+  "color",
+  "fillColor",
+];
+const SHAPE_STYLE_OPTIONAL_KEYS = ["textAlign"];
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -392,9 +418,55 @@ function requireCanvasTextStyle(value: unknown, path: string): CanvasTextStyle {
   };
 }
 
-function parseNode(value: unknown, path: string): CanvasNode {
+function requireCanvasShapeStyle(
+  value: unknown,
+  path: string,
+): CanvasShapeStyle {
+  const style = requireRecord(value, path);
+  requireExactKeys(style, SHAPE_STYLE_KEYS, SHAPE_STYLE_OPTIONAL_KEYS, path);
+  const textStyle = requireCanvasTextStyle(
+    {
+      fontFamily: style.fontFamily,
+      fontSize: style.fontSize,
+      bold: style.bold,
+      italic: style.italic,
+      underline: style.underline,
+      strikethrough: style.strikethrough,
+      color: style.color,
+      backgroundColor: style.fillColor,
+      ...(Object.prototype.hasOwnProperty.call(style, "textAlign")
+        ? { textAlign: style.textAlign }
+        : {}),
+    },
+    path,
+  );
+  return {
+    fontFamily: textStyle.fontFamily,
+    fontSize: textStyle.fontSize,
+    bold: textStyle.bold,
+    italic: textStyle.italic,
+    underline: textStyle.underline,
+    strikethrough: textStyle.strikethrough,
+    color: textStyle.color,
+    fillColor: textStyle.backgroundColor,
+    textAlign: textStyle.textAlign,
+  };
+}
+
+function parseNode(
+  value: unknown,
+  path: string,
+  allowShape = false,
+): CanvasNode {
   const node = requireRecord(value, path);
   const kind = requireString(node.kind, `${path}.kind`) as CanvasNode["kind"];
+  if (kind === "shape" && !allowShape) {
+    fail(
+      "unsupported_node_kind",
+      `${path}.kind`,
+      "Canvas shape nodes require CanvasDocumentV2",
+    );
+  }
   const optionalKeys = ["lastKnownTitle"];
   const allowedKeys =
     kind === "task" || kind === "article"
@@ -420,11 +492,13 @@ function parseNode(value: unknown, path: string): CanvasNode {
         ? "articleId"
         : kind === "text"
           ? "markdown"
-          : kind === "image"
-            ? hasImageFileId
-              ? "fileId"
-              : "assetId"
-            : null;
+          : kind === "shape"
+            ? "shape"
+            : kind === "image"
+              ? hasImageFileId
+                ? "fileId"
+                : "assetId"
+              : null;
   if (specificKey === null) {
     fail(
       "unsupported_node_kind",
@@ -435,6 +509,9 @@ function parseNode(value: unknown, path: string): CanvasNode {
   const requiredKeys = [...BASE_NODE_KEYS, specificKey];
   if (kind === "image") {
     requiredKeys.push("aspectRatioLocked");
+  }
+  if (kind === "shape") {
+    requiredKeys.push("markdown", "style");
   }
   requireExactKeys(node, requiredKeys, allowedKeys, path);
   const id = requireIdentifier(node.id, `${path}.id`);
@@ -497,6 +574,35 @@ function parseNode(value: unknown, path: string): CanvasNode {
       ...(Object.prototype.hasOwnProperty.call(node, "style")
         ? { style: requireCanvasTextStyle(node.style, `${path}.style`) }
         : {}),
+    };
+  }
+
+  if (kind === "shape") {
+    const shape = requireString(node.shape, `${path}.shape`);
+    if (!CANVAS_SHAPE_VARIANTS.includes(shape as CanvasShapeVariant)) {
+      fail(
+        "invalid_shape_variant",
+        `${path}.shape`,
+        "Unsupported Canvas shape variant",
+      );
+    }
+    const markdown = requireString(node.markdown, `${path}.markdown`);
+    if (markdown.length > CANVAS_DOCUMENT_LIMITS.maxMarkdownLength) {
+      fail(
+        "markdown_too_long",
+        `${path}.markdown`,
+        "Markdown exceeds the Canvas limit",
+      );
+    }
+    return {
+      id,
+      kind,
+      shape: shape as CanvasShapeVariant,
+      position,
+      size,
+      zIndex,
+      markdown,
+      style: requireCanvasShapeStyle(node.style, `${path}.style`),
     };
   }
 
@@ -782,7 +888,7 @@ export function parseCanvasDocumentV2(input: unknown): CanvasDocumentV2 {
     fail("edge_limit_exceeded", "document.edges", "Canvas edge limit exceeded");
   }
   const nodes = document.nodes.map((node, index) =>
-    parseNode(node, `document.nodes[${index}]`),
+    parseNode(node, `document.nodes[${index}]`, true),
   );
   const edges = document.edges.map((edge, index) =>
     parseEdgeV2(edge, `document.edges[${index}]`),
