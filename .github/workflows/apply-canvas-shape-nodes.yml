@@ -86,7 +86,7 @@ jobs:
         run: pnpm typecheck
       - name: Commit implementation and remove patch helpers
         run: |
-          git rm .github/workflows/apply-canvas-shape-nodes.yml scripts/apply-canvas-shape-nodes.py
+          git rm -f .github/workflows/apply-canvas-shape-nodes.yml scripts/apply-canvas-shape-nodes.py
           git add -A
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
