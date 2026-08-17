@@ -57,7 +57,10 @@ describe("Canvas shape nodes", () => {
   });
 
   it("projects shapes to React Flow and back without losing style", () => {
-    const canonical = shapeNode({ shape: "circle", size: { width: 160, height: 160 } });
+    const canonical = shapeNode({
+      shape: "circle",
+      size: { width: 160, height: 160 },
+    });
     const document = parseCanvasDocumentV2({
       schemaVersion: 2,
       nodes: [canonical],
@@ -66,7 +69,9 @@ describe("Canvas shape nodes", () => {
     const [runtime] = canvasDocumentToShapeNodes(document);
     expect(runtime.type).toBe(CANVAS_SHAPE_NODE_TYPE);
     expect(runtime.data.shape).toBe("circle");
-    expect(runtime.data.style.fillColor).toBe(DEFAULT_CANVAS_SHAPE_STYLE.fillColor);
+    expect(runtime.data.style.fillColor).toBe(
+      DEFAULT_CANVAS_SHAPE_STYLE.fillColor,
+    );
 
     const nextRuntime = {
       ...runtime,
@@ -74,7 +79,11 @@ describe("Canvas shape nodes", () => {
       data: {
         ...runtime.data,
         markdown: "Новая подпись",
-        style: { ...runtime.data.style, fillColor: "#112233", color: "#ffffff" },
+        style: {
+          ...runtime.data.style,
+          fillColor: "#112233",
+          color: "#ffffff",
+        },
       },
     };
     const projected = runtimeNodesToCanvasDocument(document, [nextRuntime]);
@@ -92,7 +101,10 @@ describe("Canvas shape nodes", () => {
       nodes: [shapeNode()],
       edges: [],
     });
-    const payload = createCanvasNodeClipboardPayload(document, new Set(["shape-1"]));
+    const payload = createCanvasNodeClipboardPayload(
+      document,
+      new Set(["shape-1"]),
+    );
     expect(payload?.nodes).toHaveLength(1);
     const [pasted] = materializeCanvasNodeClipboardPaste(payload!, {
       target: { x: 400, y: 300 },
@@ -127,6 +139,10 @@ describe("Canvas shape nodes", () => {
       isEditing: true,
     });
     const runtimeDuplicate = createCanvasAltDragRuntimeNode(runtime, duplicate!);
+    expect(runtimeDuplicate.type).toBe(CANVAS_SHAPE_NODE_TYPE);
+    if (runtimeDuplicate.type !== CANVAS_SHAPE_NODE_TYPE) {
+      throw new Error("Expected an Alt-dragged Canvas shape runtime node");
+    }
     expect(runtimeDuplicate.data.isEditing).toBe(false);
     expect(runtimeDuplicate.data.style).not.toBe(runtime.data.style);
   });
