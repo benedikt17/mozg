@@ -58,13 +58,12 @@ describe("Canvas style eyedropper runtime", () => {
     ).toBeGreaterThanOrEqual(2);
   });
 
-  it("does not dispatch normal node selection while sampling a target", () => {
-    const start = shellSource.indexOf(
-      "if (styleEyedropperSourceId && event.button === 0)",
+  it("keeps target sampling limited to Canvas text nodes", () => {
+    expect(shellSource).toContain(
+      "sourceNode?.type !== CANVAS_TEXT_NODE_TYPE ||",
     );
-    const end = shellSource.indexOf('if (event.pointerType === "touch")', start);
-    const eyedropperBranch = shellSource.slice(start, end);
-    expect(eyedropperBranch).toContain("event.stopPropagation();");
-    expect(eyedropperBranch).toContain("return;");
+    expect(shellSource).toContain(
+      "targetNode?.type !== CANVAS_TEXT_NODE_TYPE",
+    );
   });
 });
