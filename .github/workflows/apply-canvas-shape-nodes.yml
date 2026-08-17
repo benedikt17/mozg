@@ -6,6 +6,9 @@ on:
       - feat/canvas-shape-nodes
     paths:
       - .github/workflows/apply-canvas-shape-nodes.yml
+      - tests/canvas-shape-nodes.test.ts
+      - tests/canvas-node-frame.test.ts
+      - tests/canvas-style-eyedropper-runtime.test.ts
 
 permissions:
   contents: write
