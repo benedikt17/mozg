@@ -49,6 +49,7 @@ describe("Canvas style eyedropper runtime", () => {
     expect(shellSource).toContain("event.stopPropagation();");
     expect(cssSource).toContain(".canvasStyleEyedropperActive");
     expect(cssSource).toContain("cursor: crosshair !important;");
+    expect(cssSource).toContain(".styleEyedropperButton");
   });
 
   it("leaves eyedropper mode after applying or clicking blank canvas", () => {
