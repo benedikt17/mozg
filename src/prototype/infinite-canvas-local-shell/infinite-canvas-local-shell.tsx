@@ -88,6 +88,13 @@ import {
   type CanvasNodeClipboardPayload,
 } from "@/lib/canvas/canvas-node-clipboard";
 import {
+  createCanvasAltDragDuplicate,
+  createCanvasAltDragRuntimeNode,
+  finalizeCanvasAltDragDuplicate,
+  redirectCanvasAltDragNodeChanges,
+  type CanvasAltDragDuplicateSession,
+} from "@/lib/canvas/canvas-alt-drag-duplicate";
+import {
   CANVAS_IMAGE_NODE_TYPE,
   CANVAS_TASK_NODE_TYPE,
   CANVAS_TEXT_NODE_TYPE,
@@ -116,6 +123,7 @@ import {
 } from "@/lib/canvas/react-flow-canvas-adapter";
 import { CanvasImageLoadCache } from "@/lib/canvas/canvas-image-load-cache";
 import {
+  CANVAS_DOCUMENT_LIMITS,
   CANVAS_VIEWPORT_LIMITS,
   type CanvasEdgeArrows,
   type CanvasEdgeV2,
@@ -1348,6 +1356,9 @@ function InfiniteCanvasLocalShellSurface({
   const pendingContentHeightSaveRef = useRef(false);
   const nodeGeometrySignatureRef = useRef("");
   const nodeDragActiveRef = useRef(false);
+  const altDragDuplicateRef = useRef<CanvasAltDragDuplicateSession | null>(
+    null,
+  );
   const middlePanActiveRef = useRef(false);
   const activeTouchPointersRef = useRef(new Set<number>());
   const touchGestureNodesRef = useRef<CanvasFlowNode[] | null>(null);
@@ -1791,23 +1802,85 @@ function InfiniteCanvasLocalShellSurface({
     [controller, handleEdgeUpdate, scheduleSave, setEdges],
   );
 
-  const handleNodeDragStart = useCallback((): void => {
-    if (touchViewportGestureActiveRef.current) return;
-    nodeDragActiveRef.current = true;
-    edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
-  }, []);
+  const handleNodeDragStart = useCallback(
+    (event: MouseEvent | TouchEvent, node: CanvasFlowNode): void => {
+      if (touchViewportGestureActiveRef.current) return;
+      nodeDragActiveRef.current = true;
+      edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
+      altDragDuplicateRef.current = null;
+      if (!event.altKey) return;
+      if (
+        nodesRef.current.some(
+          (candidate) => candidate.selected && candidate.id !== node.id,
+        )
+      )
+        return;
+
+      const document = controller.state.document;
+      if (document.nodes.length >= CANVAS_DOCUMENT_LIMITS.maxNodes) return;
+      const canonical = document.nodes.find(
+        (candidate) => candidate.id === node.id,
+      );
+      if (!canonical) return;
+      const highestZIndex = document.nodes.reduce(
+        (maximum, candidate) => Math.max(maximum, candidate.zIndex),
+        0,
+      );
+      const duplicate = createCanvasAltDragDuplicate(canonical, {
+        zIndex: highestZIndex + 1,
+      });
+      if (!duplicate) return;
+
+      const runtimeDuplicate = createCanvasAltDragRuntimeNode(node, duplicate);
+      altDragDuplicateRef.current = {
+        sourceNodeId: node.id,
+        duplicateNodeId: duplicate.id,
+        duplicate,
+        finalPosition: { ...duplicate.position },
+      };
+      const nextNodes = [...nodesRef.current, runtimeDuplicate];
+      nodesRef.current = nextNodes;
+      setNodes(nextNodes);
+    },
+    [controller, setNodes],
+  );
 
   const handleNodeDragStop = useCallback((): void => {
     nodeDragActiveRef.current = false;
     edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
     if (touchViewportGestureActiveRef.current) return;
+
+    const duplicateSession = altDragDuplicateRef.current;
+    altDragDuplicateRef.current = null;
+    if (duplicateSession) {
+      const duplicate = finalizeCanvasAltDragDuplicate(duplicateSession);
+      const nextNodes = nodesRef.current.map((candidate) => {
+        if (candidate.id === duplicateSession.sourceNodeId)
+          return { ...candidate, selected: false };
+        if (candidate.id === duplicateSession.duplicateNodeId)
+          return {
+            ...candidate,
+            position: { ...duplicate.position },
+            selected: true,
+          };
+        return candidate;
+      });
+      nodesRef.current = nextNodes;
+      setNodes(nextNodes);
+      controller.insertCanvasNodes([duplicate]);
+      controller.setRuntimeEdges(edgesRef.current);
+      syncState();
+      scheduleSave();
+      return;
+    }
+
     window.setTimeout(() => {
       if (!shellStateRef.current.canvasId) return;
       controller.setRuntimeEdges(edgesRef.current);
       syncState();
       scheduleSave();
     }, 0);
-  }, [controller, scheduleSave, syncState]);
+  }, [controller, scheduleSave, setNodes, syncState]);
 
   const handleTaskNodeContentHeightChange = useCallback((): void => {
     // Task projection is runtime-only; it must never resize canonical bounds.
@@ -2924,12 +2997,16 @@ function InfiniteCanvasLocalShellSurface({
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<CanvasFlowNode>[]) => {
-      const guardedChanges = touchViewportGestureActiveRef.current
+      const touchGuardedChanges = touchViewportGestureActiveRef.current
         ? changes.filter(
             (change) =>
               change.type !== "position" && change.type !== "dimensions",
           )
         : changes;
+      const guardedChanges = redirectCanvasAltDragNodeChanges(
+        touchGuardedChanges,
+        altDragDuplicateRef.current,
+      );
       if (guardedChanges.length === 0) return;
       if (
         guardedChanges.some(
