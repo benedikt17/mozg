@@ -1,0 +1,182 @@
+name: Refine Canvas color picker toolbar triggers
+
+on:
+  push:
+    branches:
+      - feat/canvas-custom-color-picker
+    paths:
+      - .github/workflows/refine-canvas-color-trigger.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/canvas-custom-color-picker
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Replace glyph triggers with color swatches
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str, count: int = 1):
+              p = Path(path)
+              text = p.read_text()
+              actual = text.count(old)
+              if actual < count:
+                  raise SystemExit(f"{path}: expected {count}, found {actual}: {old[:120]!r}")
+              p.write_text(text.replace(old, new, count))
+
+          replace(
+            "src/prototype/infinite-canvas-local-shell/canvas-color-picker.tsx",
+            '''  value,
+              label,
+              glyph,
+              onCommit,
+            }: {
+              value: string;
+              label: string;
+              glyph: string;
+              onCommit: (value: string) => void;
+            }): React.JSX.Element {''',
+            '''  value,
+              label,
+              onCommit,
+            }: {
+              value: string;
+              label: string;
+              onCommit: (value: string) => void;
+            }): React.JSX.Element {'''
+          )
+          replace(
+            "src/prototype/infinite-canvas-local-shell/canvas-color-picker.tsx",
+            '''      >
+                <span className={styles.glyph}>{glyph}</span>
+                <span
+                  className={styles.swatch}
+                  style={{ backgroundColor: swatchColor }}
+                  aria-hidden="true"
+                />
+              </button>''',
+            '''      >
+                <span
+                  className={styles.swatch}
+                  style={{ backgroundColor: swatchColor }}
+                  aria-hidden="true"
+                />
+              </button>'''
+          )
+
+          replace(
+            "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
+            '''      <CanvasColorPicker
+                label="Цвет текста"
+                glyph="A"
+                value={style.color}''',
+            '''      <CanvasColorPicker
+                label="Цвет текста"
+                value={style.color}'''
+          )
+          replace(
+            "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
+            '''      <CanvasColorPicker
+                label="Цвет фона"
+                glyph="▣"
+                value={''',
+            '''      <CanvasColorPicker
+                label="Цвет фона"
+                value={'''
+          )
+
+          css = Path("src/prototype/infinite-canvas-local-shell/canvas-color-picker.module.css")
+          text = css.read_text()
+          start = text.index(".root {")
+          panel = text.index(".panel {")
+          head = '''.root {
+            position: relative;
+            width: 30px;
+            height: 30px;
+            flex: 0 0 30px;
+          }
+
+          .trigger {
+            width: 30px;
+            height: 30px;
+            display: grid;
+            place-items: center;
+            border: 0;
+            border-radius: 5px;
+            padding: 0;
+            background: transparent;
+            cursor: pointer;
+          }
+
+          .trigger:hover,
+          .trigger:focus-visible,
+          .trigger[aria-expanded="true"] {
+            background: #f5f5f4;
+            outline: none;
+          }
+
+          .swatch {
+            width: 19px;
+            height: 19px;
+            border: 1px solid rgba(28, 25, 23, 0.28);
+            border-radius: 4px;
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+          }
+
+          '''
+          css.write_text(head + text[panel:])
+
+          test = Path("tests/canvas-custom-color-picker-runtime.test.ts")
+          text = test.read_text()
+          needle = '''    expect(shellSource.match(/<CanvasColorPicker/g)).toHaveLength(2);
+              expect(shellSource).not.toContain('type="color"');'''
+          replacement = '''    expect(shellSource.match(/<CanvasColorPicker/g)).toHaveLength(2);
+              expect(shellSource).not.toContain('type="color"');
+              expect(shellSource).not.toContain('glyph="A"');
+              expect(shellSource).not.toContain('glyph="▣"');
+              expect(pickerSource).not.toContain("styles.glyph");
+              expect(pickerSource).toContain("className={styles.swatch}");'''
+          if needle not in text:
+              raise SystemExit("test contract block not found")
+          test.write_text(text.replace(needle, replacement, 1))
+          PY
+          pnpm exec prettier --write \
+            src/prototype/infinite-canvas-local-shell/canvas-color-picker.tsx \
+            src/prototype/infinite-canvas-local-shell/canvas-color-picker.module.css \
+            src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx \
+            tests/canvas-custom-color-picker-runtime.test.ts
+          git diff --check
+      - name: Validate
+        run: |
+          pnpm exec vitest run tests/canvas-custom-color-picker-runtime.test.ts tests/canvas-miro-text-toolbar-runtime.test.ts tests/canvas-color.test.ts
+          pnpm lint
+          pnpm typecheck
+      - name: Commit refinement and remove workflow
+        shell: bash
+        run: |
+          git rm .github/workflows/refine-canvas-color-trigger.yml
+          git add \
+            src/prototype/infinite-canvas-local-shell/canvas-color-picker.tsx \
+            src/prototype/infinite-canvas-local-shell/canvas-color-picker.module.css \
+            src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx \
+            tests/canvas-custom-color-picker-runtime.test.ts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Canvas: use direct color swatches in toolbar"
+          git push origin HEAD:feat/canvas-custom-color-picker
