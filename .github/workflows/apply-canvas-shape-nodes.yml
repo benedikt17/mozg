@@ -26,6 +26,27 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Make parser matcher robust
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/apply-canvas-shape-nodes.py")
+          source = path.read_text()
+          marker = '    "document shape key",\n)\n'
+          end = source.index(marker) + len(marker)
+          start = source.rfind("text = replace_once(", 0, end)
+          if start < 0:
+              raise SystemExit("shape-key patch call not found")
+          replacement = '''text = replace_once(
+              text,
+              '          : kind === "image"\\n            ? hasImageFileId\\n              ? "fileId"\\n              : "assetId"\\n            : null;\\n',
+              '          : kind === "shape"\\n            ? "shape"\\n            : kind === "image"\\n              ? hasImageFileId\\n                ? "fileId"\\n                : "assetId"\\n              : null;\\n',
+              "document shape key",
+          )
+          '''
+          path.write_text(source[:start] + replacement + source[end:])
+          PY
       - name: Apply shape node patch
         run: |
           python scripts/apply-canvas-shape-nodes.py
