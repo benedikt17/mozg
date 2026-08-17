@@ -31,259 +31,189 @@ jobs:
         run: |
           python <<'PY'
           from pathlib import Path
+          import re
 
           shell_path = Path("src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx")
           text = shell_path.read_text()
 
-          def replace(old: str, new: str, count: int = 1):
+          def sub(pattern: str, replacement: str, count: int = 1, flags: int = 0):
               global text
-              actual = text.count(old)
-              if actual < count:
-                  raise SystemExit(f"expected at least {count} occurrences, found {actual}: {old[:160]!r}")
-              text = text.replace(old, new, count)
+              text, actual = re.subn(pattern, replacement, text, count=count, flags=flags)
+              if actual != count:
+                  raise SystemExit(f"expected {count} replacement(s), got {actual}: {pattern[:140]!r}")
 
-          replace(
-          '''function dispatchCanvasTextStylePatch(
-            id: string,
-            patch: Partial<CanvasTextStyle>,
-          ): void {
-            window.dispatchEvent(
-              new CustomEvent("mozg:canvas-text-style", { detail: { id, patch } }),
-            );
-          }
-          ''',
-          '''function dispatchCanvasTextStylePatch(
-            id: string,
-            patch: Partial<CanvasTextStyle>,
-          ): void {
-            window.dispatchEvent(
-              new CustomEvent("mozg:canvas-text-style", { detail: { id, patch } }),
-            );
-          }
+          sub(
+              r'(function dispatchCanvasTextStylePatch\([\s\S]*?\n\})\n\nfunction TextSelectionToolbar',
+              r'''\1
 
-          function dispatchCanvasStyleEyedropperStart(id: string): void {
-            window.dispatchEvent(
-              new CustomEvent("mozg:canvas-style-eyedropper-start", {
-                detail: { id },
-              }),
-            );
-          }
-          ''')
+function dispatchCanvasStyleEyedropperStart(id: string): void {
+  window.dispatchEvent(
+    new CustomEvent("mozg:canvas-style-eyedropper-start", {
+      detail: { id },
+    }),
+  );
+}
 
-          replace(
-          '''      <CanvasColorPicker
-                label="Цвет фона"
-                value={
-                  style.backgroundColor === "transparent"
-                    ? "#ffffff"
-                    : style.backgroundColor
-                }
-                onCommit={(backgroundColor) => patchStyle({ backgroundColor })}
-              />
-              <span className={styles.textToolbarDivider} aria-hidden="true" />
-          ''',
-          '''      <CanvasColorPicker
-                label="Цвет фона"
-                value={
-                  style.backgroundColor === "transparent"
-                    ? "#ffffff"
-                    : style.backgroundColor
-                }
-                onCommit={(backgroundColor) => patchStyle({ backgroundColor })}
-              />
-              <button
-                type="button"
-                className={`${styles.textToolbarButton} ${styles.styleEyedropperButton}`}
-                aria-label="Пипетка"
-                title="Скопировать цвет текста и фона"
-                onClick={() => dispatchCanvasStyleEyedropperStart(id)}
-              >
-                <svg
-                  className={styles.styleEyedropperIcon}
-                  aria-hidden="true"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                >
-                  <path
-                    d="m14.5 5.5 4-4a2.12 2.12 0 0 1 3 3l-4 4m-3-3 4 4m-4-4-9.8 9.8a2 2 0 0 0-.5.8L3 21l4.9-1.2a2 2 0 0 0 .8-.5l9.8-9.8"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-              <span className={styles.textToolbarDivider} aria-hidden="true" />
-          ''')
+function TextSelectionToolbar''',
+          )
 
-          replace(
-          '''  const [touchViewportGestureActive, setTouchViewportGestureActive] =
-            useState(false);
-          ''',
-          '''  const [touchViewportGestureActive, setTouchViewportGestureActive] =
-            useState(false);
-          const [styleEyedropperSourceId, setStyleEyedropperSourceId] = useState<
-            string | null
-          >(null);
-          ''')
+          sub(
+              r'(<CanvasColorPicker\s+label="Цвет фона"[\s\S]*?onCommit=\{\(backgroundColor\) => patchStyle\(\{ backgroundColor \}\)\}\s*/>)\s*(<span className=\{styles\.textToolbarDivider\} aria-hidden="true" />)',
+              r'''\1
+      <button
+        type="button"
+        className={`${styles.textToolbarButton} ${styles.styleEyedropperButton}`}
+        aria-label="Пипетка"
+        title="Скопировать цвет текста и фона"
+        onClick={() => dispatchCanvasStyleEyedropperStart(id)}
+      >
+        <svg
+          className={styles.styleEyedropperIcon}
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+        >
+          <path
+            d="m14.5 5.5 4-4a2.12 2.12 0 0 1 3 3l-4 4m-3-3 4 4m-4-4-9.8 9.8a2 2 0 0 0-.5.8L3 21l4.9-1.2a2 2 0 0 0 .8-.5l9.8-9.8"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+      \2''',
+          )
 
-          replace(
-          '''    const onStyle = (event: Event) => {
-              const detail = (
-                event as CustomEvent<{
-                  id?: string;
-                  patch?: Partial<CanvasTextStyle>;
-                }>
-              ).detail;
-              if (detail.id && detail.patch) updateTextStyle(detail.id, detail.patch);
-            };
-            window.addEventListener("mozg:canvas-text-edit", onEdit);
-          ''',
-          '''    const onStyle = (event: Event) => {
-              const detail = (
-                event as CustomEvent<{
-                  id?: string;
-                  patch?: Partial<CanvasTextStyle>;
-                }>
-              ).detail;
-              if (detail.id && detail.patch) updateTextStyle(detail.id, detail.patch);
-            };
-            const onEyedropperStart = (event: Event) => {
-              const id = (event as CustomEvent<{ id?: string }>).detail?.id;
-              if (id) setStyleEyedropperSourceId(id);
-            };
-            window.addEventListener("mozg:canvas-text-edit", onEdit);
-          ''')
+          sub(
+              r'(const \[touchViewportGestureActive, setTouchViewportGestureActive\] =\s*useState\(false\);)',
+              r'''\1
+  const [styleEyedropperSourceId, setStyleEyedropperSourceId] = useState<
+    string | null
+  >(null);''',
+          )
 
-          replace(
-          '''    window.addEventListener("mozg:canvas-text-style", onStyle);
-            return () => {
-          ''',
-          '''    window.addEventListener("mozg:canvas-text-style", onStyle);
-            window.addEventListener(
-              "mozg:canvas-style-eyedropper-start",
-              onEyedropperStart,
-            );
-            return () => {
-          ''')
+          sub(
+              r'(const onStyle = \(event: Event\) => \{[\s\S]*?if \(detail\.id && detail\.patch\) updateTextStyle\(detail\.id, detail\.patch\);\s*\};)\s*(window\.addEventListener\("mozg:canvas-text-edit", onEdit\);)',
+              r'''\1
+    const onEyedropperStart = (event: Event) => {
+      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (id) setStyleEyedropperSourceId(id);
+    };
+    \2''',
+          )
 
-          replace(
-          '''      window.removeEventListener("mozg:canvas-text-style", onStyle);
-            };
-          }, [commitTextNode, setTextEditing, updateTextStyle]);
-          ''',
-          '''      window.removeEventListener("mozg:canvas-text-style", onStyle);
-              window.removeEventListener(
-                "mozg:canvas-style-eyedropper-start",
-                onEyedropperStart,
-              );
-            };
-          }, [commitTextNode, setTextEditing, updateTextStyle]);
+          sub(
+              r'(window\.addEventListener\("mozg:canvas-text-style", onStyle\);)',
+              r'''\1
+    window.addEventListener(
+      "mozg:canvas-style-eyedropper-start",
+      onEyedropperStart,
+    );''',
+          )
 
-          useEffect(() => {
-            if (!styleEyedropperSourceId) return;
-            const cancelOnEscape = (event: KeyboardEvent): void => {
-              if (event.key !== "Escape") return;
-              event.preventDefault();
-              setStyleEyedropperSourceId(null);
-            };
-            window.addEventListener("keydown", cancelOnEscape);
-            return () => window.removeEventListener("keydown", cancelOnEscape);
-          }, [styleEyedropperSourceId]);
-          ''')
+          sub(
+              r'(window\.removeEventListener\("mozg:canvas-text-style", onStyle\);)\s*(\};\s*\}, \[commitTextNode, setTextEditing, updateTextStyle\]\);)',
+              r'''\1
+      window.removeEventListener(
+        "mozg:canvas-style-eyedropper-start",
+        onEyedropperStart,
+      );
+    \2
 
-          replace(
-          '''  const handleCanvasPointerDown = useCallback(
-            (event: ReactPointerEvent<HTMLDivElement>) => {
-              if (event.pointerType === "touch") {
-          ''',
-          '''  const handleCanvasPointerDown = useCallback(
-            (event: ReactPointerEvent<HTMLDivElement>) => {
-              if (styleEyedropperSourceId && event.button === 0) {
-                const targetElement =
-                  event.target instanceof Element
-                    ? event.target.closest<HTMLElement>(".react-flow__node")
-                    : null;
-                if (!targetElement) {
-                  setStyleEyedropperSourceId(null);
-                } else {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  const sourceId = styleEyedropperSourceId;
-                  const targetId = targetElement.dataset.id;
-                  if (!targetId || targetId === sourceId) return;
-                  const sourceNode = nodesRef.current.find(
-                    (node) => node.id === sourceId,
-                  );
-                  const targetNode = nodesRef.current.find(
-                    (node) => node.id === targetId,
-                  );
-                  if (
-                    sourceNode?.type !== CANVAS_TEXT_NODE_TYPE ||
-                    targetNode?.type !== CANVAS_TEXT_NODE_TYPE
-                  )
-                    return;
-                  updateTextStyle(sourceId, {
-                    color: targetNode.data.style.color,
-                    backgroundColor: targetNode.data.style.backgroundColor,
-                  });
-                  setStyleEyedropperSourceId(null);
-                  return;
-                }
-              }
-              if (event.pointerType === "touch") {
-          ''')
+  useEffect(() => {
+    if (!styleEyedropperSourceId) return;
+    const cancelOnEscape = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setStyleEyedropperSourceId(null);
+    };
+    window.addEventListener("keydown", cancelOnEscape);
+    return () => window.removeEventListener("keydown", cancelOnEscape);
+  }, [styleEyedropperSourceId]);''',
+          )
 
-          replace(
-          '''    [beginTouchViewportGesture, cancelPanInertia, reactFlow],
-          );
-          ''',
-          '''    [
-              beginTouchViewportGesture,
-              cancelPanInertia,
-              reactFlow,
-              styleEyedropperSourceId,
-              updateTextStyle,
-            ],
-          );
-          ''')
+          sub(
+              r'(const handleCanvasPointerDown = useCallback\(\s*\(event: ReactPointerEvent<HTMLDivElement>\) => \{)\s*(if \(event\.pointerType === "touch"\) \{)',
+              r'''\1
+      if (styleEyedropperSourceId && event.button === 0) {
+        const targetElement =
+          event.target instanceof Element
+            ? event.target.closest<HTMLElement>(".react-flow__node")
+            : null;
+        if (!targetElement) {
+          setStyleEyedropperSourceId(null);
+        } else {
+          event.preventDefault();
+          event.stopPropagation();
+          const sourceId = styleEyedropperSourceId;
+          const targetId = targetElement.dataset.id;
+          if (!targetId || targetId === sourceId) return;
+          const sourceNode = nodesRef.current.find((node) => node.id === sourceId);
+          const targetNode = nodesRef.current.find((node) => node.id === targetId);
+          if (
+            sourceNode?.type !== CANVAS_TEXT_NODE_TYPE ||
+            targetNode?.type !== CANVAS_TEXT_NODE_TYPE
+          )
+            return;
+          updateTextStyle(sourceId, {
+            color: targetNode.data.style.color,
+            backgroundColor: targetNode.data.style.backgroundColor,
+          });
+          setStyleEyedropperSourceId(null);
+          return;
+        }
+      }
+      \2''',
+          )
 
-          replace(
-          '''className={`${styles.canvas} ${dropActive ? styles.dropActive : ""}`}
-          ''',
-          '''className={`${styles.canvas} ${dropActive ? styles.dropActive : ""} ${styleEyedropperSourceId ? styles.canvasStyleEyedropperActive : ""}`}
-          ''',
-          2)
+          sub(
+              r'\[beginTouchViewportGesture, cancelPanInertia, reactFlow\],\s*\);',
+              '''[
+      beginTouchViewportGesture,
+      cancelPanInertia,
+      reactFlow,
+      styleEyedropperSourceId,
+      updateTextStyle,
+    ],
+  );''',
+          )
+
+          sub(
+              r'className=\{`\$\{styles\.canvas\} \$\{dropActive \? styles\.dropActive : ""\}`\}',
+              'className={`${styles.canvas} ${dropActive ? styles.dropActive : ""} ${styleEyedropperSourceId ? styles.canvasStyleEyedropperActive : ""}`}',
+              count=2,
+          )
 
           shell_path.write_text(text)
 
           css_path = Path("src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css")
           css = css_path.read_text()
-          marker = '''.textToolbarButton:disabled {
-            color: #a8a29e;
-            cursor: default;
-          }
-          '''
-          addition = marker + '''.styleEyedropperButton {
-            display: grid;
-            place-items: center;
-          }
-          .styleEyedropperIcon {
-            width: 16px;
-            height: 16px;
-          }
-          .canvasStyleEyedropperActive,
-          .canvasStyleEyedropperActive :global(.react-flow__node) {
-            cursor: crosshair !important;
-          }
-          .canvasStyleEyedropperActive .styleEyedropperButton {
-            background: #e7e5e4;
-            color: #0f766e;
-          }
-          '''
+          marker = ".textToolbarButton:disabled {\n  color: #a8a29e;\n  cursor: default;\n}\n"
           if marker not in css:
               raise SystemExit("CSS marker not found")
-          css_path.write_text(css.replace(marker, addition, 1))
+          css = css.replace(
+              marker,
+              marker + '''.styleEyedropperButton {
+  display: grid;
+  place-items: center;
+}
+.styleEyedropperIcon {
+  width: 16px;
+  height: 16px;
+}
+.canvasStyleEyedropperActive,
+.canvasStyleEyedropperActive :global(.react-flow__node) {
+  cursor: crosshair !important;
+}
+.canvasStyleEyedropperActive .styleEyedropperButton {
+  background: #e7e5e4;
+  color: #0f766e;
+}
+''',
+              1,
+          )
+          css_path.write_text(css)
           PY
           pnpm exec prettier --write \
             src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx \
