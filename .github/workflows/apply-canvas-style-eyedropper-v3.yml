@@ -29,7 +29,7 @@ jobs:
       - run: python scripts/patch-canvas-style-eyedropper.py
       - run: pnpm exec prettier --write src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css tests/canvas-style-eyedropper-runtime.test.ts tests/canvas-custom-color-picker-runtime.test.ts tests/canvas-miro-text-toolbar-runtime.test.ts
       - run: git diff --check
-      - name: Validate eyedropper
+      - name: Validate eyedropper after contract fix
         run: pnpm exec vitest run tests/canvas-style-eyedropper-runtime.test.ts tests/canvas-custom-color-picker-runtime.test.ts tests/canvas-miro-text-toolbar-runtime.test.ts tests/canvas-alt-drag-duplicate.test.ts && pnpm lint && pnpm typecheck
       - name: Commit implementation and clean temporary files
         run: |
