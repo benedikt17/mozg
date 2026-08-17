@@ -30,7 +30,7 @@ describe("Canvas style eyedropper runtime", () => {
   it("copies text and background colors from another text node", () => {
     expect(shellSource).toContain('"mozg:canvas-style-eyedropper-start"');
     expect(shellSource).toContain("styleEyedropperSourceId");
-    expect(shellSource).toContain("targetNode.type !== CANVAS_TEXT_NODE_TYPE");
+    expect(shellSource).toContain("targetNode?.type !== CANVAS_TEXT_NODE_TYPE");
     expect(shellSource).toContain("color: targetNode.data.style.color");
     expect(shellSource).toContain(
       "backgroundColor: targetNode.data.style.backgroundColor",
