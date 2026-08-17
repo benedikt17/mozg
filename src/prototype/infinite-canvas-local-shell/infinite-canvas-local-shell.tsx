@@ -577,13 +577,11 @@ function TextSelectionToolbar({
       <span className={styles.textToolbarDivider} aria-hidden="true" />
       <CanvasColorPicker
         label="Цвет текста"
-        glyph="A"
         value={style.color}
         onCommit={(color) => patchStyle({ color })}
       />
       <CanvasColorPicker
         label="Цвет фона"
-        glyph="▣"
         value={
           style.backgroundColor === "transparent"
             ? "#ffffff"
