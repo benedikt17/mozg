@@ -62,8 +62,16 @@ describe("Canvas style eyedropper runtime", () => {
     expect(shellSource).toContain(
       "sourceNode?.type !== CANVAS_TEXT_NODE_TYPE ||",
     );
-    expect(shellSource).toContain(
-      "targetNode?.type !== CANVAS_TEXT_NODE_TYPE",
+    expect(shellSource).toContain("targetNode?.type !== CANVAS_TEXT_NODE_TYPE");
+  });
+
+  it("applies both style fields through one updateTextStyle call", () => {
+    const updateStart = shellSource.indexOf("updateTextStyle(sourceId, {");
+    const updateEnd = shellSource.indexOf("});", updateStart);
+    const updateBlock = shellSource.slice(updateStart, updateEnd);
+    expect(updateBlock).toContain("color: targetNode.data.style.color");
+    expect(updateBlock).toContain(
+      "backgroundColor: targetNode.data.style.backgroundColor",
     );
   });
 });
