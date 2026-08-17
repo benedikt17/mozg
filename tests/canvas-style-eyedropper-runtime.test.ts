@@ -48,4 +48,11 @@ describe("Canvas style eyedropper runtime", () => {
     expect(shellSource).toContain("event.stopPropagation();");
     expect(cssSource).toContain(".canvasStyleEyedropperActive");
   });
+
+  it("leaves eyedropper mode after applying or clicking blank canvas", () => {
+    expect(shellSource).toContain("if (!targetElement) {");
+    expect(shellSource.match(/setStyleEyedropperSourceId\(null\)/g)?.length).toBeGreaterThanOrEqual(
+      2,
+    );
+  });
 });
