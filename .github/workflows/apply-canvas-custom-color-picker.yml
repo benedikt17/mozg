@@ -1,0 +1,137 @@
+name: Apply Canvas custom color picker wiring
+
+on:
+  push:
+    branches:
+      - feat/canvas-custom-color-picker
+    paths:
+      - .github/workflows/apply-canvas-custom-color-picker.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/canvas-custom-color-picker
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Patch Canvas toolbar wiring
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path("src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx")
+          text = path.read_text()
+
+          def replace(old: str, new: str, count: int = 1):
+              global text
+              actual = text.count(old)
+              if actual < count:
+                  raise SystemExit(f"expected at least {count} occurrences, found {actual}: {old[:180]!r}")
+              text = text.replace(old, new, count)
+
+          replace(
+          '''import {
+            CanvasNodeFrame,
+            ConnectionHandleLayer,
+            TextAlignmentControls,
+          } from "./canvas-node-frame";
+          import styles from "./infinite-canvas-local-shell.module.css";
+          ''',
+          '''import {
+            CanvasNodeFrame,
+            ConnectionHandleLayer,
+            TextAlignmentControls,
+          } from "./canvas-node-frame";
+          import { CanvasColorPicker } from "./canvas-color-picker";
+          import styles from "./infinite-canvas-local-shell.module.css";
+          ''')
+
+          replace(
+          '''      <label className={styles.textToolbarColorControl} title="Цвет текста">
+                  <span className={styles.textToolbarColorGlyph}>A</span>
+                  <input
+                    type="color"
+                    aria-label="Цвет текста"
+                    value={style.color}
+                    onChange={(event) => patchStyle({ color: event.target.value })}
+                  />
+                </label>
+                <label className={styles.textToolbarColorControl} title="Цвет фона">
+                  <span className={styles.textToolbarBackgroundGlyph}>▣</span>
+                  <input
+                    type="color"
+                    aria-label="Цвет фона"
+                    value={
+                      style.backgroundColor === "transparent"
+                        ? "#ffffff"
+                        : style.backgroundColor
+                    }
+                    onChange={(event) =>
+                      patchStyle({ backgroundColor: event.target.value })
+                    }
+                  />
+                </label>
+          ''',
+          '''      <CanvasColorPicker
+                  label="Цвет текста"
+                  glyph="A"
+                  value={style.color}
+                  onCommit={(color) => patchStyle({ color })}
+                />
+                <CanvasColorPicker
+                  label="Цвет фона"
+                  glyph="▣"
+                  value={
+                    style.backgroundColor === "transparent"
+                      ? "#ffffff"
+                      : style.backgroundColor
+                  }
+                  onCommit={(backgroundColor) => patchStyle({ backgroundColor })}
+                />
+          ''')
+
+          path.write_text(text)
+          PY
+          pnpm exec prettier --write \
+            src/lib/canvas/canvas-color.ts \
+            src/prototype/infinite-canvas-local-shell/canvas-color-picker.tsx \
+            src/prototype/infinite-canvas-local-shell/canvas-color-picker.module.css \
+            src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx \
+            tests/canvas-color.test.ts \
+            tests/canvas-custom-color-picker-runtime.test.ts
+          git diff --check
+      - name: Focused validation
+        run: |
+          pnpm exec vitest run \
+            tests/canvas-color.test.ts \
+            tests/canvas-custom-color-picker-runtime.test.ts \
+            tests/canvas-miro-selection-runtime.test.ts
+          pnpm typecheck
+      - name: Commit patch and remove workflow
+        shell: bash
+        run: |
+          git rm .github/workflows/apply-canvas-custom-color-picker.yml
+          git add \
+            src/lib/canvas/canvas-color.ts \
+            src/prototype/infinite-canvas-local-shell/canvas-color-picker.tsx \
+            src/prototype/infinite-canvas-local-shell/canvas-color-picker.module.css \
+            src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx \
+            tests/canvas-color.test.ts \
+            tests/canvas-custom-color-picker-runtime.test.ts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Canvas: replace native color inputs with custom picker"
+          git push origin HEAD:feat/canvas-custom-color-picker
