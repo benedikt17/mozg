@@ -73,5 +73,6 @@ describe("Canvas style eyedropper runtime", () => {
     expect(updateBlock).toContain(
       "backgroundColor: targetNode.data.style.backgroundColor",
     );
+    expect(updateBlock).not.toContain("position:");
   });
 });
