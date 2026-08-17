@@ -61,7 +61,9 @@ jobs:
             src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx \
             src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css \
             src/prototype/canvases/canvas-desktop-composition.tsx \
-            tests/canvas-shape-nodes.test.ts
+            tests/canvas-shape-nodes.test.ts \
+            tests/canvas-node-frame.test.ts \
+            tests/canvas-style-eyedropper-runtime.test.ts
           git diff --check
       - name: Shape contract tests
         run: pnpm exec vitest run tests/canvas-shape-nodes.test.ts
