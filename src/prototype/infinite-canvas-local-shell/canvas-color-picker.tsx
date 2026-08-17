@@ -33,12 +33,10 @@ function displayHex(value: string): string {
 export function CanvasColorPicker({
   value,
   label,
-  glyph,
   onCommit,
 }: {
   value: string;
   label: string;
-  glyph: string;
   onCommit: (value: string) => void;
 }): React.JSX.Element {
   const normalizedValue = normalizeCanvasHexColor(value) ?? FALLBACK_COLOR;
@@ -165,7 +163,6 @@ export function CanvasColorPicker({
         title={label}
         onClick={toggleOpen}
       >
-        <span className={styles.glyph}>{glyph}</span>
         <span
           className={styles.swatch}
           style={{ backgroundColor: swatchColor }}
