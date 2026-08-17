@@ -48,6 +48,7 @@ describe("Canvas style eyedropper runtime", () => {
     expect(shellSource).toContain("event.preventDefault();");
     expect(shellSource).toContain("event.stopPropagation();");
     expect(cssSource).toContain(".canvasStyleEyedropperActive");
+    expect(cssSource).toContain("cursor: crosshair !important;");
   });
 
   it("leaves eyedropper mode after applying or clicking blank canvas", () => {
@@ -58,7 +59,9 @@ describe("Canvas style eyedropper runtime", () => {
   });
 
   it("does not dispatch normal node selection while sampling a target", () => {
-    const start = shellSource.indexOf("if (styleEyedropperSourceId && event.button === 0)");
+    const start = shellSource.indexOf(
+      "if (styleEyedropperSourceId && event.button === 0)",
+    );
     const end = shellSource.indexOf('if (event.pointerType === "touch")', start);
     const eyedropperBranch = shellSource.slice(start, end);
     expect(eyedropperBranch).toContain("event.stopPropagation();");
