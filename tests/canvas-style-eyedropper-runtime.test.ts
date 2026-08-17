@@ -65,7 +65,7 @@ describe("Canvas style eyedropper runtime", () => {
     expect(shellSource).toContain("targetNode?.type !== CANVAS_TEXT_NODE_TYPE");
   });
 
-  it("applies both style fields through one updateTextStyle call", () => {
+  it("applies only the two color fields through one update call", () => {
     const updateStart = shellSource.indexOf("updateTextStyle(sourceId, {");
     const updateEnd = shellSource.indexOf("});", updateStart);
     const updateBlock = shellSource.slice(updateStart, updateEnd);
@@ -73,6 +73,7 @@ describe("Canvas style eyedropper runtime", () => {
     expect(updateBlock).toContain(
       "backgroundColor: targetNode.data.style.backgroundColor",
     );
+    expect(updateBlock).not.toContain("fontSize:");
     expect(updateBlock).not.toContain("position:");
   });
 });
