@@ -11,12 +11,16 @@ const pickerSource = readFileSync(
 );
 
 describe("Canvas custom color picker runtime", () => {
-  it("uses the custom picker for both text and background colors", () => {
+  it("uses direct color swatches for text and background", () => {
     expect(shellSource).toContain(
       'import { CanvasColorPicker } from "./canvas-color-picker";',
     );
     expect(shellSource.match(/<CanvasColorPicker/g)).toHaveLength(2);
     expect(shellSource).not.toContain('type="color"');
+    expect(shellSource).not.toContain('glyph="A"');
+    expect(shellSource).not.toContain('glyph="▣"');
+    expect(pickerSource).not.toContain("styles.glyph");
+    expect(pickerSource).toContain("className={styles.swatch}");
   });
 
   it("keeps HEX visibly editable in the picker", () => {
