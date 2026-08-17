@@ -53,16 +53,10 @@ jobs:
 
           test_path = Path("tests/canvas-style-eyedropper-runtime.test.ts")
           test = test_path.read_text()
-          old_test = '''    expect(cssSource).toContain(".canvasStyleEyedropperActive");
-          });
-          });
-          '''
-          new_test = '''    expect(cssSource).toContain(".canvasStyleEyedropperActive");
-            expect(cssSource).toContain("data:image/svg+xml");
-            expect(cssSource).toContain("4 20,");
-            expect(cssSource).not.toContain("cursor: crosshair !important;");
-          });
-          });
+          old_test = '    expect(cssSource).toContain("cursor: crosshair !important;");\n'
+          new_test = '''    expect(cssSource).toContain("data:image/svg+xml");
+              expect(cssSource).toContain("4 20,");
+              expect(cssSource).not.toContain("cursor: crosshair !important;");
           '''
           if old_test not in test:
               raise SystemExit("eyedropper cursor test anchor not found")
