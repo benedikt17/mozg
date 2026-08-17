@@ -56,4 +56,12 @@ describe("Canvas style eyedropper runtime", () => {
       shellSource.match(/setStyleEyedropperSourceId\(null\)/g)?.length,
     ).toBeGreaterThanOrEqual(2);
   });
+
+  it("does not dispatch normal node selection while sampling a target", () => {
+    const start = shellSource.indexOf("if (styleEyedropperSourceId && event.button === 0)");
+    const end = shellSource.indexOf('if (event.pointerType === "touch")', start);
+    const eyedropperBranch = shellSource.slice(start, end);
+    expect(eyedropperBranch).toContain("event.stopPropagation();");
+    expect(eyedropperBranch).toContain("return;");
+  });
 });
