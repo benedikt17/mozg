@@ -369,6 +369,21 @@
   color: #a8a29e;
   cursor: default;
 }
+.styleEyedropperButton {
+  display: grid;
+  place-items: center;
+}
+
+.styleEyedropperIcon {
+  width: 16px;
+  height: 16px;
+}
+
+.canvasStyleEyedropperActive,
+.canvasStyleEyedropperActive :global(.react-flow__node) {
+  cursor: crosshair !important;
+}
+
 .textToolbarSelect {
   padding: 0 7px;
   outline: none;

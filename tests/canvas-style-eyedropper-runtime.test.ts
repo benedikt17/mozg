@@ -39,7 +39,9 @@ describe("Canvas style eyedropper runtime", () => {
   });
 
   it("intercepts target picking before normal React Flow selection", () => {
-    expect(shellSource).toContain("onPointerDownCapture={handleCanvasPointerDown}");
+    expect(shellSource).toContain(
+      "onPointerDownCapture={handleCanvasPointerDown}",
+    );
     expect(shellSource).toContain('closest<HTMLElement>(".react-flow__node")');
     expect(shellSource).toContain("reactFlow.getNodes()");
     expect(shellSource).toContain("event.preventDefault();");

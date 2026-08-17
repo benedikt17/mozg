@@ -19,9 +19,9 @@ describe("Canvas custom color picker runtime", () => {
     expect(shellSource).toContain(
       'import { CanvasColorPicker } from "./canvas-color-picker";',
     );
-    expect((shellSource.match(/<CanvasColorPicker/g) ?? []).length).toBeGreaterThanOrEqual(
-      2,
-    );
+    expect(
+      (shellSource.match(/<CanvasColorPicker/g) ?? []).length,
+    ).toBeGreaterThanOrEqual(2);
     expect(shellSource).not.toContain('type="color"');
     expect(pickerSource).not.toContain("styles.glyph");
     expect(pickerSource).toContain("className={styles.swatch}");
