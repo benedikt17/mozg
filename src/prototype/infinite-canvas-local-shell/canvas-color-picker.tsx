@@ -52,28 +52,27 @@ export function CanvasColorPicker({
   const [draftHex, setDraftHex] = useState(() => displayHex(normalizedValue));
 
   useEffect(() => {
-    lastCommittedRef.current = normalizedValue;
-    setHsv(hsvForHex(normalizedValue));
-    setDraftHex(displayHex(normalizedValue));
-  }, [normalizedValue]);
-
-  useEffect(() => {
     if (!open) return;
     const closeOnOutsidePointer = (event: PointerEvent): void => {
       if (rootRef.current?.contains(event.target as Node)) return;
       setOpen(false);
     };
-    const closeOnEscape = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape") return;
-      setOpen(false);
-      setHsv(hsvForHex(lastCommittedRef.current));
-      setDraftHex(displayHex(lastCommittedRef.current));
+    const closeOnKeyboard = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        return;
+      }
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        (event.key.toLowerCase() === "z" || event.key.toLowerCase() === "y")
+      )
+        setOpen(false);
     };
     document.addEventListener("pointerdown", closeOnOutsidePointer, true);
-    document.addEventListener("keydown", closeOnEscape, true);
+    document.addEventListener("keydown", closeOnKeyboard, true);
     return () => {
       document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
-      document.removeEventListener("keydown", closeOnEscape, true);
+      document.removeEventListener("keydown", closeOnKeyboard, true);
     };
   }, [open]);
 
@@ -138,7 +137,18 @@ export function CanvasColorPicker({
     commitHsv({ ...hsv, hue: Number(event.currentTarget.value) });
   };
 
-  const swatchColor = normalizeCanvasHexColor(draftHex) ?? normalizedValue;
+  const swatchColor = open
+    ? (normalizeCanvasHexColor(draftHex) ?? normalizedValue)
+    : normalizedValue;
+
+  const toggleOpen = (): void => {
+    if (!open) {
+      lastCommittedRef.current = normalizedValue;
+      setHsv(hsvForHex(normalizedValue));
+      setDraftHex(displayHex(normalizedValue));
+    }
+    setOpen((current) => !current);
+  };
 
   return (
     <div
@@ -153,7 +163,7 @@ export function CanvasColorPicker({
         aria-haspopup="dialog"
         aria-expanded={open}
         title={label}
-        onClick={() => setOpen((current) => !current)}
+        onClick={toggleOpen}
       >
         <span className={styles.glyph}>{glyph}</span>
         <span
