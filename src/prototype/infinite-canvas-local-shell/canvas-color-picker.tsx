@@ -99,10 +99,12 @@ export function CanvasColorPicker({
       0,
       Math.min(1, (event.clientX - rect.left) / Math.max(rect.width, 1)),
     );
-    const value = 1 - Math.max(
-      0,
-      Math.min(1, (event.clientY - rect.top) / Math.max(rect.height, 1)),
-    );
+    const value =
+      1 -
+      Math.max(
+        0,
+        Math.min(1, (event.clientY - rect.top) / Math.max(rect.height, 1)),
+      );
     return { ...hsv, saturation, value };
   };
 

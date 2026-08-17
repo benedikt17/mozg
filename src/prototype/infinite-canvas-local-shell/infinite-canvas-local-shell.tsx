@@ -202,6 +202,7 @@ import {
   ConnectionHandleLayer,
   TextAlignmentControls,
 } from "./canvas-node-frame";
+import { CanvasColorPicker } from "./canvas-color-picker";
 import styles from "./infinite-canvas-local-shell.module.css";
 
 type RestoreStats = {
@@ -574,30 +575,22 @@ function TextSelectionToolbar({
         <s>S</s>
       </button>
       <span className={styles.textToolbarDivider} aria-hidden="true" />
-      <label className={styles.textToolbarColorControl} title="Цвет текста">
-        <span className={styles.textToolbarColorGlyph}>A</span>
-        <input
-          type="color"
-          aria-label="Цвет текста"
-          value={style.color}
-          onChange={(event) => patchStyle({ color: event.target.value })}
-        />
-      </label>
-      <label className={styles.textToolbarColorControl} title="Цвет фона">
-        <span className={styles.textToolbarBackgroundGlyph}>▣</span>
-        <input
-          type="color"
-          aria-label="Цвет фона"
-          value={
-            style.backgroundColor === "transparent"
-              ? "#ffffff"
-              : style.backgroundColor
-          }
-          onChange={(event) =>
-            patchStyle({ backgroundColor: event.target.value })
-          }
-        />
-      </label>
+      <CanvasColorPicker
+        label="Цвет текста"
+        glyph="A"
+        value={style.color}
+        onCommit={(color) => patchStyle({ color })}
+      />
+      <CanvasColorPicker
+        label="Цвет фона"
+        glyph="▣"
+        value={
+          style.backgroundColor === "transparent"
+            ? "#ffffff"
+            : style.backgroundColor
+        }
+        onCommit={(backgroundColor) => patchStyle({ backgroundColor })}
+      />
       <span className={styles.textToolbarDivider} aria-hidden="true" />
       <TextAlignmentControls id={id} value={style.textAlign} />
       <button

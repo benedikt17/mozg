@@ -39,11 +39,11 @@ describe("Canvas color helpers", () => {
   });
 
   it("clamps HSV channels while converting to HEX", () => {
-    expect(
-      canvasHsvToHex({ hue: 360, saturation: 2, value: 2 }),
-    ).toBe("#ff0000");
-    expect(
-      canvasHsvToHex({ hue: 0, saturation: -1, value: 0.5 }),
-    ).toBe("#808080");
+    expect(canvasHsvToHex({ hue: 360, saturation: 2, value: 2 })).toBe(
+      "#ff0000",
+    );
+    expect(canvasHsvToHex({ hue: 0, saturation: -1, value: 0.5 })).toBe(
+      "#808080",
+    );
   });
 });

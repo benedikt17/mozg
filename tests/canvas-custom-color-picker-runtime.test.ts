@@ -20,8 +20,8 @@ describe("Canvas custom color picker runtime", () => {
   });
 
   it("keeps HEX visibly editable in the picker", () => {
-    expect(pickerSource).toContain('className={styles.hexLabel}>HEX</span>');
-    expect(pickerSource).toContain('aria-label={`${label}: HEX`}');
+    expect(pickerSource).toContain("className={styles.hexLabel}>HEX</span>");
+    expect(pickerSource).toContain("aria-label={`${label}: HEX`}");
     expect(pickerSource).toContain("normalizeCanvasHexColor(draftHex)");
   });
 
