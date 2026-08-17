@@ -31,4 +31,15 @@ describe("Canvas custom color picker runtime", () => {
     expect(pickerSource).toContain("onPointerUp={(event) => {");
     expect(pickerSource).toContain("commitHsv(next);");
   });
+
+  it("resynchronizes from the committed Canvas value when reopened", () => {
+    expect(pickerSource).toContain("const toggleOpen = (): void => {");
+    expect(pickerSource).toContain(
+      "lastCommittedRef.current = normalizedValue;",
+    );
+    expect(pickerSource).toContain("setHsv(hsvForHex(normalizedValue));");
+    expect(pickerSource).toContain("setDraftHex(displayHex(normalizedValue));");
+    expect(pickerSource).toContain("onClick={toggleOpen}");
+    expect(pickerSource).not.toContain("}, [normalizedValue]);");
+  });
 });
