@@ -63,10 +63,11 @@ jobs:
             src/prototype/canvases/canvas-desktop-composition.tsx \
             tests/canvas-shape-nodes.test.ts
           git diff --check
-      - name: Focused validation
+      - name: Shape contract tests
+        run: pnpm exec vitest run tests/canvas-shape-nodes.test.ts
+      - name: Related Canvas regression tests
         run: |
           pnpm exec vitest run \
-            tests/canvas-shape-nodes.test.ts \
             tests/canvas-document-v2.test.ts \
             tests/canvas-node-clipboard.test.ts \
             tests/canvas-alt-drag-duplicate.test.ts \
@@ -74,8 +75,10 @@ jobs:
             tests/canvas-node-frame.test.ts \
             tests/canvas-style-eyedropper-runtime.test.ts \
             tests/desktop-canvas-composition.test.ts
-          pnpm lint
-          pnpm typecheck
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
       - name: Commit implementation and remove patch helpers
         run: |
           git rm .github/workflows/apply-canvas-shape-nodes.yml scripts/apply-canvas-shape-nodes.py
