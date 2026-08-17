@@ -25,6 +25,7 @@ describe("Canvas style eyedropper runtime", () => {
     expect(backgroundPickerIndex).toBeGreaterThan(-1);
     expect(eyedropperIndex).toBeGreaterThan(backgroundPickerIndex);
     expect(alignmentIndex).toBeGreaterThan(eyedropperIndex);
+    expect(shellSource).toContain('title="Скопировать цвет текста и фона"');
   });
 
   it("copies text and background colors from another text node atomically", () => {
