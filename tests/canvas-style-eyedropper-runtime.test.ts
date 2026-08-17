@@ -27,15 +27,16 @@ describe("Canvas style eyedropper runtime", () => {
     expect(alignmentIndex).toBeGreaterThan(eyedropperIndex);
   });
 
-  it("copies text and background colors from another text node", () => {
+  it("copies text and background colors from another text node atomically", () => {
     expect(shellSource).toContain('"mozg:canvas-style-eyedropper-start"');
     expect(shellSource).toContain("styleEyedropperSourceId");
     expect(shellSource).toContain("targetNode?.type !== CANVAS_TEXT_NODE_TYPE");
-    expect(shellSource).toContain("color: targetNode.data.style.color");
     expect(shellSource).toContain(
-      "backgroundColor: targetNode.data.style.backgroundColor",
+      `updateTextStyle(sourceId, {
+            color: targetNode.data.style.color,
+            backgroundColor: targetNode.data.style.backgroundColor,
+          });`,
     );
-    expect(shellSource).toContain("updateTextStyle(sourceId, {");
   });
 
   it("intercepts target picking before normal React Flow selection", () => {
@@ -51,8 +52,8 @@ describe("Canvas style eyedropper runtime", () => {
 
   it("leaves eyedropper mode after applying or clicking blank canvas", () => {
     expect(shellSource).toContain("if (!targetElement) {");
-    expect(shellSource.match(/setStyleEyedropperSourceId\(null\)/g)?.length).toBeGreaterThanOrEqual(
-      2,
-    );
+    expect(
+      shellSource.match(/setStyleEyedropperSourceId\(null\)/g)?.length,
+    ).toBeGreaterThanOrEqual(2);
   });
 });
