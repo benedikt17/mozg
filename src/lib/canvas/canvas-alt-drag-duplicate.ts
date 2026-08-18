@@ -4,6 +4,7 @@ import {
   type CanvasNode,
 } from "@/lib/canvas/canvas-document";
 import {
+  CANVAS_SHAPE_NODE_TYPE,
   CANVAS_TEXT_NODE_TYPE,
   type CanvasFlowNode,
 } from "@/lib/canvas/react-flow-canvas-adapter";
@@ -50,7 +51,8 @@ export function createCanvasAltDragRuntimeNode(
   duplicate: CanvasNode,
 ): CanvasFlowNode {
   const data =
-    source.type === CANVAS_TEXT_NODE_TYPE
+    source.type === CANVAS_TEXT_NODE_TYPE ||
+    source.type === CANVAS_SHAPE_NODE_TYPE
       ? {
           ...source.data,
           style: { ...source.data.style },

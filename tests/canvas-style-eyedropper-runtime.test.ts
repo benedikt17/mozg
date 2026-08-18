@@ -11,32 +11,53 @@ const cssSource = readFileSync(
 );
 
 describe("Canvas style eyedropper runtime", () => {
-  it("places an eyedropper directly after the two color swatches", () => {
-    const backgroundPickerIndex = shellSource.indexOf('label="Цвет фона"');
+  it("keeps the eyedropper directly after the two reusable color swatches", () => {
+    const fillPickerIndex = shellSource.indexOf("label={fillLabel}");
     const eyedropperIndex = shellSource.indexOf(
       'aria-label="Пипетка"',
-      backgroundPickerIndex,
+      fillPickerIndex,
     );
     const alignmentIndex = shellSource.indexOf(
       "<TextAlignmentControls",
       eyedropperIndex,
     );
 
-    expect(backgroundPickerIndex).toBeGreaterThan(-1);
-    expect(eyedropperIndex).toBeGreaterThan(backgroundPickerIndex);
+    expect(fillPickerIndex).toBeGreaterThan(-1);
+    expect(eyedropperIndex).toBeGreaterThan(fillPickerIndex);
     expect(alignmentIndex).toBeGreaterThan(eyedropperIndex);
-    expect(shellSource).toContain('title="Скопировать цвет текста и фона"');
+    expect(shellSource).toContain(
+      'eyedropperTitle = "Скопировать цвет текста и фона"',
+    );
+    expect(shellSource).toContain(
+      'eyedropperTitle="Скопировать цвет текста и заливки"',
+    );
+    expect(shellSource).toContain("title={eyedropperTitle}");
   });
 
-  it("copies text and background colors from another text node atomically", () => {
+  it("copies text colors atomically within the same Canvas node family", () => {
     expect(shellSource).toContain('"mozg:canvas-style-eyedropper-start"');
     expect(shellSource).toContain("styleEyedropperSourceId");
-    expect(shellSource).toContain("targetNode?.type !== CANVAS_TEXT_NODE_TYPE");
+    expect(shellSource).toContain(
+      "sourceNode?.type === CANVAS_TEXT_NODE_TYPE &&",
+    );
+    expect(shellSource).toContain("targetNode?.type === CANVAS_TEXT_NODE_TYPE");
     expect(shellSource).toContain(
       `updateTextStyle(sourceId, {
-            color: targetNode.data.style.color,
-            backgroundColor: targetNode.data.style.backgroundColor,
-          });`,
+              color: targetNode.data.style.color,
+              backgroundColor: targetNode.data.style.backgroundColor,
+            });`,
+    );
+    expect(shellSource).toContain(
+      "sourceNode?.type === CANVAS_SHAPE_NODE_TYPE &&",
+    );
+    expect(shellSource).toContain(
+      "targetNode?.type === CANVAS_SHAPE_NODE_TYPE",
+    );
+    expect(shellSource).toContain(
+      `updateShapeStyle(sourceId, {
+              color: targetNode.data.style.color,
+              fillColor: targetNode.data.style.fillColor,
+            });`,
     );
   });
 
@@ -68,14 +89,20 @@ describe("Canvas style eyedropper runtime", () => {
     ).toBeGreaterThanOrEqual(2);
   });
 
-  it("keeps target sampling limited to Canvas text nodes", () => {
+  it("keeps eyedropper sampling within text-to-text or shape-to-shape pairs", () => {
     expect(shellSource).toContain(
-      "sourceNode?.type !== CANVAS_TEXT_NODE_TYPE ||",
+      "sourceNode?.type === CANVAS_TEXT_NODE_TYPE &&",
     );
-    expect(shellSource).toContain("targetNode?.type !== CANVAS_TEXT_NODE_TYPE");
+    expect(shellSource).toContain("targetNode?.type === CANVAS_TEXT_NODE_TYPE");
+    expect(shellSource).toContain(
+      "sourceNode?.type === CANVAS_SHAPE_NODE_TYPE &&",
+    );
+    expect(shellSource).toContain(
+      "targetNode?.type === CANVAS_SHAPE_NODE_TYPE",
+    );
   });
 
-  it("applies only text and background colors through one style update", () => {
+  it("applies only text and background colors through one text style update", () => {
     const updateStart = shellSource.indexOf("updateTextStyle(sourceId, {");
     const updateEnd = shellSource.indexOf("});", updateStart);
     const updateBlock = shellSource.slice(updateStart, updateEnd);

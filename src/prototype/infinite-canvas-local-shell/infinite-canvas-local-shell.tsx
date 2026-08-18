@@ -80,6 +80,12 @@ import {
   type CanvasTextStyle,
 } from "@/lib/canvas/canvas-text-style";
 import {
+  DEFAULT_CANVAS_SHAPE_STYLE,
+  canvasShapeStyleAsTextStyle,
+  canvasTextStylePatchToShapeStyle,
+  type CanvasShapeStyle,
+} from "@/lib/canvas/canvas-shape-style";
+import {
   CANVAS_NODE_CLIPBOARD_MIME,
   createCanvasNodeClipboardPayload,
   materializeCanvasNodeClipboardPaste,
@@ -96,17 +102,21 @@ import {
 } from "@/lib/canvas/canvas-alt-drag-duplicate";
 import {
   CANVAS_IMAGE_NODE_TYPE,
+  CANVAS_SHAPE_NODE_TYPE,
   CANVAS_TASK_NODE_TYPE,
   CANVAS_TEXT_NODE_TYPE,
   CANVAS_EDGE_TYPE,
   canvasDocumentToEdges,
   canvasDocumentToImageNodes,
+  canvasDocumentToShapeNodes,
   canvasDocumentToTaskNodes,
   canvasDocumentToTextNodes,
   canvasImageAdapterDependenciesForCanvas,
   createCanvasTaskFlowNode,
   createCanvasTaskId,
   createCanvasEdgeFromConnection,
+  createCanvasShapeFlowNode,
+  createCanvasShapeId,
   createCanvasTextFlowNode,
   findCachedCanvasImagePayload,
   ingestCanvasImageTransferToNodes,
@@ -117,6 +127,7 @@ import {
   type CanvasEdgeFlow,
   type CanvasEdgeFlowData,
   type CanvasImageFlowNode,
+  type CanvasShapeFlowNode,
   type CanvasTaskFlowNode,
   type CanvasTextFlowNode,
   type FlowPosition,
@@ -129,6 +140,8 @@ import {
   type CanvasEdgeV2,
   type CanvasEdgeRouting,
   type CanvasHandleSide,
+  type CanvasShapeNode,
+  type CanvasShapeVariant,
 } from "@/lib/canvas/canvas-document";
 import type { CanvasAssetVariantRepository } from "@/lib/canvas/canvas-image-variants";
 import {
@@ -466,26 +479,44 @@ function dispatchCanvasStyleEyedropperStart(id: string): void {
 function TextSelectionToolbar({
   id,
   style,
+  onPatchStyle,
+  toolbarLabel = "Панель форматирования текста",
+  typeLabel = "Текст",
+  typeGlyph = "T",
+  fillLabel = "Цвет фона",
+  eyedropperTitle = "Скопировать цвет текста и фона",
+  resetLabel = "Убрать цвет фона",
+  resetTitle = "Убрать фон",
 }: {
   id: string;
   style: CanvasTextStyle;
+  onPatchStyle?: (patch: Partial<CanvasTextStyle>) => void;
+  toolbarLabel?: string;
+  typeLabel?: string;
+  typeGlyph?: string;
+  fillLabel?: string;
+  eyedropperTitle?: string;
+  resetLabel?: string;
+  resetTitle?: string;
 }): React.JSX.Element {
-  const patchStyle = (patch: Partial<CanvasTextStyle>) =>
-    dispatchCanvasTextStylePatch(id, patch);
+  const patchStyle =
+    onPatchStyle ??
+    ((patch: Partial<CanvasTextStyle>) =>
+      dispatchCanvasTextStylePatch(id, patch));
   return (
     <div
       className={`${styles.textSelectionToolbar} nodrag nopan nowheel`}
-      aria-label="Панель форматирования текста"
+      aria-label={toolbarLabel}
       onPointerDown={(event) => event.stopPropagation()}
     >
       <button
         type="button"
         className={styles.textToolbarButton}
-        aria-label="Текст"
-        title="Текст"
+        aria-label={typeLabel}
+        title={typeLabel}
         disabled
       >
-        T
+        {typeGlyph}
       </button>
       <span className={styles.textToolbarDivider} aria-hidden="true" />
       <select
@@ -589,7 +620,7 @@ function TextSelectionToolbar({
         onCommit={(color) => patchStyle({ color })}
       />
       <CanvasColorPicker
-        label="Цвет фона"
+        label={fillLabel}
         value={
           style.backgroundColor === "transparent"
             ? "#ffffff"
@@ -601,7 +632,7 @@ function TextSelectionToolbar({
         type="button"
         className={`${styles.textToolbarButton} ${styles.styleEyedropperButton}`}
         aria-label="Пипетка"
-        title="Скопировать цвет текста и фона"
+        title={eyedropperTitle}
         onClick={() => dispatchCanvasStyleEyedropperStart(id)}
       >
         <svg
@@ -620,18 +651,59 @@ function TextSelectionToolbar({
         </svg>
       </button>
       <span className={styles.textToolbarDivider} aria-hidden="true" />
-      <TextAlignmentControls id={id} value={style.textAlign} />
+      <TextAlignmentControls
+        id={id}
+        value={style.textAlign}
+        onChange={(textAlign) => patchStyle({ textAlign })}
+      />
       <button
         type="button"
         className={styles.textToolbarButton}
-        aria-label="Убрать цвет фона"
-        title="Убрать фон"
+        aria-label={resetLabel}
+        title={resetTitle}
         disabled={style.backgroundColor === "transparent"}
         onClick={() => patchStyle({ backgroundColor: "transparent" })}
       >
         ×
       </button>
     </div>
+  );
+}
+
+function dispatchCanvasShapeStylePatch(
+  id: string,
+  patch: Partial<CanvasShapeStyle>,
+): void {
+  window.dispatchEvent(
+    new CustomEvent("mozg:canvas-shape-style", { detail: { id, patch } }),
+  );
+}
+
+function ShapeSelectionToolbar({
+  id,
+  style,
+}: {
+  id: string;
+  style: CanvasShapeStyle;
+}): React.JSX.Element {
+  return (
+    <TextSelectionToolbar
+      id={id}
+      style={canvasShapeStyleAsTextStyle(style)}
+      onPatchStyle={(patch) =>
+        dispatchCanvasShapeStylePatch(
+          id,
+          canvasTextStylePatchToShapeStyle(patch),
+        )
+      }
+      toolbarLabel="Панель форматирования фигуры"
+      typeLabel="Фигура"
+      typeGlyph="◇"
+      fillLabel="Цвет заливки"
+      eyedropperTitle="Скопировать цвет текста и заливки"
+      resetLabel="Убрать заливку"
+      resetTitle="Убрать заливку"
+    />
   );
 }
 
@@ -655,23 +727,25 @@ function canvasTextCss(style: CanvasTextStyle): CSSProperties {
 function CanvasTextEditor({
   id,
   markdown,
+  eventKind = "text",
 }: {
   id: string;
   markdown: string;
+  eventKind?: "text" | "shape";
 }): React.JSX.Element {
   const [draft, setDraft] = useState(markdown);
   const skipNextBlurCommitRef = useRef(false);
   const update = (value: string) => {
     setDraft(value);
     window.dispatchEvent(
-      new CustomEvent("mozg:canvas-text-draft", {
+      new CustomEvent(`mozg:canvas-${eventKind}-draft`, {
         detail: { id, markdown: value },
       }),
     );
   };
   const commit = () => {
     window.dispatchEvent(
-      new CustomEvent("mozg:canvas-text-commit", {
+      new CustomEvent(`mozg:canvas-${eventKind}-commit`, {
         detail: { id, markdown: commitTextMarkdown(draft) },
       }),
     );
@@ -679,7 +753,7 @@ function CanvasTextEditor({
   const cancel = () => {
     skipNextBlurCommitRef.current = true;
     window.dispatchEvent(
-      new CustomEvent("mozg:canvas-text-cancel", { detail: { id } }),
+      new CustomEvent(`mozg:canvas-${eventKind}-cancel`, { detail: { id } }),
     );
   };
   return (
@@ -745,6 +819,56 @@ function TextNodeBody({
           </div>
         ) : (
           <span className={styles.textPlaceholder}>Type something</span>
+        )}
+      </div>
+    </CanvasNodeFrame>
+  );
+}
+
+function ShapeNodeBody({
+  data,
+  selected,
+  id,
+}: NodeProps<CanvasShapeFlowNode>): React.JSX.Element {
+  const visualStyle = canvasTextCss(canvasShapeStyleAsTextStyle(data.style));
+  return (
+    <CanvasNodeFrame
+      selected={selected}
+      minWidth={data.shape === "circle" ? 80 : 100}
+      minHeight={data.shape === "circle" ? 80 : 60}
+      keepAspectRatio={data.shape === "circle"}
+      centerTextContent
+      className={styles.shapeNodeFrame}
+      toolbar={<ShapeSelectionToolbar id={id} style={data.style} />}
+      connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
+    >
+      <div
+        className={`${styles.shapeNodeContent} ${
+          data.shape === "circle"
+            ? styles.shapeNodeCircle
+            : styles.shapeNodeRectangle
+        }`}
+        style={visualStyle}
+        data-canvas-shape={data.shape}
+        onDoubleClick={(event) => {
+          event.stopPropagation();
+          window.dispatchEvent(
+            new CustomEvent("mozg:canvas-shape-edit", { detail: { id } }),
+          );
+        }}
+      >
+        {data.isEditing ? (
+          <CanvasTextEditor
+            id={id}
+            markdown={data.markdown}
+            eventKind="shape"
+          />
+        ) : data.markdown.trim() ? (
+          <div className={styles.textPreview}>
+            <MarkdownStringPreview contentId={id} markdown={data.markdown} />
+          </div>
+        ) : (
+          <span className={styles.textPlaceholder}>Введите текст</span>
         )}
       </div>
     </CanvasNodeFrame>
@@ -1264,6 +1388,7 @@ const nodeTypes = {
   [CANVAS_IMAGE_NODE_TYPE]: ImageNodeBody,
   [CANVAS_TASK_NODE_TYPE]: TaskNodeBody,
   [CANVAS_TEXT_NODE_TYPE]: TextNodeBody,
+  [CANVAS_SHAPE_NODE_TYPE]: ShapeNodeBody,
 };
 
 const edgeTypes = {
@@ -1949,6 +2074,7 @@ function InfiniteCanvasLocalShellSurface({
           taskWorkspaceId: taskWorkspaceIdRef.current,
         }),
         ...canvasDocumentToTextNodes(nextState.document),
+        ...canvasDocumentToShapeNodes(nextState.document),
       ];
       setNodes(placeholders);
       setEdges(canvasDocumentToEdges(nextState.document, handleEdgeUpdate));
@@ -2628,6 +2754,129 @@ function InfiniteCanvasLocalShellSurface({
     ],
   );
 
+  const setShapeEditing = useCallback(
+    (id: string, isEditing: boolean) => {
+      setNodes((current) =>
+        current.map((node) =>
+          node.id === id && node.type === CANVAS_SHAPE_NODE_TYPE
+            ? { ...node, data: { ...node.data, isEditing } }
+            : node,
+        ),
+      );
+    },
+    [setNodes],
+  );
+
+  const commitShapeNode = useCallback(
+    (id: string, markdown: string) => {
+      const committedMarkdown = commitTextMarkdown(markdown);
+      const nextNodes = nodesRef.current.map((node) =>
+        node.id === id && node.type === CANVAS_SHAPE_NODE_TYPE
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                markdown: committedMarkdown,
+                isEditing: false,
+              },
+            }
+          : node,
+      );
+      if (
+        !nextNodes.some(
+          (node) => node.id === id && node.type === CANVAS_SHAPE_NODE_TYPE,
+        )
+      )
+        return;
+      nodesRef.current = nextNodes;
+      setNodes(nextNodes);
+      controller.setRuntimeNodes(nextNodes);
+      syncState();
+      scheduleSave();
+    },
+    [controller, scheduleSave, setNodes, syncState],
+  );
+
+  const updateShapeStyle = useCallback(
+    (id: string, patch: Partial<CanvasShapeStyle>) => {
+      let found = false;
+      const nextNodes = nodesRef.current.map((node) => {
+        if (node.id !== id || node.type !== CANVAS_SHAPE_NODE_TYPE) return node;
+        found = true;
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            style: { ...node.data.style, ...patch },
+          },
+        };
+      });
+      if (!found) return;
+      nodesRef.current = nextNodes;
+      setNodes(nextNodes);
+      controller.setRuntimeNodes(nextNodes);
+      syncState();
+      scheduleSave();
+    },
+    [controller, scheduleSave, setNodes, syncState],
+  );
+
+  const createShapeNode = useCallback(
+    (shape: CanvasShapeVariant) => {
+      if (!shellState.canvasId) return;
+      const size =
+        shape === "circle"
+          ? { width: 160, height: 160 }
+          : { width: 220, height: 120 };
+      const center = centerPosition();
+      const position = {
+        x: center.x - size.width / 2,
+        y: center.y - size.height / 2,
+      };
+      const zIndex =
+        shellState.document.nodes.reduce(
+          (maximum, current) => Math.max(maximum, current.zIndex),
+          0,
+        ) + 1;
+      const canonical: CanvasShapeNode = {
+        id: createCanvasShapeId(),
+        kind: "shape",
+        shape,
+        markdown: "",
+        position,
+        size,
+        zIndex,
+        style: { ...DEFAULT_CANVAS_SHAPE_STYLE },
+      };
+      const runtime = createCanvasShapeFlowNode({
+        id: canonical.id,
+        shape: canonical.shape,
+        markdown: canonical.markdown,
+        position: canonical.position,
+        size: canonical.size,
+        zIndex: canonical.zIndex,
+        style: canonical.style,
+        isEditing: true,
+      });
+      setNodes((current) => [
+        ...current.map((item) =>
+          item.selected ? { ...item, selected: false } : item,
+        ),
+        { ...runtime, selected: true },
+      ]);
+      controller.insertCanvasNodes([canonical]);
+      syncState();
+    },
+    [
+      centerPosition,
+      controller,
+      setNodes,
+      shellState.canvasId,
+      shellState.document.nodes,
+      syncState,
+    ],
+  );
+
   const createTaskNode = useCallback(
     (task: CanvasTaskProjection) => {
       if (!shellState.canvasId || !taskBridge || !taskWorkspaceId) return;
@@ -2695,6 +2944,29 @@ function InfiniteCanvasLocalShellSurface({
       ).detail;
       if (detail.id && detail.patch) updateTextStyle(detail.id, detail.patch);
     };
+    const onShapeEdit = (event: Event) => {
+      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (id) setShapeEditing(id, true);
+    };
+    const onShapeCommit = (event: Event) => {
+      const detail = (event as CustomEvent<{ id?: string; markdown?: string }>)
+        .detail;
+      if (detail.id && typeof detail.markdown === "string")
+        commitShapeNode(detail.id, detail.markdown);
+    };
+    const onShapeCancel = (event: Event) => {
+      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (id) setShapeEditing(id, false);
+    };
+    const onShapeStyle = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          id?: string;
+          patch?: Partial<CanvasShapeStyle>;
+        }>
+      ).detail;
+      if (detail.id && detail.patch) updateShapeStyle(detail.id, detail.patch);
+    };
     const onEyedropperStart = (event: Event) => {
       const id = (event as CustomEvent<{ id?: string }>).detail?.id;
       if (id) setStyleEyedropperSourceId(id);
@@ -2703,6 +2975,10 @@ function InfiniteCanvasLocalShellSurface({
     window.addEventListener("mozg:canvas-text-commit", onCommit);
     window.addEventListener("mozg:canvas-text-cancel", onCancel);
     window.addEventListener("mozg:canvas-text-style", onStyle);
+    window.addEventListener("mozg:canvas-shape-edit", onShapeEdit);
+    window.addEventListener("mozg:canvas-shape-commit", onShapeCommit);
+    window.addEventListener("mozg:canvas-shape-cancel", onShapeCancel);
+    window.addEventListener("mozg:canvas-shape-style", onShapeStyle);
     window.addEventListener(
       "mozg:canvas-style-eyedropper-start",
       onEyedropperStart,
@@ -2712,12 +2988,23 @@ function InfiniteCanvasLocalShellSurface({
       window.removeEventListener("mozg:canvas-text-commit", onCommit);
       window.removeEventListener("mozg:canvas-text-cancel", onCancel);
       window.removeEventListener("mozg:canvas-text-style", onStyle);
+      window.removeEventListener("mozg:canvas-shape-edit", onShapeEdit);
+      window.removeEventListener("mozg:canvas-shape-commit", onShapeCommit);
+      window.removeEventListener("mozg:canvas-shape-cancel", onShapeCancel);
+      window.removeEventListener("mozg:canvas-shape-style", onShapeStyle);
       window.removeEventListener(
         "mozg:canvas-style-eyedropper-start",
         onEyedropperStart,
       );
     };
-  }, [commitTextNode, setTextEditing, updateTextStyle]);
+  }, [
+    commitShapeNode,
+    commitTextNode,
+    setShapeEditing,
+    setTextEditing,
+    updateShapeStyle,
+    updateTextStyle,
+  ]);
 
   const ingest = useCallback(
     async (
@@ -2789,6 +3076,18 @@ function InfiniteCanvasLocalShellSurface({
             runtimeNodes.push(
               createCanvasTextFlowNode({
                 id: node.id,
+                markdown: node.markdown,
+                position: node.position,
+                size: node.size,
+                style: node.style,
+                zIndex: node.zIndex,
+              }),
+            );
+          } else if (node.kind === "shape") {
+            runtimeNodes.push(
+              createCanvasShapeFlowNode({
+                id: node.id,
+                shape: node.shape,
                 markdown: node.markdown,
                 position: node.position,
                 size: node.size,
@@ -3572,15 +3871,27 @@ function InfiniteCanvasLocalShellSurface({
           const sourceNode = runtimeNodes.find((node) => node.id === sourceId);
           const targetNode = runtimeNodes.find((node) => node.id === targetId);
           if (
-            sourceNode?.type !== CANVAS_TEXT_NODE_TYPE ||
-            targetNode?.type !== CANVAS_TEXT_NODE_TYPE
-          )
+            sourceNode?.type === CANVAS_TEXT_NODE_TYPE &&
+            targetNode?.type === CANVAS_TEXT_NODE_TYPE
+          ) {
+            updateTextStyle(sourceId, {
+              color: targetNode.data.style.color,
+              backgroundColor: targetNode.data.style.backgroundColor,
+            });
+            setStyleEyedropperSourceId(null);
             return;
-          updateTextStyle(sourceId, {
-            color: targetNode.data.style.color,
-            backgroundColor: targetNode.data.style.backgroundColor,
-          });
-          setStyleEyedropperSourceId(null);
+          }
+          if (
+            sourceNode?.type === CANVAS_SHAPE_NODE_TYPE &&
+            targetNode?.type === CANVAS_SHAPE_NODE_TYPE
+          ) {
+            updateShapeStyle(sourceId, {
+              color: targetNode.data.style.color,
+              fillColor: targetNode.data.style.fillColor,
+            });
+            setStyleEyedropperSourceId(null);
+            return;
+          }
           return;
         }
       }
@@ -3607,6 +3918,7 @@ function InfiniteCanvasLocalShellSurface({
       cancelPanInertia,
       reactFlow,
       styleEyedropperSourceId,
+      updateShapeStyle,
       updateTextStyle,
     ],
   );
@@ -3726,6 +4038,8 @@ function InfiniteCanvasLocalShellSurface({
         )
       }
       onAddText={() => createTextNode(null, "", true)}
+      onAddRectangle={() => createShapeNode("rectangle")}
+      onAddCircle={() => createShapeNode("circle")}
       onCloseFilePicker={() => setFilePickerOpen(false)}
       onCloseTaskPicker={() => setTaskPickerOpen(false)}
       onFileQueryChange={setFileQuery}
@@ -4064,6 +4378,20 @@ function InfiniteCanvasLocalShellSurface({
             onClick={() => createTextNode(null, "", true)}
           >
             {copy.text}
+          </button>
+          <button
+            className={styles.button}
+            type="button"
+            onClick={() => createShapeNode("rectangle")}
+          >
+            Прямоугольник
+          </button>
+          <button
+            className={styles.button}
+            type="button"
+            onClick={() => createShapeNode("circle")}
+          >
+            Круг
           </button>
           <div className={styles.taskPicker}>
             <button

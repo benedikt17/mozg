@@ -29,18 +29,20 @@ describe("CanvasNodeFrame composition", () => {
     expect(frame).toContain("isVisible={selected}");
   });
 
-  it("is the only interaction frame used by task, text, and image bodies", () => {
+  it("is the only interaction frame used by task, text, image, and shape bodies", () => {
     const shell = source(
       "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
     );
 
     expect(shell).toContain("function ImageNodeBody");
     expect(shell).toContain("function TextNodeBody");
+    expect(shell).toContain("function ShapeNodeBody");
     expect(shell).toContain("function TaskNodeBody");
-    expect(shell.match(/<CanvasNodeFrame/g)).toHaveLength(3);
+    expect(shell.match(/<CanvasNodeFrame/g)).toHaveLength(4);
     expect(shell).not.toContain("NodeResizer");
     expect(shell).toContain("CANVAS_IMAGE_NODE_TYPE]: ImageNodeBody");
     expect(shell).toContain("CANVAS_TEXT_NODE_TYPE]: TextNodeBody");
+    expect(shell).toContain("CANVAS_SHAPE_NODE_TYPE]: ShapeNodeBody");
     expect(shell).toContain("CANVAS_TASK_NODE_TYPE]: TaskNodeBody");
     expect(shell).toContain("toggleSubtaskCompleted");
     expect(shell).toContain("closeTaskDetails");
@@ -76,6 +78,7 @@ describe("CanvasNodeFrame composition", () => {
     expect(styles).toContain("background: transparent;");
     expect(styles).toContain(".imageNodeFrame");
     expect(styles).toContain(".textNodeFrame");
+    expect(styles).toContain(".shapeNodeFrame");
     expect(styles).toContain(".taskNodeFrame");
     expect(styles).toContain("--node-visual-radius: 0;");
     expect(styles).toContain('.connectionHandle[data-side="top"]');
@@ -116,6 +119,7 @@ describe("CanvasNodeFrame composition", () => {
     expect(styles).toContain("--connection-handle-center-offset");
     expect(styles).toContain(".taskNodeContent");
     expect(styles).toContain(".textNodeContent");
+    expect(styles).toContain(".shapeNodeContent");
     const sidebarListRule =
       styles.match(/\.desktopCanvasSidebarList\s*\{([^}]*)\}/u)?.[1] ?? "";
     expect(sidebarListRule).toContain("overflow-x: hidden");

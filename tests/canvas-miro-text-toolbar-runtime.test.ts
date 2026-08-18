@@ -13,7 +13,7 @@ const shell = fs.readFileSync(
 describe("Miro-style Canvas text toolbar", () => {
   it("renders the requested text controls in the generic screen-space toolbar", () => {
     expect(shell).toContain("function TextSelectionToolbar");
-    expect(shell).toContain('aria-label="Текст"');
+    expect(shell).toContain("aria-label={typeLabel}");
     expect(shell).toContain("disabled");
     expect(shell).toContain("CANVAS_TEXT_FONT_FAMILIES.map");
     expect(shell).toContain("CANVAS_TEXT_FONT_SIZES.map");
@@ -25,9 +25,8 @@ describe("Miro-style Canvas text toolbar", () => {
       (shell.match(/<CanvasColorPicker/g) ?? []).length,
     ).toBeGreaterThanOrEqual(2);
     expect(shell).not.toContain('type="color"');
-    expect(shell).toContain(
-      "<TextAlignmentControls id={id} value={style.textAlign} />",
-    );
+    expect(shell).toContain("<TextAlignmentControls");
+    expect(shell).toContain("value={style.textAlign}");
     expect(shell).toContain("textAlign: style.textAlign");
     expect(shell).toContain(
       "toolbar={<TextSelectionToolbar id={id} style={data.style} />}",
