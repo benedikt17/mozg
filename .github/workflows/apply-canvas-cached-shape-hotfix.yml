@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - fix/canvas-cached-shape-restore
+  pull_request:
+    branches:
+      - refactor/prototype-state-root
+    types:
+      - synchronize
 
 permissions:
   contents: write
