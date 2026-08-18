@@ -18,22 +18,7 @@ jobs:
           ref: fix/canvas-cached-shape-restore
       - name: Add shapes to cached Canvas projection
         run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx")
-          source = path.read_text()
-          old = '''        ...canvasDocumentToTextNodes(cachedState.document),
-      ];
-      // Keep the runtime-cache composition contract explicit for desktop-shell checks:'''
-          new = '''        ...canvasDocumentToTextNodes(cachedState.document),
-        ...canvasDocumentToShapeNodes(cachedState.document),
-      ];
-      // Keep the runtime-cache composition contract explicit for desktop-shell checks:'''
-          if source.count(old) != 1:
-              raise SystemExit(f"Expected one cached-scene projection target, found {source.count(old)}")
-          path.write_text(source.replace(old, new, 1))
-          PY
+          python -c 'from pathlib import Path; p=Path("src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx"); s=p.read_text(); old="        ...canvasDocumentToTextNodes(cachedState.document),\n      ];\n      // Keep the runtime-cache composition contract explicit for desktop-shell checks:"; new="        ...canvasDocumentToTextNodes(cachedState.document),\n        ...canvasDocumentToShapeNodes(cachedState.document),\n      ];\n      // Keep the runtime-cache composition contract explicit for desktop-shell checks:"; assert s.count(old) == 1, s.count(old); p.write_text(s.replace(old, new, 1))'
       - name: Commit patch
         run: |
           git config user.name "github-actions[bot]"
