@@ -1,0 +1,33 @@
+name: Verify Canvas Route Return Production
+
+on:
+  pull_request:
+    branches:
+      - refactor/prototype-state-root
+    types:
+      - opened
+      - synchronize
+
+jobs:
+  production-route-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: "true"
+      PLAYWRIGHT_TEST_BASE_URL: https://mozg-production.vercel.app
+      E2E_SUPABASE_URL: https://lfxmkdwzvcwgvhzqoebv.supabase.co
+      E2E_SUPABASE_ANON_KEY: sb_publishable_TBiHOfbWeyCc2a6nFQfsJA_a4oFqmr8
+      PRODUCTION_SMOKE_REFRESH_TOKEN: 833350030b11
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Run Production Canvas route-return smoke
+        run: pnpm exec playwright test tests/e2e/canvas-route-return-production-smoke.spec.ts --config=playwright.production-route-smoke.config.ts --project=chromium --reporter=line
