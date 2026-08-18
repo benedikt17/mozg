@@ -158,6 +158,8 @@ test("Production Canvas persists rectangle and circle through real cloud save", 
   await page.waitForTimeout(2500);
   await page.reload();
 
+  await navigation.getByRole("button", { name: "Холсты", exact: true }).click();
+  await expect(navigation.getByRole("button", { name: "Холсты", exact: true })).toHaveAttribute("aria-current", "page");
   const reloadedCanvas = page.getByRole("button", { name: canvasTitle, exact: true });
   await expect(reloadedCanvas).toBeVisible();
   await reloadedCanvas.click();
