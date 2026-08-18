@@ -1,13 +1,14 @@
 name: Diagnose Canvas shapes tests
 
 on:
-  push:
+  pull_request:
     branches:
-      - feat/canvas-shape-nodes
+      - refactor/prototype-state-root
 
 jobs:
   vitest-diagnostics:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -17,13 +18,32 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Run Vitest with JSON report
-        run: pnpm exec vitest run --reporter=json --outputFile=vitest-results.json
-      - uses: actions/upload-artifact@v4
-        if: ${{ always() }}
-        with:
-          name: vitest-results
-          path: vitest-results.json
-          if-no-files-found: error
-          retention-days: 1
+      - run: pnpm install --frozen-lockfile --silent
+      - id: vitest
+        continue-on-error: true
+        run: pnpm exec vitest run --reporter=json --outputFile=vitest-results.json >/dev/null 2>&1
+      - name: Print only failed tests
+        if: always()
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const p = 'vitest-results.json';
+          if (!fs.existsSync(p)) {
+            console.log('DIAG:NO_JSON');
+            process.exit(0);
+          }
+          const r = JSON.parse(fs.readFileSync(p, 'utf8'));
+          console.log(`DIAG:SUMMARY total=${r.numTotalTests} passed=${r.numPassedTests} failed=${r.numFailedTests}`);
+          for (const file of r.testResults || []) {
+            for (const a of file.assertionResults || []) {
+              if (a.status === 'failed') {
+                console.log(`DIAG:FILE ${file.name}`);
+                console.log(`DIAG:TEST ${a.fullName || a.title}`);
+                for (const m of a.failureMessages || []) console.log(`DIAG:FAIL ${String(m).replace(/\n/g, ' | ')}`);
+              }
+            }
+          }
+          NODE
+      - name: Fail if Vitest failed
+        if: steps.vitest.outcome == 'failure'
+        run: exit 1
