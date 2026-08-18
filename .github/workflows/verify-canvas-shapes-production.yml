@@ -12,10 +12,10 @@ jobs:
     env:
       CI: "true"
       PLAYWRIGHT_TEST_BASE_URL: https://mozg-production.vercel.app
-      NEXT_PUBLIC_SUPABASE_URL: https://lfxmkdwzvcwgvhzqoebv.supabase.co
       E2E_SUPABASE_URL: https://lfxmkdwzvcwgvhzqoebv.supabase.co
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_TBiHOfbWeyCc2a6nFQfsJA_a4oFqmr8
       E2E_SUPABASE_ANON_KEY: sb_publishable_TBiHOfbWeyCc2a6nFQfsJA_a4oFqmr8
+      PRODUCTION_SMOKE_EMAIL: mozg-e2e-32108024101@example.test
+      PRODUCTION_SMOKE_PASSWORD: Mozg-E2E-2026!
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -28,7 +28,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - name: Run authenticated Production Canvas shape smoke
-        run: pnpm exec playwright test tests/e2e/canvas-shape-production-smoke.spec.ts --project=chromium --reporter=line
+        run: pnpm exec playwright test tests/e2e/canvas-shape-production-smoke.spec.ts --config=playwright.production-smoke.config.ts --project=chromium --reporter=line
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
