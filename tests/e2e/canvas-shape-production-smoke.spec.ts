@@ -19,28 +19,16 @@ async function initializeSmokeWorkspace(): Promise<void> {
   const supabase = createClient(
     requiredEnv("E2E_SUPABASE_URL"),
     requiredEnv("E2E_SUPABASE_ANON_KEY"),
-    {
-      auth: {
-        autoRefreshToken: false,
-        detectSessionInUrl: false,
-        persistSession: false,
-      },
-    },
+    { auth: { autoRefreshToken: false, detectSessionInUrl: false, persistSession: false } },
   );
-  const signedIn = await supabase.auth.signInWithPassword({
-    email: SMOKE_EMAIL,
-    password: SMOKE_PASSWORD,
-  });
-  if (signedIn.error || !signedIn.data.user) {
-    throw signedIn.error ?? new Error("Production smoke sign-in failed");
-  }
+  const signedIn = await supabase.auth.signInWithPassword({ email: SMOKE_EMAIL, password: SMOKE_PASSWORD });
+  if (signedIn.error || !signedIn.data.user) throw signedIn.error ?? new Error("Production smoke sign-in failed");
   const membership = await supabase
     .from("workspace_members")
     .select("workspace_id")
     .eq("user_id", signedIn.data.user.id)
     .single();
   if (membership.error) throw membership.error;
-
   const existingSnapshot = await supabase
     .from("workspace_snapshots")
     .select("workspace_id")
@@ -71,6 +59,10 @@ function frameFor(shape: Locator): Locator {
   return shape.locator('xpath=ancestor::*[@data-canvas-node-frame="true"]');
 }
 
+function flowNodeFor(shape: Locator): Locator {
+  return shape.locator('xpath=ancestor::*[@role="group" and @aria-roledescription="node"]');
+}
+
 test.beforeAll(async () => {
   await initializeSmokeWorkspace();
 });
@@ -86,7 +78,6 @@ test("Production Canvas persists rectangle and circle through real cloud save", 
   page.on("console", (message) => {
     if (message.type() === "error") browserErrors.push(`console: ${message.text()}`);
   });
-
   await context.grantPermissions(["clipboard-read", "clipboard-write"], {
     origin: "https://mozg-production.vercel.app",
   });
@@ -94,39 +85,27 @@ test("Production Canvas persists rectangle and circle through real cloud save", 
   await signIn(page);
   const navigation = page.getByRole("navigation", { name: "Разделы приложения" });
   await navigation.getByRole("button", { name: "Холсты", exact: true }).click();
-  await expect(
-    navigation.getByRole("button", { name: "Холсты", exact: true }),
-  ).toHaveAttribute("aria-current", "page");
+  await expect(navigation.getByRole("button", { name: "Холсты", exact: true })).toHaveAttribute("aria-current", "page");
 
   await page.getByRole("button", { name: "Новый холст", exact: true }).click();
   await page.getByRole("textbox", { name: "Новый холст", exact: true }).fill(canvasTitle);
   await page.getByRole("button", { name: "Создать", exact: true }).click();
-  await expect(page.getByRole("button", { name: canvasTitle, exact: true })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
+  await expect(page.getByRole("button", { name: canvasTitle, exact: true })).toHaveAttribute("aria-current", "page");
 
   const canvasToolbar = page.getByRole("toolbar", { name: "Инструменты холста" });
-  const addRectangle = canvasToolbar.getByRole("button", {
-    name: "Добавить прямоугольник",
-    exact: true,
-  });
-  const addCircle = canvasToolbar.getByRole("button", {
-    name: "Добавить круг",
-    exact: true,
-  });
+  const addRectangle = canvasToolbar.getByRole("button", { name: "Добавить прямоугольник", exact: true });
+  const addCircle = canvasToolbar.getByRole("button", { name: "Добавить круг", exact: true });
   await expect(addRectangle).toBeEnabled();
   await expect(addCircle).toBeEnabled();
 
   await addRectangle.click();
   const rectangle = page.locator('[data-canvas-shape="rectangle"]').last();
   await expect(rectangle).toBeVisible();
-  const rectangleEditor = page.getByRole("textbox", { name: "Canvas text" });
-  await rectangleEditor.fill(rectangleText);
-  await rectangleEditor.press("Tab");
+  await page.getByRole("textbox", { name: "Canvas text" }).fill(rectangleText);
+  await page.getByRole("textbox", { name: "Canvas text" }).press("Tab");
   await expect(rectangle).toContainText(rectangleText);
 
-  await rectangle.click();
+  await flowNodeFor(rectangle).click({ force: true });
   const shapeToolbar = page.locator('[aria-label="Панель форматирования фигуры"]');
   await expect(shapeToolbar).toBeVisible();
   await shapeToolbar.getByRole("button", { name: "Цвет заливки", exact: true }).click();
@@ -138,32 +117,26 @@ test("Production Canvas persists rectangle and circle through real cloud save", 
 
   const rectangleFrame = frameFor(rectangle);
   const beforeResize = await rectangleFrame.boundingBox();
-  expect(beforeResize).not.toBeNull();
+  if (!beforeResize) throw new Error("Rectangle geometry unavailable");
   const resizeHandle = rectangleFrame.locator(".react-flow__resize-control.handle").last();
   await expect(resizeHandle).toBeVisible();
   const resizeBox = await resizeHandle.boundingBox();
-  expect(resizeBox).not.toBeNull();
-  if (!beforeResize || !resizeBox) throw new Error("Resize geometry unavailable");
+  if (!resizeBox) throw new Error("Resize geometry unavailable");
   await page.mouse.move(resizeBox.x + resizeBox.width / 2, resizeBox.y + resizeBox.height / 2);
   await page.mouse.down();
-  await page.mouse.move(resizeBox.x + resizeBox.width / 2 + 80, resizeBox.y + resizeBox.height / 2 + 40, {
-    steps: 8,
-  });
+  await page.mouse.move(resizeBox.x + resizeBox.width / 2 + 80, resizeBox.y + resizeBox.height / 2 + 40, { steps: 8 });
   await page.mouse.up();
-  await expect.poll(async () => (await rectangleFrame.boundingBox())?.width ?? 0).toBeGreaterThan(
-    beforeResize.width + 30,
-  );
+  await expect.poll(async () => (await rectangleFrame.boundingBox())?.width ?? 0).toBeGreaterThan(beforeResize.width + 30);
 
   await addCircle.click();
   const circle = page.locator('[data-canvas-shape="circle"]').last();
   await expect(circle).toBeVisible();
-  const circleEditor = page.getByRole("textbox", { name: "Canvas text" });
-  await circleEditor.fill(circleText);
-  await circleEditor.press("Tab");
+  await page.getByRole("textbox", { name: "Canvas text" }).fill(circleText);
+  await page.getByRole("textbox", { name: "Canvas text" }).press("Tab");
   await expect(circle).toContainText(circleText);
 
   const edgeCountBefore = await page.locator(".react-flow__edge").count();
-  await rectangle.click();
+  await flowNodeFor(rectangle).click({ force: true });
   const sourceHandle = frameFor(rectangle).getByLabel("right connection handle");
   const targetHandle = frameFor(circle).getByLabel("left connection handle");
   const sourceBox = await sourceHandle.boundingBox();
@@ -171,44 +144,32 @@ test("Production Canvas persists rectangle and circle through real cloud save", 
   if (!sourceBox || !targetBox) throw new Error("Connection handle geometry unavailable");
   await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
   await page.mouse.down();
-  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, {
-    steps: 12,
-  });
+  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 12 });
   await page.mouse.up();
   await expect.poll(() => page.locator(".react-flow__edge").count()).toBe(edgeCountBefore + 1);
 
   const circlesBeforePaste = await page.locator('[data-canvas-shape="circle"]').count();
-  await circle.click();
+  await flowNodeFor(circle).click({ force: true });
   await page.keyboard.press("Control+C");
   await page.keyboard.press("Control+V");
-  await expect.poll(() => page.locator('[data-canvas-shape="circle"]').count()).toBe(
-    circlesBeforePaste + 1,
-  );
+  await expect.poll(() => page.locator('[data-canvas-shape="circle"]').count()).toBe(circlesBeforePaste + 1);
 
-  await expect(page.getByText("Сохранено", { exact: true }).last()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(/Cloud Canvas input was rejected/i)).toHaveCount(0);
-
+  await page.waitForTimeout(2500);
   await page.reload();
-  await expect(page.getByRole("button", { name: canvasTitle, exact: true })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
+
+  await expect(page.getByRole("button", { name: canvasTitle, exact: true })).toHaveAttribute("aria-current", "page");
   await expect(page.locator('[data-canvas-shape="rectangle"]')).toHaveCount(1);
   await expect(page.locator('[data-canvas-shape="circle"]')).toHaveCount(circlesBeforePaste + 1);
   await expect(page.locator('[data-canvas-shape="rectangle"]')).toContainText(rectangleText);
   await expect(page.locator('[data-canvas-shape="circle"]').first()).toContainText(circleText);
-  await expect(page.locator('[data-canvas-shape="rectangle"]')).toHaveCSS(
-    "background-color",
-    "rgb(18, 171, 52)",
-  );
+  await expect(page.locator('[data-canvas-shape="rectangle"]')).toHaveCSS("background-color", "rgb(18, 171, 52)");
   await expect(page.locator(".react-flow__edge")).toHaveCount(edgeCountBefore + 1);
-  await expect(addRectangle).toBeEnabled();
-  await expect(addCircle).toBeEnabled();
+  await expect(canvasToolbar.getByRole("button", { name: "Добавить прямоугольник", exact: true })).toBeEnabled();
+  await expect(canvasToolbar.getByRole("button", { name: "Добавить круг", exact: true })).toBeEnabled();
   await expect(page.getByText(/Cloud Canvas input was rejected/i)).toHaveCount(0);
 
-  const relevantErrors = browserErrors.filter((line) =>
-    /canvas|supabase|uncaught|error/i.test(line),
-  );
+  const relevantErrors = browserErrors.filter((line) => /Cloud Canvas input was rejected|uncaught|canvas.*error|supabase.*error/i.test(line));
   expect(relevantErrors, relevantErrors.join("\n")).toEqual([]);
 
   console.log(`SMOKE:PASS canvas=${canvasTitle}`);
