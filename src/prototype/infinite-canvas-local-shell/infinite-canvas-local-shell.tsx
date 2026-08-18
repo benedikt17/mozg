@@ -2413,6 +2413,7 @@ function InfiniteCanvasLocalShellSurface({
           taskWorkspaceId: taskWorkspaceIdRef.current,
         }),
         ...canvasDocumentToTextNodes(cachedState.document),
+        ...canvasDocumentToShapeNodes(cachedState.document),
       ];
       // Keep the runtime-cache composition contract explicit for desktop-shell checks:
       // setNodes(withCachedAssetPayloads(skeleton, snapshot.assetPayloads))
