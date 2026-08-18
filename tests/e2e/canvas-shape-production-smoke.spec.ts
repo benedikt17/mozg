@@ -1,11 +1,68 @@
+import { createClient } from "@supabase/supabase-js";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { E2E_USER_EMAIL, E2E_USER_PASSWORD } from "./test-user";
+import { initialDesktopPrototypeState } from "@/prototype/desktop-state";
+import {
+  createDesktopDomainSnapshot,
+  DESKTOP_DOMAIN_SCHEMA_VERSION,
+} from "@/prototype/persistence/domain-snapshot";
+
+function requiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`Missing ${name}`);
+  return value;
+}
+
+const SMOKE_EMAIL = requiredEnv("PRODUCTION_SMOKE_EMAIL");
+const SMOKE_PASSWORD = requiredEnv("PRODUCTION_SMOKE_PASSWORD");
+
+async function initializeSmokeWorkspace(): Promise<void> {
+  const supabase = createClient(
+    requiredEnv("E2E_SUPABASE_URL"),
+    requiredEnv("E2E_SUPABASE_ANON_KEY"),
+    {
+      auth: {
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+        persistSession: false,
+      },
+    },
+  );
+  const signedIn = await supabase.auth.signInWithPassword({
+    email: SMOKE_EMAIL,
+    password: SMOKE_PASSWORD,
+  });
+  if (signedIn.error || !signedIn.data.user) {
+    throw signedIn.error ?? new Error("Production smoke sign-in failed");
+  }
+  const membership = await supabase
+    .from("workspace_members")
+    .select("workspace_id")
+    .eq("user_id", signedIn.data.user.id)
+    .single();
+  if (membership.error) throw membership.error;
+
+  const existingSnapshot = await supabase
+    .from("workspace_snapshots")
+    .select("workspace_id")
+    .eq("workspace_id", membership.data.workspace_id)
+    .maybeSingle();
+  if (existingSnapshot.error) throw existingSnapshot.error;
+  if (!existingSnapshot.data) {
+    const initialized = await supabase.rpc("initialize_workspace_snapshot", {
+      target_workspace_id: membership.data.workspace_id,
+      target_schema_version: DESKTOP_DOMAIN_SCHEMA_VERSION,
+      target_snapshot: createDesktopDomainSnapshot(initialDesktopPrototypeState),
+    });
+    if (initialized.error) throw initialized.error;
+  }
+  await supabase.auth.signOut();
+}
 
 async function signIn(page: Page): Promise<void> {
   await page.goto("/prototype/desktop");
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fprototype%2Fdesktop$/);
-  await page.getByLabel("Email").fill(E2E_USER_EMAIL);
-  await page.getByLabel("Пароль").fill(E2E_USER_PASSWORD);
+  await page.getByLabel("Email").fill(SMOKE_EMAIL);
+  await page.getByLabel("Пароль").fill(SMOKE_PASSWORD);
   await page.getByRole("button", { name: "Войти", exact: true }).click();
   await expect(page).toHaveURL(/\/prototype\/desktop$/);
 }
@@ -13,6 +70,10 @@ async function signIn(page: Page): Promise<void> {
 function frameFor(shape: Locator): Locator {
   return shape.locator('xpath=ancestor::*[@data-canvas-node-frame="true"]');
 }
+
+test.beforeAll(async () => {
+  await initializeSmokeWorkspace();
+});
 
 test("Production Canvas persists rectangle and circle through real cloud save", async ({ page, context }) => {
   const run = process.env.GITHUB_RUN_ID ?? String(Date.now());
