@@ -158,7 +158,10 @@ test("Production Canvas persists rectangle and circle through real cloud save", 
   await page.waitForTimeout(2500);
   await page.reload();
 
-  await expect(page.getByRole("button", { name: canvasTitle, exact: true })).toHaveAttribute("aria-current", "page");
+  const reloadedCanvas = page.getByRole("button", { name: canvasTitle, exact: true });
+  await expect(reloadedCanvas).toBeVisible();
+  await reloadedCanvas.click();
+  await expect(reloadedCanvas).toHaveAttribute("aria-current", "page");
   await expect(page.locator('[data-canvas-shape="rectangle"]')).toHaveCount(1);
   await expect(page.locator('[data-canvas-shape="circle"]')).toHaveCount(circlesBeforePaste + 1);
   await expect(page.locator('[data-canvas-shape="rectangle"]')).toContainText(rectangleText);
