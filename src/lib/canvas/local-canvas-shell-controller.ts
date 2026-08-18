@@ -102,6 +102,7 @@ export class LocalCanvasShellController {
   private mutationVersion = 0;
   private savedMutationVersion = 0;
   private saveInFlight: Promise<CanvasSaveResult | null> | null = null;
+  private navigationVersion = 0;
 
   constructor(options: LocalCanvasShellControllerOptions) {
     this.repository = options.repository;
@@ -144,6 +145,7 @@ export class LocalCanvasShellController {
   }
 
   restoreRuntimeState(state: LocalCanvasShellState): LocalCanvasShellState {
+    this.navigationVersion += 1;
     this.stateValue = clone(state);
     this.documentHistory.reset();
     this.saveInFlight = null;
@@ -170,9 +172,10 @@ export class LocalCanvasShellController {
         "Resolve the current Canvas save conflict before leaving it.",
       );
     }
-    this.beginCanvasNavigation(null);
+    const navigationVersion = this.beginCanvasNavigation(null);
     if (this.stateValue.canvasId) {
       await this.flushPendingSave();
+      if (!this.isCurrentNavigation(navigationVersion)) return this.state;
       if (this.stateValue.autosaveBlocked) {
         throw new Error(
           "Resolve the current Canvas save conflict before leaving it.",
@@ -184,6 +187,7 @@ export class LocalCanvasShellController {
       title,
       groupId,
     });
+    if (!this.isCurrentNavigation(navigationVersion)) return this.state;
     return this.hydrate(canvas, null);
   }
 
@@ -198,11 +202,12 @@ export class LocalCanvasShellController {
         "Resolve the current Canvas save conflict before leaving it.",
       );
     }
-    this.beginCanvasNavigation(canvasId);
+    const navigationVersion = this.beginCanvasNavigation(canvasId);
     if (currentCanvasId) {
       if (!this.stateValue.autosaveBlocked) {
         await this.flushPendingSave();
       }
+      if (!this.isCurrentNavigation(navigationVersion)) return this.state;
       if (currentCanvasId !== canvasId && this.stateValue.autosaveBlocked) {
         throw new Error(
           "Resolve the current Canvas save conflict before leaving it.",
@@ -210,11 +215,13 @@ export class LocalCanvasShellController {
       }
     }
 
+    if (!this.isCurrentNavigation(navigationVersion)) return this.state;
     this.stateValue = { ...this.stateValue, status: "loading", error: null };
     const canvas = await this.repository.loadCanvas({
       workspaceId: this.workspaceId,
       canvasId,
     });
+    if (!this.isCurrentNavigation(navigationVersion)) return this.state;
     if (!canvas) {
       this.stateValue = {
         ...this.stateValue,
@@ -227,13 +234,20 @@ export class LocalCanvasShellController {
       canvasId,
       userId: this.userId,
     });
+    if (!this.isCurrentNavigation(navigationVersion)) return this.state;
     return this.hydrate(canvas, viewState);
   }
 
-  private beginCanvasNavigation(canvasId: string | null): void {
+  private beginCanvasNavigation(canvasId: string | null): number {
+    const navigationVersion = ++this.navigationVersion;
     const lifecycleRepository = this.repository as typeof this.repository &
       CanvasNavigationLifecycleRepository;
     lifecycleRepository.beginCanvasNavigation?.(canvasId);
+    return navigationVersion;
+  }
+
+  private isCurrentNavigation(navigationVersion: number): boolean {
+    return navigationVersion === this.navigationVersion;
   }
 
   private hydrate(
