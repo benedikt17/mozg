@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { CanvasGroup } from "@/lib/canvas/canvas-group-repository";
 import type { CanvasSummary } from "@/lib/canvas/local-canvas-repository";
+import { canCreateCanvasFromSidebar } from "@/prototype/canvases/canvas-create-readiness";
 import { UiIcon } from "@/prototype/desktop-icons";
 import { IconButton, PrototypeButton } from "@/prototype/desktop-ui";
 import styles from "@/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css";
@@ -470,11 +471,16 @@ export function CanvasGroupsSidebar({
     [groups, query, summaries],
   );
   const searching = query.trim().length > 0;
+  const canvasCreationReady = canCreateCanvasFromSidebar(
+    listState,
+    activeCanvasId,
+  );
 
   const openCreate = (
     kind: "canvas" | "group",
     parentGroupId: string | null,
   ): void => {
+    if (kind === "canvas" && !canvasCreationReady) return;
     setCreateMode({ kind, parentGroupId });
     setCreateTitle(kind === "canvas" ? copy.defaultTitle : "Новая группа");
     setOpenMenuId(null);
@@ -559,6 +565,7 @@ export function CanvasGroupsSidebar({
           aria-label="Действия с холстами"
         >
           <IconButton
+            disabled={!canvasCreationReady}
             icon={<UiIcon name="file-plus" />}
             label="Новый холст"
             onClick={() => openCreate("canvas", null)}
