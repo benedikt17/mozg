@@ -99,7 +99,7 @@ test("Production Canvas persists rectangle and circle through real cloud save", 
   ).toHaveAttribute("aria-current", "page");
 
   await page.getByRole("button", { name: "Новый холст", exact: true }).click();
-  await page.getByLabel("Новый холст", { exact: true }).fill(canvasTitle);
+  await page.getByRole("textbox", { name: "Новый холст", exact: true }).fill(canvasTitle);
   await page.getByRole("button", { name: "Создать", exact: true }).click();
   await expect(page.getByRole("button", { name: canvasTitle, exact: true })).toHaveAttribute(
     "aria-current",
