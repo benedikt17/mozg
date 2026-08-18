@@ -5,7 +5,7 @@ on:
     branches:
       - refactor/prototype-state-root
 
-# Verification-only workflow for Production SHA a74d3b572e4dcbcd392bc26c1d73ec2578a55b18.
+# Verification-only workflow for Production SHA 9aaa90e380278a9ff586e1a5f3d7f6d0ffa5f0fe.
 jobs:
   production-smoke:
     runs-on: ubuntu-latest
