@@ -5,7 +5,6 @@ export function canCreateCanvasFromSidebar(
   activeCanvasId: string | null,
 ): boolean {
   return (
-    listState === "empty" ||
-    (listState === "ready" && activeCanvasId !== null)
+    listState === "empty" || (listState === "ready" && activeCanvasId !== null)
   );
 }
