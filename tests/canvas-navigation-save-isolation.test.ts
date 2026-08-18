@@ -113,7 +113,10 @@ describe("Canvas navigation save isolation", () => {
     });
 
     const staleOpen = controller.openCanvas(CANVAS_A);
-    expect(repository.events).toEqual([`navigate:${CANVAS_A}`, `load:${CANVAS_A}`]);
+    expect(repository.events).toEqual([
+      `navigate:${CANVAS_A}`,
+      `load:${CANVAS_A}`,
+    ]);
 
     const created = await controller.createCanvas("B");
     expect(created.canvasId).toBe(CANVAS_B);
