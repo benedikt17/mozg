@@ -1,0 +1,37 @@
+name: Verify Canvas Shapes Production
+
+on:
+  pull_request:
+    branches:
+      - refactor/prototype-state-root
+
+jobs:
+  production-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: "true"
+      PLAYWRIGHT_TEST_BASE_URL: https://mozg-production.vercel.app
+      NEXT_PUBLIC_SUPABASE_URL: https://lfxmkdwzvcwgvhzqoebv.supabase.co
+      E2E_SUPABASE_URL: https://lfxmkdwzvcwgvhzqoebv.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_TBiHOfbWeyCc2a6nFQfsJA_a4oFqmr8
+      E2E_SUPABASE_ANON_KEY: sb_publishable_TBiHOfbWeyCc2a6nFQfsJA_a4oFqmr8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Run authenticated Production Canvas shape smoke
+        run: pnpm exec playwright test tests/e2e/canvas-shape-production-smoke.spec.ts --project=chromium --reporter=line
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: production-canvas-shape-smoke-report
+          path: playwright-report/
+          retention-days: 3
