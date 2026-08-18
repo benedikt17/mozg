@@ -13,7 +13,9 @@ const shellSource = (): string =>
 describe("Canvas cached-remount projection", () => {
   it("restores shape nodes when returning to the Canvas section", () => {
     const shell = shellSource();
-    const restoreStart = shell.indexOf("const restoreCachedScene = useCallback(");
+    const restoreStart = shell.indexOf(
+      "const restoreCachedScene = useCallback(",
+    );
     const restoreEnd = shell.indexOf("\n  useEffect(() => {", restoreStart);
 
     expect(restoreStart).toBeGreaterThanOrEqual(0);
