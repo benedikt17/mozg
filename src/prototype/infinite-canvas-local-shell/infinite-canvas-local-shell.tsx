@@ -2481,7 +2481,10 @@ function InfiniteCanvasLocalShellSurface({
 
           if (initialRuntime.shellState.status !== "saved" && unchanged) {
             const saveResult = await controller.save();
-            if (saveResult?.status !== "conflict" && controller.state.status === "saved") {
+            if (
+              saveResult?.status !== "conflict" &&
+              controller.state.status === "saved"
+            ) {
               const savedState = controller.state;
               setShellState(savedState);
               setRenameTitle(savedState.title);
@@ -2495,9 +2498,17 @@ function InfiniteCanvasLocalShellSurface({
               workspaceId: shellWorkspaceId,
               canvasId: cachedSummary.id,
             });
-            if (serverCanvasMatchesCachedRuntime(latest, initialRuntime.shellState)) {
+            if (
+              serverCanvasMatchesCachedRuntime(
+                latest,
+                initialRuntime.shellState,
+              )
+            ) {
               const reconciled = controller.restoreRuntimeState(
-                reconcileCachedRuntimeWithServer(latest, initialRuntime.shellState),
+                reconcileCachedRuntimeWithServer(
+                  latest,
+                  initialRuntime.shellState,
+                ),
               );
               setShellState(reconciled);
               setRenameTitle(reconciled.title);

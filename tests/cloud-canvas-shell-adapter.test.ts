@@ -239,9 +239,9 @@ describe("CloudCanvasShellRepository", () => {
 
     repository.beginCanvasNavigation(canvasId);
     expect(repository.beginAssetScope().isCurrent()).toBe(true);
-    await expect(repository.loadAsset({ workspaceId, assetId })).resolves.toEqual(
-      expect.objectContaining({ id: assetId }),
-    );
+    await expect(
+      repository.loadAsset({ workspaceId, assetId }),
+    ).resolves.toEqual(expect.objectContaining({ id: assetId }));
 
     repository.beginCanvasNavigation(null);
     expect(() => repository.beginAssetScope()).toThrow(
@@ -251,5 +251,4 @@ describe("CloudCanvasShellRepository", () => {
     await repository.loadCanvas({ workspaceId, canvasId });
     expect(repository.beginAssetScope().isCurrent()).toBe(true);
   });
-
 });

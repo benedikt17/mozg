@@ -97,7 +97,9 @@ function assetRecord(
   };
 }
 
-function assetMetadata(metadata: CloudCanvasAssetMetadata): CanvasAssetMetadata {
+function assetMetadata(
+  metadata: CloudCanvasAssetMetadata,
+): CanvasAssetMetadata {
   const {
     id,
     workspaceId,
@@ -295,20 +297,14 @@ export class CloudCanvasShellRepository
     workspaceId: string;
     assetId: string;
   }): Promise<CanvasAssetMetadata | null> {
-    return this.getAssetMetadataForCanvas(
-      this.canvasIdForAssetLookup(),
-      input,
-    );
+    return this.getAssetMetadataForCanvas(this.canvasIdForAssetLookup(), input);
   }
 
   markAssetDeleted(input: {
     workspaceId: string;
     assetId: string;
   }): Promise<void> {
-    return this.markAssetDeletedForCanvas(
-      this.canvasIdForAssetLookup(),
-      input,
-    );
+    return this.markAssetDeletedForCanvas(this.canvasIdForAssetLookup(), input);
   }
 
   listVariants(input: {
