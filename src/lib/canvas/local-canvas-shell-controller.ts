@@ -145,7 +145,7 @@ export class LocalCanvasShellController {
   }
 
   restoreRuntimeState(state: LocalCanvasShellState): LocalCanvasShellState {
-    this.navigationVersion += 1;
+    this.beginCanvasNavigation(state.canvasId);
     this.stateValue = clone(state);
     this.documentHistory.reset();
     this.saveInFlight = null;

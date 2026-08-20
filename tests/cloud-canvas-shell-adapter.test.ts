@@ -224,4 +224,31 @@ describe("CloudCanvasShellRepository", () => {
 
     expect(uploadedAssetIds).toEqual([undefined]);
   });
+
+  it("keeps asset lookup scoped to the active Canvas across navigation and cache restore", async () => {
+    const blob = new Blob(["image"], { type: "image/png" });
+    const repository = new CloudCanvasShellRepository(
+      workspaceId,
+      cloudCanvasRepository(),
+      cloudAssetRepository(blob),
+    );
+
+    expect(() => repository.beginAssetScope()).toThrow(
+      "Cloud Canvas asset lookup requires an active Canvas.",
+    );
+
+    repository.beginCanvasNavigation(canvasId);
+    expect(repository.beginAssetScope().isCurrent()).toBe(true);
+    await expect(
+      repository.loadAsset({ workspaceId, assetId }),
+    ).resolves.toEqual(expect.objectContaining({ id: assetId }));
+
+    repository.beginCanvasNavigation(null);
+    expect(() => repository.beginAssetScope()).toThrow(
+      "Cloud Canvas asset lookup requires an active Canvas.",
+    );
+
+    await repository.loadCanvas({ workspaceId, canvasId });
+    expect(repository.beginAssetScope().isCurrent()).toBe(true);
+  });
 });

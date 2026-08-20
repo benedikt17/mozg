@@ -97,7 +97,9 @@ function assetRecord(
   };
 }
 
-function assetMetadata(metadata: CloudCanvasAssetMetadata): CanvasAssetMetadata {
+function assetMetadata(
+  metadata: CloudCanvasAssetMetadata,
+): CanvasAssetMetadata {
   const {
     id,
     workspaceId,
@@ -145,8 +147,7 @@ export class CloudCanvasShellRepository
   }
 
   beginCanvasNavigation(canvasId: string | null): void {
-    void canvasId;
-    this.invalidateAssetScopes();
+    this.setActiveCanvas(canvasId);
   }
 
   beginAssetScope(): CanvasAssetOperationScope {
@@ -173,13 +174,15 @@ export class CloudCanvasShellRepository
     title: string;
     groupId?: string | null;
   }): Promise<LoadedCanvas> {
-    return loadedCanvas(
+    const canvas = loadedCanvas(
       await this.canvasRepository.createCanvas(
         input.workspaceId,
         input.title,
         input.groupId,
       ),
     );
+    this.setActiveCanvas(canvas.id);
+    return canvas;
   }
 
   listCanvasGroups(workspaceId: string): Promise<CanvasGroup[]> {
@@ -206,12 +209,14 @@ export class CloudCanvasShellRepository
     canvasId: string;
   }): Promise<LoadedCanvas | null> {
     try {
-      return loadedCanvas(
+      const canvas = loadedCanvas(
         await this.canvasRepository.loadCanvas(
           input.workspaceId,
           input.canvasId,
         ),
       );
+      this.setActiveCanvas(canvas.id);
+      return canvas;
     } catch (error) {
       if (isNotFound(error)) return null;
       throw error;
@@ -235,7 +240,7 @@ export class CloudCanvasShellRepository
     workspaceId: string;
     canvasId: string;
   }): Promise<{ status: "deleted" | "already-deleted" }> {
-    if (input.canvasId === this.activeCanvasId) this.invalidateAssetScopes();
+    if (input.canvasId === this.activeCanvasId) this.setActiveCanvas(null);
     await this.canvasRepository.deleteCanvas(input.workspaceId, input.canvasId);
     return { status: "deleted" };
   }
@@ -292,20 +297,14 @@ export class CloudCanvasShellRepository
     workspaceId: string;
     assetId: string;
   }): Promise<CanvasAssetMetadata | null> {
-    return this.getAssetMetadataForCanvas(
-      this.canvasIdForAssetLookup(),
-      input,
-    );
+    return this.getAssetMetadataForCanvas(this.canvasIdForAssetLookup(), input);
   }
 
   markAssetDeleted(input: {
     workspaceId: string;
     assetId: string;
   }): Promise<void> {
-    return this.markAssetDeletedForCanvas(
-      this.canvasIdForAssetLookup(),
-      input,
-    );
+    return this.markAssetDeletedForCanvas(this.canvasIdForAssetLookup(), input);
   }
 
   listVariants(input: {
