@@ -5,10 +5,7 @@ import {
 import type { LoadedCanvas } from "@/lib/canvas/local-canvas-repository";
 import type { LocalCanvasShellState } from "@/lib/canvas/local-canvas-shell-controller";
 
-function sameDocument(
-  first: CanvasDocument,
-  second: CanvasDocument,
-): boolean {
+function sameDocument(first: CanvasDocument, second: CanvasDocument): boolean {
   return (
     JSON.stringify(parseCanvasDocumentV2(first)) ===
     JSON.stringify(parseCanvasDocumentV2(second))
@@ -21,9 +18,9 @@ export function serverCanvasMatchesCachedRuntime(
 ): latest is LoadedCanvas {
   return Boolean(
     latest &&
-      latest.id === cached.canvasId &&
-      latest.title === cached.title &&
-      sameDocument(latest.document, cached.document),
+    latest.id === cached.canvasId &&
+    latest.title === cached.title &&
+    sameDocument(latest.document, cached.document),
   );
 }
 
