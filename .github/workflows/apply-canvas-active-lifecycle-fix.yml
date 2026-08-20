@@ -1,0 +1,172 @@
+name: Apply Canvas Active Lifecycle Fix
+
+on:
+  push:
+    branches:
+      - fix/canvas-active-asset-lifecycle
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[canvas-active-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/canvas-active-asset-lifecycle
+      - name: Apply targeted lifecycle patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f"Expected exactly one match in {path}, got {text.count(old)}")
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              "src/lib/canvas/cloud-canvas-shell-adapter.ts",
+              '''  beginCanvasNavigation(canvasId: string | null): void {\n    void canvasId;\n    this.invalidateAssetScopes();\n  }''',
+              '''  beginCanvasNavigation(canvasId: string | null): void {\n    this.setActiveCanvas(canvasId);\n  }''',
+          )
+
+          replace_once(
+              "src/lib/canvas/cloud-canvas-shell-adapter.ts",
+              '''  async createCanvas(input: {\n    workspaceId: string;\n    title: string;\n    groupId?: string | null;\n  }): Promise<LoadedCanvas> {\n    return loadedCanvas(\n      await this.canvasRepository.createCanvas(\n        input.workspaceId,\n        input.title,\n        input.groupId,\n      ),\n    );\n  }''',
+              '''  async createCanvas(input: {\n    workspaceId: string;\n    title: string;\n    groupId?: string | null;\n  }): Promise<LoadedCanvas> {\n    const canvas = loadedCanvas(\n      await this.canvasRepository.createCanvas(\n        input.workspaceId,\n        input.title,\n        input.groupId,\n      ),\n    );\n    this.setActiveCanvas(canvas.id);\n    return canvas;\n  }''',
+          )
+
+          replace_once(
+              "src/lib/canvas/cloud-canvas-shell-adapter.ts",
+              '''  async loadCanvas(input: {\n    workspaceId: string;\n    canvasId: string;\n  }): Promise<LoadedCanvas | null> {\n    try {\n      return loadedCanvas(\n        await this.canvasRepository.loadCanvas(\n          input.workspaceId,\n          input.canvasId,\n        ),\n      );\n    } catch (error) {''',
+              '''  async loadCanvas(input: {\n    workspaceId: string;\n    canvasId: string;\n  }): Promise<LoadedCanvas | null> {\n    try {\n      const canvas = loadedCanvas(\n        await this.canvasRepository.loadCanvas(\n          input.workspaceId,\n          input.canvasId,\n        ),\n      );\n      this.setActiveCanvas(canvas.id);\n      return canvas;\n    } catch (error) {''',
+          )
+
+          replace_once(
+              "src/lib/canvas/cloud-canvas-shell-adapter.ts",
+              '''    if (input.canvasId === this.activeCanvasId) this.invalidateAssetScopes();\n    await this.canvasRepository.deleteCanvas(input.workspaceId, input.canvasId);''',
+              '''    if (input.canvasId === this.activeCanvasId) this.setActiveCanvas(null);\n    await this.canvasRepository.deleteCanvas(input.workspaceId, input.canvasId);''',
+          )
+
+          replace_once(
+              "src/lib/canvas/local-canvas-shell-controller.ts",
+              '''  restoreRuntimeState(state: LocalCanvasShellState): LocalCanvasShellState {\n    this.navigationVersion += 1;''',
+              '''  restoreRuntimeState(state: LocalCanvasShellState): LocalCanvasShellState {\n    this.beginCanvasNavigation(state.canvasId);''',
+          )
+
+          replace_once(
+              "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
+              '''          const unchanged =\n            cachedSummary.revision === initialRuntime.shellState.revision;\n          if (unchanged) return;''',
+              '''          const unchanged =\n            cachedSummary.revision === initialRuntime.shellState.revision;\n          if (unchanged) {\n            void restoreForCanvas(controller.state).catch((error: unknown) => {\n              if (!active) return;\n              setLoadingLifecycle("error");\n              setShellState((current) => ({\n                ...current,\n                status: "error",\n                error:\n                  error instanceof Error\n                    ? error.message\n                    : "Canvas content refresh failed.",\n              }));\n            });\n            return;\n          }''',
+          )
+
+          replace_once(
+              "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
+              '''    repository,\n    restoreCachedScene,\n    runtimeCache,''',
+              '''    repository,\n    restoreCachedScene,\n    restoreForCanvas,\n    runtimeCache,''',
+          )
+          PY
+      - name: Add regression tests
+        shell: bash
+        run: |
+          cat > tests/canvas-active-asset-lifecycle.test.ts <<'EOF'
+          import { describe, expect, it } from "vitest";
+          import { createEmptyCanvasDocumentV2 } from "@/lib/canvas/canvas-document";
+          import { LocalCanvasShellController } from "@/lib/canvas/local-canvas-shell-controller";
+          import type { CanvasRepository, CanvasViewStateRepository } from "@/lib/canvas/local-canvas-repository";
+
+          const workspaceId = "20000000-0000-0000-0000-000000000001";
+          const canvasId = "30000000-0000-0000-0000-000000000001";
+          const userId = "50000000-0000-0000-0000-000000000001";
+
+          describe("Canvas active asset lifecycle", () => {
+            it("reactivates the repository Canvas when runtime state is restored from cache", () => {
+              const navigations: Array<string | null> = [];
+              const repository: CanvasRepository & CanvasViewStateRepository & {
+                beginCanvasNavigation(canvasId: string | null): void;
+              } = {
+                listCanvases: async () => [],
+                createCanvas: async () => { throw new Error("unused"); },
+                loadCanvas: async () => null,
+                saveCanvas: async () => ({ status: "saved", revision: 2 }),
+                softDeleteCanvas: async () => ({ status: "deleted" }),
+                loadViewState: async () => null,
+                saveViewState: async () => undefined,
+                deleteViewState: async () => undefined,
+                beginCanvasNavigation: (nextCanvasId) => navigations.push(nextCanvasId),
+              };
+              const controller = new LocalCanvasShellController({
+                repository,
+                workspaceId,
+                userId,
+              });
+
+              controller.restoreRuntimeState({
+                canvasId,
+                title: "Cached Canvas",
+                revision: 7,
+                document: createEmptyCanvasDocumentV2(),
+                viewport: { x: 0, y: 0, zoom: 1 },
+                status: "saved",
+                error: null,
+                conflictRevision: null,
+                autosaveBlocked: false,
+              });
+
+              expect(navigations).toEqual([canvasId]);
+            });
+          });
+          EOF
+
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("tests/cloud-canvas-shell-adapter.test.ts")
+          text = p.read_text()
+          marker = '\n});\n'
+          index = text.rfind(marker)
+          if index < 0:
+              raise SystemExit("Cloud shell adapter describe terminator not found")
+          extra = r'''
+
+            it("keeps asset lookup scoped to the active Canvas across navigation and cache restore", async () => {
+              const blob = new Blob(["image"], { type: "image/png" });
+              const repository = new CloudCanvasShellRepository(
+                workspaceId,
+                cloudCanvasRepository(),
+                cloudAssetRepository(blob),
+              );
+
+              expect(() => repository.beginAssetScope()).toThrow(
+                "Cloud Canvas asset lookup requires an active Canvas.",
+              );
+
+              repository.beginCanvasNavigation(canvasId);
+              expect(repository.beginAssetScope().isCurrent()).toBe(true);
+              await expect(repository.loadAsset({ workspaceId, assetId })).resolves.toEqual(
+                expect.objectContaining({ id: assetId }),
+              );
+
+              repository.beginCanvasNavigation(null);
+              expect(() => repository.beginAssetScope()).toThrow(
+                "Cloud Canvas asset lookup requires an active Canvas.",
+              );
+
+              await repository.loadCanvas({ workspaceId, canvasId });
+              expect(repository.beginAssetScope().isCurrent()).toBe(true);
+            });
+          '''
+          p.write_text(text[:index] + extra + text[index:])
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/canvas/cloud-canvas-shell-adapter.ts src/lib/canvas/local-canvas-shell-controller.ts src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx tests/cloud-canvas-shell-adapter.test.ts tests/canvas-active-asset-lifecycle.test.ts
+          git commit -m "Fix Canvas active asset lifecycle [canvas-active-applied]"
+          git push origin HEAD:fix/canvas-active-asset-lifecycle
