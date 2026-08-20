@@ -2167,6 +2167,9 @@ function InfiniteCanvasLocalShellSurface({
     ],
   );
 
+  const restoreForCanvasRef = useRef(restoreForCanvas);
+  restoreForCanvasRef.current = restoreForCanvas;
+
   const applyCanvasHistory = useCallback(
     (direction: "undo" | "redo") => {
       const nextState =
@@ -2488,7 +2491,7 @@ function InfiniteCanvasLocalShellSurface({
               const savedState = controller.state;
               setShellState(savedState);
               setRenameTitle(savedState.title);
-              await restoreForCanvas(savedState);
+              await restoreForCanvasRef.current(savedState);
               return;
             }
           }
@@ -2512,7 +2515,7 @@ function InfiniteCanvasLocalShellSurface({
               );
               setShellState(reconciled);
               setRenameTitle(reconciled.title);
-              await restoreForCanvas(reconciled);
+              await restoreForCanvasRef.current(reconciled);
               return;
             }
             setLoadingLifecycle("error");
@@ -2527,7 +2530,7 @@ function InfiniteCanvasLocalShellSurface({
           }
 
           if (unchanged) {
-            await restoreForCanvas(controller.state);
+            await restoreForCanvasRef.current(controller.state);
             return;
           }
           await openCanvasRef.current(cachedSummary.id);
@@ -2610,7 +2613,6 @@ function InfiniteCanvasLocalShellSurface({
     objectUrls,
     repository,
     restoreCachedScene,
-    restoreForCanvas,
     runtimeCache,
     shellUserId,
   ]);
