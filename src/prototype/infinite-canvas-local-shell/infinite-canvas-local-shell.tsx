@@ -207,6 +207,10 @@ import {
 } from "@/lib/files/project-file-repository";
 import { shouldCloseCanvasTaskDetails } from "@/lib/canvas/canvas-task-selection";
 import {
+  reconcileCachedRuntimeWithServer,
+  serverCanvasMatchesCachedRuntime,
+} from "@/lib/canvas/canvas-runtime-cache-reconciliation";
+import {
   CanvasEdgeMarkerDefinitions,
   CanvasVisibleEdge,
 } from "@/lib/canvas/canvas-visible-edge";
@@ -2474,22 +2478,32 @@ function InfiniteCanvasLocalShellSurface({
         if (cachedSummary && initialRuntime) {
           const unchanged =
             cachedSummary.revision === initialRuntime.shellState.revision;
-          if (unchanged) {
-            void restoreForCanvas(controller.state).catch((error: unknown) => {
-              if (!active) return;
-              setLoadingLifecycle("error");
-              setShellState((current) => ({
-                ...current,
-                status: "error",
-                error:
-                  error instanceof Error
-                    ? error.message
-                    : "Canvas content refresh failed.",
-              }));
-            });
-            return;
+
+          if (initialRuntime.shellState.status !== "saved" && unchanged) {
+            const saveResult = await controller.save();
+            if (saveResult?.status !== "conflict" && controller.state.status === "saved") {
+              const savedState = controller.state;
+              setShellState(savedState);
+              setRenameTitle(savedState.title);
+              await restoreForCanvas(savedState);
+              return;
+            }
           }
+
           if (initialRuntime.shellState.status !== "saved") {
+            const latest = await repository.loadCanvas({
+              workspaceId: shellWorkspaceId,
+              canvasId: cachedSummary.id,
+            });
+            if (serverCanvasMatchesCachedRuntime(latest, initialRuntime.shellState)) {
+              const reconciled = controller.restoreRuntimeState(
+                reconcileCachedRuntimeWithServer(latest, initialRuntime.shellState),
+              );
+              setShellState(reconciled);
+              setRenameTitle(reconciled.title);
+              await restoreForCanvas(reconciled);
+              return;
+            }
             setLoadingLifecycle("error");
             setShellState((current) => ({
               ...current,
@@ -2498,6 +2512,11 @@ function InfiniteCanvasLocalShellSurface({
               conflictRevision: cachedSummary.revision,
               error: "Canvas changed elsewhere. Reload to continue.",
             }));
+            return;
+          }
+
+          if (unchanged) {
+            await restoreForCanvas(controller.state);
             return;
           }
           await openCanvasRef.current(cachedSummary.id);
