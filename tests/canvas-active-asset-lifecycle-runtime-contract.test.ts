@@ -12,9 +12,13 @@ const shellPath = fileURLToPath(
 describe("Canvas cached image lifecycle runtime contract", () => {
   it("rehydrates cached Canvas images and safely reconciles stale self-saves", async () => {
     const source = await readFile(shellPath, "utf8");
-    expect(source).toContain("const restoreForCanvasRef = useRef(restoreForCanvas)");
+    expect(source).toContain(
+      "const restoreForCanvasRef = useRef(restoreForCanvas)",
+    );
     expect(source).toContain("restoreForCanvasRef.current = restoreForCanvas");
-    expect(source).toContain("await restoreForCanvasRef.current(controller.state)");
+    expect(source).toContain(
+      "await restoreForCanvasRef.current(controller.state)",
+    );
     expect(source).toContain("serverCanvasMatchesCachedRuntime");
     expect(source).toContain("reconcileCachedRuntimeWithServer");
   });
