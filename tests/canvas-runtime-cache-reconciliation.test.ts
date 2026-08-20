@@ -48,14 +48,8 @@ describe("Canvas runtime cache reconciliation", () => {
     );
   });
 
-  it("does not dismiss a real divergent document as the same Canvas", () => {
-    const divergent: LoadedCanvas = {
-      ...latest,
-      document: {
-        ...latest.document,
-        viewport: { x: 999, y: 0, zoom: 1 },
-      },
-    };
+  it("does not dismiss a real divergent server state as the same Canvas", () => {
+    const divergent: LoadedCanvas = { ...latest, title: "Changed elsewhere" };
     expect(serverCanvasMatchesCachedRuntime(divergent, cached)).toBe(false);
   });
 });
