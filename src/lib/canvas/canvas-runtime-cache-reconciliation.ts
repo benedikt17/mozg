@@ -1,12 +1,15 @@
-import type { CanvasDocumentV2 } from "@/lib/canvas/canvas-document";
+import {
+  parseCanvasDocumentV2,
+  type CanvasDocument,
+} from "@/lib/canvas/canvas-document";
 import type { LoadedCanvas } from "@/lib/canvas/local-canvas-repository";
 import type { LocalCanvasShellState } from "@/lib/canvas/local-canvas-shell-controller";
 
-function sameDocument(
-  first: CanvasDocumentV2,
-  second: CanvasDocumentV2,
-): boolean {
-  return JSON.stringify(first) === JSON.stringify(second);
+function sameDocument(first: CanvasDocument, second: CanvasDocument): boolean {
+  return (
+    JSON.stringify(parseCanvasDocumentV2(first)) ===
+    JSON.stringify(parseCanvasDocumentV2(second))
+  );
 }
 
 export function serverCanvasMatchesCachedRuntime(
@@ -15,9 +18,9 @@ export function serverCanvasMatchesCachedRuntime(
 ): latest is LoadedCanvas {
   return Boolean(
     latest &&
-    latest.id === cached.canvasId &&
-    latest.title === cached.title &&
-    sameDocument(latest.document, cached.document),
+      latest.id === cached.canvasId &&
+      latest.title === cached.title &&
+      sameDocument(latest.document, cached.document),
   );
 }
 
@@ -30,7 +33,7 @@ export function reconcileCachedRuntimeWithServer(
     canvasId: latest.id,
     title: latest.title,
     revision: latest.revision,
-    document: latest.document,
+    document: parseCanvasDocumentV2(latest.document),
     status: "saved",
     error: null,
     conflictRevision: null,
