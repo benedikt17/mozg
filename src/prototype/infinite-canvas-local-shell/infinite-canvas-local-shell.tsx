@@ -2474,7 +2474,21 @@ function InfiniteCanvasLocalShellSurface({
         if (cachedSummary && initialRuntime) {
           const unchanged =
             cachedSummary.revision === initialRuntime.shellState.revision;
-          if (unchanged) return;
+          if (unchanged) {
+            void restoreForCanvas(controller.state).catch((error: unknown) => {
+              if (!active) return;
+              setLoadingLifecycle("error");
+              setShellState((current) => ({
+                ...current,
+                status: "error",
+                error:
+                  error instanceof Error
+                    ? error.message
+                    : "Canvas content refresh failed.",
+              }));
+            });
+            return;
+          }
           if (initialRuntime.shellState.status !== "saved") {
             setLoadingLifecycle("error");
             setShellState((current) => ({
@@ -2566,6 +2580,7 @@ function InfiniteCanvasLocalShellSurface({
     objectUrls,
     repository,
     restoreCachedScene,
+    restoreForCanvas,
     runtimeCache,
     shellUserId,
   ]);
