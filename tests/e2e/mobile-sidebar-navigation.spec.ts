@@ -57,7 +57,7 @@ test("phone left sidebar opens and closes with horizontal swipes", async ({
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
 
   await swipe(page.locator("body"), {
-    startX: 32,
+    startX: 1,
     startY: 320,
     endX: 116,
     endY: 324,
@@ -124,7 +124,7 @@ test("phone Canvas drawer uses the same swipe contract", async ({ page }) => {
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
 
   await swipe(page.locator("body"), {
-    startX: 32,
+    startX: 1,
     startY: 300,
     endX: 116,
     endY: 304,
@@ -144,7 +144,7 @@ test("phone Canvas drawer uses the same swipe contract", async ({ page }) => {
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
 
   await swipe(page.locator("body"), {
-    startX: 32,
+    startX: 1,
     startY: 300,
     endX: 116,
     endY: 304,
@@ -158,4 +158,39 @@ test("phone Canvas drawer uses the same swipe contract", async ({ page }) => {
     endY: 342,
   });
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
+});
+
+test.describe("native mobile touch", () => {
+  test.use({ hasTouch: true });
+
+  test("phone knowledge folder toggles on one native touch without closing drawer", async ({
+    page,
+  }) => {
+    await signInOnPhone(page);
+    await page
+      .getByRole("navigation", { name: "Основные разделы" })
+      .getByRole("button", { name: "Знания", exact: true })
+      .click();
+
+    const trigger = drawerTrigger(page);
+    await trigger.click();
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator(".mobile-sidebar-edge-hint")).toHaveCount(0);
+
+    const tree = page.getByRole("navigation", { name: "Иерархия документов" });
+    const folderButton = tree.locator(".knowledge-tree-row.folder").first();
+    await expect(folderButton).toBeVisible();
+    const before = await folderButton.getAttribute("aria-expanded");
+    const box = await folderButton.boundingBox();
+    expect(box).not.toBeNull();
+    if (!box) return;
+
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+
+    await expect(folderButton).toHaveAttribute(
+      "aria-expanded",
+      before === "true" ? "false" : "true",
+    );
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  });
 });

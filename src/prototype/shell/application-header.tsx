@@ -166,6 +166,21 @@ function isMobileSidebarNavigationButton(target: EventTarget | null): boolean {
   return Boolean(button.closest("[data-canvas-id]"));
 }
 
+function isMobileSidebarImmediateTouchButton(
+  target: EventTarget | null,
+): boolean {
+  if (isMobileSidebarNavigationButton(target)) return true;
+  if (!(target instanceof Element)) return false;
+  const button = target.closest<HTMLButtonElement>("button");
+  if (!button || !isInsideMobileSectionDrawer(button)) return false;
+  if (button.closest('[role="menu"]') || button.hasAttribute("aria-haspopup"))
+    return false;
+  return (
+    button.classList.contains("knowledge-tree-row") &&
+    button.classList.contains("folder")
+  );
+}
+
 export function ApplicationHeader({
   state,
   dispatch,
@@ -441,7 +456,7 @@ export function ApplicationHeader({
       if (
         !isTap ||
         !drawerIsOpen() ||
-        !isMobileSidebarNavigationButton(current.startTarget)
+        !isMobileSidebarImmediateTouchButton(current.startTarget)
       )
         return;
       if (!(current.startTarget instanceof Element)) return;
@@ -517,6 +532,9 @@ export function ApplicationHeader({
           </span>
         ) : null}
       </button>
+      {hasMobileSectionDrawer && !mobileDrawerOpen ? (
+        <span className="mobile-sidebar-edge-hint" aria-hidden="true" />
+      ) : null}
       {hasMobileSectionDrawer ? (
         <button
           aria-expanded={mobileDrawerOpen}

@@ -20,16 +20,16 @@ describe("mobile sidebar swipe", () => {
     expect(classifyMobileSidebarSwipe(base)).toBe("open");
   });
 
-  it("keeps the first iOS browser-back pixels reserved for Safari", () => {
-    expect(MOBILE_SIDEBAR_EDGE_MIN_START_PX).toBeGreaterThanOrEqual(20);
+  it("opens from the physical left edge and keeps a bounded start zone", () => {
+    expect(MOBILE_SIDEBAR_EDGE_MIN_START_PX).toBe(0);
     expect(MOBILE_SIDEBAR_EDGE_MAX_START_PX).toBeGreaterThanOrEqual(64);
     expect(
       classifyMobileSidebarSwipe({
         ...base,
-        startX: 8,
-        endX: 90,
+        startX: 0,
+        endX: 84,
       }),
-    ).toBeNull();
+    ).toBe("open");
     expect(
       classifyMobileSidebarSwipe({
         ...base,

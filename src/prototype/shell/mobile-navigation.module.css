@@ -63,6 +63,20 @@
     background: var(--surface-selected) !important;
   }
 
+  :global(.mobile-sidebar-edge-hint) {
+    position: fixed;
+    top: 50%;
+    left: 0;
+    z-index: 74;
+    width: 4px;
+    height: 64px;
+    border-radius: 0 999px 999px 0;
+    background: var(--text-3);
+    opacity: 0.32;
+    pointer-events: none;
+    transform: translateY(-50%);
+  }
+
   :global(.section-overview .overview-board) {
     scroll-snap-type: x mandatory;
     scroll-padding-inline: 0;
