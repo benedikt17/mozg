@@ -1,0 +1,392 @@
+name: Apply Canvas PDF feature
+
+on:
+  push:
+    branches:
+      - feature/canvas-pdf-split-view
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/canvas-pdf-split-view
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply feature patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def read(path):
+              return Path(path).read_text()
+
+          def write(path, text):
+              Path(path).write_text(text)
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected 1 match, got {count}")
+              return text.replace(old, new, 1)
+
+          def replace_count(text, old, new, expected, label):
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f"{label}: expected {expected} matches, got {count}")
+              return text.replace(old, new)
+
+          # Canvas document: introduce a V2-only PDF Project File node.
+          path = "src/lib/canvas/canvas-document.ts"
+          text = read(path)
+          text = replace_once(
+              text,
+              '  maxTitleLength: 200,\n  maxIdLength: 256,',
+              '  maxTitleLength: 200,\n  maxFileNameLength: 255,\n  maxIdLength: 256,',
+              "canvas limits",
+          )
+          text = replace_once(
+              text,
+              '''export type CanvasImageNode =\n  CanvasLegacyImageNode | CanvasProjectFileImageNode;\n\nexport type CanvasNode =\n  | CanvasTaskNode\n  | CanvasArticleNode\n  | CanvasTextNode\n  | CanvasShapeNode\n  | CanvasImageNode;''',
+              '''export type CanvasImageNode =\n  CanvasLegacyImageNode | CanvasProjectFileImageNode;\n\nexport type CanvasPdfNode = CanvasNodeBase & {\n  kind: "pdf";\n  fileId: string;\n  lastKnownName?: string;\n};\n\nexport type CanvasNode =\n  | CanvasTaskNode\n  | CanvasArticleNode\n  | CanvasTextNode\n  | CanvasShapeNode\n  | CanvasImageNode\n  | CanvasPdfNode;''',
+              "pdf canonical type",
+          )
+          text = replace_once(
+              text,
+              '''function requireBoolean(value: unknown, path: string): boolean {''',
+              '''function requireLastKnownFileName(value: unknown, path: string): string {\n  const name = requireString(value, path);\n  if (name.length > CANVAS_DOCUMENT_LIMITS.maxFileNameLength) {\n    fail(\n      "file_name_too_long",\n      path,\n      "lastKnownName exceeds the Canvas file name limit",\n    );\n  }\n  return name;\n}\n\nfunction requireBoolean(value: unknown, path: string): boolean {''',
+              "pdf name validator",
+          )
+          text = replace_once(
+              text,
+              '''function parseNode(\n  value: unknown,\n  path: string,\n  allowShape = false,\n): CanvasNode {\n  const node = requireRecord(value, path);\n  const kind = requireString(node.kind, `${path}.kind`) as CanvasNode["kind"];\n  if (kind === "shape" && !allowShape) {\n    fail(\n      "unsupported_node_kind",\n      `${path}.kind`,\n      "Canvas shape nodes require CanvasDocumentV2",\n    );\n  }''',
+              '''function parseNode(\n  value: unknown,\n  path: string,\n  allowV2Extensions = false,\n): CanvasNode {\n  const node = requireRecord(value, path);\n  const kind = requireString(node.kind, `${path}.kind`) as CanvasNode["kind"];\n  if ((kind === "shape" || kind === "pdf") && !allowV2Extensions) {\n    fail(\n      "unsupported_node_kind",\n      `${path}.kind`,\n      "This Canvas node kind requires CanvasDocumentV2",\n    );\n  }''',
+              "v2-only pdf parser gate",
+          )
+          text = replace_once(
+              text,
+              '''  const allowedKeys =\n    kind === "task" || kind === "article"\n      ? optionalKeys\n      : kind === "text"\n        ? ["style"]\n        : [];''',
+              '''  const allowedKeys =\n    kind === "task" || kind === "article"\n      ? optionalKeys\n      : kind === "text"\n        ? ["style"]\n        : kind === "pdf"\n          ? ["lastKnownName"]\n          : [];''',
+              "pdf optional keys",
+          )
+          text = replace_once(
+              text,
+              '''          : kind === "shape"\n            ? "shape"\n            : kind === "image"\n              ? hasImageFileId\n                ? "fileId"\n                : "assetId"\n              : null;''',
+              '''          : kind === "shape"\n            ? "shape"\n            : kind === "image"\n              ? hasImageFileId\n                ? "fileId"\n                : "assetId"\n              : kind === "pdf"\n                ? "fileId"\n                : null;''',
+              "pdf specific key",
+          )
+          text = replace_once(
+              text,
+              '''  const aspectRatioLocked = node.aspectRatioLocked;''',
+              '''  if (kind === "pdf") {\n    const result: CanvasPdfNode = {\n      id,\n      kind,\n      position,\n      size,\n      zIndex,\n      fileId: requireIdentifier(node.fileId, `${path}.fileId`),\n    };\n    if (Object.prototype.hasOwnProperty.call(node, "lastKnownName")) {\n      result.lastKnownName = requireLastKnownFileName(\n        node.lastKnownName,\n        `${path}.lastKnownName`,\n      );\n    }\n    return result;\n  }\n\n  const aspectRatioLocked = node.aspectRatioLocked;''',
+              "pdf parse branch",
+          )
+          write(path, text)
+
+          # React Flow adapter: runtime PDF node and round-trip support.
+          path = "src/lib/canvas/react-flow-canvas-adapter.ts"
+          text = read(path)
+          text = replace_once(
+              text,
+              '  type CanvasPoint,\n  type CanvasSize,',
+              '  type CanvasPoint,\n  type CanvasPdfNode,\n  type CanvasSize,',
+              "adapter pdf import",
+          )
+          text = replace_once(
+              text,
+              'export const CANVAS_IMAGE_NODE_TYPE = "canvasImage";\nexport const CANVAS_TEXT_NODE_TYPE = "canvasText";',
+              'export const CANVAS_IMAGE_NODE_TYPE = "canvasImage";\nexport const CANVAS_PDF_NODE_TYPE = "canvasPdf";\nexport const CANVAS_TEXT_NODE_TYPE = "canvasText";',
+              "adapter pdf type constant",
+          )
+          text = replace_once(
+              text,
+              '''export type CanvasTextNodeData = {''',
+              '''export type CanvasPdfNodeData = {\n  fileId: string;\n  lastKnownName?: string;\n};\n\nexport type CanvasPdfFlowNode = Node<\n  CanvasPdfNodeData,\n  typeof CANVAS_PDF_NODE_TYPE\n>;\n\nexport type CanvasTextNodeData = {''',
+              "adapter pdf data",
+          )
+          text = replace_once(
+              text,
+              '''export type CanvasFlowNode =\n  | CanvasImageFlowNode\n  | CanvasTextFlowNode''',
+              '''export type CanvasFlowNode =\n  | CanvasImageFlowNode\n  | CanvasPdfFlowNode\n  | CanvasTextFlowNode''',
+              "adapter flow union",
+          )
+          marker = '''export function createCanvasTaskId(\n  idGenerator: () => string = () =>\n    globalThis.crypto?.randomUUID?.() ??\n    `${Date.now()}-${Math.random().toString(36).slice(2)}`,\n): string {'''
+          insert = '''export function createCanvasPdfId(\n  idGenerator: () => string = () =>\n    globalThis.crypto?.randomUUID?.() ??\n    `${Date.now()}-${Math.random().toString(36).slice(2)}`,\n): string {\n  return `pdf-node-${idGenerator()}`;\n}\n\nexport function createCanvasPdfFlowNode(input: {\n  id: string;\n  fileId: string;\n  lastKnownName?: string;\n  position: FlowPosition;\n  size?: CanvasSize;\n  zIndex?: number;\n}): CanvasPdfFlowNode {\n  const size = input.size ?? { width: 300, height: 180 };\n  return {\n    id: input.id,\n    type: CANVAS_PDF_NODE_TYPE,\n    position: { ...input.position },\n    width: size.width,\n    height: size.height,\n    style: { width: size.width, height: size.height },\n    zIndex: input.zIndex,\n    data: {\n      fileId: input.fileId,\n      ...(input.lastKnownName === undefined\n        ? {}\n        : { lastKnownName: input.lastKnownName }),\n    },\n  };\n}\n\n''' + marker
+          text = replace_once(text, marker, insert, "adapter pdf factory")
+          marker = '''export function canvasDocumentToTaskNodes(\n  document: CanvasDocument,'''
+          insert = '''export function canvasDocumentToPdfNodes(\n  document: CanvasDocument,\n): CanvasPdfFlowNode[] {\n  return document.nodes\n    .filter((node): node is CanvasPdfNode => node.kind === "pdf")\n    .map((node) =>\n      createCanvasPdfFlowNode({\n        id: node.id,\n        fileId: node.fileId,\n        lastKnownName: node.lastKnownName,\n        position: node.position,\n        size: node.size,\n        zIndex: node.zIndex,\n      }),\n    );\n}\n\n''' + marker
+          text = replace_once(text, marker, insert, "adapter pdf projection")
+          text = replace_once(
+              text,
+              '''    if (node.kind === "text" && runtime.type === CANVAS_TEXT_NODE_TYPE) {''',
+              '''    if (node.kind === "pdf" && runtime.type === CANVAS_PDF_NODE_TYPE) {\n      return {\n        ...node,\n        position: { ...runtime.position },\n        size: runtimeNodeSize(runtime),\n      };\n    }\n    if (node.kind === "text" && runtime.type === CANVAS_TEXT_NODE_TYPE) {''',
+              "adapter pdf runtime serialization",
+          )
+          write(path, text)
+
+          # Clipboard: PDFs are first-class copy/paste nodes.
+          path = "src/lib/canvas/canvas-node-clipboard.ts"
+          text = read(path)
+          text = replace_once(
+              text,
+              '''    node.kind === "image" ||\n    node.kind === "text" ||''',
+              '''    node.kind === "image" ||\n    node.kind === "pdf" ||\n    node.kind === "text" ||''',
+              "clipboard pdf",
+          )
+          write(path, text)
+
+          # Files picker: show both images and PDFs.
+          path = "src/prototype/canvases/canvas-project-file-picker.tsx"
+          text = read(path)
+          text = replace_once(
+              text,
+              '                      : "В этом проекте нет изображений"}',
+              '                      : "В этом проекте нет изображений и PDF"}',
+              "file picker empty copy",
+          )
+          text = replace_once(
+              text,
+              '''                      <span>\n                        {file.width}×{file.height} · {file.mimeType}\n                      </span>''',
+              '''                      <span>\n                        {file.mimeType === "application/pdf"\n                          ? `PDF · ${Math.max(1, Math.round(file.byteSize / 1024))} КБ`\n                          : `${file.width}×${file.height} · ${file.mimeType}`}\n                      </span>''',
+              "file picker pdf metadata",
+          )
+          write(path, text)
+
+          # Desktop toolbar: explicit PDF upload action.
+          path = "src/prototype/canvases/canvas-desktop-composition.tsx"
+          text = read(path)
+          text = replace_once(
+              text,
+              '''  onAddImage,\n  onAddText,''',
+              '''  onAddImage,\n  onAddPdf,\n  onAddText,''',
+              "toolbar pdf destructure",
+          )
+          text = replace_once(
+              text,
+              '''  onAddImage: (files: File[]) => void;\n  onAddText: () => void;''',
+              '''  onAddImage: (files: File[]) => void;\n  onAddPdf: (files: File[]) => void;\n  onAddText: () => void;''',
+              "toolbar pdf prop",
+          )
+          text = replace_once(
+              text,
+              '''  const fileInputRef = useRef<HTMLInputElement>(null);\n  const taskPickerTriggerRef''',
+              '''  const fileInputRef = useRef<HTMLInputElement>(null);\n  const pdfInputRef = useRef<HTMLInputElement>(null);\n  const taskPickerTriggerRef''',
+              "toolbar pdf input ref",
+          )
+          marker = '''        <CanvasProjectFilePicker\n          interactive={isReady}'''
+          insert = '''        <IconButton\n          disabled={!isReady || !fileToolsReady}\n          icon={<UiIcon name="file" />}\n          label="Добавить PDF"\n          onClick={() => pdfInputRef.current?.click()}\n          title="Добавить PDF"\n          type="button"\n          variant="quiet"\n        />\n        <input\n          accept="application/pdf,.pdf"\n          hidden\n          multiple\n          onChange={(event) => {\n            const files = Array.from(event.target.files ?? []);\n            event.target.value = "";\n            if (files.length > 0) onAddPdf(files);\n          }}\n          ref={pdfInputRef}\n          type="file"\n        />\n''' + marker
+          text = replace_once(text, marker, insert, "toolbar pdf button")
+          write(path, text)
+
+          # Canvas shell: PDF card, upload-to-Files, Files insertion and split reader.
+          path = "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx"
+          text = read(path)
+          text = replace_once(
+              text,
+              '''  CANVAS_IMAGE_NODE_TYPE,\n  CANVAS_SHAPE_NODE_TYPE,''',
+              '''  CANVAS_IMAGE_NODE_TYPE,\n  CANVAS_PDF_NODE_TYPE,\n  CANVAS_SHAPE_NODE_TYPE,''',
+              "shell pdf constant import",
+          )
+          text = replace_once(
+              text,
+              '''  canvasDocumentToImageNodes,\n  canvasDocumentToShapeNodes,''',
+              '''  canvasDocumentToImageNodes,\n  canvasDocumentToPdfNodes,\n  canvasDocumentToShapeNodes,''',
+              "shell pdf projection import",
+          )
+          text = replace_once(
+              text,
+              '''  createCanvasTaskFlowNode,\n  createCanvasTaskId,''',
+              '''  createCanvasPdfFlowNode,\n  createCanvasPdfId,\n  createCanvasTaskFlowNode,\n  createCanvasTaskId,''',
+              "shell pdf factory import",
+          )
+          text = replace_once(
+              text,
+              '''  type CanvasImageFlowNode,\n  type CanvasShapeFlowNode,''',
+              '''  type CanvasImageFlowNode,\n  type CanvasPdfFlowNode,\n  type CanvasShapeFlowNode,''',
+              "shell pdf flow import",
+          )
+          text = replace_once(
+              text,
+              '''  type CanvasHandleSide,\n  type CanvasShapeNode,''',
+              '''  type CanvasHandleSide,\n  type CanvasPdfNode,\n  type CanvasShapeNode,''',
+              "shell pdf canonical import",
+          )
+          text = replace_once(
+              text,
+              '''import type { ProjectFileImageVariantRepository } from "@/lib/files/project-file-image-variants";\nimport {\n  isProjectFileImageMimeType,''',
+              '''import type { ProjectFileImageVariantRepository } from "@/lib/files/project-file-image-variants";\nimport {\n  prepareProjectFileBrowserUpload,\n  resolveProjectFileBrowserMimeType,\n} from "@/lib/files/project-file-browser-upload";\nimport {\n  isProjectFileImageMimeType,''',
+              "shell browser upload import",
+          )
+          marker = '''const CANVAS_TEXT_FONT_LABELS: Record<CanvasTextFontFamily, string> = {'''
+          insert = '''function PdfNodeBody({\n  data,\n  selected,\n}: NodeProps<CanvasPdfFlowNode>): React.JSX.Element {\n  return (\n    <CanvasNodeFrame\n      selected={selected}\n      minWidth={180}\n      minHeight={110}\n      className={styles.pdfNodeFrame}\n      connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}\n    >\n      <div\n        className={styles.pdfNodeContent}\n        data-canvas-pdf-file-id={data.fileId}\n        title="Двойной клик — открыть PDF"\n      >\n        <span className={styles.pdfNodeBadge}>PDF</span>\n        <strong title={data.lastKnownName ?? "PDF"}>\n          {data.lastKnownName ?? "PDF"}\n        </strong>\n        <span>Двойной клик — открыть</span>\n      </div>\n    </CanvasNodeFrame>\n  );\n}\n\n''' + marker
+          text = replace_once(text, marker, insert, "shell pdf body")
+          text = replace_once(
+              text,
+              '''const nodeTypes = {\n  [CANVAS_IMAGE_NODE_TYPE]: ImageNodeBody,''',
+              '''const nodeTypes = {\n  [CANVAS_IMAGE_NODE_TYPE]: ImageNodeBody,\n  [CANVAS_PDF_NODE_TYPE]: PdfNodeBody,''',
+              "shell pdf node type",
+          )
+          text = replace_once(
+              text,
+              '''type CanvasLoadingLifecycle =\n  | "list-loading"''',
+              '''type CanvasPdfViewerState = {\n  fileId: string;\n  name: string;\n  status: "loading" | "ready" | "error";\n  objectUrl: string | null;\n  error: string | null;\n};\n\ntype CanvasLoadingLifecycle =\n  | "list-loading"''',
+              "shell viewer state type",
+          )
+          text = replace_once(
+              text,
+              '''  const variantDowngradeTimerRef = useRef<number | null>(null);\n  const imageLoadCacheRef''',
+              '''  const variantDowngradeTimerRef = useRef<number | null>(null);\n  const pdfOpenSequenceRef = useRef(0);\n  const pdfObjectUrlRef = useRef<string | null>(null);\n  const imageLoadCacheRef''',
+              "shell viewer refs",
+          )
+          text = replace_once(
+              text,
+              '''  const [fileCatalog, setFileCatalog] = useState<ProjectFileRecord[]>([]);\n  const [fileSearchStatus,''',
+              '''  const [fileCatalog, setFileCatalog] = useState<ProjectFileRecord[]>([]);\n  const [pdfViewer, setPdfViewer] = useState<CanvasPdfViewerState | null>(null);\n  const [fileSearchStatus,''',
+              "shell viewer state",
+          )
+          marker = '''  useEffect(() => {\n    const activeTaskId = activeTaskDetailsTaskId;'''
+          insert = '''  const closePdfViewer = useCallback((): void => {\n    pdfOpenSequenceRef.current += 1;\n    if (pdfObjectUrlRef.current) {\n      URL.revokeObjectURL(pdfObjectUrlRef.current);\n      pdfObjectUrlRef.current = null;\n    }\n    setPdfViewer(null);\n  }, []);\n\n  const openPdfNode = useCallback(\n    async (node: CanvasPdfFlowNode): Promise<void> => {\n      if (!projectFileRepository || !projectId) return;\n      const sequence = ++pdfOpenSequenceRef.current;\n      if (pdfObjectUrlRef.current) {\n        URL.revokeObjectURL(pdfObjectUrlRef.current);\n        pdfObjectUrlRef.current = null;\n      }\n      setPdfViewer({\n        fileId: node.data.fileId,\n        name: node.data.lastKnownName ?? "PDF",\n        status: "loading",\n        objectUrl: null,\n        error: null,\n      });\n      try {\n        const downloaded = await projectFileRepository.downloadFile({\n          workspaceId: shellWorkspaceId,\n          projectId,\n          fileId: node.data.fileId,\n        });\n        if (downloaded.mimeType !== "application/pdf") {\n          throw new Error("Выбранный файл больше не является PDF.");\n        }\n        const objectUrl = URL.createObjectURL(downloaded.blob);\n        if (sequence !== pdfOpenSequenceRef.current) {\n          URL.revokeObjectURL(objectUrl);\n          return;\n        }\n        pdfObjectUrlRef.current = objectUrl;\n        setPdfViewer({\n          fileId: downloaded.id,\n          name: downloaded.name,\n          status: "ready",\n          objectUrl,\n          error: null,\n        });\n      } catch (error: unknown) {\n        if (sequence !== pdfOpenSequenceRef.current) return;\n        setPdfViewer({\n          fileId: node.data.fileId,\n          name: node.data.lastKnownName ?? "PDF",\n          status: "error",\n          objectUrl: null,\n          error:\n            error instanceof Error ? error.message : "Не удалось открыть PDF.",\n        });\n      }\n    },\n    [projectFileRepository, projectId, shellWorkspaceId],\n  );\n\n  useEffect(() => {\n    return () => {\n      pdfOpenSequenceRef.current += 1;\n      if (pdfObjectUrlRef.current) URL.revokeObjectURL(pdfObjectUrlRef.current);\n      pdfObjectUrlRef.current = null;\n    };\n  }, []);\n\n  useEffect(() => {\n    closePdfViewer();\n  }, [closePdfViewer, shellState.canvasId]);\n\n''' + marker
+          text = replace_once(text, marker, insert, "shell viewer lifecycle")
+          text = replace_once(
+              text,
+              '''                file.readyAt !== null &&\n                file.deletedAt === null &&\n                file.width !== null &&\n                file.height !== null &&\n                isProjectFileImageMimeType(file.mimeType),''',
+              '''                file.readyAt !== null &&\n                file.deletedAt === null &&\n                (file.mimeType === "application/pdf" ||\n                  (file.width !== null &&\n                    file.height !== null &&\n                    isProjectFileImageMimeType(file.mimeType))),''',
+              "shell file catalog pdf filter",
+          )
+          text = replace_count(
+              text,
+              '''        ...canvasDocumentToTextNodes(nextState.document),\n        ...canvasDocumentToShapeNodes(nextState.document),''',
+              '''        ...canvasDocumentToTextNodes(nextState.document),\n        ...canvasDocumentToShapeNodes(nextState.document),\n        ...canvasDocumentToPdfNodes(nextState.document),''',
+              1,
+              "restore pdf placeholders",
+          )
+          text = replace_count(
+              text,
+              '''        ...canvasDocumentToTextNodes(cachedState.document),\n        ...canvasDocumentToShapeNodes(cachedState.document),''',
+              '''        ...canvasDocumentToTextNodes(cachedState.document),\n        ...canvasDocumentToShapeNodes(cachedState.document),\n        ...canvasDocumentToPdfNodes(cachedState.document),''',
+              1,
+              "cache pdf skeleton",
+          )
+          text = replace_once(
+              text,
+              '''          } else if (node.kind === "task") {\n            runtimeNodes.push(''',
+              '''          } else if (node.kind === "pdf") {\n            runtimeNodes.push(\n              createCanvasPdfFlowNode({\n                id: node.id,\n                fileId: node.fileId,\n                lastKnownName: node.lastKnownName,\n                position: node.position,\n                size: node.size,\n                zIndex: node.zIndex,\n              }),\n            );\n          } else if (node.kind === "task") {\n            runtimeNodes.push(''',
+              "paste pdf runtime",
+          )
+          start = text.index('  const createProjectFileNode = useCallback(')
+          end = text.index('\n\n  useEffect(() => {\n    const onCopy', start)
+          old_block = text[start:end]
+          new_block = '''  const createProjectFileNode = useCallback(\n    async (file: ProjectFileRecord, requestedPosition?: FlowPosition) => {\n      const canvasId = shellStateRef.current.canvasId;\n      if (!canvasId) return;\n      try {\n        const zIndex =\n          Math.max(\n            0,\n            ...controller.state.document.nodes.map((node) => node.zIndex),\n          ) + 1;\n        const position = requestedPosition ?? centerPosition();\n\n        if (file.mimeType === "application/pdf") {\n          const canonical: CanvasPdfNode = {\n            id: createCanvasPdfId(),\n            kind: "pdf",\n            fileId: file.id,\n            lastKnownName: file.name,\n            position,\n            size: { width: 300, height: 180 },\n            zIndex,\n          };\n          const runtime = createCanvasPdfFlowNode({\n            id: canonical.id,\n            fileId: canonical.fileId,\n            lastKnownName: canonical.lastKnownName,\n            position: canonical.position,\n            size: canonical.size,\n            zIndex: canonical.zIndex,\n          });\n          setNodes((current) => [\n            ...current.map((node) =>\n              node.selected ? { ...node, selected: false } : node,\n            ),\n            { ...runtime, selected: true },\n          ]);\n          controller.insertCanvasNodes([canonical]);\n          syncState();\n          scheduleSave();\n          setFilePickerOpen(false);\n          return;\n        }\n\n        const dependencies = projectFileImageDependenciesForCanvas(canvasId);\n        if (!dependencies || !isProjectFileImageMimeType(file.mimeType)) {\n          throw new Error("Этот тип файла нельзя добавить на холст.");\n        }\n        const canonical = createCanvasProjectFileImageNode({\n          file,\n          position,\n          zIndex,\n        });\n        const restored = await restoreProjectFileCanvasImageNodes(\n          { schemaVersion: 2, nodes: [canonical], edges: [] },\n          dependencies,\n          {\n            cachedAssetPayloads: variantPayloadsRef.current,\n            viewportZoom: shellStateRef.current.viewport.zoom,\n            allowDowngrade: false,\n          },\n        );\n        const runtime = restored.nodes[0];\n        if (!runtime) throw new Error("Project File image is unavailable.");\n        rememberImageRuntimePayload(variantPayloadsRef.current, runtime, {\n          workspaceId: shellWorkspaceId,\n          canvasId,\n        });\n        setNodes((current) => [\n          ...current.map((node) =>\n            node.selected ? { ...node, selected: false } : node,\n          ),\n          { ...runtime, selected: true },\n        ]);\n        controller.insertCanvasNodes([canonical]);\n        syncState();\n        scheduleSave();\n        setFilePickerOpen(false);\n      } catch (error: unknown) {\n        setShellState((current) => ({\n          ...current,\n          status: "error",\n          error:\n            error instanceof Error\n              ? error.message\n              : "Не удалось добавить файл на холст.",\n        }));\n      }\n    },\n    [\n      centerPosition,\n      controller,\n      projectFileImageDependenciesForCanvas,\n      scheduleSave,\n      setNodes,\n      shellWorkspaceId,\n      syncState,\n    ],\n  );\n\n  const ingestPdfFiles = useCallback(\n    async (files: readonly File[], client: FlowPosition | null) => {\n      if (!projectFileRepository || !projectId || !shellStateRef.current.canvasId)\n        return;\n      const pdfFiles = files.filter(\n        (file) =>\n          resolveProjectFileBrowserMimeType(file.name, file.type) ===\n          "application/pdf",\n      );\n      if (pdfFiles.length === 0) return;\n      const basePosition = client\n        ? screenToFlowRef.current(client)\n        : centerPosition();\n      try {\n        for (const [index, file] of pdfFiles.entries()) {\n          const prepared = await prepareProjectFileBrowserUpload(file);\n          if (prepared.mimeType !== "application/pdf") continue;\n          const uploaded = await projectFileRepository.uploadFile({\n            workspaceId: shellWorkspaceId,\n            projectId,\n            folderId: null,\n            ...prepared,\n          });\n          await createProjectFileNode(uploaded, {\n            x: basePosition.x + index * 36,\n            y: basePosition.y + index * 36,\n          });\n        }\n      } catch (error: unknown) {\n        setShellState((current) => ({\n          ...current,\n          status: "error",\n          error:\n            error instanceof Error ? error.message : "Не удалось загрузить PDF.",\n        }));\n      }\n    },\n    [\n      centerPosition,\n      createProjectFileNode,\n      projectFileRepository,\n      projectId,\n      shellWorkspaceId,\n    ],\n  );'''
+          text = text[:start] + new_block + text[end:]
+          text = replace_once(
+              text,
+              '''      void ingest(transferPayload(event.nativeEvent), "drop", {\n        x: event.clientX,\n        y: event.clientY,\n      });\n    },\n    [ingest],''',
+              '''      const client = { x: event.clientX, y: event.clientY };\n      void ingest(transferPayload(event.nativeEvent), "drop", client);\n      void ingestPdfFiles(Array.from(event.dataTransfer.files), client);\n    },\n    [ingest, ingestPdfFiles],''',
+              "drop pdf ingestion",
+          )
+          text = replace_once(
+              text,
+              '''      onAddImage={(files) =>\n        void ingest(\n          { files, items: [], types: files.map((file) => file.type) },\n          "file-picker",\n          null,\n        )\n      }\n      onAddText''',
+              '''      onAddImage={(files) =>\n        void ingest(\n          { files, items: [], types: files.map((file) => file.type) },\n          "file-picker",\n          null,\n        )\n      }\n      onAddPdf={(files) => void ingestPdfFiles(files, null)}\n      onAddText''',
+              "toolbar shell pdf prop",
+          )
+          text = replace_count(
+              text,
+              '''            onNodeDragStart={handleNodeDragStart}\n            onNodeDragStop={handleNodeDragStop}''',
+              '''            onNodeDragStart={handleNodeDragStart}\n            onNodeDragStop={handleNodeDragStop}\n            onNodeDoubleClick={(_event, node) => {\n              if (node.type === CANVAS_PDF_NODE_TYPE) void openPdfNode(node);\n            }}''',
+              2,
+              "reactflow pdf double click",
+          )
+          marker = '''  const desktopLayout = (content: React.ReactNode): React.JSX.Element => ('''
+          insert = '''  const pdfPanel = pdfViewer ? (\n    <aside className={styles.pdfViewerPanel} aria-label={`PDF ${pdfViewer.name}`}>\n      <header className={styles.pdfViewerHeader}>\n        <div>\n          <span>PDF</span>\n          <strong title={pdfViewer.name}>{pdfViewer.name}</strong>\n        </div>\n        <button\n          type="button"\n          aria-label="Закрыть PDF"\n          title="Закрыть PDF"\n          onClick={closePdfViewer}\n        >\n          ×\n        </button>\n      </header>\n      <div className={styles.pdfViewerBody}>\n        {pdfViewer.status === "loading" ? (\n          <p role="status">Открываем PDF…</p>\n        ) : pdfViewer.status === "error" ? (\n          <p role="alert">{pdfViewer.error ?? "Не удалось открыть PDF."}</p>\n        ) : pdfViewer.objectUrl ? (\n          <iframe\n            className={styles.pdfViewerFrame}\n            src={pdfViewer.objectUrl}\n            title={pdfViewer.name}\n          />\n        ) : null}\n      </div>\n    </aside>\n  ) : null;\n\n''' + marker
+          text = replace_once(text, marker, insert, "pdf viewer panel")
+          text = replace_once(
+              text,
+              '''      <section className={styles.desktopCanvasMain} aria-label="Холст">\n        {desktopToolbar}\n        {content}\n      </section>''',
+              '''      <section\n        className={`${styles.desktopCanvasMain} ${pdfViewer ? styles.desktopCanvasMainPdfOpen : ""}`}\n        aria-label="Холст"\n      >\n        {desktopToolbar}\n        {content}\n        {pdfPanel}\n      </section>''',
+              "desktop split viewer layout",
+          )
+          write(path, text)
+
+          # Styles for the PDF node and desktop split reader.
+          path = "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css"
+          text = read(path)
+          text = replace_once(
+              text,
+              '''.image {\n  display: block;''',
+              '''.pdfNodeFrame {\n  --node-visual-border: 1px solid var(--border, #d6d3d1);\n  --node-visual-radius: 10px;\n  --node-visual-background: var(--surface, #fbfbfa);\n  --node-visual-shadow: 0 8px 24px rgb(32 32 29 / 8%);\n}\n.pdfNodeFrame .nodeBody {\n  border: var(--node-visual-border);\n  border-radius: var(--node-visual-radius);\n  background: var(--node-visual-background);\n  box-shadow: var(--node-visual-shadow);\n}\n.pdfNodeContent {\n  box-sizing: border-box;\n  width: 100%;\n  height: 100%;\n  min-width: 0;\n  display: flex;\n  flex-direction: column;\n  align-items: flex-start;\n  justify-content: center;\n  gap: 8px;\n  padding: 18px;\n  color: var(--text, #20201d);\n  user-select: none;\n}\n.pdfNodeContent strong {\n  width: 100%;\n  overflow: hidden;\n  font-size: 14px;\n  line-height: 1.3;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n.pdfNodeContent > span:last-child {\n  color: var(--text-3, #7a7a72);\n  font-size: 11px;\n}\n.pdfNodeBadge {\n  display: inline-flex;\n  align-items: center;\n  min-height: 24px;\n  border-radius: 5px;\n  background: #b42318;\n  color: white;\n  padding: 0 7px;\n  font-size: 11px;\n  font-weight: 700;\n  letter-spacing: 0.05em;\n}\n.image {\n  display: block;''',
+              "pdf node styles",
+          )
+          text = replace_once(
+              text,
+              '''.desktopCanvasMain {\n  min-width: 0;\n  min-height: 0;\n  display: flex;''',
+              '''.desktopCanvasMain {\n  min-width: 0;\n  min-height: 0;\n  position: relative;\n  display: flex;''',
+              "desktop main position",
+          )
+          marker = '''.desktopCanvasToolbar {\n  min-width: 0;'''
+          insert = '''.desktopCanvasMainPdfOpen {\n  --canvas-pdf-panel-width: min(48%, 760px);\n}\n.desktopCanvasMainPdfOpen .canvasWrap {\n  margin-right: var(--canvas-pdf-panel-width);\n}\n.pdfViewerPanel {\n  position: absolute;\n  top: 38px;\n  right: 0;\n  bottom: 0;\n  z-index: 8;\n  width: var(--canvas-pdf-panel-width);\n  min-width: 360px;\n  display: flex;\n  flex-direction: column;\n  border-left: 1px solid var(--border, #deddd8);\n  background: var(--surface, #fbfbfa);\n  box-shadow: -12px 0 32px rgb(32 32 29 / 6%);\n}\n.pdfViewerHeader {\n  min-width: 0;\n  min-height: 48px;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 12px;\n  flex: 0 0 auto;\n  border-bottom: 1px solid var(--border, #deddd8);\n  padding: 7px 10px 7px 14px;\n}\n.pdfViewerHeader > div {\n  min-width: 0;\n  display: flex;\n  align-items: center;\n  gap: 9px;\n}\n.pdfViewerHeader span {\n  flex: 0 0 auto;\n  color: #b42318;\n  font-size: 11px;\n  font-weight: 700;\n}\n.pdfViewerHeader strong {\n  min-width: 0;\n  overflow: hidden;\n  font-size: 13px;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n.pdfViewerHeader button {\n  flex: 0 0 auto;\n  width: 32px;\n  height: 32px;\n  display: grid;\n  place-items: center;\n  border: 0;\n  border-radius: 6px;\n  background: transparent;\n  color: var(--text-2, #52524c);\n  font-size: 22px;\n  line-height: 1;\n  cursor: pointer;\n}\n.pdfViewerHeader button:hover,\n.pdfViewerHeader button:focus-visible {\n  outline: none;\n  background: var(--surface-2, #f1f1ef);\n}\n.pdfViewerBody {\n  min-width: 0;\n  min-height: 0;\n  flex: 1 1 auto;\n  display: grid;\n  place-items: center;\n  overflow: hidden;\n  background: #e8e8e5;\n}\n.pdfViewerBody p {\n  margin: 0;\n  padding: 20px;\n  color: var(--text-3, #7a7a72);\n  font-size: 12px;\n  text-align: center;\n}\n.pdfViewerFrame {\n  width: 100%;\n  height: 100%;\n  border: 0;\n  background: white;\n}\n''' + marker
+          text = replace_once(text, marker, insert, "pdf viewer styles")
+          text += '''\n@media (max-width: 767px) {\n  .desktopCanvasMainPdfOpen {\n    --canvas-pdf-panel-width: 100%;\n  }\n  .desktopCanvasMainPdfOpen .canvasWrap {\n    margin-right: 0;\n  }\n  .pdfViewerPanel {\n    min-width: 0;\n    width: 100%;\n  }\n}\n'''
+          write(path, text)
+
+          # SQL: validate PDF node shape and same-project application/pdf references.
+          Path("supabase/migrations/20260826193000_canvas_pdf_project_file_nodes.sql").write_text(r'''-- Canvas PDFs are shared Project Files referenced by fileId. The PDF bytes stay\n-- in project-files storage; Canvas persists only presentation metadata and identity.\n\ncreate or replace function public.validate_canvas_document_v2(\n  target_schema_version smallint,\n  target_document jsonb\n)\nreturns void\nlanguage plpgsql\nimmutable\nset search_path = pg_catalog, public, private\nas $$\ndeclare\n  normalized_document jsonb := target_document;\n  node_item jsonb;\nbegin\n  if jsonb_typeof(target_document) = 'object'\n     and jsonb_typeof(target_document -> 'nodes') = 'array' then\n    if exists (\n      select 1\n      from jsonb_array_elements(target_document -> 'nodes') as item\n      where item ->> 'kind' = 'image'\n        and (item ? 'assetId') = (item ? 'fileId')\n    ) then\n      raise exception using\n        errcode = '22023',\n        message = 'Canvas image must reference exactly one assetId or fileId';\n    end if;\n\n    for node_item in\n      select value\n      from jsonb_array_elements(target_document -> 'nodes')\n      where value ->> 'kind' = 'shape'\n    loop\n      if not private.canvas_object_has_exact_keys(\n        node_item,\n        array[\n          'id', 'kind', 'position', 'size', 'zIndex', 'shape', 'markdown', 'style'\n        ]\n      ) then\n        raise exception using errcode = '22023', message = 'invalid Canvas shape node';\n      end if;\n\n      if jsonb_typeof(node_item -> 'shape') is distinct from 'string'\n         or node_item ->> 'shape' not in ('rectangle', 'circle') then\n        raise exception using errcode = '22023', message = 'invalid Canvas shape variant';\n      end if;\n\n      if jsonb_typeof(node_item -> 'markdown') is distinct from 'string'\n         or private.canvas_utf16_length(node_item ->> 'markdown') > 250000 then\n        raise exception using errcode = '22023', message = 'invalid Canvas shape markdown';\n      end if;\n\n      perform private.assert_canvas_shape_style(node_item -> 'style');\n    end loop;\n\n    for node_item in\n      select value\n      from jsonb_array_elements(target_document -> 'nodes')\n      where value ->> 'kind' = 'pdf'\n    loop\n      if not private.canvas_object_has_exact_keys(\n        node_item,\n        array['id', 'kind', 'position', 'size', 'zIndex', 'fileId'],\n        array['lastKnownName']\n      ) then\n        raise exception using errcode = '22023', message = 'invalid Canvas PDF node';\n      end if;\n      if node_item ? 'lastKnownName'\n         and (\n           jsonb_typeof(node_item -> 'lastKnownName') is distinct from 'string'\n           or private.canvas_utf16_length(node_item ->> 'lastKnownName') > 255\n         ) then\n        raise exception using errcode = '22023', message = 'invalid Canvas PDF file name';\n      end if;\n    end loop;\n\n    select jsonb_set(\n      target_document,\n      '{nodes}',\n      coalesce(\n        jsonb_agg(\n          case\n            when item.value ->> 'kind' = 'image' and item.value ? 'fileId'\n              then (item.value - 'fileId')\n                || jsonb_build_object('assetId', item.value -> 'fileId')\n            when item.value ->> 'kind' = 'shape'\n              then (item.value - 'shape')\n                || jsonb_build_object('kind', 'text')\n                || jsonb_build_object(\n                  'style',\n                  ((item.value -> 'style') - 'fillColor')\n                    || jsonb_build_object(\n                      'backgroundColor',\n                      item.value -> 'style' -> 'fillColor'\n                    )\n                )\n            when item.value ->> 'kind' = 'pdf'\n              then (item.value - 'fileId' - 'lastKnownName')\n                || jsonb_build_object(\n                  'kind', 'image',\n                  'assetId', item.value -> 'fileId',\n                  'aspectRatioLocked', true\n                )\n            else item.value\n          end\n          order by item.ordinality\n        ),\n        '[]'::jsonb\n      )\n    )\n    into normalized_document\n    from jsonb_array_elements(target_document -> 'nodes')\n      with ordinality as item(value, ordinality);\n  end if;\n\n  perform private.validate_canvas_document_v2_legacy_b3(\n    target_schema_version,\n    normalized_document\n  );\nend;\n$$;\n\ncreate or replace function private.assert_canvas_project_file_references(\n  target_workspace_id uuid,\n  target_project_id text,\n  target_document jsonb\n)\nreturns void\nlanguage plpgsql\nstable\nset search_path = pg_catalog, public\nas $$\ndeclare\n  node_item jsonb;\n  target_file_id text;\nbegin\n  for node_item in\n    select value\n    from jsonb_array_elements(target_document -> 'nodes')\n    where value ->> 'kind' = 'image'\n      and value ? 'fileId'\n  loop\n    target_file_id := node_item ->> 'fileId';\n    if target_project_id is null\n       or not exists (\n         select 1\n         from public.project_files as file_row\n         where file_row.workspace_id = target_workspace_id\n           and file_row.project_id = target_project_id\n           and file_row.id::text = target_file_id\n           and file_row.ready_at is not null\n           and file_row.deleted_at is null\n           and file_row.mime_type like 'image/%'\n           and file_row.width is not null\n           and file_row.height is not null\n       ) then\n      raise exception using\n        errcode = '22023',\n        message = 'Canvas Project File reference is unavailable';\n    end if;\n  end loop;\n\n  for node_item in\n    select value\n    from jsonb_array_elements(target_document -> 'nodes')\n    where value ->> 'kind' = 'pdf'\n      and value ? 'fileId'\n  loop\n    target_file_id := node_item ->> 'fileId';\n    if target_project_id is null\n       or not exists (\n         select 1\n         from public.project_files as file_row\n         where file_row.workspace_id = target_workspace_id\n           and file_row.project_id = target_project_id\n           and file_row.id::text = target_file_id\n           and file_row.ready_at is not null\n           and file_row.deleted_at is null\n           and file_row.mime_type = 'application/pdf'\n       ) then\n      raise exception using\n        errcode = '22023',\n        message = 'Canvas PDF Project File reference is unavailable';\n    end if;\n  end loop;\nend;\n$$;\n\nrevoke all on function public.validate_canvas_document_v2(smallint, jsonb)\n  from public, anon, authenticated;\nrevoke all on function private.assert_canvas_project_file_references(uuid, text, jsonb)\n  from public, anon, authenticated;\n\ncomment on function public.validate_canvas_document_v2(smallint, jsonb) is\n  'Validates CanvasDocumentV2 including shapes, shared image references and PDF Project File nodes.';\ncomment on function private.assert_canvas_project_file_references(uuid, text, jsonb) is\n  'Canvas shared-file invariant: image and PDF fileId references must be ready, active and belong to the same workspace and Project.';\n'''.replace('\\n', '\n'))
+
+          # Unit coverage for canonical + runtime PDF behavior.
+          Path("tests/canvas-pdf-node.test.ts").write_text(r'''import { describe, expect, it } from "vitest";\n\nimport {\n  parseCanvasDocumentV1,\n  parseCanvasDocumentV2,\n} from "@/lib/canvas/canvas-document";\nimport {\n  CANVAS_PDF_NODE_TYPE,\n  canvasDocumentToPdfNodes,\n  runtimeNodesToCanvasDocument,\n} from "@/lib/canvas/react-flow-canvas-adapter";\n\nconst pdfNode = {\n  id: "pdf-node-1",\n  kind: "pdf" as const,\n  fileId: "63000000-0000-0000-0000-000000000010",\n  lastKnownName: "reference.pdf",\n  position: { x: 40, y: 60 },\n  size: { width: 300, height: 180 },\n  zIndex: 4,\n};\n\ndescribe("Canvas PDF nodes", () => {\n  it("accepts PDFs in V2 while keeping V1 strict", () => {\n    const v2 = parseCanvasDocumentV2({\n      schemaVersion: 2,\n      nodes: [pdfNode],\n      edges: [],\n    });\n    expect(v2.nodes[0]).toEqual(pdfNode);\n    expect(() =>\n      parseCanvasDocumentV1({ schemaVersion: 1, nodes: [pdfNode], edges: [] }),\n    ).toThrow(/requires CanvasDocumentV2/);\n  });\n\n  it("projects and serializes PDF geometry without embedding binary data", () => {\n    const document = parseCanvasDocumentV2({\n      schemaVersion: 2,\n      nodes: [pdfNode],\n      edges: [],\n    });\n    const [runtime] = canvasDocumentToPdfNodes(document);\n    expect(runtime?.type).toBe(CANVAS_PDF_NODE_TYPE);\n    expect(runtime?.data).toEqual({\n      fileId: pdfNode.fileId,\n      lastKnownName: pdfNode.lastKnownName,\n    });\n    if (!runtime) throw new Error("PDF runtime node missing");\n    const moved = {\n      ...runtime,\n      position: { x: 180, y: 220 },\n      width: 420,\n      height: 260,\n      style: { width: 420, height: 260 },\n    };\n    const saved = runtimeNodesToCanvasDocument(document, [moved]);\n    expect(saved.nodes[0]).toMatchObject({\n      kind: "pdf",\n      fileId: pdfNode.fileId,\n      lastKnownName: pdfNode.lastKnownName,\n      position: { x: 180, y: 220 },\n      size: { width: 420, height: 260 },\n    });\n    expect(JSON.stringify(saved)).not.toContain("blob:");\n  });\n});\n'''.replace('\\n', '\n'))
+
+          # Extend database invariant test with same-project PDF and wrong/cross-project rejection.
+          path = "tests/rls/canvas-project-file-references.test.sql"
+          text = read(path)
+          text = replace_once(
+              text,
+              '''  'image/png', 1024, 400, 300,\n  '13000000-0000-0000-0000-000000000001', now(), now()\n);''',
+              '''  'image/png', 1024, 400, 300,\n  '13000000-0000-0000-0000-000000000001', now(), now()\n),\n(\n  '63000000-0000-0000-0000-000000000010',\n  '23000000-0000-0000-0000-000000000001', 'project-a',\n  'same-project.pdf', 'same-project.pdf',\n  '23000000-0000-0000-0000-000000000001/63000000-0000-0000-0000-000000000010/original',\n  'application/pdf', 2048, null, null,\n  '13000000-0000-0000-0000-000000000001', now(), null\n),\n(\n  '63000000-0000-0000-0000-000000000011',\n  '23000000-0000-0000-0000-000000000001', 'project-b',\n  'other-project.pdf', 'other-project.pdf',\n  '23000000-0000-0000-0000-000000000001/63000000-0000-0000-0000-000000000011/original',\n  'application/pdf', 2048, null, null,\n  '13000000-0000-0000-0000-000000000001', now(), null\n);''',
+              "rls pdf fixtures",
+          )
+          marker = '''select * from finish();\nrollback;'''
+          insert = r'''select lives_ok(\n  $$\n  select * from public.save_canvas_document(\n    current_setting('test.b3_canvas_id')::uuid, 2, 'B3 Canvas',\n    '{"schemaVersion":2,"nodes":[{"id":"pdf-node-1","kind":"pdf","fileId":"63000000-0000-0000-0000-000000000010","lastKnownName":"same-project.pdf","position":{"x":0,"y":0},"size":{"width":300,"height":180},"zIndex":1}],"edges":[]}'::jsonb\n  )\n  $$,\n  'Canvas can save a ready PDF Project File from the same Project'\n);\n\nselect is(\n  (select document #>> '{nodes,0,fileId}' from public.canvases\n   where id = current_setting('test.b3_canvas_id')::uuid),\n  '63000000-0000-0000-0000-000000000010',\n  'Canvas persists durable PDF fileId'\n);\n\nselect throws_ok(\n  $$\n  select * from public.save_canvas_document(\n    current_setting('test.b3_canvas_id')::uuid, 3, 'B3 Canvas',\n    '{"schemaVersion":2,"nodes":[{"id":"pdf-node-2","kind":"pdf","fileId":"63000000-0000-0000-0000-000000000011","position":{"x":0,"y":0},"size":{"width":300,"height":180},"zIndex":1}],"edges":[]}'::jsonb\n  )\n  $$,\n  '22023',\n  'Canvas PDF Project File reference is unavailable',\n  'Canvas rejects a PDF Project File from another Project'\n);\n\nselect throws_ok(\n  $$\n  select * from public.save_canvas_document(\n    current_setting('test.b3_canvas_id')::uuid, 3, 'B3 Canvas',\n    '{"schemaVersion":2,"nodes":[{"id":"pdf-node-3","kind":"pdf","fileId":"63000000-0000-0000-0000-000000000001","position":{"x":0,"y":0},"size":{"width":300,"height":180},"zIndex":1}],"edges":[]}'::jsonb\n  )\n  $$,\n  '22023',\n  'Canvas PDF Project File reference is unavailable',\n  'Canvas rejects an image Project File used as a PDF node'\n);\n\nselect * from finish();\nrollback;'''.replace('\\n', '\n')
+          text = replace_once(text, marker, insert, "rls pdf assertions")
+          write(path, text)
+
+          # End-to-end: upload PDF from Canvas -> Files, restore node, open split reader, close it.
+          Path("tests/e2e/canvas-pdf-split-view.spec.ts").write_text(r'''import { expect, test, type Page, type Request } from "@playwright/test";\n\nimport { E2E_USER_EMAIL, E2E_USER_PASSWORD } from "./test-user";\n\nasync function signIn(page: Page): Promise<void> {\n  await page.goto("/prototype/desktop");\n  await expect(page).toHaveURL(/\\/sign-in\\?next=%2Fprototype%2Fdesktop$/);\n  await page.getByLabel("Email").fill(E2E_USER_EMAIL);\n  await page.getByLabel("Пароль").fill(E2E_USER_PASSWORD);\n  await page.getByRole("button", { name: "Войти", exact: true }).click();\n  await expect(page).toHaveURL(/\\/prototype\\/desktop$/);\n}\n\nfunction appNavigation(page: Page) {\n  return page.getByRole("navigation", { name: "Разделы приложения" });\n}\n\nfunction requestJson(request: Request): Record<string, unknown> {\n  try {\n    return request.postDataJSON() as Record<string, unknown>;\n  } catch {\n    return {};\n  }\n}\n\nfunction minimalPdf(): Buffer {\n  return Buffer.from(\n    "%PDF-1.4\\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\\n" +\n      "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\\n" +\n      "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 200]/Contents 4 0 R>>endobj\\n" +\n      "4 0 obj<</Length 0>>stream\\n\\nendstream\\nendobj\\n%%EOF\\n",\n    "utf8",\n  );\n}\n\ntest("Canvas PDF upload is stored in Files and opens in a closable split reader", async ({\n  page,\n}, testInfo) => {\n  const suffix = `${process.env.GITHUB_RUN_ID ?? Date.now()}-${testInfo.retry}`;\n  const fileName = `canvas-reader-${suffix}.pdf`;\n  const canvasTitle = `Canvas PDF ${suffix}`;\n  const savedDocuments: Array<{ nodes?: Array<Record<string, unknown>> }> = [];\n  let projectFileId: string | null = null;\n\n  page.on("request", (request) => {\n    const url = decodeURIComponent(request.url());\n    if (url.includes("/rest/v1/rpc/save_canvas_document")) {\n      const body = requestJson(request);\n      const document = body.target_document as\n        | { nodes?: Array<Record<string, unknown>> }\n        | undefined;\n      if (document) savedDocuments.push(document);\n    }\n  });\n\n  await signIn(page);\n  await appNavigation(page)\n    .getByRole("button", { name: "Холсты", exact: true })\n    .click();\n  await page.getByRole("button", { name: "Новый холст", exact: true }).click();\n  await page\n    .getByRole("textbox", { name: "Новый холст", exact: true })\n    .fill(canvasTitle);\n  await page.getByRole("button", { name: "Создать", exact: true }).click();\n\n  const reserveRequest = page.waitForRequest((request) => {\n    if (!request.url().includes("/rest/v1/rpc/reserve_project_file")) return false;\n    return requestJson(request).target_name === fileName;\n  });\n  const chooserPromise = page.waitForEvent("filechooser");\n  await page.getByRole("button", { name: "Добавить PDF", exact: true }).click();\n  const chooser = await chooserPromise;\n  await chooser.setFiles({\n    name: fileName,\n    mimeType: "application/pdf",\n    buffer: minimalPdf(),\n  });\n\n  const reserve = await reserveRequest;\n  const reserveBody = requestJson(reserve);\n  projectFileId =\n    typeof reserveBody.target_file_id === "string"\n      ? reserveBody.target_file_id\n      : null;\n  expect(projectFileId).toMatch(\n    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,\n  );\n\n  const pdfNode = page.locator(`[data-canvas-pdf-file-id="${projectFileId}"]`);\n  await expect(pdfNode).toBeVisible();\n  await expect\n    .poll(\n      () =>\n        savedDocuments.some((document) =>\n          document.nodes?.some(\n            (node) =>\n              node.kind === "pdf" &&\n              node.fileId === projectFileId &&\n              node.lastKnownName === fileName,\n          ),\n        ),\n      { timeout: 10_000 },\n    )\n    .toBe(true);\n\n  await appNavigation(page)\n    .getByRole("button", { name: "Файлы", exact: true })\n    .click();\n  await expect(page.getByText(fileName, { exact: true }).first()).toBeVisible();\n\n  await appNavigation(page)\n    .getByRole("button", { name: "Холсты", exact: true })\n    .click();\n  await page.getByRole("button", { name: canvasTitle, exact: true }).click();\n  const restoredPdfNode = page.locator(\n    `[data-canvas-pdf-file-id="${projectFileId}"]`,\n  );\n  await expect(restoredPdfNode).toBeVisible();\n  await restoredPdfNode.dblclick();\n\n  const reader = page.getByRole("complementary", { name: `PDF ${fileName}` });\n  await expect(reader).toBeVisible();\n  const frame = reader.locator("iframe");\n  await expect(frame).toBeVisible();\n  await expect(frame).toHaveAttribute("src", /^blob:/);\n\n  await reader.getByRole("button", { name: "Закрыть PDF" }).click();\n  await expect(reader).toHaveCount(0);\n  await expect(restoredPdfNode).toBeVisible();\n});\n'''.replace('\\n', '\n'))
+          PY
+      - name: Format changed files
+        run: |
+          pnpm exec prettier --write \
+            src/lib/canvas/canvas-document.ts \
+            src/lib/canvas/react-flow-canvas-adapter.ts \
+            src/lib/canvas/canvas-node-clipboard.ts \
+            src/prototype/canvases/canvas-project-file-picker.tsx \
+            src/prototype/canvases/canvas-desktop-composition.tsx \
+            src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx \
+            src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css \
+            supabase/migrations/20260826193000_canvas_pdf_project_file_nodes.sql \
+            tests/canvas-pdf-node.test.ts \
+            tests/rls/canvas-project-file-references.test.sql \
+            tests/e2e/canvas-pdf-split-view.spec.ts
+      - run: git diff --check
+      - run: pnpm test -- tests/canvas-pdf-node.test.ts tests/canvas-document-v2.test.ts tests/canvas-node-clipboard.test.ts
+      - run: pnpm typecheck
+      - name: Commit product changes
+        run: |
+          rm .github/workflows/apply-canvas-pdf.yml
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat: add PDF nodes and split reader to Canvas"
+          git push origin HEAD:feature/canvas-pdf-split-view
