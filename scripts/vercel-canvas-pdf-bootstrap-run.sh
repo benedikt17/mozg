@@ -45,3 +45,18 @@ Path('/tmp/canvas-pdf-bootstrap.sh').write_text(source)
 PY
 
 bash /tmp/canvas-pdf-bootstrap.sh
+
+echo '__MOZG_PDF_EXPORT_BEGIN__'
+tar -czf - \
+  src/lib/canvas/canvas-document.ts \
+  src/lib/canvas/react-flow-canvas-adapter.ts \
+  src/lib/canvas/canvas-node-clipboard.ts \
+  src/prototype/canvases/canvas-project-file-picker.tsx \
+  src/prototype/canvases/canvas-desktop-composition.tsx \
+  src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx \
+  src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css \
+  supabase/migrations/20260826160000_canvas_pdf_nodes.sql \
+  tests/canvas-document-v2.test.ts \
+  tests/canvas-node-frame.test.ts \
+  | base64 -w 2400 | awk '{printf "__MOZG_PDF_EXPORT_%04d__%s\n", NR, $0}'
+echo '__MOZG_PDF_EXPORT_END__'
