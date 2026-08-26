@@ -1,4 +1,5 @@
-export const MOBILE_SIDEBAR_EDGE_START_PX = 28;
+export const MOBILE_SIDEBAR_EDGE_MIN_START_PX = 24;
+export const MOBILE_SIDEBAR_EDGE_MAX_START_PX = 72;
 export const MOBILE_SIDEBAR_SWIPE_DISTANCE_PX = 56;
 export const MOBILE_SIDEBAR_MAX_WIDTH_PX = 340;
 export const MOBILE_SIDEBAR_WIDTH_RATIO = 0.88;
@@ -27,9 +28,11 @@ export function classifyMobileSidebarSwipe(
   if (horizontalDistance <= verticalDistance * 1.2) return null;
 
   if (!input.drawerOpen) {
-    return input.startX <= MOBILE_SIDEBAR_EDGE_START_PX && deltaX > 0
-      ? "open"
-      : null;
+    // Leave the first screen-edge pixels to iOS/Safari's native Back gesture.
+    const startsInSafeOpenZone =
+      input.startX >= MOBILE_SIDEBAR_EDGE_MIN_START_PX &&
+      input.startX <= MOBILE_SIDEBAR_EDGE_MAX_START_PX;
+    return startsInSafeOpenZone && deltaX > 0 ? "open" : null;
   }
 
   const drawerWidth = Math.min(

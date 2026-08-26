@@ -10,7 +10,11 @@ import {
 import { UiIcon } from "@/prototype/desktop-icons";
 import { PrototypeButton } from "@/prototype/desktop-ui";
 import { KnowledgeBackupButton } from "@/prototype/knowledge/knowledge-backup-button";
-import { classifyMobileSidebarSwipe } from "@/prototype/shell/mobile-sidebar-gesture";
+import {
+  classifyMobileSidebarSwipe,
+  MOBILE_SIDEBAR_EDGE_MAX_START_PX,
+  MOBILE_SIDEBAR_EDGE_MIN_START_PX,
+} from "@/prototype/shell/mobile-sidebar-gesture";
 import { createClient } from "@/lib/supabase/browser";
 import {
   shouldShowAuthenticatedAccountControls,
@@ -276,13 +280,23 @@ export function ApplicationHeader({
       state.activeSection === "canvases";
     if (!supportsLeftSidebarSwipe) return;
 
-    type Gesture = {
+    type PointerGesture = {
       pointerId: number;
       startX: number;
       startY: number;
       startedInsideDrawer: boolean;
     };
-    let gesture: Gesture | null = null;
+    type TouchGesture = {
+      identifier: number;
+      startTarget: EventTarget | null;
+      startX: number;
+      startY: number;
+      startedInsideDrawer: boolean;
+    };
+    let pointerGesture: PointerGesture | null = null;
+    let touchGesture: TouchGesture | null = null;
+    const preferNativeTouchEvents =
+      "ontouchstart" in window || window.navigator.maxTouchPoints > 0;
 
     const drawerIsOpen = (): boolean =>
       state.activeSection === "canvases"
@@ -305,36 +319,140 @@ export function ApplicationHeader({
       onToggleMobileToolSidebar?.();
     };
 
+    const applySwipe = (input: {
+      endX: number;
+      endY: number;
+      startX: number;
+      startY: number;
+      startedInsideDrawer: boolean;
+    }): boolean => {
+      const action = classifyMobileSidebarSwipe({
+        drawerOpen: drawerIsOpen(),
+        endX: input.endX,
+        endY: input.endY,
+        startedInsideDrawer: input.startedInsideDrawer,
+        startX: input.startX,
+        startY: input.startY,
+        viewportWidth: window.innerWidth,
+      });
+      if (action === "open") setDrawerOpen(true);
+      if (action === "close") setDrawerOpen(false);
+      return action !== null;
+    };
+
     const onPointerDown = (event: PointerEvent): void => {
-      if (!mobileViewport.matches || event.pointerType !== "touch") return;
-      const target = event.target;
-      gesture = {
+      if (
+        preferNativeTouchEvents ||
+        !mobileViewport.matches ||
+        event.pointerType !== "touch"
+      )
+        return;
+      pointerGesture = {
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
-        startedInsideDrawer: isInsideMobileSectionDrawer(target),
+        startedInsideDrawer: isInsideMobileSectionDrawer(event.target),
       };
     };
 
-    const clearGesture = (): void => {
-      gesture = null;
+    const clearPointerGesture = (): void => {
+      pointerGesture = null;
     };
 
     const onPointerUp = (event: PointerEvent): void => {
-      const current = gesture;
-      clearGesture();
+      const current = pointerGesture;
+      clearPointerGesture();
       if (!current || current.pointerId !== event.pointerId) return;
-      const action = classifyMobileSidebarSwipe({
-        drawerOpen: drawerIsOpen(),
+      applySwipe({
         endX: event.clientX,
         endY: event.clientY,
         startedInsideDrawer: current.startedInsideDrawer,
         startX: current.startX,
         startY: current.startY,
-        viewportWidth: window.innerWidth,
       });
-      if (action === "open") setDrawerOpen(true);
-      if (action === "close") setDrawerOpen(false);
+    };
+
+    const findTouch = (
+      touches: TouchList,
+      identifier: number,
+    ): Touch | null => {
+      for (let index = 0; index < touches.length; index += 1) {
+        const touch = touches.item(index);
+        if (touch?.identifier === identifier) return touch;
+      }
+      return null;
+    };
+
+    const onTouchStart = (event: TouchEvent): void => {
+      if (!preferNativeTouchEvents || !mobileViewport.matches) return;
+      if (event.touches.length !== 1) {
+        touchGesture = null;
+        return;
+      }
+      const touch = event.touches.item(0);
+      if (!touch) return;
+      touchGesture = {
+        identifier: touch.identifier,
+        startTarget: event.target,
+        startX: touch.clientX,
+        startY: touch.clientY,
+        startedInsideDrawer: isInsideMobileSectionDrawer(event.target),
+      };
+    };
+
+    const onTouchMove = (event: TouchEvent): void => {
+      const current = touchGesture;
+      if (!current || !mobileViewport.matches) return;
+      const touch = findTouch(event.touches, current.identifier);
+      if (!touch) return;
+      const deltaX = touch.clientX - current.startX;
+      const deltaY = touch.clientY - current.startY;
+      const horizontal =
+        Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY) * 1.1;
+      const eligible = drawerIsOpen()
+        ? current.startedInsideDrawer && deltaX < 0
+        : current.startX >= MOBILE_SIDEBAR_EDGE_MIN_START_PX &&
+          current.startX <= MOBILE_SIDEBAR_EDGE_MAX_START_PX &&
+          deltaX > 0;
+      if (horizontal && eligible) event.preventDefault();
+    };
+
+    const onTouchEnd = (event: TouchEvent): void => {
+      const current = touchGesture;
+      touchGesture = null;
+      if (!current || !mobileViewport.matches) return;
+      const touch = findTouch(event.changedTouches, current.identifier);
+      if (!touch) return;
+      const handledSwipe = applySwipe({
+        endX: touch.clientX,
+        endY: touch.clientY,
+        startedInsideDrawer: current.startedInsideDrawer,
+        startX: current.startX,
+        startY: current.startY,
+      });
+      if (handledSwipe) {
+        event.preventDefault();
+        return;
+      }
+
+      const deltaX = touch.clientX - current.startX;
+      const deltaY = touch.clientY - current.startY;
+      const isTap = Math.abs(deltaX) <= 12 && Math.abs(deltaY) <= 12;
+      if (
+        !isTap ||
+        !drawerIsOpen() ||
+        !isMobileSidebarNavigationButton(current.startTarget)
+      )
+        return;
+      if (!(current.startTarget instanceof Element)) return;
+      const button = current.startTarget.closest<HTMLButtonElement>("button");
+      if (!button || button.disabled) return;
+      event.preventDefault();
+      button.click();
+    };
+
+    const clearTouchGesture = (): void => {
+      touchGesture = null;
     };
 
     const onClick = (event: MouseEvent): void => {
@@ -345,12 +463,29 @@ export function ApplicationHeader({
 
     window.addEventListener("pointerdown", onPointerDown, true);
     window.addEventListener("pointerup", onPointerUp, true);
-    window.addEventListener("pointercancel", clearGesture, true);
+    window.addEventListener("pointercancel", clearPointerGesture, true);
+    window.addEventListener("touchstart", onTouchStart, {
+      capture: true,
+      passive: true,
+    });
+    window.addEventListener("touchmove", onTouchMove, {
+      capture: true,
+      passive: false,
+    });
+    window.addEventListener("touchend", onTouchEnd, {
+      capture: true,
+      passive: false,
+    });
+    window.addEventListener("touchcancel", clearTouchGesture, true);
     window.addEventListener("click", onClick);
     return () => {
       window.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("pointerup", onPointerUp, true);
-      window.removeEventListener("pointercancel", clearGesture, true);
+      window.removeEventListener("pointercancel", clearPointerGesture, true);
+      window.removeEventListener("touchstart", onTouchStart, true);
+      window.removeEventListener("touchmove", onTouchMove, true);
+      window.removeEventListener("touchend", onTouchEnd, true);
+      window.removeEventListener("touchcancel", clearTouchGesture, true);
       window.removeEventListener("click", onClick);
     };
   }, [

@@ -7,6 +7,10 @@
 }
 
 @media (max-width: 767px) {
+  :global(.desktop-prototype) {
+    overscroll-behavior-x: none;
+  }
+
   :global(.application-project-title) {
     display: flex;
     min-width: 0;
