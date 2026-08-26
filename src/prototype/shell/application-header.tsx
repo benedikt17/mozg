@@ -10,6 +10,7 @@ import {
 import { UiIcon } from "@/prototype/desktop-icons";
 import { PrototypeButton } from "@/prototype/desktop-ui";
 import { KnowledgeBackupButton } from "@/prototype/knowledge/knowledge-backup-button";
+import { classifyMobileSidebarSwipe } from "@/prototype/shell/mobile-sidebar-gesture";
 import { createClient } from "@/lib/supabase/browser";
 import {
   shouldShowAuthenticatedAccountControls,
@@ -135,6 +136,32 @@ function ApplicationSectionNavigation({
   );
 }
 
+function isInsideMobileSectionDrawer(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    Boolean(
+      target.closest(".tool-sidebar, [data-mobile-section-drawer='true']"),
+    )
+  );
+}
+
+function isMobileSidebarNavigationButton(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  const button = target.closest<HTMLButtonElement>("button");
+  if (!button || !isInsideMobileSectionDrawer(button)) return false;
+  if (button.closest('[role="menu"]') || button.hasAttribute("aria-haspopup"))
+    return false;
+  if (
+    button.classList.contains("tool-sidebar-item") ||
+    button.classList.contains("task-custom-list-select")
+  )
+    return true;
+  if (button.closest("[data-knowledge-document-id]")) {
+    return !button.classList.contains("knowledge-folder-menu-trigger");
+  }
+  return Boolean(button.closest("[data-canvas-id]"));
+}
+
 export function ApplicationHeader({
   state,
   dispatch,
@@ -240,6 +267,99 @@ export function ApplicationHeader({
     }
     toggleMobileSectionDrawer();
   };
+
+  useEffect(() => {
+    const mobileViewport = window.matchMedia("(max-width: 767px)");
+    const supportsLeftSidebarSwipe =
+      state.activeSection === "knowledge" ||
+      state.activeSection === "tasks" ||
+      state.activeSection === "canvases";
+    if (!supportsLeftSidebarSwipe) return;
+
+    type Gesture = {
+      pointerId: number;
+      startX: number;
+      startY: number;
+      startedInsideDrawer: boolean;
+    };
+    let gesture: Gesture | null = null;
+
+    const drawerIsOpen = (): boolean =>
+      state.activeSection === "canvases"
+        ? canvasDrawerOpen
+        : mobileToolSidebarOpen;
+
+    const setDrawerOpen = (open: boolean): void => {
+      if (!mobileViewport.matches || drawerIsOpen() === open) return;
+      if (state.activeSection === "canvases") {
+        const canvasToggle = window.document.querySelector<HTMLButtonElement>(
+          '[aria-label="Свернуть список холстов"], [aria-label="Развернуть список холстов"]',
+        );
+        if (!canvasToggle) return;
+        const currentlyOpen =
+          canvasToggle.getAttribute("aria-label") === "Свернуть список холстов";
+        if (currentlyOpen !== open) canvasToggle.click();
+        setCanvasDrawerOpen(open);
+        return;
+      }
+      onToggleMobileToolSidebar?.();
+    };
+
+    const onPointerDown = (event: PointerEvent): void => {
+      if (!mobileViewport.matches || event.pointerType !== "touch") return;
+      const target = event.target;
+      gesture = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        startedInsideDrawer: isInsideMobileSectionDrawer(target),
+      };
+    };
+
+    const clearGesture = (): void => {
+      gesture = null;
+    };
+
+    const onPointerUp = (event: PointerEvent): void => {
+      const current = gesture;
+      clearGesture();
+      if (!current || current.pointerId !== event.pointerId) return;
+      const action = classifyMobileSidebarSwipe({
+        drawerOpen: drawerIsOpen(),
+        endX: event.clientX,
+        endY: event.clientY,
+        startedInsideDrawer: current.startedInsideDrawer,
+        startX: current.startX,
+        startY: current.startY,
+        viewportWidth: window.innerWidth,
+      });
+      if (action === "open") setDrawerOpen(true);
+      if (action === "close") setDrawerOpen(false);
+    };
+
+    const onClick = (event: MouseEvent): void => {
+      if (!mobileViewport.matches || !drawerIsOpen()) return;
+      if (!isMobileSidebarNavigationButton(event.target)) return;
+      window.setTimeout(() => setDrawerOpen(false), 0);
+    };
+
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("pointerup", onPointerUp, true);
+    window.addEventListener("pointercancel", clearGesture, true);
+    window.addEventListener("click", onClick);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("pointerup", onPointerUp, true);
+      window.removeEventListener("pointercancel", clearGesture, true);
+      window.removeEventListener("click", onClick);
+    };
+  }, [
+    canvasDrawerOpen,
+    mobileToolSidebarOpen,
+    onToggleMobileToolSidebar,
+    state.activeSection,
+  ]);
+
   return (
     <header className="application-header">
       <button
