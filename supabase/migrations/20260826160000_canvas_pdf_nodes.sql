@@ -24,6 +24,39 @@ begin
 
     for node_item in
       select value from jsonb_array_elements(target_document -> 'nodes')
+      where value ->> 'kind' = 'shape'
+    loop
+      if not private.canvas_object_has_exact_keys(
+        node_item,
+        array[
+          'id',
+          'kind',
+          'position',
+          'size',
+          'zIndex',
+          'shape',
+          'markdown',
+          'style'
+        ]
+      ) then
+        raise exception using errcode = '22023', message = 'invalid Canvas shape node';
+      end if;
+
+      if jsonb_typeof(node_item -> 'shape') is distinct from 'string'
+         or node_item ->> 'shape' not in ('rectangle', 'circle') then
+        raise exception using errcode = '22023', message = 'invalid Canvas shape variant';
+      end if;
+
+      if jsonb_typeof(node_item -> 'markdown') is distinct from 'string'
+         or private.canvas_utf16_length(node_item ->> 'markdown') > 250000 then
+        raise exception using errcode = '22023', message = 'invalid Canvas shape markdown';
+      end if;
+
+      perform private.assert_canvas_shape_style(node_item -> 'style');
+    end loop;
+
+    for node_item in
+      select value from jsonb_array_elements(target_document -> 'nodes')
       where value ->> 'kind' = 'pdf'
     loop
       if not private.canvas_object_has_exact_keys(
