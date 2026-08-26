@@ -98,7 +98,9 @@ test("phone sidebar destination activates and closes on one tap", async ({
   }
 
   const documentRow = tree.locator("[data-knowledge-document-id]").first();
-  const documentButton = documentRow.locator("button.knowledge-tree-row.document");
+  const documentButton = documentRow.locator(
+    "button.knowledge-tree-row.document",
+  );
   await expect(documentButton).toBeVisible();
   const title = (await documentButton.textContent())?.trim();
   expect(title).toBeTruthy();
