@@ -1,16 +1,17 @@
 name: Finalize Canvas PDF runtime
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/canvas-pdf-split-view
+      - refactor/prototype-state-root
+    types: [reopened]
 
 permissions:
   contents: write
 
 jobs:
   finalize:
-    if: github.actor != 'github-actions[bot]'
+    if: github.event.pull_request.head.ref == 'feature/canvas-pdf-split-view'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
