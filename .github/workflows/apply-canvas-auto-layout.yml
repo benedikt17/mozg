@@ -23,64 +23,26 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Patch toolbar
+      - name: Patch and format Canvas auto layout
         shell: bash
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('src/prototype/canvases/canvas-desktop-composition.tsx')
-          text = path.read_text()
-          import_anchor = 'import { CanvasProjectFilePicker } from "@/prototype/canvases/canvas-project-file-picker";\n'
-          import_line = 'import { CanvasAutoLayoutButton } from "@/prototype/canvases/canvas-auto-layout-button";\n'
-          if import_line not in text:
-              text = text.replace(import_anchor, import_anchor + import_line, 1)
-          anchor = '''        <IconButton
-          className="knowledge-content-history-action"
-          disabled={!isReady || !canRedo}
-          icon={<UiIcon name="arrow-right" />}
-          label="Повторить"
-          onClick={onRedo}
-          onMouseDown={(event) => event.preventDefault()}
-          title="Повторить"
-          variant="quiet"
-        />
-        <IconButton
-          disabled={!isReady}
-          icon={<UiIcon name="file-plus" />}
-'''
-          replacement = '''        <IconButton
-          className="knowledge-content-history-action"
-          disabled={!isReady || !canRedo}
-          icon={<UiIcon name="arrow-right" />}
-          label="Повторить"
-          onClick={onRedo}
-          onMouseDown={(event) => event.preventDefault()}
-          title="Повторить"
-          variant="quiet"
-        />
-        <CanvasAutoLayoutButton disabled={!isReady} />
-        <IconButton
-          disabled={!isReady}
-          icon={<UiIcon name="file-plus" />}
-'''
-          if '<CanvasAutoLayoutButton disabled={!isReady} />' not in text:
-              if anchor not in text:
-                  raise SystemExit('toolbar anchor not found')
-              text = text.replace(anchor, replacement, 1)
-          path.write_text(text)
-          PY
+          echo 'ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCnBhdGggPSBQYXRoKCJzcmMvcHJvdG90eXBlL2NhbnZhc2VzL2NhbnZhcy1kZXNrdG9wLWNvbXBvc2l0aW9uLnRzeCIpCnRleHQgPSBwYXRoLnJlYWRfdGV4dCgpCmltcG9ydF9hbmNob3IgPSAnaW1wb3J0IHsgQ2FudmFzUHJvamVjdEZpbGVQaWNrZXIgfSBmcm9tICJAL3Byb3RvdHlwZS9jYW52YXNlcy9jYW52YXMtcHJvamVjdC1maWxlLXBpY2tlciI7XG4nCmltcG9ydF9saW5lID0gJ2ltcG9ydCB7IENhbnZhc0F1dG9MYXlvdXRCdXR0b24gfSBmcm9tICJAL3Byb3RvdHlwZS9jYW52YXNlcy9jYW52YXMtYXV0by1sYXlvdXQtYnV0dG9uIjtcbicKaWYgaW1wb3J0X2xpbmUgbm90IGluIHRleHQ6CiAgICBpZiBpbXBvcnRfYW5jaG9yIG5vdCBpbiB0ZXh0OgogICAgICAgIHJhaXNlIFN5c3RlbUV4aXQoImltcG9ydCBhbmNob3Igbm90IGZvdW5kIikKICAgIHRleHQgPSB0ZXh0LnJlcGxhY2UoaW1wb3J0X2FuY2hvciwgaW1wb3J0X2FuY2hvciArIGltcG9ydF9saW5lLCAxKQphbmNob3IgPSAnICAgICAgICA8SWNvbkJ1dHRvblxuICAgICAgICAgIGRpc2FibGVkPXshaXNSZWFkeX1cbiAgICAgICAgICBpY29uPXs8VWlJY29uIG5hbWU9ImZpbGUtcGx1cyIgLz59XG4nCmlmICc8Q2FudmFzQXV0b0xheW91dEJ1dHRvbiBkaXNhYmxlZD17IWlzUmVhZHl9IC8+JyBub3QgaW4gdGV4dDoKICAgIGlmIGFuY2hvciBub3QgaW4gdGV4dDoKICAgICAgICByYWlzZSBTeXN0ZW1FeGl0KCJ0b29sYmFyIGFuY2hvciBub3QgZm91bmQiKQogICAgdGV4dCA9IHRleHQucmVwbGFjZShhbmNob3IsICcgICAgICAgIDxDYW52YXNBdXRvTGF5b3V0QnV0dG9uIGRpc2FibGVkPXshaXNSZWFkeX0gLz5cbicgKyBhbmNob3IsIDEpCnBhdGgud3JpdGVfdGV4dCh0ZXh0KQo=' | base64 -d | python
           pnpm exec prettier --write \
             src/lib/canvas/canvas-auto-layout.ts \
             src/prototype/canvases/canvas-auto-layout-button.tsx \
             src/prototype/canvases/canvas-desktop-composition.tsx \
             tests/canvas-auto-layout.test.ts
           git diff --check
-      - name: Commit toolbar patch
+      - name: Commit Canvas auto layout patch
         shell: bash
         run: |
           if git diff --quiet; then exit 0; fi
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add src/lib/canvas/canvas-auto-layout.ts src/prototype/canvases/canvas-auto-layout-button.tsx src/prototype/canvases/canvas-desktop-composition.tsx tests/canvas-auto-layout.test.ts
+          git add \
+            src/lib/canvas/canvas-auto-layout.ts \
+            src/prototype/canvases/canvas-auto-layout-button.tsx \
+            src/prototype/canvases/canvas-desktop-composition.tsx \
+            tests/canvas-auto-layout.test.ts
           git commit -m "feat: wire Canvas auto layout toolbar"
           git push origin HEAD:feat/canvas-auto-layout
