@@ -10,6 +10,73 @@ start = workflow.index(start_marker) + len(start_marker)
 end = workflow.index(end_marker, start)
 lines = workflow[start:end].splitlines()
 script = "\n".join(line[10:] if line.startswith("          ") else line for line in lines) + "\n"
+old_helper = '''def replace_once(text, old, new, label):
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"{label}: expected 1 match, got {count}")
+    return text.replace(old, new, 1)
+'''
+new_helper = '''def replace_once(text, old, new, label):
+    count = text.count(old)
+    if count == 1:
+        return text.replace(old, new, 1)
+    if label == "toolbar hidden pdf input":
+        actual = ''' + '"""' + '''        <input
+          accept="image/png,image/jpeg,image/webp"
+          hidden
+          multiple
+          onChange={(event) => {
+            const files = Array.from(event.target.files ?? []);
+            event.target.value = "";
+            if (files.length > 0) onAddImage(files);
+          }}
+          ref={fileInputRef}
+          type="file"
+        />''' + '"""' + '''
+        replacement = actual + ''' + '"""' + '''
+        <input
+          accept="application/pdf,.pdf"
+          hidden
+          multiple
+          onChange={(event) => {
+            const files = Array.from(event.target.files ?? []);
+            event.target.value = "";
+            if (files.length > 0) onAddPdf(files);
+          }}
+          ref={pdfInputRef}
+          type="file"
+        />''' + '"""' + '''
+        if text.count(actual) != 1:
+            raise SystemExit(f"{label}: current toolbar input not found")
+        return text.replace(actual, replacement, 1)
+    if label == "toolbar pdf button":
+        actual = ''' + '"""' + '''        <IconButton
+          disabled={!isReady}
+          icon={<UiIcon name="file-plus" />}
+          label={copy.addImage}
+          onClick={() => fileInputRef.current?.click()}
+          title={copy.addImage}
+          type="button"
+          variant="quiet"
+        />''' + '"""' + '''
+        replacement = actual + ''' + '"""' + '''
+        <IconButton
+          disabled={!isReady}
+          icon={<UiIcon name="file" />}
+          label="Добавить PDF"
+          onClick={() => pdfInputRef.current?.click()}
+          title="Добавить PDF"
+          type="button"
+          variant="quiet"
+        />''' + '"""' + '''
+        if text.count(actual) != 1:
+            raise SystemExit(f"{label}: current toolbar button not found")
+        return text.replace(actual, replacement, 1)
+    raise SystemExit(f"{label}: expected 1 match, got {count}")
+'''
+if old_helper not in script:
+    raise SystemExit("replace_once helper marker not found")
+script = script.replace(old_helper, new_helper, 1)
 exec(compile(script, '/tmp/apply-canvas-pdf.py', 'exec'), {'__name__': '__main__'})
 PY
 
