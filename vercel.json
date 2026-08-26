@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "bash scripts/vercel-canvas-pdf-bootstrap.sh",
+  "buildCommand": "bash scripts/vercel-canvas-pdf-bootstrap-run.sh",
   "crons": [
     {
       "path": "/api/cron/knowledge-backup/daily",
