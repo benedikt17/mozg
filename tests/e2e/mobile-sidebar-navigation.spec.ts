@@ -86,9 +86,7 @@ test("phone sidebar destination activates and closes on one tap", async ({
     .getByRole("button", { name: "Знания", exact: true })
     .click();
 
-  await page
-    .getByRole("button", { name: "Открыть панель раздела" })
-    .click();
+  await page.getByRole("button", { name: "Открыть панель раздела" }).click();
   const documentButton = page.locator(".knowledge-tree-row.document").first();
   const title = (await documentButton.textContent())?.trim();
   expect(title).toBeTruthy();
