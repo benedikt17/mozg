@@ -7,10 +7,13 @@ import {
   Position,
   useInternalNode,
   useNodeId,
+  useStore,
+  useStoreApi,
 } from "@xyflow/react";
 import {
   cloneElement,
   isValidElement,
+  useEffect,
   type CSSProperties,
   type ReactNode,
 } from "react";
@@ -21,6 +24,10 @@ import {
   CANVAS_CONNECTION_HANDLE_GAP,
   CANVAS_CONNECTION_HANDLE_RADIUS,
 } from "@/lib/canvas/canvas-edge-geometry";
+import {
+  canvasBranchRuntimeState,
+  projectCanvasBranchCollapse,
+} from "@/lib/canvas/canvas-branch-collapse";
 import styles from "./infinite-canvas-local-shell.module.css";
 
 export type CanvasNodeFrameProps = {
@@ -83,6 +90,30 @@ const CONNECTION_HANDLE_STYLE = {
   "--connection-handle-gap": `${CANVAS_CONNECTION_HANDLE_GAP}px`,
   "--connection-handle-center-offset": `${CANVAS_CONNECTION_HANDLE_CENTER_OFFSET}px`,
 } as CSSProperties;
+
+const BRANCH_CONTROL_STYLE: CSSProperties = {
+  position: "absolute",
+  top: -34,
+  right: -34,
+  zIndex: 12,
+  minWidth: 28,
+  height: 28,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  border: "2px solid currentColor",
+  borderRadius: 999,
+  background: "rgba(255, 255, 255, 0.94)",
+  color: "#292524",
+  padding: "0 6px",
+  boxShadow: "0 2px 8px rgba(28, 25, 23, 0.10)",
+  font: "inherit",
+  fontSize: 14,
+  fontWeight: 650,
+  lineHeight: 1,
+  cursor: "pointer",
+  pointerEvents: "auto",
+};
 
 export function ConnectionHandleLayer({
   selected,
@@ -278,6 +309,75 @@ function withCenteredTextContent(
   );
 }
 
+function BranchCollapseControl({
+  nodeId,
+  collapsed,
+  directChildCount,
+}: {
+  nodeId: string;
+  collapsed: boolean;
+  directChildCount: number;
+}): React.JSX.Element {
+  const storeApi = useStoreApi();
+  const topologySignature = useStore((state) =>
+    state.edges.map((edge) => `${edge.source}>${edge.target}`).join("|"),
+  );
+
+  const applyProjection = (toggle: boolean): void => {
+    const state = storeApi.getState();
+    const projected = projectCanvasBranchCollapse(
+      state.nodes,
+      state.edges,
+      toggle ? nodeId : undefined,
+    );
+    state.onNodesChange?.(
+      projected.nodes.map((item) => ({
+        id: item.id,
+        type: "replace" as const,
+        item,
+      })),
+    );
+    state.onEdgesChange?.(
+      projected.edges.map((item) => ({
+        id: item.id,
+        type: "replace" as const,
+        item,
+      })),
+    );
+  };
+
+  useEffect(() => {
+    if (!collapsed) return;
+    applyProjection(false);
+    // Re-project a collapsed branch when its edge topology changes so newly
+    // connected descendants are hidden immediately as part of the branch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collapsed, topologySignature]);
+
+  const label = collapsed
+    ? `Развернуть ${directChildCount} дочерних объектов`
+    : `Свернуть ${directChildCount} дочерних объектов`;
+
+  return (
+    <button
+      aria-expanded={!collapsed}
+      aria-label={label}
+      className="nodrag nopan nowheel"
+      data-canvas-branch-control="true"
+      onClick={(event) => {
+        event.stopPropagation();
+        applyProjection(true);
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
+      style={BRANCH_CONTROL_STYLE}
+      title={label}
+      type="button"
+    >
+      {collapsed ? `+${directChildCount}` : "−"}
+    </button>
+  );
+}
+
 export function CanvasNodeFrame({
   children,
   selected,
@@ -292,6 +392,16 @@ export function CanvasNodeFrame({
 }: CanvasNodeFrameProps): React.JSX.Element {
   const nodeId = useNodeId();
   const internalNode = useInternalNode(nodeId ?? "");
+  const directChildCount = useStore((state) => {
+    if (!nodeId) return 0;
+    return new Set(
+      state.edges
+        .filter((edge) => edge.source === nodeId && edge.target !== nodeId)
+        .map((edge) => edge.target),
+    ).size;
+  });
+  const collapsed =
+    canvasBranchRuntimeState(internalNode?.data)?.collapsed ?? false;
   const isTextFrame =
     centerTextContent ?? Boolean(className?.includes(styles.textNodeFrame));
   const textAlign =
@@ -321,6 +431,13 @@ export function CanvasNodeFrame({
         minHeight={minHeight}
       />
       {connectionHandleLayer}
+      {nodeId && directChildCount > 0 ? (
+        <BranchCollapseControl
+          collapsed={collapsed}
+          directChildCount={directChildCount}
+          nodeId={nodeId}
+        />
+      ) : null}
       {renderedToolbar ? (
         <NodeToolbarSlot>{renderedToolbar}</NodeToolbarSlot>
       ) : null}
