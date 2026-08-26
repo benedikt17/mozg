@@ -198,6 +198,12 @@ new_helper = '''def replace_once(text, old, new, label):
         if text.count(actual) != 1:
             raise SystemExit(f"{label}: TextNodeBody marker not found")
         return text.replace(actual, component + actual, 1)
+    if label == "pdf flow type import":
+        actual = "  type CanvasTextFlowNode,"
+        replacement = "  type CanvasPdfFlowNode," + chr(10) + actual
+        if text.count(actual) != 1:
+            raise SystemExit(f"{label}: CanvasTextFlowNode import marker not found")
+        return text.replace(actual, replacement, 1)
     if label == "pdf nodeTypes":
         actual = "  [CANVAS_IMAGE_NODE_TYPE]: ImageNodeBody,"
         replacement = actual + chr(10) + "  [CANVAS_PDF_NODE_TYPE]: PdfNodeBody,"
