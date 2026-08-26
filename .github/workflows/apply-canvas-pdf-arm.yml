@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - feature/canvas-pdf-split-view
+  pull_request:
+    branches:
+      - refactor/prototype-state-root
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
