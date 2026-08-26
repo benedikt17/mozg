@@ -1,0 +1,233 @@
+name: Temporary iOS edge and folder tap patch
+
+on:
+  push:
+    branches:
+      - fix/ios-mobile-edge-folder-tap
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/ios-mobile-edge-folder-tap
+          fetch-depth: 0
+      - name: Apply product patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f"Expected exactly one match in {path}, got {text.count(old)}")
+              file.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              "src/prototype/shell/mobile-sidebar-gesture.ts",
+              "export const MOBILE_SIDEBAR_EDGE_MIN_START_PX = 24;",
+              "export const MOBILE_SIDEBAR_EDGE_MIN_START_PX = 0;",
+          )
+          replace_once(
+              "src/prototype/shell/mobile-sidebar-gesture.ts",
+              "    // Leave the first screen-edge pixels to iOS/Safari's native Back gesture.\n",
+              "    // The mobile shell suppresses horizontal history overscroll, so the app can own the physical edge.\n",
+          )
+
+          navigation_fn = '''function isMobileSidebarNavigationButton(target: EventTarget | null): boolean {
+            if (!(target instanceof Element)) return false;
+            const button = target.closest<HTMLButtonElement>("button");
+            if (!button || !isInsideMobileSectionDrawer(button)) return false;
+            if (button.closest('[role="menu"]') || button.hasAttribute("aria-haspopup"))
+              return false;
+            if (
+              button.classList.contains("tool-sidebar-item") ||
+              button.classList.contains("task-custom-list-select")
+            )
+              return true;
+            if (button.closest("[data-knowledge-document-id]")) {
+              return !button.classList.contains("knowledge-folder-menu-trigger");
+            }
+            return Boolean(button.closest("[data-canvas-id]"));
+          }
+          '''
+          touch_fn = navigation_fn + '''
+          function isMobileSidebarImmediateTouchButton(
+            target: EventTarget | null,
+          ): boolean {
+            if (isMobileSidebarNavigationButton(target)) return true;
+            if (!(target instanceof Element)) return false;
+            const button = target.closest<HTMLButtonElement>("button");
+            if (!button || !isInsideMobileSectionDrawer(button)) return false;
+            if (button.closest('[role="menu"]') || button.hasAttribute("aria-haspopup"))
+              return false;
+            return (
+              button.classList.contains("knowledge-tree-row") &&
+              button.classList.contains("folder")
+            );
+          }
+          '''
+          replace_once(
+              "src/prototype/shell/application-header.tsx",
+              navigation_fn,
+              touch_fn,
+          )
+          replace_once(
+              "src/prototype/shell/application-header.tsx",
+              "        !isMobileSidebarNavigationButton(current.startTarget)\n",
+              "        !isMobileSidebarImmediateTouchButton(current.startTarget)\n",
+          )
+          replace_once(
+              "src/prototype/shell/application-header.tsx",
+              "      {hasMobileSectionDrawer ? (\n        <button\n",
+              "      {hasMobileSectionDrawer && !mobileDrawerOpen ? (\n        <span className=\"mobile-sidebar-edge-hint\" aria-hidden=\"true\" />\n      ) : null}\n      {hasMobileSectionDrawer ? (\n        <button\n",
+          )
+
+          css_anchor = '''  :global(.mobile-tool-sidebar-trigger:active),
+            :global(.mobile-tool-sidebar-trigger[aria-expanded="true"]) {
+              background: var(--surface-selected) !important;
+            }
+          '''
+          css_replacement = css_anchor + '''
+
+            :global(.mobile-sidebar-edge-hint) {
+              position: fixed;
+              top: 50%;
+              left: 0;
+              z-index: 74;
+              width: 4px;
+              height: 64px;
+              border-radius: 0 999px 999px 0;
+              background: var(--text-3);
+              opacity: 0.32;
+              pointer-events: none;
+              transform: translateY(-50%);
+            }
+          '''
+          replace_once(
+              "src/prototype/shell/mobile-navigation.module.css",
+              css_anchor,
+              css_replacement,
+          )
+
+          unit_old = '''  it("keeps the first iOS browser-back pixels reserved for Safari", () => {
+            expect(MOBILE_SIDEBAR_EDGE_MIN_START_PX).toBeGreaterThanOrEqual(20);
+            expect(MOBILE_SIDEBAR_EDGE_MAX_START_PX).toBeGreaterThanOrEqual(64);
+            expect(
+              classifyMobileSidebarSwipe({
+                ...base,
+                startX: 8,
+                endX: 90,
+              }),
+            ).toBeNull();
+            expect(
+              classifyMobileSidebarSwipe({
+                ...base,
+                startX: 40,
+                endX: 120,
+              }),
+            ).toBe("open");
+            expect(
+              classifyMobileSidebarSwipe({
+                ...base,
+                startX: 96,
+                endX: 180,
+              }),
+            ).toBeNull();
+          });
+          '''
+          unit_new = '''  it("opens from the physical left edge and keeps a bounded start zone", () => {
+            expect(MOBILE_SIDEBAR_EDGE_MIN_START_PX).toBe(0);
+            expect(MOBILE_SIDEBAR_EDGE_MAX_START_PX).toBeGreaterThanOrEqual(64);
+            expect(
+              classifyMobileSidebarSwipe({
+                ...base,
+                startX: 0,
+                endX: 84,
+              }),
+            ).toBe("open");
+            expect(
+              classifyMobileSidebarSwipe({
+                ...base,
+                startX: 40,
+                endX: 120,
+              }),
+            ).toBe("open");
+            expect(
+              classifyMobileSidebarSwipe({
+                ...base,
+                startX: 96,
+                endX: 180,
+              }),
+            ).toBeNull();
+          });
+          '''
+          replace_once("tests/mobile-sidebar-gesture.test.ts", unit_old, unit_new)
+
+          e2e = Path("tests/e2e/mobile-sidebar-navigation.spec.ts")
+          text = e2e.read_text()
+          count = text.count("    startX: 32,")
+          if count != 3:
+              raise SystemExit(f"Expected 3 existing safe-edge E2E starts, got {count}")
+          text = text.replace("    startX: 32,", "    startX: 1,")
+          touch_test = '''
+
+          test.describe("native mobile touch", () => {
+            test.use({ hasTouch: true });
+
+            test("phone knowledge folder toggles on one native touch without closing drawer", async ({
+              page,
+            }) => {
+              await signInOnPhone(page);
+              await page
+                .getByRole("navigation", { name: "Основные разделы" })
+                .getByRole("button", { name: "Знания", exact: true })
+                .click();
+
+              const trigger = drawerTrigger(page);
+              await trigger.click();
+              await expect(trigger).toHaveAttribute("aria-expanded", "true");
+              await expect(page.locator(".mobile-sidebar-edge-hint")).toHaveCount(0);
+
+              const tree = page.getByRole("navigation", { name: "Иерархия документов" });
+              const folderButton = tree.locator(".knowledge-tree-row.folder").first();
+              await expect(folderButton).toBeVisible();
+              const before = await folderButton.getAttribute("aria-expanded");
+              const box = await folderButton.boundingBox();
+              expect(box).not.toBeNull();
+              if (!box) return;
+
+              await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+
+              await expect(folderButton).toHaveAttribute(
+                "aria-expanded",
+                before === "true" ? "false" : "true",
+              );
+              await expect(trigger).toHaveAttribute("aria-expanded", "true");
+            });
+          });
+          '''
+          if 'test.describe("native mobile touch"' in text:
+              raise SystemExit("Native touch test already exists")
+          e2e.write_text(text.rstrip() + touch_test + "\n")
+          PY
+          git diff --check
+      - name: Commit product changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/prototype/shell/mobile-sidebar-gesture.ts \
+            src/prototype/shell/application-header.tsx \
+            src/prototype/shell/mobile-navigation.module.css \
+            tests/mobile-sidebar-gesture.test.ts \
+            tests/e2e/mobile-sidebar-navigation.spec.ts
+          git commit -m "fix: restore physical-edge swipe and one-tap folders"
+          git push origin HEAD:fix/ios-mobile-edge-folder-tap
