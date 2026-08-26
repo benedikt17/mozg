@@ -99,6 +99,74 @@ new_helper = '''def replace_once(text, old, new, label):
               void openPdfNode(node);
             }}''' + '"""' + '''
         return text.replace(actual, actual + handler)
+    if label == "shell toolbar pdf prop":
+        actual = "      onAddImage={(files) =>"
+        replacement = "      onAddPdf={(files) => void uploadPdfFiles(files)}" + chr(10) + actual
+        if text.count(actual) != 1:
+            raise SystemExit(f"{label}: current toolbar onAddImage prop not found")
+        return text.replace(actual, replacement, 1)
+    if label == "shell workspace split open":
+        actual = ''' + '"""' + '''  if (embedded) {
+    return desktopLayout(
+      <div className={styles.canvasWrap}>
+        <div
+          ref={wrapperRef}''' + '"""' + '''
+        replacement = ''' + '"""' + '''  if (embedded) {
+    return desktopLayout(
+      <div
+        className={`${styles.canvasWorkspace}${openPdf ? ` ${styles.canvasWorkspaceSplit}` : ""}`}
+      >
+        <div className={styles.canvasWrap}>
+          <div
+            ref={wrapperRef}''' + '"""' + '''
+        if text.count(actual) != 1:
+            raise SystemExit(f"{label}: active embedded Canvas wrapper not found")
+        return text.replace(actual, replacement, 1)
+    if label == "shell reader panel":
+        actual = ''' + '"""' + '''          <div className={styles.canvasHint}>
+            {dropActive
+              ? "Drop PNG, JPEG or WebP here"
+              : "Paste, drop or choose an image · drag and resize are saved"}
+          </div>
+        </div>
+      </div>,
+    );
+  }
+  return (''' + '"""' + '''
+        replacement = ''' + '"""' + '''            <div className={styles.canvasHint}>
+              {dropActive
+                ? "Drop PNG, JPEG, WebP or PDF here"
+                : "Paste, drop or choose a file · drag and resize are saved"}
+            </div>
+          </div>
+        </div>
+        {openPdf ? (
+          <aside className={styles.pdfReader} aria-label="Просмотр PDF">
+            <header className={styles.pdfReaderHeader}>
+              <strong title={openPdf.name}>{openPdf.name}</strong>
+              <button
+                type="button"
+                onClick={closePdfReader}
+                aria-label="Закрыть PDF"
+                title="Закрыть PDF"
+              >
+                ×
+              </button>
+            </header>
+            <iframe
+              src={openPdf.objectUrl}
+              title={openPdf.name}
+              className={styles.pdfReaderFrame}
+            />
+          </aside>
+        ) : null}
+      </div>,
+    );
+  }
+  return (''' + '"""' + '''
+        if text.count(actual) != 1:
+            raise SystemExit(f"{label}: embedded Canvas reader insertion point not found")
+        return text.replace(actual, replacement, 1)
     raise SystemExit(f"{label}: expected 1 match, got {count}")
 '''
 if old_helper not in script:
