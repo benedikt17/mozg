@@ -1,0 +1,88 @@
+name: Apply Canvas Auto Layout
+
+on:
+  push:
+    branches:
+      - feat/canvas-auto-layout
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/canvas-auto-layout
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Patch toolbar
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/prototype/canvases/canvas-desktop-composition.tsx')
+          text = path.read_text()
+          import_anchor = 'import { CanvasProjectFilePicker } from "@/prototype/canvases/canvas-project-file-picker";\n'
+          import_line = 'import { CanvasAutoLayoutButton } from "@/prototype/canvases/canvas-auto-layout-button";\n'
+          if import_line not in text:
+              text = text.replace(import_anchor, import_anchor + import_line, 1)
+          anchor = '''        <IconButton
+          className="knowledge-content-history-action"
+          disabled={!isReady || !canRedo}
+          icon={<UiIcon name="arrow-right" />}
+          label="Повторить"
+          onClick={onRedo}
+          onMouseDown={(event) => event.preventDefault()}
+          title="Повторить"
+          variant="quiet"
+        />
+        <IconButton
+          disabled={!isReady}
+          icon={<UiIcon name="file-plus" />}
+'''
+          replacement = '''        <IconButton
+          className="knowledge-content-history-action"
+          disabled={!isReady || !canRedo}
+          icon={<UiIcon name="arrow-right" />}
+          label="Повторить"
+          onClick={onRedo}
+          onMouseDown={(event) => event.preventDefault()}
+          title="Повторить"
+          variant="quiet"
+        />
+        <CanvasAutoLayoutButton disabled={!isReady} />
+        <IconButton
+          disabled={!isReady}
+          icon={<UiIcon name="file-plus" />}
+'''
+          if '<CanvasAutoLayoutButton disabled={!isReady} />' not in text:
+              if anchor not in text:
+                  raise SystemExit('toolbar anchor not found')
+              text = text.replace(anchor, replacement, 1)
+          path.write_text(text)
+          PY
+          pnpm exec prettier --write \
+            src/lib/canvas/canvas-auto-layout.ts \
+            src/prototype/canvases/canvas-auto-layout-button.tsx \
+            src/prototype/canvases/canvas-desktop-composition.tsx \
+            tests/canvas-auto-layout.test.ts
+          git diff --check
+      - name: Commit toolbar patch
+        shell: bash
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/lib/canvas/canvas-auto-layout.ts src/prototype/canvases/canvas-auto-layout-button.tsx src/prototype/canvases/canvas-desktop-composition.tsx tests/canvas-auto-layout.test.ts
+          git commit -m "feat: wire Canvas auto layout toolbar"
+          git push origin HEAD:feat/canvas-auto-layout
