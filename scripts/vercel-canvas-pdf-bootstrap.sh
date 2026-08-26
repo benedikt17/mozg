@@ -167,6 +167,43 @@ new_helper = '''def replace_once(text, old, new, label):
         if text.count(actual) != 1:
             raise SystemExit(f"{label}: embedded Canvas reader insertion point not found")
         return text.replace(actual, replacement, 1)
+    if label == "pdf node component":
+        actual = "function TextNodeBody({"
+        component = ''' + '"""' + '''function PdfNodeBody({
+  data,
+  selected,
+}: NodeProps<CanvasPdfFlowNode>): React.JSX.Element {
+  return (
+    <CanvasNodeFrame
+      selected={selected}
+      minWidth={160}
+      minHeight={100}
+      className={styles.pdfNodeFrame}
+      connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
+    >
+      <div className={styles.pdfNodeContent}>
+        <span className={styles.pdfNodeBadge}>PDF</span>
+        <span
+          className={styles.pdfNodeName}
+          title={data.lastKnownName ?? "PDF"}
+        >
+          {data.lastKnownName ?? "PDF"}
+        </span>
+      </div>
+    </CanvasNodeFrame>
+  );
+}
+
+''' + '"""' + '''
+        if text.count(actual) != 1:
+            raise SystemExit(f"{label}: TextNodeBody marker not found")
+        return text.replace(actual, component + actual, 1)
+    if label == "pdf nodeTypes":
+        actual = "  [CANVAS_IMAGE_NODE_TYPE]: ImageNodeBody,"
+        replacement = actual + chr(10) + "  [CANVAS_PDF_NODE_TYPE]: PdfNodeBody,"
+        if text.count(actual) != 1:
+            raise SystemExit(f"{label}: nodeTypes image marker not found")
+        return text.replace(actual, replacement, 1)
     raise SystemExit(f"{label}: expected 1 match, got {count}")
 '''
 if old_helper not in script:
