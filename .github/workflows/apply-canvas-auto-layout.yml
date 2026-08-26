@@ -1,9 +1,7 @@
 name: Apply Canvas Auto Layout
 
 on:
-  push:
-    branches:
-      - feat/canvas-auto-layout
+  pull_request:
 
 permissions:
   contents: write
