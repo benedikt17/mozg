@@ -406,7 +406,8 @@ export function ApplicationHeader({
       if (!touch) return;
       const deltaX = touch.clientX - current.startX;
       const deltaY = touch.clientY - current.startY;
-      const horizontal = Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY) * 1.1;
+      const horizontal =
+        Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY) * 1.1;
       const eligible = drawerIsOpen()
         ? current.startedInsideDrawer && deltaX < 0
         : current.startX <= MOBILE_SIDEBAR_EDGE_START_PX && deltaX > 0;
