@@ -1,0 +1,49 @@
+name: Patch iOS safe gesture
+on:
+  push:
+    branches: [fix/ios-mobile-sidebar-touch]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/ios-mobile-sidebar-touch
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Patch app touch zone and mobile overscroll
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/prototype/shell/application-header.tsx')
+          s = p.read_text()
+          s = s.replace('  MOBILE_SIDEBAR_EDGE_START_PX,', '  MOBILE_SIDEBAR_EDGE_MAX_START_PX,\n  MOBILE_SIDEBAR_EDGE_MIN_START_PX,')
+          s = s.replace(': current.startX <= MOBILE_SIDEBAR_EDGE_START_PX && deltaX > 0;', ': current.startX >= MOBILE_SIDEBAR_EDGE_MIN_START_PX &&\n          current.startX <= MOBILE_SIDEBAR_EDGE_MAX_START_PX &&\n          deltaX > 0;')
+          p.write_text(s)
+
+          p = Path('src/prototype/shell/mobile-navigation.module.css')
+          s = p.read_text()
+          marker = '@media (max-width: 767px) {\n'
+          rule = '  :global(.desktop-prototype) {\n    overscroll-behavior-x: none;\n  }\n\n'
+          if rule not in s:
+              s = s.replace(marker, marker + rule, 1)
+          p.write_text(s)
+          PY
+      - run: pnpm exec prettier --write src/prototype/shell/application-header.tsx src/prototype/shell/mobile-navigation.module.css src/prototype/shell/mobile-sidebar-gesture.ts tests/mobile-sidebar-gesture.test.ts
+      - name: Commit patch and remove applicator
+        run: |
+          rm .github/workflows/patch-ios-safe-gesture.yml
+          git config user.name benedikt17
+          git config user.email benediktov.andrey@gmail.com
+          git add -A
+          git commit -m "fix: keep iOS sidebar swipe away from browser back edge"
+          git push origin HEAD:fix/ios-mobile-sidebar-touch
