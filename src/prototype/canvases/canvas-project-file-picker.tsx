@@ -121,7 +121,7 @@ export function CanvasProjectFilePicker({
                   <p>
                     {query.trim()
                       ? "Совпадений нет"
-                      : "В этом проекте нет изображений"}
+                      : "В этом проекте нет изображений и PDF"}
                   </p>
                 ) : (
                   results.map((file) => (
@@ -132,7 +132,9 @@ export function CanvasProjectFilePicker({
                     >
                       <strong>{file.name}</strong>
                       <span>
-                        {file.width}×{file.height} · {file.mimeType}
+                        {file.mimeType === "application/pdf"
+                          ? `PDF · ${Math.max(1, Math.round(file.byteSize / 1024))} КБ`
+                          : `${file.width}×${file.height} · ${file.mimeType}`}
                       </span>
                     </button>
                   ))

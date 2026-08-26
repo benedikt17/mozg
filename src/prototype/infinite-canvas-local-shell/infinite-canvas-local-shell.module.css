@@ -1509,3 +1509,114 @@
 .shapeNodeContent .textPreview {
   overflow: hidden;
 }
+
+.canvasWorkspace {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
+}
+.canvasWorkspaceSplit {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 50%);
+}
+.pdfReader {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--border, #deddd8);
+  background: var(--surface, #fbfbfa);
+}
+.pdfReaderHeader {
+  min-width: 0;
+  height: 38px;
+  flex: 0 0 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid var(--border, #deddd8);
+  padding: 0 8px 0 12px;
+}
+.pdfReaderHeader strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+}
+.pdfReaderHeader button {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--radius-md, 6px);
+  background: transparent;
+  color: var(--text-2, #52524c);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.pdfReaderHeader button:hover,
+.pdfReaderHeader button:focus-visible {
+  outline: none;
+  background: var(--surface-2, #f1f1ef);
+}
+.pdfReaderFrame {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  width: 100%;
+  border: 0;
+  background: #fff;
+}
+.pdfNodeFrame .nodeBody {
+  border: 1px solid var(--border, #deddd8);
+  border-radius: var(--radius-lg, 8px);
+  background: var(--surface, #fbfbfa);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgb(32 32 29 / 8%));
+}
+.pdfNodeContent {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  padding: 18px;
+  text-align: center;
+  color: var(--text-2, #52524c);
+}
+.pdfNodeBadge {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 64px;
+  border: 1px solid var(--border, #deddd8);
+  border-radius: 6px;
+  background: var(--surface-2, #f1f1ef);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.pdfNodeName {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+@media (max-width: 900px) {
+  .canvasWorkspaceSplit {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pdfReader {
+    position: absolute;
+    inset: 38px 0 0;
+    z-index: 30;
+    border-left: 0;
+  }
+}

@@ -313,6 +313,7 @@ export function CanvasDesktopToolbar({
   error,
   interactive,
   onAddImage,
+  onAddPdf,
   onAddText,
   onAddRectangle,
   onAddCircle,
@@ -348,6 +349,7 @@ export function CanvasDesktopToolbar({
   error: string | null;
   interactive: boolean;
   onAddImage: (files: File[]) => void;
+  onAddPdf: (files: File[]) => void;
   onAddText: () => void;
   onAddRectangle: () => void;
   onAddCircle: () => void;
@@ -378,6 +380,7 @@ export function CanvasDesktopToolbar({
   taskToolsReady: boolean;
 }): React.JSX.Element {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
   const taskPickerTriggerRef = useRef<HTMLDivElement>(null);
   const taskPickerPanelRef = useRef<HTMLDivElement>(null);
   const [taskPickerPosition, setTaskPickerPosition] = useState<{
@@ -486,6 +489,15 @@ export function CanvasDesktopToolbar({
           type="button"
           variant="quiet"
         />
+        <IconButton
+          disabled={!isReady}
+          icon={<UiIcon name="file" />}
+          label="Добавить PDF"
+          onClick={() => pdfInputRef.current?.click()}
+          title="Добавить PDF"
+          type="button"
+          variant="quiet"
+        />
         <input
           accept="image/png,image/jpeg,image/webp"
           hidden
@@ -496,6 +508,18 @@ export function CanvasDesktopToolbar({
             if (files.length > 0) onAddImage(files);
           }}
           ref={fileInputRef}
+          type="file"
+        />
+        <input
+          accept="application/pdf,.pdf"
+          hidden
+          multiple
+          onChange={(event) => {
+            const files = Array.from(event.target.files ?? []);
+            event.target.value = "";
+            if (files.length > 0) onAddPdf(files);
+          }}
+          ref={pdfInputRef}
           type="file"
         />
         <CanvasProjectFilePicker
