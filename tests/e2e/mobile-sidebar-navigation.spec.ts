@@ -57,9 +57,9 @@ test("phone left sidebar opens and closes with horizontal swipes", async ({
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
 
   await swipe(page.locator("body"), {
-    startX: 8,
+    startX: 32,
     startY: 320,
-    endX: 92,
+    endX: 116,
     endY: 324,
   });
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
@@ -124,9 +124,9 @@ test("phone Canvas drawer uses the same swipe contract", async ({ page }) => {
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
 
   await swipe(page.locator("body"), {
-    startX: 8,
+    startX: 32,
     startY: 300,
-    endX: 92,
+    endX: 116,
     endY: 304,
   });
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
@@ -144,9 +144,9 @@ test("phone Canvas drawer uses the same swipe contract", async ({ page }) => {
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
 
   await swipe(page.locator("body"), {
-    startX: 8,
+    startX: 32,
     startY: 300,
-    endX: 92,
+    endX: 116,
     endY: 304,
   });
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
