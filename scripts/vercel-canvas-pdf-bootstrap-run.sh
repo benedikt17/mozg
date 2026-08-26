@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo '__MOZG_GIT_REMOTE_BEGIN__'
+git remote -v || true
+git push --dry-run origin HEAD:feature/canvas-pdf-split-view || true
+echo '__MOZG_GIT_REMOTE_END__'
+
 python - <<'PY'
 from pathlib import Path
 source = Path('scripts/vercel-canvas-pdf-bootstrap.sh').read_text()
