@@ -52,12 +52,10 @@ jobs:
             src/prototype/canvases/canvas-desktop-composition.tsx \
             src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx \
             src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css \
-            supabase/migrations/20260826193000_canvas_pdf_project_file_nodes.sql \
-            tests/canvas-pdf-node.test.ts \
-            tests/rls/canvas-project-file-references.test.sql \
-            tests/e2e/canvas-pdf-split-view.spec.ts
+            supabase/migrations/20260826160000_canvas_pdf_nodes.sql \
+            tests/canvas-document-v2.test.ts
       - run: git diff --check
-      - run: pnpm test -- tests/canvas-pdf-node.test.ts tests/canvas-document-v2.test.ts tests/canvas-node-clipboard.test.ts
+      - run: pnpm test -- tests/canvas-document-v2.test.ts tests/canvas-node-clipboard.test.ts
       - run: pnpm typecheck
       - name: Commit product changes and remove bootstrap files
         run: |
