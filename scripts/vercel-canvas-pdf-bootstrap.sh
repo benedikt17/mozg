@@ -88,6 +88,17 @@ new_helper = '''def replace_once(text, old, new, label):
         if text.count(actual) != 1:
             raise SystemExit(f"{label}: current restore placeholder not found")
         return text.replace(actual, replacement, 1)
+    if label == "shell pdf double click":
+        actual = "            onNodeDragStop={handleNodeDragStop}"
+        if text.count(actual) < 1:
+            raise SystemExit(f"{label}: ReactFlow node drag marker not found")
+        handler = ''' + '"""' + '''
+            onNodeDoubleClick={(event, node) => {
+              if (node.type !== CANVAS_PDF_NODE_TYPE) return;
+              event.preventDefault();
+              void openPdfNode(node);
+            }}''' + '"""' + '''
+        return text.replace(actual, actual + handler)
     raise SystemExit(f"{label}: expected 1 match, got {count}")
 '''
 if old_helper not in script:
