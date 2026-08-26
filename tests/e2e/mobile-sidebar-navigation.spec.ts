@@ -16,7 +16,12 @@ async function signInOnPhone(page: Page): Promise<void> {
 
 async function swipe(
   target: Locator,
-  input: { startX: number; startY: number; endX: number; endY: number },
+  input: {
+    startX: number;
+    startY: number;
+    endX: number;
+    endY: number;
+  },
 ): Promise<void> {
   await target.dispatchEvent("pointerdown", {
     bubbles: true,
