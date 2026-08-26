@@ -29,9 +29,7 @@ describe("Canvas auto layout", () => {
     expect(positions.get("root")?.x).toBeLessThan(
       positions.get("child-a")?.x ?? 0,
     );
-    expect(positions.get("child-a")?.x).toBe(
-      positions.get("child-b")?.x,
-    );
+    expect(positions.get("child-a")?.x).toBe(positions.get("child-b")?.x);
     expect(positions.get("child-a")?.x ?? 0).toBeLessThan(
       positions.get("grandchild")?.x ?? 0,
     );
@@ -52,17 +50,11 @@ describe("Canvas auto layout", () => {
   it("handles directed cycles without producing invalid coordinates", () => {
     const positions = autoLayoutCanvasNodes(
       [node("a"), node("b"), node("c")],
-      [
-        edge("a-b", "a", "b"),
-        edge("b-a", "b", "a"),
-        edge("b-c", "b", "c"),
-      ],
+      [edge("a-b", "a", "b"), edge("b-a", "b", "a"), edge("b-c", "b", "c")],
     );
 
     expect(positions.get("a")?.x).toBe(positions.get("b")?.x);
-    expect(positions.get("a")?.x ?? 0).toBeLessThan(
-      positions.get("c")?.x ?? 0,
-    );
+    expect(positions.get("a")?.x ?? 0).toBeLessThan(positions.get("c")?.x ?? 0);
     for (const position of positions.values()) {
       expect(Number.isFinite(position.x)).toBe(true);
       expect(Number.isFinite(position.y)).toBe(true);

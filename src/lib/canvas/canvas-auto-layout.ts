@@ -32,7 +32,9 @@ function nodeMetrics(node: Node): NodeMetrics {
   };
 }
 
-function sortByCurrentPosition<TNode extends Node>(nodes: readonly TNode[]): TNode[] {
+function sortByCurrentPosition<TNode extends Node>(
+  nodes: readonly TNode[],
+): TNode[] {
   return [...nodes].sort(
     (left, right) =>
       left.position.y - right.position.y ||
@@ -141,10 +143,7 @@ function componentLayout<TNode extends Node, TEdge extends Edge>(
     directed.get(edge.source)?.add(edge.target);
   }
 
-  const stronglyConnected = stronglyConnectedComponents(
-    [...nodeIds],
-    directed,
-  );
+  const stronglyConnected = stronglyConnectedComponents([...nodeIds], directed);
   const componentByNode = new Map<string, number>();
   stronglyConnected.forEach((component, componentIndex) => {
     for (const nodeId of component) componentByNode.set(nodeId, componentIndex);
@@ -208,9 +207,7 @@ function componentLayout<TNode extends Node, TEdge extends Edge>(
     );
     rankHeights[rank] = rankNodes.reduce(
       (total, node, nodeIndex) =>
-        total +
-        nodeMetrics(node).height +
-        (nodeIndex === 0 ? 0 : VERTICAL_GAP),
+        total + nodeMetrics(node).height + (nodeIndex === 0 ? 0 : VERTICAL_GAP),
       0,
     );
   }
@@ -235,10 +232,10 @@ function componentLayout<TNode extends Node, TEdge extends Edge>(
   };
 }
 
-export function autoLayoutCanvasNodes<
-  TNode extends Node,
-  TEdge extends Edge,
->(nodes: readonly TNode[], edges: readonly TEdge[]): Map<string, XYPosition> {
+export function autoLayoutCanvasNodes<TNode extends Node, TEdge extends Edge>(
+  nodes: readonly TNode[],
+  edges: readonly TEdge[],
+): Map<string, XYPosition> {
   const result = new Map<string, XYPosition>();
   if (nodes.length === 0) return result;
 
