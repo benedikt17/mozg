@@ -558,7 +558,11 @@ export function CanvasGroupsSidebar({
   });
 
   return (
-    <aside aria-label="Дерево холстов" className={styles.desktopCanvasSidebar}>
+    <aside
+      aria-label="Дерево холстов"
+      className={styles.desktopCanvasSidebar}
+      data-mobile-section-drawer="true"
+    >
       <header className={styles.desktopCanvasSidebarHeader}>
         <div
           className={styles.canvasTreeToolbar}

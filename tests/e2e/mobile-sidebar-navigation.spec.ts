@@ -135,6 +135,22 @@ test("phone Canvas drawer uses the same swipe contract", async ({ page }) => {
     name: "Дерево холстов",
   });
   await expect(canvasSidebar).toBeVisible();
+
+  const canvasDestination = canvasSidebar
+    .locator("[data-canvas-id] button")
+    .first();
+  await expect(canvasDestination).toBeVisible();
+  await canvasDestination.click();
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+
+  await swipe(page.locator("body"), {
+    startX: 8,
+    startY: 300,
+    endX: 92,
+    endY: 304,
+  });
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+
   await swipe(canvasSidebar, {
     startX: 250,
     startY: 340,

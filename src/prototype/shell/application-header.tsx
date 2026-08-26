@@ -136,10 +136,19 @@ function ApplicationSectionNavigation({
   );
 }
 
+function isInsideMobileSectionDrawer(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    Boolean(
+      target.closest(".tool-sidebar, [data-mobile-section-drawer='true']"),
+    )
+  );
+}
+
 function isMobileSidebarNavigationButton(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
   const button = target.closest<HTMLButtonElement>("button");
-  if (!button || !button.closest(".tool-sidebar")) return false;
+  if (!button || !isInsideMobileSectionDrawer(button)) return false;
   if (button.closest('[role="menu"]') || button.hasAttribute("aria-haspopup"))
     return false;
   if (
@@ -303,8 +312,7 @@ export function ApplicationHeader({
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
-        startedInsideDrawer:
-          target instanceof Element && Boolean(target.closest(".tool-sidebar")),
+        startedInsideDrawer: isInsideMobileSectionDrawer(target),
       };
     };
 
