@@ -68,7 +68,8 @@ export function projectCanvasBranchCollapse<
   const collapsedIds = new Set<string>();
 
   for (const node of nodes) {
-    if (canvasBranchRuntimeState(node.data)?.collapsed) collapsedIds.add(node.id);
+    if (canvasBranchRuntimeState(node.data)?.collapsed)
+      collapsedIds.add(node.id);
   }
 
   if (toggledNodeId && (adjacency.get(toggledNodeId)?.size ?? 0) > 0) {
