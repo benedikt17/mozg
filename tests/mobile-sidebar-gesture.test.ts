@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { classifyMobileSidebarSwipe } from "@/prototype/shell/mobile-sidebar-gesture";
+import {
+  classifyMobileSidebarSwipe,
+  MOBILE_SIDEBAR_EDGE_START_PX,
+} from "@/prototype/shell/mobile-sidebar-gesture";
 
 const base = {
   drawerOpen: false,
@@ -14,6 +17,24 @@ const base = {
 describe("mobile sidebar swipe", () => {
   it("opens on a deliberate left-edge swipe to the right", () => {
     expect(classifyMobileSidebarSwipe(base)).toBe("open");
+  });
+
+  it("keeps an iOS-safe inset inside the opening edge", () => {
+    expect(MOBILE_SIDEBAR_EDGE_START_PX).toBeGreaterThanOrEqual(40);
+    expect(
+      classifyMobileSidebarSwipe({
+        ...base,
+        startX: 40,
+        endX: 110,
+      }),
+    ).toBe("open");
+    expect(
+      classifyMobileSidebarSwipe({
+        ...base,
+        startX: 60,
+        endX: 130,
+      }),
+    ).toBeNull();
   });
 
   it("does not steal horizontal gestures that begin away from the left edge", () => {
