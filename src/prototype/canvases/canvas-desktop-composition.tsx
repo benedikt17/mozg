@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CanvasTaskProjection } from "@/lib/canvas/canvas-task-bridge";
 import type { ProjectFileRecord } from "@/lib/files/project-file-repository";
 import { CanvasProjectFilePicker } from "@/prototype/canvases/canvas-project-file-picker";
+import { CanvasAutoLayoutButton } from "@/prototype/canvases/canvas-auto-layout-button";
 import type { LocalCanvasShellStatus } from "@/lib/canvas/local-canvas-shell-controller";
 import type { CanvasSummary } from "@/lib/canvas/local-canvas-repository";
 import {
@@ -475,6 +476,7 @@ export function CanvasDesktopToolbar({
           title="Повторить"
           variant="quiet"
         />
+        <CanvasAutoLayoutButton disabled={!isReady} />
         <IconButton
           disabled={!isReady}
           icon={<UiIcon name="file-plus" />}
