@@ -1,43 +1,42 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyMobileSidebarSwipe,
-  MOBILE_SIDEBAR_EDGE_START_PX,
+  MOBILE_SIDEBAR_EDGE_MAX_START_PX,
+  MOBILE_SIDEBAR_EDGE_MIN_START_PX,
 } from "@/prototype/shell/mobile-sidebar-gesture";
 
 const base = {
   drawerOpen: false,
-  endX: 90,
+  endX: 110,
   endY: 102,
   startedInsideDrawer: false,
-  startX: 8,
+  startX: 32,
   startY: 100,
   viewportWidth: 390,
 };
 
 describe("mobile sidebar swipe", () => {
-  it("opens on a deliberate left-edge swipe to the right", () => {
+  it("opens on a deliberate swipe from the safe left-side gesture zone", () => {
     expect(classifyMobileSidebarSwipe(base)).toBe("open");
   });
 
-  it("keeps an iOS-safe inset inside the opening edge", () => {
-    expect(MOBILE_SIDEBAR_EDGE_START_PX).toBeGreaterThanOrEqual(40);
+  it("keeps the first iOS browser-back pixels reserved for Safari", () => {
+    expect(MOBILE_SIDEBAR_EDGE_MIN_START_PX).toBeGreaterThanOrEqual(20);
+    expect(MOBILE_SIDEBAR_EDGE_MAX_START_PX).toBeGreaterThanOrEqual(64);
+    expect(
+      classifyMobileSidebarSwipe({
+        ...base,
+        startX: 8,
+        endX: 90,
+      }),
+    ).toBeNull();
     expect(
       classifyMobileSidebarSwipe({
         ...base,
         startX: 40,
-        endX: 110,
+        endX: 120,
       }),
     ).toBe("open");
-    expect(
-      classifyMobileSidebarSwipe({
-        ...base,
-        startX: 60,
-        endX: 130,
-      }),
-    ).toBeNull();
-  });
-
-  it("does not steal horizontal gestures that begin away from the left edge", () => {
     expect(
       classifyMobileSidebarSwipe({
         ...base,
@@ -49,10 +48,10 @@ describe("mobile sidebar swipe", () => {
 
   it("ignores short and mostly vertical gestures", () => {
     expect(
-      classifyMobileSidebarSwipe({ ...base, endX: 45, endY: 104 }),
+      classifyMobileSidebarSwipe({ ...base, endX: 70, endY: 104 }),
     ).toBeNull();
     expect(
-      classifyMobileSidebarSwipe({ ...base, endX: 70, endY: 190 }),
+      classifyMobileSidebarSwipe({ ...base, endX: 94, endY: 190 }),
     ).toBeNull();
   });
 
