@@ -84,7 +84,7 @@ new_helper = '''def replace_once(text, old, new, label):
         return text.replace(actual, replacement, 1)
     if label == "shell restore pdf nodes":
         actual = "        ...canvasDocumentToImageNodes(nextState.document),"
-        replacement = actual + "\n        ...canvasDocumentToPdfNodes(nextState.document),"
+        replacement = actual + chr(10) + "        ...canvasDocumentToPdfNodes(nextState.document),"
         if text.count(actual) != 1:
             raise SystemExit(f"{label}: current restore placeholder not found")
         return text.replace(actual, replacement, 1)
