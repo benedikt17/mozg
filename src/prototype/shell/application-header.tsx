@@ -12,7 +12,8 @@ import { PrototypeButton } from "@/prototype/desktop-ui";
 import { KnowledgeBackupButton } from "@/prototype/knowledge/knowledge-backup-button";
 import {
   classifyMobileSidebarSwipe,
-  MOBILE_SIDEBAR_EDGE_START_PX,
+  MOBILE_SIDEBAR_EDGE_MAX_START_PX,
+  MOBILE_SIDEBAR_EDGE_MIN_START_PX,
 } from "@/prototype/shell/mobile-sidebar-gesture";
 import { createClient } from "@/lib/supabase/browser";
 import {
@@ -410,7 +411,9 @@ export function ApplicationHeader({
         Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY) * 1.1;
       const eligible = drawerIsOpen()
         ? current.startedInsideDrawer && deltaX < 0
-        : current.startX <= MOBILE_SIDEBAR_EDGE_START_PX && deltaX > 0;
+        : current.startX >= MOBILE_SIDEBAR_EDGE_MIN_START_PX &&
+          current.startX <= MOBILE_SIDEBAR_EDGE_MAX_START_PX &&
+          deltaX > 0;
       if (horizontal && eligible) event.preventDefault();
     };
 
