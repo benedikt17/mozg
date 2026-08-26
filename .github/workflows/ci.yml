@@ -66,82 +66,87 @@ jobs:
           )
 
           drop_start = text.index("  const onDrop = useCallback(")
-          picker_start = text.index("  const onPicker = useCallback(", drop_start)
-          replacement = '''  const uploadPdfFiles = useCallback(
-    async (files: File[], position?: FlowPosition) => {
-      if (!projectFileRepository || !projectId || files.length === 0) return;
-      let pdfOffset = 0;
-      for (const file of files) {
-        if (
-          file.type !== "application/pdf" &&
-          !file.name.toLowerCase().endsWith(".pdf")
-        )
-          continue;
-        try {
-          const uploaded = await projectFileRepository.uploadFile({
-            workspaceId: shellWorkspaceId,
-            projectId,
-            name: file.name,
-            originalName: file.name,
-            blob: file,
-            mimeType: "application/pdf",
-            byteSize: file.size,
-          });
-          createPdfNodeFromProjectFile(
-            uploaded,
-            position
-              ? {
-                  x: position.x + pdfOffset * 24,
-                  y: position.y + pdfOffset * 24,
-                }
-              : undefined,
-          );
-          pdfOffset += 1;
-        } catch (error: unknown) {
-          setShellState((current) => ({
-            ...current,
-            status: "error",
-            error:
-              error instanceof Error ? error.message : "PDF upload failed.",
-          }));
-        }
-      }
-    },
-    [
-      createPdfNodeFromProjectFile,
-      projectFileRepository,
-      projectId,
-      shellWorkspaceId,
-    ],
-  );
+          upload_start = text.index("  const uploadPdfFiles = useCallback(", drop_start)
+          picker_start = text.index("  const onPicker = useCallback(", upload_start)
+          drop_block = text[drop_start:upload_start]
+          upload_block = text[upload_start:picker_start]
 
-  const onDrop = useCallback(
-    (event: ReactDragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      setDropActive(false);
-      const payload = transferPayload(event.nativeEvent);
-      if (!shouldPreventFileNavigation(payload)) return;
-      const client = { x: event.clientX, y: event.clientY };
-      const pdfFiles = Array.from(payload.files ?? []).filter(
-        (file) =>
-          file.type === "application/pdf" ||
-          file.name.toLowerCase().endsWith(".pdf"),
-      );
-      void (async () => {
-        await ingest(payload, "drop", client);
-        if (pdfFiles.length > 0) {
-          await uploadPdfFiles(pdfFiles, screenToFlowRef.current(client));
-        }
-      })();
-    },
-    [ingest, uploadPdfFiles],
-  );
+          upload_block = replace_once(
+              upload_block,
+              "    async (files: File[]) => {",
+              "    async (files: File[], position?: FlowPosition) => {",
+              "PDF upload position parameter",
+          )
+          upload_block = replace_once(
+              upload_block,
+              "          createPdfNodeFromProjectFile(uploaded);",
+              "          createPdfNodeFromProjectFile(uploaded, position);",
+              "PDF upload position forwarding",
+          )
 
-'''
-          text = text[:drop_start] + replacement + text[picker_start:]
+          old_drop = "\n".join([
+              "      if (!shouldPreventFileNavigation(transferPayload(event.nativeEvent)))",
+              "        return;",
+              "      void ingest(transferPayload(event.nativeEvent), \"drop\", {",
+              "        x: event.clientX,",
+              "        y: event.clientY,",
+              "      });",
+          ])
+          new_drop = "\n".join([
+              "      const payload = transferPayload(event.nativeEvent);",
+              "      if (!shouldPreventFileNavigation(payload)) return;",
+              "      const client = { x: event.clientX, y: event.clientY };",
+              "      const pdfFiles = Array.from(payload.files ?? []).filter(",
+              "        (file) =>",
+              "          file.type === \"application/pdf\" ||",
+              "          file.name.toLowerCase().endsWith(\".pdf\"),",
+              "      );",
+              "      void (async () => {",
+              "        await ingest(payload, \"drop\", client);",
+              "        if (pdfFiles.length > 0) {",
+              "          await uploadPdfFiles(pdfFiles, screenToFlowRef.current(client));",
+              "        }",
+              "      })();",
+          ])
+          drop_block = replace_once(drop_block, old_drop, new_drop, "PDF drop routing")
+          drop_block = replace_once(
+              drop_block,
+              "    [ingest],",
+              "    [ingest, uploadPdfFiles],",
+              "PDF drop dependencies",
+          )
+          text = text[:drop_start] + upload_block + drop_block + text[picker_start:]
           path.write_text(text)
 
-          Path("tests/canvas-pdf-runtime.test.ts").write_text('''import { readFileSync } from "node:fs";\nimport { describe, expect, it } from "vitest";\n\nconst shell = readFileSync(\n  "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",\n  "utf8",\n);\n\ndescribe("Canvas PDF runtime contract", () => {\n  it("keeps PDF nodes in the cached Canvas scene", () => {\n    expect(shell).toContain(\n      "...canvasDocumentToPdfNodes(cachedState.document)",\n    );\n  });\n\n  it("routes dropped PDFs through Project Files at the drop position", () => {\n    expect(shell).toContain("const pdfFiles = Array.from(payload.files ?? [])");\n    expect(shell).toContain(\n      "await uploadPdfFiles(pdfFiles, screenToFlowRef.current(client))",\n    );\n    expect(shell).toContain(\n      "(file: ProjectFileRecord, position?: FlowPosition) =>",\n    );\n    expect(shell).toContain("position: position ?? centerPosition()");\n  });\n});\n''')
+          test_lines = [
+              'import { readFileSync } from "node:fs";',
+              'import { describe, expect, it } from "vitest";',
+              '',
+              'const shell = readFileSync(',
+              '  "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",',
+              '  "utf8",',
+              ');',
+              '',
+              'describe("Canvas PDF runtime contract", () => {',
+              '  it("keeps PDF nodes in the cached Canvas scene", () => {',
+              '    expect(shell).toContain(',
+              '      "...canvasDocumentToPdfNodes(cachedState.document)",',
+              '    );',
+              '  });',
+              '',
+              '  it("routes dropped PDFs through Project Files at the drop position", () => {',
+              '    expect(shell).toContain("const pdfFiles = Array.from(payload.files ?? [])");',
+              '    expect(shell).toContain(',
+              '      "await uploadPdfFiles(pdfFiles, screenToFlowRef.current(client))",',
+              '    );',
+              '    expect(shell).toContain(',
+              '      "(file: ProjectFileRecord, position?: FlowPosition) =>",',
+              '    );',
+              '    expect(shell).toContain("position: position ?? centerPosition()");',
+              '  });',
+              '});',
+          ]
+          Path("tests/canvas-pdf-runtime.test.ts").write_text("\n".join(test_lines) + "\n")
           PY
       - run: pnpm exec prettier --write src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx tests/canvas-pdf-runtime.test.ts
       - run: git diff --check
