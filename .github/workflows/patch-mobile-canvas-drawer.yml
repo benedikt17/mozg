@@ -1,0 +1,76 @@
+name: Patch Mobile Canvas Drawer
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/mobile-sidebar-gestures-single-tap
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Patch mobile drawer semantics and regression
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          header = Path('src/prototype/shell/application-header.tsx')
+          text = header.read_text()
+          old = '''function isMobileSidebarNavigationButton(target: EventTarget | null): boolean {\n  if (!(target instanceof Element)) return false;\n  const button = target.closest<HTMLButtonElement>("button");\n  if (!button || !button.closest(".tool-sidebar")) return false;\n'''
+          new = '''function isInsideMobileSectionDrawer(target: EventTarget | null): boolean {\n  return (\n    target instanceof Element &&\n    Boolean(\n      target.closest(".tool-sidebar, [data-mobile-section-drawer='true']"),\n    )\n  );\n}\n\nfunction isMobileSidebarNavigationButton(target: EventTarget | null): boolean {\n  if (!(target instanceof Element)) return false;\n  const button = target.closest<HTMLButtonElement>("button");\n  if (!button || !isInsideMobileSectionDrawer(button)) return false;\n'''
+          if old not in text:
+              raise SystemExit('navigation helper anchor not found')
+          text = text.replace(old, new, 1)
+          old = '''        startedInsideDrawer:\n          target instanceof Element && Boolean(target.closest(".tool-sidebar")),\n'''
+          new = '''        startedInsideDrawer: isInsideMobileSectionDrawer(target),\n'''
+          if old not in text:
+              raise SystemExit('gesture drawer anchor not found')
+          header.write_text(text.replace(old, new, 1))
+
+          sidebar = Path('src/prototype/canvases/canvas-groups-sidebar.tsx')
+          text = sidebar.read_text()
+          old = '''  return (\n    <aside aria-label="Дерево холстов" className={styles.desktopCanvasSidebar}>\n'''
+          new = '''  return (\n    <aside\n      aria-label="Дерево холстов"\n      className={styles.desktopCanvasSidebar}\n      data-mobile-section-drawer="true"\n    >\n'''
+          if old not in text:
+              raise SystemExit('canvas sidebar anchor not found')
+          sidebar.write_text(text.replace(old, new, 1))
+
+          spec = Path('tests/e2e/mobile-sidebar-navigation.spec.ts')
+          text = spec.read_text()
+          old = '''  const canvasSidebar = page.getByRole("complementary", {\n    name: "Дерево холстов",\n  });\n  await expect(canvasSidebar).toBeVisible();\n  await swipe(canvasSidebar, {\n    startX: 250,\n    startY: 340,\n    endX: 145,\n    endY: 342,\n  });\n  await expect(drawerTrigger).toHaveAttribute("aria-expanded", "false");\n});\n'''
+          new = '''  const canvasSidebar = page.getByRole("complementary", {\n    name: "Дерево холстов",\n  });\n  await expect(canvasSidebar).toBeVisible();\n\n  const canvasDestination = canvasSidebar.locator("[data-canvas-id] button").first();\n  await expect(canvasDestination).toBeVisible();\n  await canvasDestination.click();\n  await expect(drawerTrigger).toHaveAttribute("aria-expanded", "false");\n\n  await swipe(page.locator("body"), {\n    startX: 8,\n    startY: 300,\n    endX: 92,\n    endY: 304,\n  });\n  await expect(drawerTrigger).toHaveAttribute("aria-expanded", "true");\n\n  await swipe(canvasSidebar, {\n    startX: 250,\n    startY: 340,\n    endX: 145,\n    endY: 342,\n  });\n  await expect(drawerTrigger).toHaveAttribute("aria-expanded", "false");\n});\n'''
+          if old not in text:
+              raise SystemExit('canvas regression anchor not found')
+          spec.write_text(text.replace(old, new, 1))
+          PY
+          pnpm exec prettier --write \
+            src/prototype/shell/application-header.tsx \
+            src/prototype/canvases/canvas-groups-sidebar.tsx \
+            tests/e2e/mobile-sidebar-navigation.spec.ts
+      - name: Commit patch
+        shell: bash
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add \
+            src/prototype/shell/application-header.tsx \
+            src/prototype/canvases/canvas-groups-sidebar.tsx \
+            tests/e2e/mobile-sidebar-navigation.spec.ts
+          git commit -m "fix: recognize Canvas mobile drawer gestures"
+          git push origin HEAD:fix/mobile-sidebar-gestures-single-tap
