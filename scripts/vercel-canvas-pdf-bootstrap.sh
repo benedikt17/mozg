@@ -72,6 +72,16 @@ new_helper = '''def replace_once(text, old, new, label):
         if text.count(actual) != 1:
             raise SystemExit(f"{label}: current toolbar button not found")
         return text.replace(actual, replacement, 1)
+    if label == "shell pdf factory import":
+        actual = ''' + '"""' + '''  canvasImageAdapterDependenciesForCanvas,
+  createCanvasTaskFlowNode,'''+ '"""' + '''
+        replacement = ''' + '"""' + '''  canvasImageAdapterDependenciesForCanvas,
+  createCanvasPdfFlowNode,
+  createCanvasPdfId,
+  createCanvasTaskFlowNode,'''+ '"""' + '''
+        if text.count(actual) != 1:
+            raise SystemExit(f"{label}: current adapter factory import not found")
+        return text.replace(actual, replacement, 1)
     raise SystemExit(f"{label}: expected 1 match, got {count}")
 '''
 if old_helper not in script:
