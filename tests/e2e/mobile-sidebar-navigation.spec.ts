@@ -39,6 +39,10 @@ async function swipe(
   });
 }
 
+function drawerTrigger(page: Page): Locator {
+  return page.locator(".mobile-tool-sidebar-trigger");
+}
+
 test("phone left sidebar opens and closes with horizontal swipes", async ({
   page,
 }) => {
@@ -48,11 +52,9 @@ test("phone left sidebar opens and closes with horizontal swipes", async ({
     .getByRole("button", { name: "Знания", exact: true })
     .click();
 
-  const drawerTrigger = page.getByRole("button", {
-    name: "Открыть панель раздела",
-  });
-  await expect(drawerTrigger).toBeVisible();
-  await expect(drawerTrigger).toHaveAttribute("aria-expanded", "false");
+  const trigger = drawerTrigger(page);
+  await expect(trigger).toBeVisible();
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
 
   await swipe(page.locator("body"), {
     startX: 8,
@@ -60,9 +62,7 @@ test("phone left sidebar opens and closes with horizontal swipes", async ({
     endX: 92,
     endY: 324,
   });
-  await expect(
-    page.getByRole("button", { name: "Закрыть панель раздела" }),
-  ).toHaveAttribute("aria-expanded", "true");
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
 
   const sidebar = page.getByRole("complementary", {
     name: "Дерево документов",
@@ -74,7 +74,7 @@ test("phone left sidebar opens and closes with horizontal swipes", async ({
     endX: 150,
     endY: 356,
   });
-  await expect(drawerTrigger).toHaveAttribute("aria-expanded", "false");
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
 });
 
 test("phone sidebar destination activates and closes on one tap", async ({
@@ -86,15 +86,25 @@ test("phone sidebar destination activates and closes on one tap", async ({
     .getByRole("button", { name: "Знания", exact: true })
     .click();
 
-  await page.getByRole("button", { name: "Открыть панель раздела" }).click();
-  const documentButton = page.locator(".knowledge-tree-row.document").first();
+  const trigger = drawerTrigger(page);
+  await trigger.click();
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+  const tree = page.getByRole("navigation", { name: "Иерархия документов" });
+  const folderButton = tree.locator(".knowledge-tree-row.folder").first();
+  await expect(folderButton).toBeVisible();
+  if ((await folderButton.getAttribute("aria-expanded")) !== "true") {
+    await folderButton.click();
+  }
+
+  const documentRow = tree.locator("[data-knowledge-document-id]").first();
+  const documentButton = documentRow.locator("button.knowledge-tree-row.document");
+  await expect(documentButton).toBeVisible();
   const title = (await documentButton.textContent())?.trim();
   expect(title).toBeTruthy();
 
   await documentButton.click();
-  await expect(
-    page.getByRole("button", { name: "Открыть панель раздела" }),
-  ).toHaveAttribute("aria-expanded", "false");
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await expect(page.locator(".application-article-title")).toContainText(
     title ?? "",
   );
@@ -107,10 +117,9 @@ test("phone Canvas drawer uses the same swipe contract", async ({ page }) => {
     .getByRole("button", { name: "Холсты", exact: true })
     .click();
 
-  const drawerTrigger = page.getByRole("button", {
-    name: "Открыть панель раздела",
-  });
-  await expect(drawerTrigger).toBeVisible();
+  const trigger = drawerTrigger(page);
+  await expect(trigger).toBeVisible();
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
 
   await swipe(page.locator("body"), {
     startX: 8,
@@ -118,12 +127,10 @@ test("phone Canvas drawer uses the same swipe contract", async ({ page }) => {
     endX: 92,
     endY: 304,
   });
-  await expect(
-    page.getByRole("button", { name: "Закрыть панель раздела" }),
-  ).toHaveAttribute("aria-expanded", "true");
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
 
   const canvasSidebar = page.getByRole("complementary", {
-    name: "Управление холстами",
+    name: "Дерево холстов",
   });
   await expect(canvasSidebar).toBeVisible();
   await swipe(canvasSidebar, {
@@ -132,5 +139,5 @@ test("phone Canvas drawer uses the same swipe contract", async ({ page }) => {
     endX: 145,
     endY: 342,
   });
-  await expect(drawerTrigger).toHaveAttribute("aria-expanded", "false");
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
 });
