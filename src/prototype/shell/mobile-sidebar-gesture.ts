@@ -1,4 +1,4 @@
-export const MOBILE_SIDEBAR_EDGE_MIN_START_PX = 24;
+export const MOBILE_SIDEBAR_EDGE_MIN_START_PX = 0;
 export const MOBILE_SIDEBAR_EDGE_MAX_START_PX = 72;
 export const MOBILE_SIDEBAR_SWIPE_DISTANCE_PX = 56;
 export const MOBILE_SIDEBAR_MAX_WIDTH_PX = 340;
@@ -28,7 +28,7 @@ export function classifyMobileSidebarSwipe(
   if (horizontalDistance <= verticalDistance * 1.2) return null;
 
   if (!input.drawerOpen) {
-    // Leave the first screen-edge pixels to iOS/Safari's native Back gesture.
+    // The mobile shell suppresses horizontal history overscroll, so the app can own the physical edge.
     const startsInSafeOpenZone =
       input.startX >= MOBILE_SIDEBAR_EDGE_MIN_START_PX &&
       input.startX <= MOBILE_SIDEBAR_EDGE_MAX_START_PX;
