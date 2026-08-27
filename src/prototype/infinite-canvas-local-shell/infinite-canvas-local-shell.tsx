@@ -1602,7 +1602,9 @@ function InfiniteCanvasLocalShellSurface({
     const openNodeId = openPdf?.nodeId;
     if (!openNodeId) return nodes;
     return nodes.map((node) =>
-      node.id === openNodeId ? { ...node, selected: true } : node,
+      node.id === openNodeId && node.type === CANVAS_PDF_NODE_TYPE
+        ? { ...node, selected: true, data: { ...node.data, readerOpen: true } }
+        : node,
     );
   }, [nodes, openPdf?.nodeId]);
   const [fileQuery, setFileQuery] = useState("");

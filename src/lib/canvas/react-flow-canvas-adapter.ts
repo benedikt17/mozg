@@ -99,6 +99,8 @@ export type CanvasImageFlowNode = Node<
 export type CanvasPdfNodeData = {
   fileId: string;
   lastKnownName?: string;
+  /** Ephemeral UI marker; never persisted into the Canvas document. */
+  readerOpen?: boolean;
 };
 
 export type CanvasPdfFlowNode = Node<
