@@ -40,7 +40,6 @@ import {
   type ChangeEvent,
   type CSSProperties,
   type DragEvent as ReactDragEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
@@ -246,18 +245,6 @@ const EMPTY_RESTORE_STATS: RestoreStats = {
   maxConcurrency: 0,
   missing: 0,
 };
-
-const PDF_READER_WIDTH_STORAGE_KEY = "mozg.canvas-pdf-reader-width.v1";
-const PDF_READER_MIN_WIDTH = 480;
-const PDF_READER_MIN_CANVAS_WIDTH = 360;
-
-function clampPdfReaderWidth(width: number, viewportWidth: number): number {
-  const maximum = Math.max(
-    PDF_READER_MIN_WIDTH,
-    viewportWidth - PDF_READER_MIN_CANVAS_WIDTH,
-  );
-  return Math.round(Math.min(Math.max(width, PDF_READER_MIN_WIDTH), maximum));
-}
 
 function rememberImageRuntimePayload(
   payloads: Map<string, CanvasImageRuntimePayload>,
@@ -1610,8 +1597,6 @@ function InfiniteCanvasLocalShellSurface({
     objectUrl: string;
   } | null>(null);
   const [pdfFullscreen, setPdfFullscreen] = useState(false);
-  const [pdfReaderWidth, setPdfReaderWidth] = useState<number | null>(null);
-  const [pdfReaderResizing, setPdfReaderResizing] = useState(false);
   const renderedNodes = useMemo<CanvasFlowNode[]>(() => {
     const openNodeId = openPdf?.nodeId;
     if (!openNodeId) return nodes;
@@ -1640,49 +1625,6 @@ function InfiniteCanvasLocalShellSurface({
       setDesktopSidebarOpen(false);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, []);
-  useEffect(() => {
-    let storedWidth: number | null = null;
-    try {
-      const value = Number(
-        window.localStorage.getItem(PDF_READER_WIDTH_STORAGE_KEY),
-      );
-      if (Number.isFinite(value) && value > 0) storedWidth = value;
-    } catch {
-      // The reader remains usable when storage is unavailable.
-    }
-    setPdfReaderWidth(
-      clampPdfReaderWidth(
-        storedWidth ?? window.innerWidth / 2,
-        window.innerWidth,
-      ),
-    );
-  }, []);
-  useEffect(() => {
-    if (pdfReaderWidth === null) return;
-    window.document.documentElement.style.setProperty(
-      "--canvas-pdf-reader-width",
-      `${pdfReaderWidth}px`,
-    );
-    try {
-      window.localStorage.setItem(
-        PDF_READER_WIDTH_STORAGE_KEY,
-        String(pdfReaderWidth),
-      );
-    } catch {
-      // The selected width still applies for this session.
-    }
-  }, [pdfReaderWidth]);
-  useEffect(() => {
-    const onWindowResize = (): void => {
-      setPdfReaderWidth((current) =>
-        current === null
-          ? null
-          : clampPdfReaderWidth(current, window.innerWidth),
-      );
-    };
-    window.addEventListener("resize", onWindowResize);
-    return () => window.removeEventListener("resize", onWindowResize);
   }, []);
   useEffect(() => {
     const media = window.matchMedia("(pointer: coarse)");
@@ -3713,48 +3655,6 @@ function InfiniteCanvasLocalShellSurface({
     });
   }, []);
 
-  const updatePdfReaderWidth = useCallback((width: number): void => {
-    setPdfReaderWidth(clampPdfReaderWidth(width, window.innerWidth));
-  }, []);
-
-  const beginPdfReaderResize = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>): void => {
-      if (pdfFullscreen) return;
-      event.preventDefault();
-      const startingWidth =
-        pdfReaderWidth ??
-        clampPdfReaderWidth(window.innerWidth / 2, window.innerWidth);
-      const startingX = event.clientX;
-      setPdfReaderResizing(true);
-
-      const onPointerMove = (moveEvent: PointerEvent): void => {
-        updatePdfReaderWidth(startingWidth + startingX - moveEvent.clientX);
-      };
-      const stopResizing = (): void => {
-        setPdfReaderResizing(false);
-        window.removeEventListener("pointermove", onPointerMove);
-        window.removeEventListener("pointerup", stopResizing);
-        window.removeEventListener("pointercancel", stopResizing);
-      };
-      window.addEventListener("pointermove", onPointerMove);
-      window.addEventListener("pointerup", stopResizing);
-      window.addEventListener("pointercancel", stopResizing);
-    },
-    [pdfFullscreen, pdfReaderWidth, updatePdfReaderWidth],
-  );
-
-  const handlePdfReaderResizeKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-      if (pdfFullscreen) return;
-      const delta =
-        event.key === "ArrowLeft" ? 48 : event.key === "ArrowRight" ? -48 : 0;
-      if (delta === 0) return;
-      event.preventDefault();
-      updatePdfReaderWidth((pdfReaderWidth ?? window.innerWidth / 2) + delta);
-    },
-    [pdfFullscreen, pdfReaderWidth, updatePdfReaderWidth],
-  );
-
   const uploadPdfFiles = useCallback(
     async (files: File[], position?: FlowPosition) => {
       if (!projectFileRepository || !projectId || files.length === 0) return;
@@ -4667,28 +4567,9 @@ function InfiniteCanvasLocalShellSurface({
         </div>
         {openPdf ? (
           <aside
-            className={`${styles.pdfReader} canvas-pdf-reader ${pdfFullscreen ? `${styles.pdfReaderFullscreen} canvas-pdf-reader-fullscreen` : ""} ${pdfReaderResizing ? styles.pdfReaderResizing : ""}`}
+            className={`${styles.pdfReader} canvas-pdf-reader ${pdfFullscreen ? `${styles.pdfReaderFullscreen} canvas-pdf-reader-fullscreen` : ""}`}
             aria-label="Просмотр PDF"
-            style={
-              pdfReaderWidth === null
-                ? undefined
-                : ({
-                    "--canvas-pdf-reader-width": `${pdfReaderWidth}px`,
-                  } as CSSProperties)
-            }
           >
-            {!pdfFullscreen ? (
-              <div
-                aria-label="Изменить ширину PDF"
-                aria-orientation="vertical"
-                className={styles.pdfReaderResizeHandle}
-                onKeyDown={handlePdfReaderResizeKeyDown}
-                onPointerDown={beginPdfReaderResize}
-                role="separator"
-                tabIndex={0}
-                title="Потяните, чтобы изменить ширину PDF"
-              />
-            ) : null}
             <header className={styles.pdfReaderHeader}>
               <strong title={openPdf.name}>{openPdf.name}</strong>
               <div className={styles.pdfReaderHeaderActions}>

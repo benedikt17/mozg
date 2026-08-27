@@ -50,7 +50,7 @@ describe("Canvas PDF reader UI", () => {
     );
   });
 
-  it("opens at half width and remembers a manually resized PDF reader", () => {
+  it("opens at a stable half-width layout", () => {
     const shell = source(
       "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
     );
@@ -58,12 +58,9 @@ describe("Canvas PDF reader UI", () => {
       "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css",
     );
 
-    expect(shell).toContain("PDF_READER_WIDTH_STORAGE_KEY");
-    expect(shell).toContain("window.localStorage.getItem");
-    expect(shell).toContain("window.localStorage.setItem");
-    expect(shell).toContain("beginPdfReaderResize");
-    expect(shell).toContain("Изменить ширину PDF");
-    expect(readerStyles).toContain(".pdfReaderResizeHandle");
+    expect(shell).not.toContain("PDF_READER_WIDTH_STORAGE_KEY");
+    expect(shell).not.toContain("beginPdfReaderResize");
+    expect(readerStyles).not.toContain(".pdfReaderResizeHandle");
     expect(readerStyles).toMatch(
       /\.pdfReader\s*\{[^}]*width: var\(--canvas-pdf-reader-width, 50vw\);/u,
     );
