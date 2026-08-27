@@ -1522,7 +1522,7 @@
   position: fixed;
   inset: 0 0 0 auto;
   z-index: 90;
-  width: var(--canvas-pdf-reader-width, clamp(460px, 40vw, 860px));
+  width: var(--canvas-pdf-reader-width, 50vw);
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -1536,6 +1536,34 @@
   width: 100vw;
   border-left: 0;
   box-shadow: none;
+}
+.pdfReaderResizing,
+.pdfReaderResizing * {
+  user-select: none;
+}
+.pdfReaderResizeHandle {
+  position: absolute;
+  inset: 0 auto 0 -6px;
+  z-index: 2;
+  width: 12px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.pdfReaderResizeHandle::before {
+  position: absolute;
+  inset: 0 auto 0 5px;
+  width: 2px;
+  background: transparent;
+  content: "";
+  transition: background-color 120ms ease;
+}
+.pdfReaderResizeHandle:hover::before,
+.pdfReaderResizeHandle:focus-visible::before {
+  background: var(--accent, #5046e5);
+}
+.pdfReaderResizeHandle:focus-visible {
+  outline: 2px solid var(--focus, #6f66ff);
+  outline-offset: -2px;
 }
 .pdfReaderHeader {
   min-width: 0;
@@ -1635,5 +1663,9 @@
     width: 100vw;
     border-left: 0;
     box-shadow: none;
+  }
+
+  .pdfReaderResizeHandle {
+    display: none;
   }
 }

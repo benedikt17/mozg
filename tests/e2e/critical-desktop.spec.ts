@@ -69,6 +69,7 @@ test("keeps the Desktop header controls aligned across primary sections", async 
   const navigation = page.getByRole("navigation", {
     name: "Разделы приложения",
   });
+  const header = page.locator(".application-header");
   const projectTitle = page.locator(".application-project-title strong");
   const headerActions = page.locator(".application-header-right");
 
@@ -85,17 +86,24 @@ test("keeps the Desktop header controls aligned across primary sections", async 
 
     const activeNavigationItem = navigation.locator('[aria-current="page"]');
     const firstHeaderAction = headerActions.getByRole("button").first();
-    const [titleBox, navigationBox, actionsBox] = await Promise.all([
+    const [headerBox, titleBox, navigationBox, actionsBox] = await Promise.all([
+      header.boundingBox(),
       projectTitle.boundingBox(),
       activeNavigationItem.boundingBox(),
       firstHeaderAction.boundingBox(),
     ]);
+    expect(headerBox, `${section}: header`).not.toBeNull();
     expect(titleBox, `${section}: project title`).not.toBeNull();
     expect(navigationBox, `${section}: navigation`).not.toBeNull();
     expect(actionsBox, `${section}: actions`).not.toBeNull();
-    if (!titleBox || !navigationBox || !actionsBox) continue;
+    if (!headerBox || !titleBox || !navigationBox || !actionsBox) continue;
 
+    const headerCenter = headerBox.y + headerBox.height / 2;
     const navigationCenter = navigationBox.y + navigationBox.height / 2;
+    expect(
+      Math.abs(navigationCenter - headerCenter),
+      `${section}: navigation center`,
+    ).toBeLessThanOrEqual(1);
     for (const [region, box] of [
       ["project title", titleBox],
       ["actions", actionsBox],

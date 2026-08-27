@@ -26,7 +26,7 @@
     --context-width: 352px;
     --application-wide-overlay-width: 600px;
     --header-height: 56px;
-    --canvas-pdf-reader-width: clamp(460px, 40vw, 860px);
+    --canvas-pdf-reader-width: clamp(460px, 50vw, calc(100vw - 360px));
 
     /* Shared sidebar presentation contract; domain styles opt into these
        values without sharing their hierarchy or interaction model. */
@@ -3427,6 +3427,7 @@
   .mobile-bottom-navigation,
   .mobile-more-backdrop,
   .mobile-more-sheet,
+  .mobile-sidebar-edge-hint,
   .mobile-tool-sidebar-trigger,
   .mobile-tool-sidebar-spacer,
   .mobile-tool-sidebar-backdrop {
@@ -3480,7 +3481,8 @@
     }
 
     .mobile-tool-sidebar-trigger,
-    .mobile-tool-sidebar-spacer {
+    .mobile-tool-sidebar-spacer,
+    .mobile-sidebar-edge-hint {
       grid-column: 2;
       grid-row: 1;
       align-self: center;
@@ -3514,6 +3516,10 @@
       width: 40px;
       height: 40px;
       pointer-events: none;
+    }
+
+    .mobile-sidebar-edge-hint {
+      display: block;
     }
 
     .section-workspace,
