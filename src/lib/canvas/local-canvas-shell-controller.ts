@@ -333,6 +333,29 @@ export class LocalCanvasShellController {
     );
   }
 
+  setCanvasBranchCollapsed(
+    nodeId: string,
+    collapsed: boolean,
+  ): LocalCanvasShellState {
+    if (!this.stateValue.canvasId) return this.state;
+    const current = this.stateValue.document.nodes.find(
+      (node) => node.id === nodeId,
+    );
+    if (!current || current.branchCollapsed === collapsed) return this.state;
+    return this.markDocumentPendingSave(
+      parseCanvasDocumentV2({
+        ...this.stateValue.document,
+        nodes: this.stateValue.document.nodes.map((node) => {
+          if (node.id !== nodeId) return { ...node };
+          if (collapsed) return { ...node, branchCollapsed: true };
+          const expanded = { ...node };
+          delete expanded.branchCollapsed;
+          return expanded;
+        }),
+      }),
+    );
+  }
+
   setRuntimeEdges(edges: readonly CanvasEdgeFlow[]): LocalCanvasShellState {
     if (!this.stateValue.canvasId) return this.state;
     return this.markDocumentPendingSave(

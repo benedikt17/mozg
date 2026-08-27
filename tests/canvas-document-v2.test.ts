@@ -191,6 +191,22 @@ describe("CanvasDocumentV2", () => {
     ).toThrow();
   });
 
+  it("accepts only boolean persisted branch-collapse state", () => {
+    const accepted = parseCanvasDocumentV2({
+      schemaVersion: 2,
+      nodes: [{ ...nodes[0], branchCollapsed: true }],
+      edges: [],
+    });
+    expect(accepted.nodes[0]).toMatchObject({ branchCollapsed: true });
+    expect(() =>
+      parseCanvasDocumentV2({
+        schemaVersion: 2,
+        nodes: [{ ...nodes[0], branchCollapsed: "true" }],
+        edges: [],
+      }),
+    ).toThrow();
+  });
+
   it("keeps the dedicated V1 parser strict for legacy callers", () => {
     expect(() =>
       parseCanvasDocumentV1({ schemaVersion: 2, nodes: [], edges: [] }),
