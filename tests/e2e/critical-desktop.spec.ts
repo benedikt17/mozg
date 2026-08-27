@@ -61,6 +61,56 @@ test("authenticates and navigates the five primary Desktop sections", async ({
   await expect(page).toHaveURL(/\/sign-in$/);
 });
 
+test("keeps the Desktop header controls aligned across primary sections", async ({
+  page,
+}) => {
+  await signIn(page);
+
+  const navigation = page.getByRole("navigation", {
+    name: "Разделы приложения",
+  });
+  const header = page.locator(".application-header");
+  const projectTitle = page.locator(".application-project-title");
+  const headerActions = page.locator(".application-header-right");
+
+  for (const section of [
+    "Обзор",
+    "Знания",
+    "Задачи",
+    "Холсты",
+    "Файлы",
+  ] as const) {
+    await navigation
+      .getByRole("button", { name: section, exact: true })
+      .click();
+
+    const [headerBox, titleBox, navigationBox, actionsBox] = await Promise.all([
+      header.boundingBox(),
+      projectTitle.boundingBox(),
+      navigation.boundingBox(),
+      headerActions.boundingBox(),
+    ]);
+    expect(headerBox, `${section}: header`).not.toBeNull();
+    expect(titleBox, `${section}: project title`).not.toBeNull();
+    expect(navigationBox, `${section}: navigation`).not.toBeNull();
+    expect(actionsBox, `${section}: actions`).not.toBeNull();
+    if (!headerBox || !titleBox || !navigationBox || !actionsBox) continue;
+
+    const headerCenter = headerBox.y + headerBox.height / 2;
+    for (const [region, box] of [
+      ["project title", titleBox],
+      ["navigation", navigationBox],
+      ["actions", actionsBox],
+    ] as const) {
+      const center = box.y + box.height / 2;
+      expect(
+        Math.abs(center - headerCenter),
+        `${section}: ${region} center`,
+      ).toBeLessThanOrEqual(1);
+    }
+  }
+});
+
 test("opens Project Files inside the normal Desktop shell", async ({
   page,
 }) => {

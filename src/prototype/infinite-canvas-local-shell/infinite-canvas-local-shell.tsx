@@ -30,6 +30,7 @@ import {
   CanvasDesktopSidebar,
   CanvasDesktopToolbar,
 } from "@/prototype/canvases/canvas-desktop-composition";
+import { UiIcon } from "@/prototype/desktop-icons";
 import {
   useCallback,
   useEffect,
@@ -1592,8 +1593,17 @@ function InfiniteCanvasLocalShellSurface({
   const [openPdf, setOpenPdf] = useState<{
     fileId: string;
     name: string;
+    nodeId: string;
     objectUrl: string;
   } | null>(null);
+  const [pdfFullscreen, setPdfFullscreen] = useState(false);
+  const renderedNodes = useMemo<CanvasFlowNode[]>(() => {
+    const openNodeId = openPdf?.nodeId;
+    if (!openNodeId) return nodes;
+    return nodes.map((node) =>
+      node.id === openNodeId ? { ...node, selected: true } : node,
+    );
+  }, [nodes, openPdf?.nodeId]);
   const [fileQuery, setFileQuery] = useState("");
   const [fileCatalog, setFileCatalog] = useState<ProjectFileRecord[]>([]);
   const [fileSearchStatus, setFileSearchStatus] = useState<
@@ -3616,11 +3626,13 @@ function InfiniteCanvasLocalShellSurface({
           projectId,
           fileId: node.data.fileId,
         });
+        setPdfFullscreen(false);
         setOpenPdf((current) => {
           if (current) URL.revokeObjectURL(current.objectUrl);
           return {
             fileId: node.data.fileId,
             name: downloaded.name || node.data.lastKnownName || "PDF",
+            nodeId: node.id,
             objectUrl: URL.createObjectURL(downloaded.blob),
           };
         });
@@ -3636,6 +3648,7 @@ function InfiniteCanvasLocalShellSurface({
   );
 
   const closePdfReader = useCallback(() => {
+    setPdfFullscreen(false);
     setOpenPdf((current) => {
       if (current) URL.revokeObjectURL(current.objectUrl);
       return null;
@@ -4468,9 +4481,7 @@ function InfiniteCanvasLocalShellSurface({
             : copy.error;
   if (embedded) {
     return desktopLayout(
-      <div
-        className={`${styles.canvasWorkspace}${openPdf ? ` ${styles.canvasWorkspaceSplit}` : ""}`}
-      >
+      <div className={styles.canvasWorkspace}>
         <div className={styles.canvasWrap}>
           <div
             ref={wrapperRef}
@@ -4488,7 +4499,7 @@ function InfiniteCanvasLocalShellSurface({
           >
             <ReactFlow
               className={`${styles.canvasViewport} ${viewportVisible ? "" : styles.canvasViewportHidden}`}
-              nodes={nodes}
+              nodes={renderedNodes}
               edges={edges}
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
@@ -4555,17 +4566,37 @@ function InfiniteCanvasLocalShellSurface({
           </div>
         </div>
         {openPdf ? (
-          <aside className={styles.pdfReader} aria-label="Просмотр PDF">
+          <aside
+            className={`${styles.pdfReader} canvas-pdf-reader ${pdfFullscreen ? `${styles.pdfReaderFullscreen} canvas-pdf-reader-fullscreen` : ""}`}
+            aria-label="Просмотр PDF"
+          >
             <header className={styles.pdfReaderHeader}>
               <strong title={openPdf.name}>{openPdf.name}</strong>
-              <button
-                type="button"
-                onClick={closePdfReader}
-                aria-label="Закрыть PDF"
-                title="Закрыть PDF"
-              >
-                ×
-              </button>
+              <div className={styles.pdfReaderHeaderActions}>
+                <button
+                  type="button"
+                  onClick={() => setPdfFullscreen((current) => !current)}
+                  aria-label={
+                    pdfFullscreen
+                      ? "Вернуть PDF в боковую панель"
+                      : "Развернуть PDF на весь экран"
+                  }
+                  aria-pressed={pdfFullscreen}
+                  title={pdfFullscreen ? "Вернуть в панель" : "На весь экран"}
+                >
+                  <UiIcon
+                    name={pdfFullscreen ? "fullscreen-exit" : "fullscreen"}
+                  />
+                </button>
+                <button
+                  type="button"
+                  onClick={closePdfReader}
+                  aria-label="Закрыть PDF"
+                  title="Закрыть PDF"
+                >
+                  <UiIcon name="close" />
+                </button>
+              </div>
             </header>
             <iframe
               src={openPdf.objectUrl}

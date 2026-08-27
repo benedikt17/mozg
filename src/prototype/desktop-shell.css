@@ -26,6 +26,7 @@
     --context-width: 352px;
     --application-wide-overlay-width: 600px;
     --header-height: 56px;
+    --canvas-pdf-reader-width: clamp(460px, 40vw, 860px);
 
     /* Shared sidebar presentation contract; domain styles opt into these
        values without sharing their hierarchy or interaction model. */
@@ -411,11 +412,21 @@
     grid-template-rows: var(--header-height) minmax(0, 1fr);
   }
 
+  :scope:has(.canvas-pdf-reader) .project-workspace {
+    padding-right: var(--canvas-pdf-reader-width);
+  }
+
+  :scope:has(.canvas-pdf-reader-fullscreen) .project-workspace {
+    padding-right: 0;
+  }
+
   .application-header {
     position: sticky;
     top: 0;
     z-index: 20;
     min-width: 0;
+    height: var(--header-height);
+    min-height: var(--header-height);
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     align-items: center;
@@ -423,6 +434,17 @@
     border-bottom: 1px solid var(--border);
     background: color-mix(in srgb, var(--surface) 94%, transparent);
     padding: 0 16px;
+  }
+
+  .application-project-title,
+  .application-section-navigation,
+  .application-header-right {
+    grid-row: 1;
+    align-self: center;
+  }
+
+  .application-project-title {
+    grid-column: 1;
   }
 
   .application-header-right {
@@ -3389,6 +3411,12 @@
 
     .header-tools {
       justify-content: flex-end;
+    }
+  }
+
+  @media (max-width: 900px) {
+    :scope:has(.canvas-pdf-reader) .project-workspace {
+      padding-right: 0;
     }
   }
 
