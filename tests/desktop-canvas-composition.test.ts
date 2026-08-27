@@ -46,7 +46,7 @@ describe("desktop Canvas composition", () => {
     expect(localRoute).toContain("showDiagnostics");
   });
 
-  it("keeps every image-ingestion entry point on the embedded viewport boundary", () => {
+  it("keeps image and PDF ingestion on the embedded viewport boundary", () => {
     const shell = source(
       "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
     );
@@ -58,9 +58,10 @@ describe("desktop Canvas composition", () => {
     expect(toolbar).toContain("onAddImage(files)");
     expect(shell).toContain("attachCanvasImagePasteListener(onPaste)");
     expect(shell).toContain("const onDrop = useCallback");
-    expect(shell).toContain(
-      'ingest(transferPayload(event.nativeEvent), "drop"',
-    );
+    expect(shell).toContain("const payload = transferPayload(event.nativeEvent)");
+    expect(shell).toContain("partitionCanvasDropFiles(payload.files)");
+    expect(shell).toContain("runCanvasMixedDrop(");
+    expect(shell).toContain('void ingest(payload, "drop", client)');
     expect(shell).toMatch(
       /ingest\(\s*\{ files, items: \[\], types: files\.map\(\(file\) => file\.type\) \},/,
     );
