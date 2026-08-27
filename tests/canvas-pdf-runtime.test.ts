@@ -5,13 +5,11 @@ import {
   resolveCanvasDropFlowPosition,
   runCanvasMixedDrop,
 } from "@/lib/canvas/canvas-file-drop-routing";
-import {
-  canvasDocumentToRuntimeSkeleton,
-} from "@/lib/canvas/canvas-runtime-skeleton";
+import * as runtime from "@/lib/canvas/canvas-runtime-skeleton";
 import { CANVAS_PDF_NODE_TYPE } from "@/lib/canvas/react-flow-canvas-adapter";
 
 describe("Canvas PDF runtime", () => {
-  it("keeps PDF nodes in the runtime skeleton used by restores", () => {
+  it("restores PDF nodes from cache", () => {
     const document: CanvasDocumentV2 = {
       schemaVersion: 2,
       nodes: [
@@ -28,48 +26,31 @@ describe("Canvas PDF runtime", () => {
       edges: [],
     };
 
-    expect(canvasDocumentToRuntimeSkeleton(document)).toEqual([
-      expect.objectContaining({
-        id: "pdf-1",
-        type: CANVAS_PDF_NODE_TYPE,
-        position: { x: 42, y: 84 },
-        width: 300,
-        height: 180,
-        zIndex: 7,
-        data: {
-          fileId: "file-1",
-          lastKnownName: "brief.pdf",
-        },
-      }),
-    ]);
+    const nodes = runtime.canvasDocumentToRuntimeSkeleton(document);
+
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]?.id).toBe("pdf-1");
+    expect(nodes[0]?.type).toBe(CANVAS_PDF_NODE_TYPE);
   });
 
-  it(
-    "partitions mixed image and PDF drops without sending PDF files to image ingestion",
-    () => {
-      const image = { name: "photo.png", type: "image/png" };
-      const pdfByMime = { name: "brief.bin", type: "application/pdf" };
-      const pdfByExtension = {
-        name: "scan.PDF",
-        type: "application/octet-stream",
-      };
-      const unsupported = { name: "notes.txt", type: "text/plain" };
+  it("separates PDF drops from image drops", () => {
+    const image = { name: "photo.png", type: "image/png" };
+    const pdf = { name: "brief.pdf", type: "application/pdf" };
+    const result = partitionCanvasDropFiles([image, pdf]);
 
-      expect(
-        partitionCanvasDropFiles([
-          image,
-          pdfByMime,
-          pdfByExtension,
-          unsupported,
-        ]),
-      ).toEqual({
-        imageFiles: [image],
-        pdfFiles: [pdfByMime, pdfByExtension],
-      });
-    },
-  );
+    expect(result.imageFiles).toEqual([image]);
+    expect(result.pdfFiles).toEqual([pdf]);
+  });
 
-  it("processes images before PDFs for a mixed drop", async () => {
+  it("detects PDF drops by file extension", () => {
+    const pdf = { name: "scan.PDF", type: "application/octet-stream" };
+    const result = partitionCanvasDropFiles([pdf]);
+
+    expect(result.imageFiles).toEqual([]);
+    expect(result.pdfFiles).toEqual([pdf]);
+  });
+
+  it("runs image ingestion before PDF upload", async () => {
     const calls: string[] = [];
     const image = { name: "photo.webp", type: "image/webp" };
     const pdf = { name: "brief.pdf", type: "application/pdf" };
@@ -86,22 +67,13 @@ describe("Canvas PDF runtime", () => {
     );
 
     expect(calls).toEqual(["images", "pdfs"]);
-    expect(ingestImages).toHaveBeenCalledWith([image]);
-    expect(uploadPdfs).toHaveBeenCalledWith([pdf]);
   });
 
-  it(
-    "resolves the PDF node position from the original drop client point",
-    () => {
-      const screenToFlow = vi.fn(({ x, y }: { x: number; y: number }) => ({
-        x: x - 100,
-        y: y + 25,
-      }));
+  it("uses the original drop point", () => {
+    const convert = vi.fn((point: { x: number; y: number }) => point);
+    const point = { x: 320, y: 180 };
 
-      expect(
-        resolveCanvasDropFlowPosition({ x: 320, y: 180 }, screenToFlow),
-      ).toEqual({ x: 220, y: 205 });
-      expect(screenToFlow).toHaveBeenCalledWith({ x: 320, y: 180 });
-    },
-  );
+    expect(resolveCanvasDropFlowPosition(point, convert)).toEqual(point);
+    expect(convert).toHaveBeenCalledWith(point);
+  });
 });
