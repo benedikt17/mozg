@@ -50,6 +50,11 @@ export type LocalCanvasShellState = {
   autosaveBlocked: boolean;
 };
 
+export type LocalCanvasConflictDraft = Pick<
+  LocalCanvasShellState,
+  "canvasId" | "title" | "document" | "viewport"
+>;
+
 export const DEFAULT_CANVAS_VIEWPORT: CanvasViewport = {
   x: 0,
   y: 0,
@@ -614,6 +619,57 @@ export class LocalCanvasShellController {
       if (!result || result.status === "conflict") break;
     }
     return result;
+  }
+
+  /** Retry a local document against the revision reported by a CAS conflict. */
+  async keepLocalChanges(): Promise<CanvasSaveResult | null> {
+    const current = this.stateValue;
+    if (
+      !current.canvasId ||
+      !current.autosaveBlocked ||
+      current.conflictRevision === null
+    )
+      return null;
+
+    this.mutationVersion = Math.max(
+      this.mutationVersion,
+      this.savedMutationVersion + 1,
+    );
+    this.stateValue = {
+      ...current,
+      revision: current.conflictRevision,
+      status: "saving",
+      error: null,
+      conflictRevision: null,
+      autosaveBlocked: false,
+    };
+    return this.save();
+  }
+
+  /** Restore a browser-held draft after the current server revision is loaded. */
+  restoreConflictDraft(
+    draft: LocalCanvasConflictDraft,
+  ): LocalCanvasShellState | null {
+    const current = this.stateValue;
+    if (!current.canvasId || draft.canvasId !== current.canvasId) return null;
+    const document = parseCanvasDocumentV2(draft.document);
+    this.documentHistory.reset();
+    this.mutationVersion = Math.max(
+      this.mutationVersion,
+      this.savedMutationVersion + 1,
+    );
+    this.stateValue = {
+      ...current,
+      title: draft.title,
+      document: clone(document),
+      viewport: clone(draft.viewport),
+      status: "conflict",
+      error:
+        "Local recovery copy restored. Keep your changes to save it over the latest version.",
+      conflictRevision: current.revision,
+      autosaveBlocked: true,
+    };
+    return this.state;
   }
 
   private async performSave(): Promise<CanvasSaveResult | null> {

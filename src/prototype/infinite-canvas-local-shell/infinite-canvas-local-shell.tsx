@@ -195,6 +195,7 @@ import {
 import {
   emptyShellState,
   LocalCanvasShellController,
+  type LocalCanvasConflictDraft,
   type LocalCanvasShellState,
 } from "@/lib/canvas/local-canvas-shell-controller";
 import type {
@@ -1461,6 +1462,8 @@ export type CanvasShellCopy = {
   loading: string;
   error: string;
   reloadWinner: string;
+  keepLocalChanges: string;
+  restoreLocalDraft: string;
   isolated: string;
   status: string;
 };
@@ -1583,6 +1586,7 @@ function InfiniteCanvasLocalShellSurface({
   const [shellState, setShellState] = useState<LocalCanvasShellState>(
     initialRuntime?.shellState ?? emptyShellState,
   );
+  const [conflictDraftAvailable, setConflictDraftAvailable] = useState(false);
   const [loadingLifecycle, setLoadingLifecycle] =
     useState<CanvasLoadingLifecycle>(
       initialRuntime?.shellState.canvasId ? "ready" : "list-loading",
@@ -1655,6 +1659,11 @@ function InfiniteCanvasLocalShellSurface({
   const imageRepository = assetRepository;
   const shellWorkspaceId = workspaceId;
   const shellUserId = userId;
+  const conflictDraftStorageKey = useMemo(
+    () =>
+      `mozg:canvas-conflict-draft:v1:${shellUserId}:${shellWorkspaceId}:${projectId ?? "default"}:${shellState.canvasId ?? "none"}`,
+    [projectId, shellState.canvasId, shellUserId, shellWorkspaceId],
+  );
   const imageLoadCacheUserIdRef = useRef(shellUserId);
   const [objectUrls] = useState(
     () => initialRuntime?.objectUrls ?? createObjectUrlRegistry(),
@@ -1897,6 +1906,57 @@ function InfiniteCanvasLocalShellSurface({
     () => setShellState(controller.state),
     [controller],
   );
+
+  const saveConflictDraft = useCallback(
+    (state: LocalCanvasShellState): void => {
+      if (!state.canvasId || typeof window === "undefined") return;
+      const draft: LocalCanvasConflictDraft = {
+        canvasId: state.canvasId,
+        title: state.title,
+        document: state.document,
+        viewport: state.viewport,
+      };
+      try {
+        window.localStorage.setItem(
+          conflictDraftStorageKey,
+          JSON.stringify(draft),
+        );
+        setConflictDraftAvailable(true);
+      } catch {
+        // The controller still holds the draft if browser storage is unavailable.
+      }
+    },
+    [conflictDraftStorageKey],
+  );
+
+  const readConflictDraft = useCallback((): LocalCanvasConflictDraft | null => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(conflictDraftStorageKey);
+      if (!raw) return null;
+      const draft = JSON.parse(raw) as LocalCanvasConflictDraft;
+      return draft && typeof draft.canvasId === "string" ? draft : null;
+    } catch {
+      return null;
+    }
+  }, [conflictDraftStorageKey]);
+
+  const clearConflictDraft = useCallback((): void => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.removeItem(conflictDraftStorageKey);
+    } finally {
+      setConflictDraftAvailable(false);
+    }
+  }, [conflictDraftStorageKey]);
+
+  useEffect(() => {
+    setConflictDraftAvailable(readConflictDraft() !== null);
+  }, [readConflictDraft]);
+
+  useEffect(() => {
+    if (shellState.status === "conflict") saveConflictDraft(shellState);
+  }, [saveConflictDraft, shellState]);
 
   const refreshCatalog = useCallback(async (): Promise<{
     summaries: CanvasSummary[];
@@ -4311,6 +4371,34 @@ function InfiniteCanvasLocalShellSurface({
     [commitViewportMove],
   );
 
+  const keepLocalChanges = useCallback(() => {
+    void controller
+      .keepLocalChanges()
+      .then(async (result) => {
+        syncState();
+        if (result?.status !== "saved") return;
+        clearConflictDraft();
+        await refreshCatalog();
+      })
+      .catch(syncState);
+  }, [clearConflictDraft, controller, refreshCatalog, syncState]);
+
+  const reloadLatestVersion = useCallback(() => {
+    const current = controller.state;
+    saveConflictDraft(current);
+    if (current.canvasId) void openCanvas(current.canvasId);
+  }, [controller, openCanvas, saveConflictDraft]);
+
+  const restoreLocalConflictDraft = useCallback(() => {
+    const draft = readConflictDraft();
+    if (!draft) return;
+    const restored = controller.restoreConflictDraft(draft);
+    if (!restored) return;
+    setShellState(restored);
+    setRenameTitle(restored.title);
+    void restoreForCanvas(restored).catch(syncState);
+  }, [controller, readConflictDraft, restoreForCanvas, syncState]);
+
   const desktopListState =
     loadingLifecycle === "list-loading"
       ? "loading"
@@ -4354,6 +4442,7 @@ function InfiniteCanvasLocalShellSurface({
       interactive={Boolean(shellState.canvasId) && loadingLifecycle === "ready"}
       copy={copy}
       error={shellState.error}
+      conflictDraftAvailable={conflictDraftAvailable}
       onAddPdf={(files) => void uploadPdfFiles(files)}
       onAddImage={(files) =>
         void ingest(
@@ -4368,10 +4457,10 @@ function InfiniteCanvasLocalShellSurface({
       onCloseFilePicker={() => setFilePickerOpen(false)}
       onCloseTaskPicker={() => setTaskPickerOpen(false)}
       onFileQueryChange={setFileQuery}
+      onKeepLocalChanges={keepLocalChanges}
       onRedo={() => applyCanvasHistory("redo")}
-      onReloadWinner={() => {
-        if (shellState.canvasId) void openCanvas(shellState.canvasId);
-      }}
+      onReloadWinner={reloadLatestVersion}
+      onRestoreLocalDraft={restoreLocalConflictDraft}
       onRetry={() => {
         if (shellState.canvasId) void openCanvas(shellState.canvasId);
         else window.location.reload();
@@ -4721,12 +4810,29 @@ function InfiniteCanvasLocalShellSurface({
             {copy.delete}
           </button>
           {shellState.status === "conflict" ? (
+            <>
+              <button
+                className={`${styles.button} ${styles.primary}`}
+                type="button"
+                onClick={keepLocalChanges}
+              >
+                {copy.keepLocalChanges}
+              </button>
+              <button
+                className={styles.button}
+                type="button"
+                onClick={reloadLatestVersion}
+              >
+                {copy.reloadWinner}
+              </button>
+            </>
+          ) : conflictDraftAvailable ? (
             <button
-              className={`${styles.button} ${styles.primary}`}
+              className={styles.button}
               type="button"
-              onClick={() => void openCanvas(shellState.canvasId!)}
+              onClick={restoreLocalConflictDraft}
             >
-              {copy.reloadWinner}
+              {copy.restoreLocalDraft}
             </button>
           ) : null}
           {shellState.status === "error" ? (
