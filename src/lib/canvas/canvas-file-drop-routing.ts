@@ -20,12 +20,12 @@ export function isCanvasImageDropFile(file: CanvasDropFileLike): boolean {
 }
 
 export function partitionCanvasDropFiles<T extends CanvasDropFileLike>(
-  files: readonly T[],
+  files: Iterable<T> | ArrayLike<T> | null | undefined,
 ): { imageFiles: T[]; pdfFiles: T[] } {
   const imageFiles: T[] = [];
   const pdfFiles: T[] = [];
 
-  for (const file of files) {
+  for (const file of Array.from(files ?? [])) {
     if (isCanvasPdfDropFile(file)) {
       pdfFiles.push(file);
       continue;
