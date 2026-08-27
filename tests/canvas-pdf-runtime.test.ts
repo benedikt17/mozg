@@ -45,7 +45,10 @@ describe("Canvas PDF runtime", () => {
   it("partitions mixed image and PDF drops without sending PDF files to image ingestion", () => {
     const image = { name: "photo.png", type: "image/png" };
     const pdfByMime = { name: "brief.bin", type: "application/pdf" };
-    const pdfByExtension = { name: "scan.PDF", type: "application/octet-stream" };
+    const pdfByExtension = {
+      name: "scan.PDF",
+      type: "application/octet-stream",
+    };
     const unsupported = { name: "notes.txt", type: "text/plain" };
 
     expect(
@@ -88,9 +91,9 @@ describe("Canvas PDF runtime", () => {
       y: y + 25,
     }));
 
-    expect(resolveCanvasDropFlowPosition({ x: 320, y: 180 }, screenToFlow)).toEqual(
-      { x: 220, y: 205 },
-    );
+    expect(
+      resolveCanvasDropFlowPosition({ x: 320, y: 180 }, screenToFlow),
+    ).toEqual({ x: 220, y: 205 });
     expect(screenToFlow).toHaveBeenCalledWith({ x: 320, y: 180 });
   });
 });
