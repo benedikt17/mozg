@@ -5,7 +5,9 @@ import {
   resolveCanvasDropFlowPosition,
   runCanvasMixedDrop,
 } from "@/lib/canvas/canvas-file-drop-routing";
-import { canvasDocumentToRuntimeSkeleton } from "@/lib/canvas/canvas-runtime-skeleton";
+import {
+  canvasDocumentToRuntimeSkeleton,
+} from "@/lib/canvas/canvas-runtime-skeleton";
 import { CANVAS_PDF_NODE_TYPE } from "@/lib/canvas/react-flow-canvas-adapter";
 
 describe("Canvas PDF runtime", () => {
