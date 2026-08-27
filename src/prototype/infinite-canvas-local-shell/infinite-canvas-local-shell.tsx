@@ -108,6 +108,11 @@ import {
   CANVAS_TEXT_NODE_TYPE,
   CANVAS_EDGE_TYPE,
   canvasDocumentToEdges,
+  canvasDocumentToImageNodes,
+  canvasDocumentToPdfNodes,
+  canvasDocumentToShapeNodes,
+  canvasDocumentToTaskNodes,
+  canvasDocumentToTextNodes,
   canvasImageAdapterDependenciesForCanvas,
   createCanvasPdfFlowNode,
   createCanvasPdfId,
@@ -210,12 +215,6 @@ import {
   reconcileCachedRuntimeWithServer,
   serverCanvasMatchesCachedRuntime,
 } from "@/lib/canvas/canvas-runtime-cache-reconciliation";
-import {
-  partitionCanvasDropFiles,
-  resolveCanvasDropFlowPosition,
-  runCanvasMixedDrop,
-} from "@/lib/canvas/canvas-file-drop-routing";
-import { canvasDocumentToRuntimeSkeleton } from "@/lib/canvas/canvas-runtime-skeleton";
 import {
   CanvasEdgeMarkerDefinitions,
   CanvasVisibleEdge,
@@ -576,7 +575,9 @@ function TextSelectionToolbar({
         className={styles.textToolbarButton}
         aria-label="Увеличить размер шрифта"
         title="Увеличить размер"
-        onClick={() => patchStyle({ fontSize: nextCanvasTextFontSize(style.fontSize) })}
+        onClick={() =>
+          patchStyle({ fontSize: nextCanvasTextFontSize(style.fontSize) })
+        }
       >
         +
       </button>
@@ -687,7 +688,13 @@ function dispatchCanvasShapeStylePatch(
   );
 }
 
-function ShapeSelectionToolbar({ id, style }: { id: string; style: CanvasShapeStyle }): React.JSX.Element {
+function ShapeSelectionToolbar({
+  id,
+  style,
+}: {
+  id: string;
+  style: CanvasShapeStyle;
+}): React.JSX.Element {
   return (
     <TextSelectionToolbar
       id={id}
@@ -802,7 +809,10 @@ function PdfNodeBody({
     >
       <div className={styles.pdfNodeContent}>
         <span className={styles.pdfNodeBadge}>PDF</span>
-        <span className={styles.pdfNodeName} title={data.lastKnownName ?? "PDF"}>
+        <span
+          className={styles.pdfNodeName}
+          title={data.lastKnownName ?? "PDF"}
+        >
           {data.lastKnownName ?? "PDF"}
         </span>
       </div>
@@ -882,7 +892,11 @@ function ShapeNodeBody({
         }}
       >
         {data.isEditing ? (
-          <CanvasTextEditor id={id} markdown={data.markdown} eventKind="shape" />
+          <CanvasTextEditor
+            id={id}
+            markdown={data.markdown}
+            eventKind="shape"
+          />
         ) : data.markdown.trim() ? (
           <div className={styles.textPreview}>
             <MarkdownStringPreview contentId={id} markdown={data.markdown} />
@@ -918,13 +932,16 @@ function TaskNodeBody({
     mutationState.key === runtimeKey && mutationState.hasError;
 
   useEffect(() => {
-    if (!data.taskBridge || !data.taskWorkspaceId) return;
+    if (!data.taskBridge || !data.taskWorkspaceId) {
+      return;
+    }
     let active = true;
     const unsubscribe = data.taskBridge.subscribeToTask(
       data.taskWorkspaceId,
       data.taskId,
       (nextProjection) => {
-        if (active) setProjectionState({ key: runtimeKey, projection: nextProjection });
+        if (active)
+          setProjectionState({ key: runtimeKey, projection: nextProjection });
       },
     );
     return () => {
@@ -935,7 +952,9 @@ function TaskNodeBody({
 
   const resolved = projection !== undefined && projection !== null;
   const title = projection?.title ?? data.lastKnownTitle ?? "Задача";
-  const missingLabel = data.taskBridge ? "Задача недоступна" : "Подключение задач…";
+  const missingLabel = data.taskBridge
+    ? "Задача недоступна"
+    : "Подключение задач…";
 
   const toggleCompleted = (): void => {
     if (!data.taskBridge || !data.taskWorkspaceId || !resolved) return;
@@ -948,7 +967,11 @@ function TaskNodeBody({
   const toggleSubtaskCompleted = (subtaskId: string): void => {
     if (!data.taskBridge || !data.taskWorkspaceId || !resolved) return;
     void Promise.resolve(
-      data.taskBridge.toggleSubtaskCompleted(data.taskWorkspaceId, data.taskId, subtaskId),
+      data.taskBridge.toggleSubtaskCompleted(
+        data.taskWorkspaceId,
+        data.taskId,
+        subtaskId,
+      ),
     ).catch(() => undefined);
   };
 
@@ -956,7 +979,9 @@ function TaskNodeBody({
     reactFlow.setNodes((current) =>
       current.map((node) => {
         const nextSelected = node.id === id;
-        return node.selected === nextSelected ? node : { ...node, selected: nextSelected };
+        return node.selected === nextSelected
+          ? node
+          : { ...node, selected: nextSelected };
       }),
     );
   };
@@ -994,7 +1019,13 @@ function TaskNodeBody({
     const observer = new ResizeObserver(measureContentHeight);
     observer.observe(content);
     return () => observer.disconnect();
-  }, [measureContentHeight, mutationError, onContentHeightChange, projection, title]);
+  }, [
+    measureContentHeight,
+    mutationError,
+    onContentHeightChange,
+    projection,
+    title,
+  ]);
 
   return (
     <CanvasNodeFrame
@@ -1031,7 +1062,9 @@ function TaskNodeBody({
               toggleCompleted();
             }}
           />
-          <strong className={resolved ? undefined : styles.taskNodeMissingTitle}>
+          <strong
+            className={resolved ? undefined : styles.taskNodeMissingTitle}
+          >
             {title}
           </strong>
         </div>
@@ -1113,8 +1146,14 @@ export function CanvasEdgeBody({
   const geometry =
     sourceBounds && targetBounds
       ? {
-          sourceAnchor: canvasNodePerimeterAnchor(sourceBounds, sourcePositionSide),
-          targetAnchor: canvasNodePerimeterAnchor(targetBounds, targetPositionSide),
+          sourceAnchor: canvasNodePerimeterAnchor(
+            sourceBounds,
+            sourcePositionSide,
+          ),
+          targetAnchor: canvasNodePerimeterAnchor(
+            targetBounds,
+            targetPositionSide,
+          ),
         }
       : null;
   const computedPath = geometry
@@ -1151,7 +1190,11 @@ export function CanvasEdgeBody({
   }, [computedPathValue, lastPath]);
   if (!computedPath) {
     return (
-      <g data-canvas-edge-id={id} data-source-node-id={source} data-target-node-id={target}>
+      <g
+        data-canvas-edge-id={id}
+        data-source-node-id={source}
+        data-target-node-id={target}
+      >
         <CanvasVisibleEdge
           id={id}
           path={lastPath}
@@ -1172,7 +1215,11 @@ export function CanvasEdgeBody({
   };
   return (
     <>
-      <g data-canvas-edge-id={id} data-source-node-id={source} data-target-node-id={target}>
+      <g
+        data-canvas-edge-id={id}
+        data-source-node-id={source}
+        data-target-node-id={target}
+      >
         <CanvasVisibleEdge
           id={id}
           path={path}
@@ -1256,7 +1303,11 @@ export function CanvasEdgeBody({
               setLineTypeOpen((open) => !open);
             }}
           >
-            {routing === "orthogonal" ? "┐" : routing === "straight" ? "／" : "⌒"}
+            {routing === "orthogonal"
+              ? "┐"
+              : routing === "straight"
+                ? "／"
+                : "⌒"}
           </button>
           {lineTypeOpen ? (
             <div className={styles.edgeLinePopover} role="menu">
@@ -1276,7 +1327,10 @@ export function CanvasEdgeBody({
                   onClick={(event) => {
                     stopToolbarEvent(event);
                     setLineTypeOpen(false);
-                    data?.onUpdate?.(id, { routing: value, arrows });
+                    data?.onUpdate?.(id, {
+                      routing: value,
+                      arrows,
+                    });
                   }}
                 >
                   <span aria-hidden="true">{glyph}</span>
@@ -1483,7 +1537,9 @@ function InfiniteCanvasLocalShellSurface({
   const pendingContentHeightSaveRef = useRef(false);
   const nodeGeometrySignatureRef = useRef("");
   const nodeDragActiveRef = useRef(false);
-  const altDragDuplicateRef = useRef<CanvasAltDragDuplicateSession | null>(null);
+  const altDragDuplicateRef = useRef<CanvasAltDragDuplicateSession | null>(
+    null,
+  );
   const middlePanActiveRef = useRef(false);
   const activeTouchPointersRef = useRef(new Set<number>());
   const touchGestureNodesRef = useRef<CanvasFlowNode[] | null>(null);
@@ -1497,7 +1553,9 @@ function InfiniteCanvasLocalShellSurface({
   const edgeRemovalSuppressionUntilRef = useRef(0);
   const hydratingRef = useRef(true);
   const canvasGenerationRef = useRef(0);
-  const programmaticViewportRef = useRef<CanvasViewportInitialization | null>(null);
+  const programmaticViewportRef = useRef<CanvasViewportInitialization | null>(
+    null,
+  );
   const screenToFlowRef = useRef<
     (point: { x: number; y: number }) => FlowPosition
   >(() => ({ x: 0, y: 0 }));
@@ -1511,10 +1569,12 @@ function InfiniteCanvasLocalShellSurface({
   const [shellState, setShellState] = useState<LocalCanvasShellState>(
     initialRuntime?.shellState ?? emptyShellState,
   );
-  const [loadingLifecycle, setLoadingLifecycle] = useState<CanvasLoadingLifecycle>(
-    initialRuntime?.shellState.canvasId ? "ready" : "list-loading",
-  );
-  const [restoreStats, setRestoreStats] = useState<RestoreStats>(EMPTY_RESTORE_STATS);
+  const [loadingLifecycle, setLoadingLifecycle] =
+    useState<CanvasLoadingLifecycle>(
+      initialRuntime?.shellState.canvasId ? "ready" : "list-loading",
+    );
+  const [restoreStats, setRestoreStats] =
+    useState<RestoreStats>(EMPTY_RESTORE_STATS);
   const [dropActive, setDropActive] = useState(false);
   const [newTitle, setNewTitle] = useState(copy.defaultTitle);
   const [renameTitle, setRenameTitle] = useState("");
@@ -1538,23 +1598,27 @@ function InfiniteCanvasLocalShellSurface({
   >("idle");
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [touchPrimaryInput, setTouchPrimaryInput] = useState(false);
-  const [touchViewportGestureActive, setTouchViewportGestureActive] = useState(false);
-  const [styleEyedropperSourceId, setStyleEyedropperSourceId] = useState<string | null>(null);
-
+  const [touchViewportGestureActive, setTouchViewportGestureActive] =
+    useState(false);
+  const [styleEyedropperSourceId, setStyleEyedropperSourceId] = useState<
+    string | null
+  >(null);
   useEffect(() => {
     if (!window.matchMedia("(max-width: 767px)").matches) return;
-    const frame = window.requestAnimationFrame(() => setDesktopSidebarOpen(false));
+    const frame = window.requestAnimationFrame(() => {
+      setDesktopSidebarOpen(false);
+    });
     return () => window.cancelAnimationFrame(frame);
   }, []);
-
   useEffect(() => {
     const media = window.matchMedia("(pointer: coarse)");
-    const syncPrimaryTouchInput = (): void => setTouchPrimaryInput(media.matches);
+    const syncPrimaryTouchInput = (): void => {
+      setTouchPrimaryInput(media.matches);
+    };
     syncPrimaryTouchInput();
     media.addEventListener("change", syncPrimaryTouchInput);
     return () => media.removeEventListener("change", syncPrimaryTouchInput);
   }, []);
-
   const [flowInstanceEpoch, setFlowInstanceEpoch] = useState(0);
   const [viewportInitialization, setViewportInitialization] =
     useState<CanvasViewportInitialization | null>(null);
@@ -1567,29 +1631,40 @@ function InfiniteCanvasLocalShellSurface({
   const shellWorkspaceId = workspaceId;
   const shellUserId = userId;
   const imageLoadCacheUserIdRef = useRef(shellUserId);
-  const [objectUrls] = useState(() => initialRuntime?.objectUrls ?? createObjectUrlRegistry());
-  const [controller] = useState(() => {
-    const next = new LocalCanvasShellController({
-      repository,
-      workspaceId: shellWorkspaceId,
-      userId: shellUserId,
-    });
-    if (initialRuntime) next.restoreRuntimeState(initialRuntime.shellState);
-    return next;
-  });
+  const [objectUrls] = useState(
+    () => initialRuntime?.objectUrls ?? createObjectUrlRegistry(),
+  );
+  const [controller] = useState(() =>
+    (() => {
+      const next = new LocalCanvasShellController({
+        repository,
+        workspaceId: shellWorkspaceId,
+        userId: shellUserId,
+      });
+      if (initialRuntime) next.restoreRuntimeState(initialRuntime.shellState);
+      return next;
+    })(),
+  );
   const reactFlow = useReactFlow<CanvasFlowNode>();
 
   useEffect(() => {
     const activeTaskId = activeTaskDetailsTaskId;
-    if (!activeTaskId || !taskBridge || !shouldCloseCanvasTaskDetails(activeTaskId, nodes)) return;
+    if (
+      !activeTaskId ||
+      !taskBridge ||
+      !shouldCloseCanvasTaskDetails(activeTaskId, nodes)
+    )
+      return;
     taskBridge.closeTaskDetails(activeTaskId);
   }, [activeTaskDetailsTaskId, nodes, taskBridge]);
-
   const adapterDependencies = useMemo<CanvasImageAdapterDependencies>(() => {
     const reportVariantError = (label: string, error: unknown): void => {
       if (process.env.NODE_ENV === "production") return;
       if (error instanceof Error && "code" in error) {
-        const diagnostic = error as Error & { code?: unknown; details?: unknown };
+        const diagnostic = error as Error & {
+          code?: unknown;
+          details?: unknown;
+        };
         console.warn(
           label,
           JSON.stringify({
@@ -1617,13 +1692,22 @@ function InfiniteCanvasLocalShellSurface({
       pyramidScheduler: pyramidSchedulerRef.current,
       onPyramidComplete: ({ result }) => {
         if (result.stored.length === 0) return;
-        refreshImageVariantsRef.current(shellStateRef.current.viewport.zoom, false);
+        refreshImageVariantsRef.current(
+          shellStateRef.current.viewport.zoom,
+          false,
+        );
       },
       onVariantError: (error: unknown) => {
         reportVariantError("Canvas image variant generation failed.", error);
       },
     };
-  }, [imageRepository, objectUrls, shellState.canvasId, shellUserId, shellWorkspaceId]);
+  }, [
+    imageRepository,
+    objectUrls,
+    shellState.canvasId,
+    shellUserId,
+    shellWorkspaceId,
+  ]);
 
   useEffect(() => {
     nodesRef.current = nodes;
@@ -1658,7 +1742,11 @@ function InfiniteCanvasLocalShellSurface({
         node.type === CANVAS_TASK_NODE_TYPE
           ? {
               ...node,
-              data: { ...node.data, taskBridge, taskWorkspaceId },
+              data: {
+                ...node.data,
+                taskBridge,
+                taskWorkspaceId,
+              },
             }
           : node,
       ),
@@ -1673,7 +1761,9 @@ function InfiniteCanvasLocalShellSurface({
     }
     let active = true;
     setTaskSearchStatus("loading");
-    void Promise.resolve(taskBridge.searchTasks(taskWorkspaceId, taskQuery)).then(
+    void Promise.resolve(
+      taskBridge.searchTasks(taskWorkspaceId, taskQuery),
+    ).then(
       (results) => {
         if (!active) return;
         setTaskResults(results);
@@ -1769,10 +1859,19 @@ function InfiniteCanvasLocalShellSurface({
             canvasId,
           }
         : null,
-    [objectUrls, projectFileRepository, projectFileVariantRepository, projectId, shellWorkspaceId],
+    [
+      objectUrls,
+      projectFileRepository,
+      projectFileVariantRepository,
+      projectId,
+      shellWorkspaceId,
+    ],
   );
 
-  const syncState = useCallback(() => setShellState(controller.state), [controller]);
+  const syncState = useCallback(
+    () => setShellState(controller.state),
+    [controller],
+  );
 
   const refreshCatalog = useCallback(async (): Promise<{
     summaries: CanvasSummary[];
@@ -1780,7 +1879,8 @@ function InfiniteCanvasLocalShellSurface({
   }> => {
     const [nextSummaries, nextGroups] = await Promise.all([
       controller.listCanvases(),
-      groupsRepository?.listCanvasGroups(shellWorkspaceId) ?? Promise.resolve([] as CanvasGroup[]),
+      groupsRepository?.listCanvasGroups(shellWorkspaceId) ??
+        Promise.resolve([] as CanvasGroup[]),
     ]);
     setSummaries(nextSummaries);
     setGroups(nextGroups);
@@ -1800,12 +1900,17 @@ function InfiniteCanvasLocalShellSurface({
   useEffect(() => {
     const bounds = canvasFlowNodeBoundsRecords(nodes);
     const signature = bounds
-      .map((node) => `${node.id}:${node.x}:${node.y}:${node.width}:${node.height}`)
+      .map(
+        (node) => `${node.id}:${node.x}:${node.y}:${node.width}:${node.height}`,
+      )
       .join("|");
     if (signature === nodeGeometrySignatureRef.current) return;
     nodeGeometrySignatureRef.current = signature;
 
-    const nextEdges = recomputeCanvasRuntimeEdgeHandles(edgesRef.current, bounds);
+    const nextEdges = recomputeCanvasRuntimeEdgeHandles(
+      edgesRef.current,
+      bounds,
+    );
     const handlesChanged = nextEdges.some(
       (edge, index) =>
         edge.sourceHandle !== edgesRef.current[index]?.sourceHandle ||
@@ -1816,7 +1921,10 @@ function InfiniteCanvasLocalShellSurface({
   }, [nodes, setEdges]);
 
   const handleEdgeUpdate = useCallback(
-    (edgeId: string, update: Pick<CanvasEdgeFlowData, "routing" | "arrows">) => {
+    (
+      edgeId: string,
+      update: Pick<CanvasEdgeFlowData, "routing" | "arrows">,
+    ) => {
       const nextState = controller.updateCanvasEdge(edgeId, update);
       setEdges((current) =>
         current.map((edge) =>
@@ -1852,23 +1960,31 @@ function InfiniteCanvasLocalShellSurface({
   const handleEdgesChange = useCallback(
     (changes: EdgeChange<CanvasEdgeFlow>[]) => {
       const suppressRemoval =
-        nodeDragActiveRef.current || edgeRemovalSuppressionUntilRef.current > Date.now();
+        nodeDragActiveRef.current ||
+        edgeRemovalSuppressionUntilRef.current > Date.now();
       const safeChanges = suppressRemoval
         ? changes.filter((change) => change.type !== "remove")
         : changes;
       const removed = changes.filter(
-        (change): change is Extract<EdgeChange<CanvasEdgeFlow>, { type: "remove" }> =>
+        (
+          change,
+        ): change is Extract<EdgeChange<CanvasEdgeFlow>, { type: "remove" }> =>
           change.type === "remove",
       );
       if (removed.length > 0 && !suppressRemoval) {
-        const nextState = controller.removeCanvasEdges(removed.map((change) => change.id));
+        const nextState = controller.removeCanvasEdges(
+          removed.map((change) => change.id),
+        );
         setShellState(nextState);
         scheduleSave();
       }
       setEdges((current) => {
         const next = applyEdgeChanges(safeChanges, current);
         if (!suppressRemoval) return next;
-        const canonical = canvasDocumentToEdges(controller.state.document, handleEdgeUpdate);
+        const canonical = canvasDocumentToEdges(
+          controller.state.document,
+          handleEdgeUpdate,
+        );
         const known = new Set(next.map((edge) => edge.id));
         return [...next, ...canonical.filter((edge) => !known.has(edge.id))];
       });
@@ -1883,17 +1999,26 @@ function InfiniteCanvasLocalShellSurface({
       edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
       altDragDuplicateRef.current = null;
       if (!event.altKey) return;
-      if (nodesRef.current.some((candidate) => candidate.selected && candidate.id !== node.id)) return;
+      if (
+        nodesRef.current.some(
+          (candidate) => candidate.selected && candidate.id !== node.id,
+        )
+      )
+        return;
 
       const document = controller.state.document;
       if (document.nodes.length >= CANVAS_DOCUMENT_LIMITS.maxNodes) return;
-      const canonical = document.nodes.find((candidate) => candidate.id === node.id);
+      const canonical = document.nodes.find(
+        (candidate) => candidate.id === node.id,
+      );
       if (!canonical) return;
       const highestZIndex = document.nodes.reduce(
         (maximum, candidate) => Math.max(maximum, candidate.zIndex),
         0,
       );
-      const duplicate = createCanvasAltDragDuplicate(canonical, { zIndex: highestZIndex + 1 });
+      const duplicate = createCanvasAltDragDuplicate(canonical, {
+        zIndex: highestZIndex + 1,
+      });
       if (!duplicate) return;
 
       const runtimeDuplicate = createCanvasAltDragRuntimeNode(node, duplicate);
@@ -1982,11 +2107,17 @@ function InfiniteCanvasLocalShellSurface({
       variantPayloadsRef.current.clear();
       objectUrls.revokeAll();
       const signal = restoreControllerRef.current.signal;
-      const placeholders = canvasDocumentToRuntimeSkeleton(nextState.document, {
-        onContentHeightChange: handleTaskNodeContentHeightChange,
-        taskBridge: taskBridgeRef.current,
-        taskWorkspaceId: taskWorkspaceIdRef.current,
-      });
+      const placeholders: CanvasFlowNode[] = [
+        ...canvasDocumentToImageNodes(nextState.document),
+        ...canvasDocumentToPdfNodes(nextState.document),
+        ...canvasDocumentToTaskNodes(nextState.document, {
+          onContentHeightChange: handleTaskNodeContentHeightChange,
+          taskBridge: taskBridgeRef.current,
+          taskWorkspaceId: taskWorkspaceIdRef.current,
+        }),
+        ...canvasDocumentToTextNodes(nextState.document),
+        ...canvasDocumentToShapeNodes(nextState.document),
+      ];
       setNodes(placeholders);
       setEdges(canvasDocumentToEdges(nextState.document, handleEdgeUpdate));
       hydratingRef.current = true;
@@ -2027,13 +2158,17 @@ function InfiniteCanvasLocalShellSurface({
         ? projectFileImageDependenciesForCanvas(nextState.canvasId)
         : null;
       const projectFileResult = projectFileDependencies
-        ? await restoreProjectFileCanvasImageNodes(nextState.document, projectFileDependencies, {
-            signal,
-            concurrency: 4,
-            viewportZoom: nextState.viewport.zoom,
-            cachedAssetPayloads: variantPayloadsRef.current,
-            onNode: applyRestoredNode,
-          })
+        ? await restoreProjectFileCanvasImageNodes(
+            nextState.document,
+            projectFileDependencies,
+            {
+              signal,
+              concurrency: 4,
+              viewportZoom: nextState.viewport.zoom,
+              cachedAssetPayloads: variantPayloadsRef.current,
+              onNode: applyRestoredNode,
+            },
+          )
         : {
             nodes: [],
             missingFileIds: [],
@@ -2047,10 +2182,14 @@ function InfiniteCanvasLocalShellSurface({
           result.maxConcurrentAssetReads,
           projectFileResult.maxConcurrentFileReads,
         ),
-        missing: result.missingAssetIds.length + projectFileResult.missingFileIds.length,
+        missing:
+          result.missingAssetIds.length +
+          projectFileResult.missingFileIds.length,
       });
       hydratingRef.current = false;
-      if (pendingContentHeightSaveRef.current) pendingContentHeightSaveRef.current = false;
+      if (pendingContentHeightSaveRef.current) {
+        pendingContentHeightSaveRef.current = false;
+      }
       setLoadingLifecycle("ready");
     },
     [
@@ -2072,7 +2211,9 @@ function InfiniteCanvasLocalShellSurface({
   const applyCanvasHistory = useCallback(
     (direction: "undo" | "redo") => {
       const nextState =
-        direction === "undo" ? controller.undoDocument() : controller.redoDocument();
+        direction === "undo"
+          ? controller.undoDocument()
+          : controller.redoDocument();
       if (!nextState) return;
       setShellState(nextState);
       void restoreForCanvas(nextState)
@@ -2086,7 +2227,10 @@ function InfiniteCanvasLocalShellSurface({
           setShellState({
             ...controller.state,
             status: "error",
-            error: error instanceof Error ? error.message : "Canvas history restore failed.",
+            error:
+              error instanceof Error
+                ? error.message
+                : "Canvas history restore failed.",
           });
         });
     },
@@ -2095,7 +2239,11 @@ function InfiniteCanvasLocalShellSurface({
 
   useEffect(() => {
     const onHistoryKeyDown = (event: KeyboardEvent): void => {
-      if (eventTouchesEditingSurface(event) || !(event.ctrlKey || event.metaKey)) return;
+      if (
+        eventTouchesEditingSurface(event) ||
+        !(event.ctrlKey || event.metaKey)
+      )
+        return;
       const key = event.key.toLowerCase();
       const direction =
         key === "y" || (key === "z" && event.shiftKey)
@@ -2104,7 +2252,8 @@ function InfiniteCanvasLocalShellSurface({
             ? "undo"
             : null;
       if (!direction) return;
-      if (direction === "undo" ? !controller.canUndo : !controller.canRedo) return;
+      if (direction === "undo" ? !controller.canUndo : !controller.canRedo)
+        return;
       event.preventDefault();
       applyCanvasHistory(direction);
     };
@@ -2120,21 +2269,32 @@ function InfiniteCanvasLocalShellSurface({
       programmaticViewportRef.current = null;
       setViewportInitialization(null);
       setViewportVisible(false);
-      setShellState((current) => ({ ...current, status: "loading", error: null }));
+      setShellState((current) => ({
+        ...current,
+        status: "loading",
+        error: null,
+      }));
       setLoadingLifecycle("document-loading");
       const nextState = await controller.openCanvas(canvasId);
       if (generation !== canvasGenerationRef.current) return;
       repository.setActiveCanvas?.(canvasId);
       setShellState(nextState);
       setRenameTitle(nextState.title);
-      setViewportInitialization({ canvasId, generation, viewport: { ...nextState.viewport } });
+      setViewportInitialization({
+        canvasId,
+        generation,
+        viewport: { ...nextState.viewport },
+      });
       void restoreForCanvas(nextState).catch((error: unknown) => {
         if (generation !== canvasGenerationRef.current) return;
         setLoadingLifecycle("error");
         setShellState((current) => ({
           ...current,
           status: "error",
-          error: error instanceof Error ? error.message : "Canvas content loading failed.",
+          error:
+            error instanceof Error
+              ? error.message
+              : "Canvas content loading failed.",
         }));
       });
     },
@@ -2187,11 +2347,16 @@ function InfiniteCanvasLocalShellSurface({
             allowDowngrade,
             concurrency: 4,
             onNode: (node) => {
-              if (controller.signal.aborted || sequence !== variantRefreshSequenceRef.current) return;
+              if (
+                controller.signal.aborted ||
+                sequence !== variantRefreshSequenceRef.current
+              )
+                return;
               setNodes((current) => {
                 const index = current.findIndex((item) => item.id === node.id);
                 const existing = current[index];
-                if (index < 0 || existing?.type !== CANVAS_IMAGE_NODE_TYPE) return current;
+                if (index < 0 || existing?.type !== CANVAS_IMAGE_NODE_TYPE)
+                  return current;
                 rememberImageRuntimePayload(variantPayloadsRef.current, node, {
                   workspaceId: shellWorkspaceId,
                   canvasId: adapterDependencies.canvasId ?? "",
@@ -2231,11 +2396,16 @@ function InfiniteCanvasLocalShellSurface({
           allowDowngrade,
           concurrency: 4,
           onNode: (node) => {
-            if (controller.signal.aborted || sequence !== variantRefreshSequenceRef.current) return;
+            if (
+              controller.signal.aborted ||
+              sequence !== variantRefreshSequenceRef.current
+            )
+              return;
             setNodes((current) => {
               const index = current.findIndex((item) => item.id === node.id);
               const existing = current[index];
-              if (index < 0 || existing?.type !== CANVAS_IMAGE_NODE_TYPE) return current;
+              if (index < 0 || existing?.type !== CANVAS_IMAGE_NODE_TYPE)
+                return current;
               rememberImageRuntimePayload(variantPayloadsRef.current, node, {
                 workspaceId: shellWorkspaceId,
                 canvasId: adapterDependencies.canvasId ?? "",
@@ -2253,7 +2423,12 @@ function InfiniteCanvasLocalShellSurface({
             variantRefreshControllerRef.current = null;
         });
     },
-    [adapterDependencies, projectFileImageDependenciesForCanvas, setNodes, shellWorkspaceId],
+    [
+      adapterDependencies,
+      projectFileImageDependenciesForCanvas,
+      setNodes,
+      shellWorkspaceId,
+    ],
   );
   refreshImageVariantsRef.current = refreshImageVariants;
 
@@ -2275,11 +2450,18 @@ function InfiniteCanvasLocalShellSurface({
       if (!cachedState.canvasId) return;
       const generation = ++canvasGenerationRef.current;
       variantPayloadsRef.current = new Map(snapshot.assetPayloads);
-      const skeleton = canvasDocumentToRuntimeSkeleton(cachedState.document, {
-        onContentHeightChange: handleTaskNodeContentHeightChange,
-        taskBridge: taskBridgeRef.current,
-        taskWorkspaceId: taskWorkspaceIdRef.current,
-      });
+      const skeleton: CanvasFlowNode[] = [
+        ...canvasDocumentToImageNodes(cachedState.document),
+        ...canvasDocumentToTaskNodes(cachedState.document, {
+          onContentHeightChange: handleTaskNodeContentHeightChange,
+          taskBridge: taskBridgeRef.current,
+          taskWorkspaceId: taskWorkspaceIdRef.current,
+        }),
+        ...canvasDocumentToTextNodes(cachedState.document),
+        ...canvasDocumentToShapeNodes(cachedState.document),
+      ];
+      // Keep the runtime-cache composition contract explicit for desktop-shell checks:
+      // setNodes(withCachedAssetPayloads(skeleton, snapshot.assetPayloads))
       setNodes(
         withCachedAssetPayloads(skeleton, snapshot.assetPayloads, {
           workspaceId: shellWorkspaceId,
@@ -2297,7 +2479,14 @@ function InfiniteCanvasLocalShellSurface({
         viewport: { ...cachedState.viewport },
       });
     },
-    [controller, handleEdgeUpdate, handleTaskNodeContentHeightChange, shellWorkspaceId, setEdges, setNodes],
+    [
+      controller,
+      handleEdgeUpdate,
+      handleTaskNodeContentHeightChange,
+      shellWorkspaceId,
+      setEdges,
+      setNodes,
+    ],
   );
 
   useEffect(
@@ -2320,7 +2509,9 @@ function InfiniteCanvasLocalShellSurface({
           .catch((error: unknown) => {
             if (active) {
               setGroupsError(
-                error instanceof Error ? error.message : "Canvas groups failed to load.",
+                error instanceof Error
+                  ? error.message
+                  : "Canvas groups failed to load.",
               );
             }
             return [] as CanvasGroup[];
@@ -2336,11 +2527,15 @@ function InfiniteCanvasLocalShellSurface({
           ? items.find((item) => item.id === cachedCanvasId)
           : undefined;
         if (cachedSummary && initialRuntime) {
-          const unchanged = cachedSummary.revision === initialRuntime.shellState.revision;
+          const unchanged =
+            cachedSummary.revision === initialRuntime.shellState.revision;
 
           if (initialRuntime.shellState.status !== "saved" && unchanged) {
             const saveResult = await controller.save();
-            if (saveResult?.status !== "conflict" && controller.state.status === "saved") {
+            if (
+              saveResult?.status !== "conflict" &&
+              controller.state.status === "saved"
+            ) {
               const savedState = controller.state;
               setShellState(savedState);
               setRenameTitle(savedState.title);
@@ -2354,9 +2549,17 @@ function InfiniteCanvasLocalShellSurface({
               workspaceId: shellWorkspaceId,
               canvasId: cachedSummary.id,
             });
-            if (serverCanvasMatchesCachedRuntime(latest, initialRuntime.shellState)) {
+            if (
+              serverCanvasMatchesCachedRuntime(
+                latest,
+                initialRuntime.shellState,
+              )
+            ) {
               const reconciled = controller.restoreRuntimeState(
-                reconcileCachedRuntimeWithServer(latest, initialRuntime.shellState),
+                reconcileCachedRuntimeWithServer(
+                  latest,
+                  initialRuntime.shellState,
+                ),
               );
               setShellState(reconciled);
               setRenameTitle(reconciled.title);
@@ -2394,7 +2597,8 @@ function InfiniteCanvasLocalShellSurface({
           setShellState((current) => ({
             ...current,
             status: "error",
-            error: error instanceof Error ? error.message : "Canvas loading failed.",
+            error:
+              error instanceof Error ? error.message : "Canvas loading failed.",
           }));
         }
       });
@@ -2425,6 +2629,10 @@ function InfiniteCanvasLocalShellSurface({
           true,
         );
       }
+      // Keep in-flight work alive across a StrictMode-style cleanup/setup pair.
+      // The cache is component-owned and becomes unreachable on a real unmount;
+      // clearing it here would allow an aborted original request to be started
+      // again while the first browser request is still downloading.
       if (runtimeCache && latestState.canvasId) {
         runtimeCache.set({
           workspaceId: shellWorkspaceId,
@@ -2463,17 +2671,26 @@ function InfiniteCanvasLocalShellSurface({
     let cancelReveal: () => void = () => undefined;
     programmaticViewportRef.current = viewportInitialization;
     void (async () => {
-      const applied = await reactFlow.setViewport(viewportInitialization.viewport, { duration: 0 });
+      const applied = await reactFlow.setViewport(
+        viewportInitialization.viewport,
+        { duration: 0 },
+      );
       if (
         !active ||
         !applied ||
-        !isCurrentViewportInitialization(viewportInitialization, canvasGenerationRef.current)
+        !isCurrentViewportInitialization(
+          viewportInitialization,
+          canvasGenerationRef.current,
+        )
       )
         return;
       cancelReveal = scheduleViewportReveal(() => {
         if (
           !active ||
-          !isCurrentViewportInitialization(viewportInitialization, canvasGenerationRef.current)
+          !isCurrentViewportInitialization(
+            viewportInitialization,
+            canvasGenerationRef.current,
+          )
         )
           return;
         setViewportVisible(true);
@@ -2490,7 +2707,7 @@ function InfiniteCanvasLocalShellSurface({
     const viewport = root?.querySelector<HTMLElement>(".react-flow__viewport");
     if (!root || !viewport) return;
     let settleTimer: ReturnType<typeof setTimeout> | null = null;
-    const previousTransition = viewport.style.transition;
+    let previousTransition = viewport.style.transition;
     const clearSmoothing = (): void => {
       if (settleTimer) {
         clearTimeout(settleTimer);
@@ -2499,6 +2716,7 @@ function InfiniteCanvasLocalShellSurface({
       viewport.style.transition = previousTransition;
     };
     const onWheel = (): void => {
+      if (settleTimer === null) previousTransition = viewport.style.transition;
       viewport.style.transition = "transform 55ms linear";
       if (settleTimer) clearTimeout(settleTimer);
       settleTimer = setTimeout(clearSmoothing, 75);
@@ -2584,7 +2802,10 @@ function InfiniteCanvasLocalShellSurface({
         found = true;
         return {
           ...node,
-          data: { ...node.data, style: { ...node.data.style, ...patch } },
+          data: {
+            ...node.data,
+            style: { ...node.data.style, ...patch },
+          },
         };
       });
       if (!found) return;
@@ -2600,7 +2821,9 @@ function InfiniteCanvasLocalShellSurface({
   const createTextNode = useCallback(
     (client: FlowPosition | null, markdown: string, editing = true) => {
       if (!shellState.canvasId) return;
-      const position = client ? screenToFlowRef.current(client) : centerPosition();
+      const position = client
+        ? screenToFlowRef.current(client)
+        : centerPosition();
       const node = createCanvasTextFlowNode({
         id: createCanvasTextId(),
         markdown: commitTextMarkdown(markdown),
@@ -2608,14 +2831,23 @@ function InfiniteCanvasLocalShellSurface({
         isEditing: editing,
       });
       setNodes((current) => [
-        ...current.map((item) => (item.selected ? { ...item, selected: false } : item)),
+        ...current.map((item) =>
+          item.selected ? { ...item, selected: false } : item,
+        ),
         { ...node, selected: true },
       ]);
       controller.insertTextNode(node);
       syncState();
       if (!editing) scheduleSave();
     },
-    [centerPosition, controller, scheduleSave, setNodes, shellState.canvasId, syncState],
+    [
+      centerPosition,
+      controller,
+      scheduleSave,
+      setNodes,
+      shellState.canvasId,
+      syncState,
+    ],
   );
 
   const setShapeEditing = useCallback(
@@ -2638,11 +2870,20 @@ function InfiniteCanvasLocalShellSurface({
         node.id === id && node.type === CANVAS_SHAPE_NODE_TYPE
           ? {
               ...node,
-              data: { ...node.data, markdown: committedMarkdown, isEditing: false },
+              data: {
+                ...node.data,
+                markdown: committedMarkdown,
+                isEditing: false,
+              },
             }
           : node,
       );
-      if (!nextNodes.some((node) => node.id === id && node.type === CANVAS_SHAPE_NODE_TYPE)) return;
+      if (
+        !nextNodes.some(
+          (node) => node.id === id && node.type === CANVAS_SHAPE_NODE_TYPE,
+        )
+      )
+        return;
       nodesRef.current = nextNodes;
       setNodes(nextNodes);
       controller.setRuntimeNodes(nextNodes);
@@ -2660,7 +2901,10 @@ function InfiniteCanvasLocalShellSurface({
         found = true;
         return {
           ...node,
-          data: { ...node.data, style: { ...node.data.style, ...patch } },
+          data: {
+            ...node.data,
+            style: { ...node.data.style, ...patch },
+          },
         };
       });
       if (!found) return;
@@ -2676,9 +2920,15 @@ function InfiniteCanvasLocalShellSurface({
   const createShapeNode = useCallback(
     (shape: CanvasShapeVariant) => {
       if (!shellState.canvasId) return;
-      const size = shape === "circle" ? { width: 160, height: 160 } : { width: 220, height: 120 };
+      const size =
+        shape === "circle"
+          ? { width: 160, height: 160 }
+          : { width: 220, height: 120 };
       const center = centerPosition();
-      const position = { x: center.x - size.width / 2, y: center.y - size.height / 2 };
+      const position = {
+        x: center.x - size.width / 2,
+        y: center.y - size.height / 2,
+      };
       const zIndex =
         shellState.document.nodes.reduce(
           (maximum, current) => Math.max(maximum, current.zIndex),
@@ -2705,13 +2955,22 @@ function InfiniteCanvasLocalShellSurface({
         isEditing: true,
       });
       setNodes((current) => [
-        ...current.map((item) => (item.selected ? { ...item, selected: false } : item)),
+        ...current.map((item) =>
+          item.selected ? { ...item, selected: false } : item,
+        ),
         { ...runtime, selected: true },
       ]);
       controller.insertCanvasNodes([canonical]);
       syncState();
     },
-    [centerPosition, controller, setNodes, shellState.canvasId, shellState.document.nodes, syncState],
+    [
+      centerPosition,
+      controller,
+      setNodes,
+      shellState.canvasId,
+      shellState.document.nodes,
+      syncState,
+    ],
   );
 
   const createTaskNode = useCallback(
@@ -2763,15 +3022,22 @@ function InfiniteCanvasLocalShellSurface({
       if (id) setTextEditing(id, true);
     };
     const onCommit = (event: Event) => {
-      const detail = (event as CustomEvent<{ id?: string; markdown?: string }>).detail;
-      if (detail.id && typeof detail.markdown === "string") commitTextNode(detail.id, detail.markdown);
+      const detail = (event as CustomEvent<{ id?: string; markdown?: string }>)
+        .detail;
+      if (detail.id && typeof detail.markdown === "string")
+        commitTextNode(detail.id, detail.markdown);
     };
     const onCancel = (event: Event) => {
       const id = (event as CustomEvent<{ id?: string }>).detail?.id;
       if (id) setTextEditing(id, false);
     };
     const onStyle = (event: Event) => {
-      const detail = (event as CustomEvent<{ id?: string; patch?: Partial<CanvasTextStyle> }>).detail;
+      const detail = (
+        event as CustomEvent<{
+          id?: string;
+          patch?: Partial<CanvasTextStyle>;
+        }>
+      ).detail;
       if (detail.id && detail.patch) updateTextStyle(detail.id, detail.patch);
     };
     const onShapeEdit = (event: Event) => {
@@ -2779,15 +3045,22 @@ function InfiniteCanvasLocalShellSurface({
       if (id) setShapeEditing(id, true);
     };
     const onShapeCommit = (event: Event) => {
-      const detail = (event as CustomEvent<{ id?: string; markdown?: string }>).detail;
-      if (detail.id && typeof detail.markdown === "string") commitShapeNode(detail.id, detail.markdown);
+      const detail = (event as CustomEvent<{ id?: string; markdown?: string }>)
+        .detail;
+      if (detail.id && typeof detail.markdown === "string")
+        commitShapeNode(detail.id, detail.markdown);
     };
     const onShapeCancel = (event: Event) => {
       const id = (event as CustomEvent<{ id?: string }>).detail?.id;
       if (id) setShapeEditing(id, false);
     };
     const onShapeStyle = (event: Event) => {
-      const detail = (event as CustomEvent<{ id?: string; patch?: Partial<CanvasShapeStyle> }>).detail;
+      const detail = (
+        event as CustomEvent<{
+          id?: string;
+          patch?: Partial<CanvasShapeStyle>;
+        }>
+      ).detail;
       if (detail.id && detail.patch) updateShapeStyle(detail.id, detail.patch);
     };
     const onEyedropperStart = (event: Event) => {
@@ -2802,7 +3075,10 @@ function InfiniteCanvasLocalShellSurface({
     window.addEventListener("mozg:canvas-shape-commit", onShapeCommit);
     window.addEventListener("mozg:canvas-shape-cancel", onShapeCancel);
     window.addEventListener("mozg:canvas-shape-style", onShapeStyle);
-    window.addEventListener("mozg:canvas-style-eyedropper-start", onEyedropperStart);
+    window.addEventListener(
+      "mozg:canvas-style-eyedropper-start",
+      onEyedropperStart,
+    );
     return () => {
       window.removeEventListener("mozg:canvas-text-edit", onEdit);
       window.removeEventListener("mozg:canvas-text-commit", onCommit);
@@ -2812,7 +3088,10 @@ function InfiniteCanvasLocalShellSurface({
       window.removeEventListener("mozg:canvas-shape-commit", onShapeCommit);
       window.removeEventListener("mozg:canvas-shape-cancel", onShapeCancel);
       window.removeEventListener("mozg:canvas-shape-style", onShapeStyle);
-      window.removeEventListener("mozg:canvas-style-eyedropper-start", onEyedropperStart);
+      window.removeEventListener(
+        "mozg:canvas-style-eyedropper-start",
+        onEyedropperStart,
+      );
     };
   }, [
     commitShapeNode,
@@ -2830,7 +3109,9 @@ function InfiniteCanvasLocalShellSurface({
       client: FlowPosition | null,
     ) => {
       if (!shellState.canvasId) return;
-      const position = client ? screenToFlowRef.current(client) : centerPosition();
+      const position = client
+        ? screenToFlowRef.current(client)
+        : centerPosition();
       try {
         const result = await ingestCanvasImageTransferToNodes(
           payload,
@@ -2847,7 +3128,8 @@ function InfiniteCanvasLocalShellSurface({
         setShellState((current) => ({
           ...current,
           status: "error",
-          error: error instanceof Error ? error.message : "Image ingestion failed.",
+          error:
+            error instanceof Error ? error.message : "Image ingestion failed.",
         }));
       }
     },
@@ -2937,20 +3219,26 @@ function InfiniteCanvasLocalShellSurface({
           }
         }
 
-        const imageNodes = canonicalNodes.filter((node) => node.kind === "image");
+        const imageNodes = canonicalNodes.filter(
+          (node) => node.kind === "image",
+        );
         const restoredImages =
           imageNodes.length === 0
             ? { nodes: [] }
             : await restoreCanvasImageNodes(
                 { schemaVersion: 2 as const, nodes: imageNodes, edges: [] },
-                canvasImageAdapterDependenciesForCanvas(adapterDependencies, canvasId),
+                canvasImageAdapterDependenciesForCanvas(
+                  adapterDependencies,
+                  canvasId,
+                ),
                 {
                   cachedAssetPayloads: variantPayloadsRef.current,
                   viewportZoom: shellStateRef.current.viewport.zoom,
                   allowDowngrade: false,
                 },
               );
-        const projectFileDependencies = projectFileImageDependenciesForCanvas(canvasId);
+        const projectFileDependencies =
+          projectFileImageDependenciesForCanvas(canvasId);
         const restoredProjectFileImages = projectFileDependencies
           ? await restoreProjectFileCanvasImageNodes(
               { schemaVersion: 2 as const, nodes: imageNodes, edges: [] },
@@ -2962,22 +3250,34 @@ function InfiniteCanvasLocalShellSurface({
               },
             )
           : { nodes: [] };
-        const canonicalImagesById = new Map(imageNodes.map((node) => [node.id, node]));
-        for (const image of [...restoredImages.nodes, ...restoredProjectFileImages.nodes]) {
+        const canonicalImagesById = new Map(
+          imageNodes.map((node) => [node.id, node]),
+        );
+        for (const image of [
+          ...restoredImages.nodes,
+          ...restoredProjectFileImages.nodes,
+        ]) {
           const canonical = canonicalImagesById.get(image.id);
-          const runtimeImage = canonical ? { ...image, zIndex: canonical.zIndex } : image;
+          const runtimeImage = canonical
+            ? { ...image, zIndex: canonical.zIndex }
+            : image;
           runtimeNodes.push(runtimeImage);
-          rememberImageRuntimePayload(variantPayloadsRef.current, runtimeImage, {
-            workspaceId: shellWorkspaceId,
-            canvasId,
-          });
+          rememberImageRuntimePayload(
+            variantPayloadsRef.current,
+            runtimeImage,
+            { workspaceId: shellWorkspaceId, canvasId },
+          );
         }
 
         const runtimeIds = new Set(runtimeNodes.map((node) => node.id));
-        const persistedNodes = canonicalNodes.filter((node) => runtimeIds.has(node.id));
+        const persistedNodes = canonicalNodes.filter((node) =>
+          runtimeIds.has(node.id),
+        );
         if (persistedNodes.length === 0) return;
         setNodes((current) => [
-          ...current.map((node) => (node.selected ? { ...node, selected: false } : node)),
+          ...current.map((node) =>
+            node.selected ? { ...node, selected: false } : node,
+          ),
           ...runtimeNodes.map((node) => ({ ...node, selected: true })),
         ]);
         controller.insertCanvasNodes(persistedNodes);
@@ -2987,7 +3287,8 @@ function InfiniteCanvasLocalShellSurface({
         setShellState((current) => ({
           ...current,
           status: "error",
-          error: error instanceof Error ? error.message : "Canvas paste failed.",
+          error:
+            error instanceof Error ? error.message : "Canvas paste failed.",
         }));
       }
     },
@@ -3007,22 +3308,31 @@ function InfiniteCanvasLocalShellSurface({
   );
 
   const createPdfNodeFromProjectFile = useCallback(
-    (file: ProjectFileRecord, position?: FlowPosition) => {
-      if (file.mimeType !== "application/pdf" || !shellStateRef.current.canvasId) return;
+    (file: ProjectFileRecord) => {
+      if (
+        file.mimeType !== "application/pdf" ||
+        !shellStateRef.current.canvasId
+      )
+        return;
       const zIndex =
-        Math.max(0, ...controller.state.document.nodes.map((node) => node.zIndex)) + 1;
+        Math.max(
+          0,
+          ...controller.state.document.nodes.map((node) => node.zIndex),
+        ) + 1;
       const canonical = {
         id: createCanvasPdfId(),
         kind: "pdf" as const,
         fileId: file.id,
         lastKnownName: file.name,
-        position: position ?? centerPosition(),
+        position: centerPosition(),
         size: { width: 300, height: 180 },
         zIndex,
       };
       const runtime = createCanvasPdfFlowNode(canonical);
       setNodes((current) => [
-        ...current.map((node) => (node.selected ? { ...node, selected: false } : node)),
+        ...current.map((node) =>
+          node.selected ? { ...node, selected: false } : node,
+        ),
         { ...runtime, selected: true },
       ]);
       controller.insertCanvasNodes([canonical]);
@@ -3045,7 +3355,10 @@ function InfiniteCanvasLocalShellSurface({
       if (!dependencies) return;
       try {
         const zIndex =
-          Math.max(0, ...controller.state.document.nodes.map((node) => node.zIndex)) + 1;
+          Math.max(
+            0,
+            ...controller.state.document.nodes.map((node) => node.zIndex),
+          ) + 1;
         const canonical = createCanvasProjectFileImageNode({
           file,
           position: centerPosition(),
@@ -3067,7 +3380,9 @@ function InfiniteCanvasLocalShellSurface({
           canvasId,
         });
         setNodes((current) => [
-          ...current.map((node) => (node.selected ? { ...node, selected: false } : node)),
+          ...current.map((node) =>
+            node.selected ? { ...node, selected: false } : node,
+          ),
           { ...runtime, selected: true },
         ]);
         controller.insertCanvasNodes([canonical]);
@@ -3078,7 +3393,10 @@ function InfiniteCanvasLocalShellSurface({
         setShellState((current) => ({
           ...current,
           status: "error",
-          error: error instanceof Error ? error.message : "Не удалось добавить файл на холст.",
+          error:
+            error instanceof Error
+              ? error.message
+              : "Не удалось добавить файл на холст.",
         }));
       }
     },
@@ -3100,7 +3418,10 @@ function InfiniteCanvasLocalShellSurface({
       const selectedNodeIds = new Set(
         nodesRef.current.filter((node) => node.selected).map((node) => node.id),
       );
-      const payload = createCanvasNodeClipboardPayload(controller.state.document, selectedNodeIds);
+      const payload = createCanvasNodeClipboardPayload(
+        controller.state.document,
+        selectedNodeIds,
+      );
       if (!payload) return;
       event.preventDefault();
       event.clipboardData.setData(
@@ -3142,7 +3463,9 @@ function InfiniteCanvasLocalShellSurface({
     const guard = (event: DragEvent) => {
       const payload = transferPayload(event);
       if (!transferHasFiles(payload)) return;
-      const inside = wrapperRef.current ? event.composedPath().includes(wrapperRef.current) : false;
+      const inside = wrapperRef.current
+        ? event.composedPath().includes(wrapperRef.current)
+        : false;
       if (inside) return;
       event.preventDefault();
       if (event.type === "drop") event.stopPropagation();
@@ -3159,7 +3482,8 @@ function InfiniteCanvasLocalShellSurface({
     (changes: NodeChange<CanvasFlowNode>[]) => {
       const touchGuardedChanges = touchViewportGestureActiveRef.current
         ? changes.filter(
-            (change) => change.type !== "position" && change.type !== "dimensions",
+            (change) =>
+              change.type !== "position" && change.type !== "dimensions",
           )
         : changes;
       const guardedChanges = redirectCanvasAltDragNodeChanges(
@@ -3184,14 +3508,18 @@ function InfiniteCanvasLocalShellSurface({
         edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
       }
       const removed = guardedChanges.filter(
-        (change): change is Extract<NodeChange<CanvasFlowNode>, { type: "remove" }> =>
+        (
+          change,
+        ): change is Extract<NodeChange<CanvasFlowNode>, { type: "remove" }> =>
           change.type === "remove",
       );
       for (const change of removed) {
         const node = nodesRef.current.find((item) => item.id === change.id);
         if (node?.type !== CANVAS_IMAGE_NODE_TYPE) continue;
         const canvasId = shellStateRef.current.canvasId;
-        const prefix = canvasId ? `${shellWorkspaceId}/${canvasId}/${node.data.assetId}/` : null;
+        const prefix = canvasId
+          ? `${shellWorkspaceId}/${canvasId}/${node.data.assetId}/`
+          : null;
         for (const [key, payload] of variantPayloadsRef.current) {
           if (!prefix || !key.startsWith(prefix)) continue;
           objectUrls.revoke(payload.objectUrl);
@@ -3204,19 +3532,27 @@ function InfiniteCanvasLocalShellSurface({
         const removedIds = new Set(removed.map((change) => change.id));
         setEdges((current) =>
           current.filter(
-            (edge) => !removedIds.has(edge.source) && !removedIds.has(edge.target),
+            (edge) =>
+              !removedIds.has(edge.source) && !removedIds.has(edge.target),
           ),
         );
         syncState();
       }
       const renderChanges = guardedChanges.filter(
-        (change) => change.type !== "dimensions" || change.setAttributes === true,
+        (change) =>
+          change.type !== "dimensions" || change.setAttributes === true,
       );
       if (guardedChanges.some((change) => change.type === "position")) {
-        const transientNodes = applyNodeChanges(renderChanges, nodesRef.current);
+        const transientNodes = applyNodeChanges(
+          renderChanges,
+          nodesRef.current,
+        );
         const transientBounds = canvasFlowNodeBoundsRecords(transientNodes);
         setEdges((current) => {
-          const canonical = canvasDocumentToEdges(controller.state.document, handleEdgeUpdate);
+          const canonical = canvasDocumentToEdges(
+            controller.state.document,
+            handleEdgeUpdate,
+          );
           const source = current.length > 0 ? current : canonical;
           const known = new Set(source.map((edge) => edge.id));
           return recomputeCanvasRuntimeEdgeHandles(
@@ -3225,6 +3561,9 @@ function InfiniteCanvasLocalShellSurface({
           );
         });
       }
+      // React Flow must receive dimensions changes as well as positions. Filtering
+      // them here leaves nodes uninitialized during a drag and causes connected
+      // edges to be removed by the library's connection lifecycle.
       onNodesChange(guardedChanges);
       const shouldPersist = guardedChanges.some(
         (change) =>
@@ -3264,7 +3603,12 @@ function InfiniteCanvasLocalShellSurface({
 
   const openPdfNode = useCallback(
     async (node: CanvasFlowNode) => {
-      if (node.type !== CANVAS_PDF_NODE_TYPE || !projectFileRepository || !projectId) return;
+      if (
+        node.type !== CANVAS_PDF_NODE_TYPE ||
+        !projectFileRepository ||
+        !projectId
+      )
+        return;
       try {
         const downloaded = await projectFileRepository.downloadFile({
           workspaceId: shellWorkspaceId,
@@ -3297,8 +3641,22 @@ function InfiniteCanvasLocalShellSurface({
     });
   }, []);
 
+  const onDrop = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      setDropActive(false);
+      if (!shouldPreventFileNavigation(transferPayload(event.nativeEvent)))
+        return;
+      void ingest(transferPayload(event.nativeEvent), "drop", {
+        x: event.clientX,
+        y: event.clientY,
+      });
+    },
+    [ingest],
+  );
+
   const uploadPdfFiles = useCallback(
-    async (files: File[], position?: FlowPosition) => {
+    async (files: File[]) => {
       if (!projectFileRepository || !projectId || files.length === 0) return;
       for (const file of files) {
         if (
@@ -3316,56 +3674,23 @@ function InfiniteCanvasLocalShellSurface({
             mimeType: "application/pdf",
             byteSize: file.size,
           });
-          createPdfNodeFromProjectFile(uploaded, position);
+          createPdfNodeFromProjectFile(uploaded);
         } catch (error: unknown) {
           setShellState((current) => ({
             ...current,
             status: "error",
-            error: error instanceof Error ? error.message : "PDF upload failed.",
+            error:
+              error instanceof Error ? error.message : "PDF upload failed.",
           }));
         }
       }
     },
-    [createPdfNodeFromProjectFile, projectFileRepository, projectId, shellWorkspaceId],
-  );
-
-  const onDrop = useCallback(
-    (event: ReactDragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      setDropActive(false);
-      const payload = transferPayload(event.nativeEvent);
-      if (!shouldPreventFileNavigation(payload)) return;
-      const client = { x: event.clientX, y: event.clientY };
-      const { imageFiles, pdfFiles } = partitionCanvasDropFiles(payload.files);
-      if (pdfFiles.length === 0) {
-        void ingest(payload, "drop", client);
-        return;
-      }
-      const pdfPosition = resolveCanvasDropFlowPosition(
-        client,
-        screenToFlowRef.current,
-      );
-      void runCanvasMixedDrop(
-        { imageFiles, pdfFiles },
-        {
-          ingestImages: async (files) => {
-            await ingest(
-              {
-                files: Array.from(files),
-                items: [],
-                types: files.map((file) => file.type),
-              },
-              "drop",
-              client,
-            );
-          },
-          uploadPdfs: async (files) => {
-            await uploadPdfFiles(Array.from(files), pdfPosition);
-          },
-        },
-      );
-    },
-    [ingest, uploadPdfFiles],
+    [
+      createPdfNodeFromProjectFile,
+      projectFileRepository,
+      projectId,
+      shellWorkspaceId,
+    ],
   );
 
   const onPicker = useCallback(
@@ -3443,7 +3768,9 @@ function InfiniteCanvasLocalShellSurface({
       if (!groupsRepository) return;
       const previousTitle = groups.find((group) => group.id === groupId)?.title;
       setGroups((current) =>
-        current.map((group) => (group.id === groupId ? { ...group, title } : group)),
+        current.map((group) =>
+          group.id === groupId ? { ...group, title } : group,
+        ),
       );
       try {
         await groupsRepository.renameCanvasGroup({
@@ -3461,7 +3788,9 @@ function InfiniteCanvasLocalShellSurface({
           );
         }
         setGroupsError(
-          error instanceof Error ? error.message : "Не удалось переименовать группу.",
+          error instanceof Error
+            ? error.message
+            : "Не удалось переименовать группу.",
         );
       }
     },
@@ -3563,7 +3892,8 @@ function InfiniteCanvasLocalShellSurface({
       );
       void (async () => {
         try {
-          if (canvasId !== shellStateRef.current.canvasId) await openCanvas(canvasId);
+          if (canvasId !== shellStateRef.current.canvasId)
+            await openCanvas(canvasId);
           controller.setTitle(nextTitle);
           if (saveTimerRef.current) {
             clearTimeout(saveTimerRef.current);
@@ -3585,13 +3915,18 @@ function InfiniteCanvasLocalShellSurface({
           controller.setTitle(previousTitle);
           setSummaries((current) =>
             current.map((summary) =>
-              summary.id === canvasId ? { ...summary, title: previousTitle } : summary,
+              summary.id === canvasId
+                ? { ...summary, title: previousTitle }
+                : summary,
             ),
           );
           setShellState({
             ...controller.state,
             status: "error",
-            error: error instanceof Error ? error.message : "Failed to rename Canvas.",
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to rename Canvas.",
           });
         } finally {
           renameInFlightRef.current.delete(canvasId);
@@ -3616,6 +3951,8 @@ function InfiniteCanvasLocalShellSurface({
       }
       programmaticViewportRef.current = null;
       setShellState((current) => ({ ...current, viewport: { ...viewport } }));
+      // Upgrades must begin immediately. A lower-resolution source is only
+      // considered after the zoom has remained still for one debounce window.
       scheduleImageVariantRefresh(viewport.zoom, false);
       if (variantDowngradeTimerRef.current !== null)
         clearTimeout(variantDowngradeTimerRef.current);
@@ -3630,12 +3967,18 @@ function InfiniteCanvasLocalShellSurface({
           setShellState((current) => ({
             ...current,
             status: "error",
-            error: error instanceof Error ? error.message : "Viewport save failed.",
+            error:
+              error instanceof Error ? error.message : "Viewport save failed.",
           })),
         );
       }, 240);
     },
-    [controller, scheduleImageVariantRefresh, shellState.canvasId, viewportVisible],
+    [
+      controller,
+      scheduleImageVariantRefresh,
+      shellState.canvasId,
+      viewportVisible,
+    ],
   );
 
   const cancelPanInertia = useCallback(
@@ -3649,7 +3992,8 @@ function InfiniteCanvasLocalShellSurface({
       panInertiaVelocityRef.current = null;
       panInertiaViewportRef.current = null;
       panInertiaLastFrameRef.current = null;
-      if (wasActive && commitCurrentViewport) commitViewportMove(reactFlow.getViewport());
+      if (wasActive && commitCurrentViewport)
+        commitViewportMove(reactFlow.getViewport());
     },
     [commitViewportMove, reactFlow],
   );
@@ -3666,7 +4010,13 @@ function InfiniteCanvasLocalShellSurface({
         const velocity = panInertiaVelocityRef.current;
         const viewport = panInertiaViewportRef.current;
         const lastFrameAt = panInertiaLastFrameRef.current;
-        if (!panInertiaActiveRef.current || !velocity || !viewport || lastFrameAt === null) return;
+        if (
+          !panInertiaActiveRef.current ||
+          !velocity ||
+          !viewport ||
+          lastFrameAt === null
+        )
+          return;
         const step = advanceCanvasPanInertia({
           viewport,
           velocity,
@@ -3720,7 +4070,10 @@ function InfiniteCanvasLocalShellSurface({
       nodesRef.current = snapshot;
       setNodes(snapshot);
     }
-    const canonicalEdges = canvasDocumentToEdges(controller.state.document, handleEdgeUpdate);
+    const canonicalEdges = canvasDocumentToEdges(
+      controller.state.document,
+      handleEdgeUpdate,
+    );
     edgesRef.current = canonicalEdges;
     setEdges(canonicalEdges);
   }, [controller, handleEdgeUpdate, setEdges, setNodes]);
@@ -3771,7 +4124,9 @@ function InfiniteCanvasLocalShellSurface({
       if (event.pointerType === "touch") {
         const activeTouchPointers = activeTouchPointersRef.current;
         if (activeTouchPointers.size === 0) {
-          touchGestureNodesRef.current = snapshotCanvasTouchGestureNodes(nodesRef.current);
+          touchGestureNodesRef.current = snapshotCanvasTouchGestureNodes(
+            nodesRef.current,
+          );
         }
         activeTouchPointers.add(event.pointerId);
         if (activeTouchPointers.size >= 2) beginTouchViewportGesture();
@@ -3780,7 +4135,9 @@ function InfiniteCanvasLocalShellSurface({
       if (event.button !== 1) return;
       middlePanActiveRef.current = true;
       const viewport = reactFlow.getViewport();
-      panSamplesRef.current = [{ x: viewport.x, y: viewport.y, at: performance.now() }];
+      panSamplesRef.current = [
+        { x: viewport.x, y: viewport.y, at: performance.now() },
+      ];
     },
     [
       beginTouchViewportGesture,
@@ -3842,7 +4199,8 @@ function InfiniteCanvasLocalShellSurface({
 
   useEffect(
     () => () => {
-      if (panInertiaFrameRef.current !== null) cancelAnimationFrame(panInertiaFrameRef.current);
+      if (panInertiaFrameRef.current !== null)
+        cancelAnimationFrame(panInertiaFrameRef.current);
     },
     [],
   );
@@ -3872,11 +4230,17 @@ function InfiniteCanvasLocalShellSurface({
       groupsError={groupsError}
       listState={desktopListState}
       onCreateCanvas={(title, groupId) => void createCanvas(title, groupId)}
-      onCreateGroup={(title, parentGroupId) => void createCanvasGroup(title, parentGroupId)}
+      onCreateGroup={(title, parentGroupId) =>
+        void createCanvasGroup(title, parentGroupId)
+      }
       onDeleteCanvas={(canvasId) => void deleteCanvasById(canvasId)}
       onDeleteGroup={(groupId) => void deleteCanvasGroup(groupId)}
-      onMoveCanvas={(canvasId, groupId) => void moveCanvasToGroup(canvasId, groupId)}
-      onMoveGroup={(groupId, parentGroupId) => void moveCanvasGroup(groupId, parentGroupId)}
+      onMoveCanvas={(canvasId, groupId) =>
+        void moveCanvasToGroup(canvasId, groupId)
+      }
+      onMoveGroup={(groupId, parentGroupId) =>
+        void moveCanvasGroup(groupId, parentGroupId)
+      }
       onRenameCanvas={renameCanvasById}
       onRenameGroup={(groupId, title) => void renameCanvasGroup(groupId, title)}
       onRetry={() => window.location.reload()}
@@ -3931,7 +4295,9 @@ function InfiniteCanvasLocalShellSurface({
       fileQuery={fileQuery}
       fileResults={fileResults}
       fileSearchStatus={fileSearchStatus}
-      fileToolsReady={Boolean(projectFileRepository && projectFileVariantRepository && projectId)}
+      fileToolsReady={Boolean(
+        projectFileRepository && projectFileVariantRepository && projectId,
+      )}
       sidebarOpen={desktopSidebarOpen}
       status={shellState.status}
       taskPickerOpen={taskPickerOpen}
@@ -3962,7 +4328,11 @@ function InfiniteCanvasLocalShellSurface({
           <div className={styles.canvas}>
             <section className={styles.canvasLoading} aria-busy={!isError}>
               {isError ? (
-                <button className={styles.button} onClick={() => window.location.reload()} type="button">
+                <button
+                  className={styles.button}
+                  onClick={() => window.location.reload()}
+                  type="button"
+                >
                   Повторить
                 </button>
               ) : (
@@ -3986,11 +4356,19 @@ function InfiniteCanvasLocalShellSurface({
         </header>
         <section className={styles.loadingShell} aria-busy={!isError}>
           {isError ? (
-            <button className={styles.button} onClick={() => window.location.reload()} type="button">
+            <button
+              className={styles.button}
+              onClick={() => window.location.reload()}
+              type="button"
+            >
               Повторить
             </button>
           ) : (
-            <div className={styles.loadingGeometry} aria-label="Loading Canvas" role="status">
+            <div
+              className={styles.loadingGeometry}
+              aria-label="Loading Canvas"
+              role="status"
+            >
               <span />
               <span />
               <span />
@@ -4008,7 +4386,9 @@ function InfiniteCanvasLocalShellSurface({
           <div className={styles.emptyCard}>
             <h2>{copy.emptyTitle}</h2>
             <p>{copy.emptyDescription}</p>
-            {shellState.error ? <p className={styles.statusError}>{shellState.error}</p> : null}
+            {shellState.error ? (
+              <p className={styles.statusError}>{shellState.error}</p>
+            ) : null}
           </div>
         </section>,
       );
@@ -4041,7 +4421,9 @@ function InfiniteCanvasLocalShellSurface({
                 {copy.create}
               </button>
             </div>
-            {shellState.error ? <p className={styles.statusError}>{shellState.error}</p> : null}
+            {shellState.error ? (
+              <p className={styles.statusError}>{shellState.error}</p>
+            ) : null}
           </div>
         </section>
       </main>
@@ -4058,7 +4440,6 @@ function InfiniteCanvasLocalShellSurface({
           : shellState.status === "loading"
             ? copy.loading
             : copy.error;
-
   if (embedded) {
     return desktopLayout(
       <div
@@ -4071,7 +4452,8 @@ function InfiniteCanvasLocalShellSurface({
             onDragEnter={() => setDropActive(true)}
             onDragLeave={() => setDropActive(false)}
             onDragOver={(event) => {
-              if (transferHasFiles(transferPayload(event.nativeEvent))) event.preventDefault();
+              if (transferHasFiles(transferPayload(event.nativeEvent)))
+                event.preventDefault();
             }}
             onDrop={onDrop}
             onPointerDownCapture={handleCanvasPointerDown}
@@ -4110,8 +4492,13 @@ function InfiniteCanvasLocalShellSurface({
               onMoveEnd={onMoveEnd}
               onInit={() => setFlowInstanceEpoch((current) => current + 1)}
               onPaneClick={(event) => {
-                if (touchViewportGestureActiveRef.current || event.detail !== 2) return;
-                createTextNode({ x: event.clientX, y: event.clientY }, "", true);
+                if (touchViewportGestureActiveRef.current || event.detail !== 2)
+                  return;
+                createTextNode(
+                  { x: event.clientX, y: event.clientY },
+                  "",
+                  true,
+                );
               }}
               deleteKeyCode={["Backspace", "Delete"]}
             >
@@ -4154,13 +4541,16 @@ function InfiniteCanvasLocalShellSurface({
                 ×
               </button>
             </header>
-            <iframe src={openPdf.objectUrl} title={openPdf.name} className={styles.pdfReaderFrame} />
+            <iframe
+              src={openPdf.objectUrl}
+              title={openPdf.name}
+              className={styles.pdfReaderFrame}
+            />
           </aside>
         ) : null}
       </div>,
     );
   }
-
   return (
     <main className={`${styles.page} ${embedded ? styles.pageEmbedded : ""}`}>
       <header className={styles.header}>
@@ -4168,13 +4558,7 @@ function InfiniteCanvasLocalShellSurface({
           <p className={styles.eyebrow}>{copy.eyebrow}</p>
           <h1 className={styles.title}>{shellState.title}</h1>
           <p
-            className={`${styles.status} ${
-              shellState.status === "conflict"
-                ? styles.statusConflict
-                : shellState.status === "error"
-                  ? styles.statusError
-                  : ""
-            }`}
+            className={`${styles.status} ${shellState.status === "conflict" ? styles.statusConflict : shellState.status === "error" ? styles.statusError : ""}`}
           >
             {statusLabel}
             {shellState.error ? ` · ${shellState.error}` : ""}
@@ -4199,10 +4583,18 @@ function InfiniteCanvasLocalShellSurface({
             onChange={(event) => setRenameTitle(event.target.value)}
             aria-label="Rename Canvas"
           />
-          <button className={styles.button} type="button" onClick={renameCanvas}>
+          <button
+            className={styles.button}
+            type="button"
+            onClick={renameCanvas}
+          >
             {copy.rename}
           </button>
-          <button className={styles.button} type="button" onClick={() => void createCanvas()}>
+          <button
+            className={styles.button}
+            type="button"
+            onClick={() => void createCanvas()}
+          >
             {copy.newCanvas}
           </button>
           <button
@@ -4222,7 +4614,11 @@ function InfiniteCanvasLocalShellSurface({
             </button>
           ) : null}
           {shellState.status === "error" ? (
-            <button className={styles.button} type="button" onClick={() => void openCanvas(shellState.canvasId!)}>
+            <button
+              className={styles.button}
+              type="button"
+              onClick={() => void openCanvas(shellState.canvasId!)}
+            >
               Повторить
             </button>
           ) : null}
@@ -4236,13 +4632,25 @@ function InfiniteCanvasLocalShellSurface({
               onChange={onPicker}
             />
           </label>
-          <button className={styles.button} type="button" onClick={() => createTextNode(null, "", true)}>
+          <button
+            className={styles.button}
+            type="button"
+            onClick={() => createTextNode(null, "", true)}
+          >
             {copy.text}
           </button>
-          <button className={styles.button} type="button" onClick={() => createShapeNode("rectangle")}>
+          <button
+            className={styles.button}
+            type="button"
+            onClick={() => createShapeNode("rectangle")}
+          >
             Прямоугольник
           </button>
-          <button className={styles.button} type="button" onClick={() => createShapeNode("circle")}>
+          <button
+            className={styles.button}
+            type="button"
+            onClick={() => createShapeNode("circle")}
+          >
             Круг
           </button>
           <div className={styles.taskPicker}>
@@ -4256,7 +4664,11 @@ function InfiniteCanvasLocalShellSurface({
               Задача
             </button>
             {taskPickerOpen ? (
-              <div className={styles.taskPickerPanel} role="dialog" aria-label="Добавить задачу">
+              <div
+                className={styles.taskPickerPanel}
+                role="dialog"
+                aria-label="Добавить задачу"
+              >
                 <div className={styles.taskPickerHeader}>
                   <strong>Добавить задачу</strong>
                   <button
@@ -4286,7 +4698,9 @@ function InfiniteCanvasLocalShellSurface({
                     </p>
                   ) : taskResults.length === 0 ? (
                     <p className={styles.taskPickerEmpty}>
-                      {taskQuery.trim() ? "Совпадений нет" : "В этом проекте нет задач"}
+                      {taskQuery.trim()
+                        ? "Совпадений нет"
+                        : "В этом проекте нет задач"}
                     </p>
                   ) : (
                     taskResults.map((task) => (
@@ -4314,7 +4728,8 @@ function InfiniteCanvasLocalShellSurface({
           onDragEnter={() => setDropActive(true)}
           onDragLeave={() => setDropActive(false)}
           onDragOver={(event) => {
-            if (transferHasFiles(transferPayload(event.nativeEvent))) event.preventDefault();
+            if (transferHasFiles(transferPayload(event.nativeEvent)))
+              event.preventDefault();
           }}
           onDrop={onDrop}
           onPointerDownCapture={handleCanvasPointerDown}
@@ -4353,7 +4768,8 @@ function InfiniteCanvasLocalShellSurface({
             onMoveEnd={onMoveEnd}
             onInit={() => setFlowInstanceEpoch((current) => current + 1)}
             onPaneClick={(event) => {
-              if (touchViewportGestureActiveRef.current || event.detail !== 2) return;
+              if (touchViewportGestureActiveRef.current || event.detail !== 2)
+                return;
               createTextNode({ x: event.clientX, y: event.clientY }, "", true);
             }}
             deleteKeyCode={["Backspace", "Delete"]}
@@ -4408,7 +4824,8 @@ function InfiniteCanvasLocalShellSurface({
                   canonical <strong>{shellState.document.nodes.length}</strong>
                 </span>
                 <span>
-                  viewport <strong>{shellState.viewport.zoom.toFixed(2)}×</strong>
+                  viewport{" "}
+                  <strong>{shellState.viewport.zoom.toFixed(2)}×</strong>
                 </span>
               </div>
             </details>
