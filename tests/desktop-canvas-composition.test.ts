@@ -58,7 +58,9 @@ describe("desktop Canvas composition", () => {
     expect(toolbar).toContain("onAddImage(files)");
     expect(shell).toContain("attachCanvasImagePasteListener(onPaste)");
     expect(shell).toContain("const onDrop = useCallback");
-    expect(shell).toContain("const payload = transferPayload(event.nativeEvent)");
+    expect(shell).toContain(
+      "const payload = transferPayload(event.nativeEvent)",
+    );
     expect(shell).toContain("partitionCanvasDropFiles(payload.files)");
     expect(shell).toContain("runCanvasMixedDrop(");
     expect(shell).toContain('void ingest(payload, "drop", client)');
