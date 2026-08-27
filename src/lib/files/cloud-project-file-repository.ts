@@ -481,7 +481,16 @@ export class SupabaseProjectFileRepository implements ProjectFileRepository {
           projectFileRpcRow(reservedData, "reserve file"),
           { ...scope, fileId: validated.fileId },
         );
-        if (reserved.readyAt !== null || reserved.deletedAt !== null) {
+        // A ready row means the server found the same SHA-256 in this Project.
+        // It is an idempotent success, not a new reservation and must never be
+        // uploaded again under another storage key.
+        if (reserved.readyAt !== null && reserved.deletedAt === null) {
+          if (resumableReservationKey) {
+            this.removeResumableFileId(resumableReservationKey);
+          }
+          return reserved;
+        }
+        if (reserved.deletedAt !== null) {
           throw new CloudProjectFileRepositoryError(
             "invalid-server-metadata",
             "Reserved Project file metadata is invalid.",

@@ -6,17 +6,32 @@ function source(relativePath: string): string {
 }
 
 describe("Canvas PDF reader UI", () => {
-  it("keeps the open PDF node visibly selected", () => {
+  it("marks the open PDF without selecting it", () => {
+    const shell = source(
+      "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
+    );
+    const renderedNodes = shell.slice(
+      shell.indexOf("const renderedNodes"),
+      shell.indexOf("const [fileQuery"),
+    );
+
+    expect(shell).toContain("nodeId: node.id");
+    expect(renderedNodes).toContain("node.id === openNodeId");
+    expect(renderedNodes).toContain("readerOpen: true");
+    expect(renderedNodes).not.toContain("selected: true");
+    expect(shell).toContain("nodes={renderedNodes}");
+  });
+
+  it("does not delete an open PDF as part of another selected group", () => {
     const shell = source(
       "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
     );
 
-    expect(shell).toContain("nodeId: string;");
-    expect(shell).toContain("nodeId: node.id");
-    expect(shell).toContain("node.id === openNodeId");
-    expect(shell).toContain("{ ...node, selected: true }");
-    expect(shell).toContain("readerOpen: true");
-    expect(shell).toContain("nodes={renderedNodes}");
+    expect(shell).toContain("const requestedRemovals = guardedChanges.filter(");
+    expect(shell).toContain("requestedRemovals.length > 1");
+    expect(shell).toContain("const safeChanges =");
+    expect(shell).toContain("change.id !== openPdf.nodeId");
+    expect(shell).toContain("onNodesChange(safeChanges)");
   });
 
   it("uses the larger red PDF badge and title", () => {
@@ -29,6 +44,7 @@ describe("Canvas PDF reader UI", () => {
     expect(styles).toMatch(/\.pdfNodeBadge\s*\{[^}]*background: #d92d20;/u);
     expect(styles).toMatch(/\.pdfNodeBadge\s*\{[^}]*font-size: 18px;/u);
     expect(styles).toMatch(/\.pdfNodeName\s*\{[^}]*font-size: 18px;/u);
+    expect(styles).toContain(".pdfNodeFrameReaderOpen .nodeBody");
   });
 
   it("reserves the right side for a full-height reader", () => {
@@ -77,6 +93,17 @@ describe("Canvas PDF reader UI", () => {
       "const prepared = await prepareProjectFileBrowserUpload(file);",
     );
     expect(shell).toContain("...prepared,");
+  });
+
+  it("makes repeated PDF selections idempotent and confirms the Canvas save", () => {
+    const shell = source(
+      "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
+    );
+
+    expect(shell).toContain("pdfUploadInFlightRef");
+    expect(shell).toContain("const key = `${canvasId}:${prepared.checksum}`;");
+    expect(shell).toContain("await controller.flushPendingSave()");
+    expect(shell).toContain("saveConflictDraft(controller.state)");
   });
 
   it("offers an accessible full-screen PDF control", () => {

@@ -70,7 +70,10 @@ select results_eq(
        'brief-original.pdf',
        'application/pdf',
        3,
-       current_setting('test.files_folder_a')::uuid
+       current_setting('test.files_folder_a')::uuid,
+       null,
+       null,
+       'sha256:deduplicated-pdf-content'
      ) $$,
   array['project-a:brief.pdf:true'::text],
   'owner can reserve a pending file in an existing Snapshot Project'
@@ -158,6 +161,25 @@ select results_eq(
      ) $$,
   array['brief.pdf:brief-original.pdf:true'::text],
   'finalize marks the exact reserved original ready after Storage metadata matches'
+);
+
+select results_eq(
+  $$ select id::text || ':' || name || ':' || (ready_at is not null)::text
+     from public.reserve_project_file(
+       '86000000-0000-4000-8000-000000000001'::uuid,
+       'project-a',
+       '87000000-0000-4000-8000-000000000099'::uuid,
+       'same-binary-retry.pdf',
+       'same-binary-retry.pdf',
+       'application/pdf',
+       3,
+       current_setting('test.files_folder_a')::uuid,
+       null,
+       null,
+       'sha256:deduplicated-pdf-content'
+     ) $$,
+  array['87000000-0000-4000-8000-000000000001:brief.pdf:true'::text],
+  'repeated content reservation returns the ready original instead of a duplicate'
 );
 
 select results_eq(
