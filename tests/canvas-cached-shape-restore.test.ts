@@ -10,9 +10,7 @@ describe("Canvas cached-remount projection", () => {
     const shell = source(
       "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
     );
-    const runtimeSkeleton = source(
-      "src/lib/canvas/canvas-runtime-skeleton.ts",
-    );
+    const runtimeSkeleton = source("src/lib/canvas/canvas-runtime-skeleton.ts");
     const restoreStart = shell.indexOf(
       "const restoreCachedScene = useCallback(",
     );
@@ -25,7 +23,9 @@ describe("Canvas cached-remount projection", () => {
     expect(restoreCachedScene).toContain(
       "canvasDocumentToRuntimeSkeleton(cachedState.document",
     );
-    expect(runtimeSkeleton).toContain("...canvasDocumentToShapeNodes(document),");
+    expect(runtimeSkeleton).toContain(
+      "...canvasDocumentToShapeNodes(document),",
+    );
     expect(runtimeSkeleton).toContain("...canvasDocumentToPdfNodes(document),");
   });
 });
