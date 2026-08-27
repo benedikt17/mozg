@@ -216,6 +216,12 @@ import {
   serverCanvasMatchesCachedRuntime,
 } from "@/lib/canvas/canvas-runtime-cache-reconciliation";
 import {
+  partitionCanvasDropFiles,
+  resolveCanvasDropFlowPosition,
+  runCanvasMixedDrop,
+} from "@/lib/canvas/canvas-file-drop-routing";
+import { canvasDocumentToRuntimeSkeleton } from "@/lib/canvas/canvas-runtime-skeleton";
+import {
   CanvasEdgeMarkerDefinitions,
   CanvasVisibleEdge,
 } from "@/lib/canvas/canvas-visible-edge";
@@ -2450,16 +2456,11 @@ function InfiniteCanvasLocalShellSurface({
       if (!cachedState.canvasId) return;
       const generation = ++canvasGenerationRef.current;
       variantPayloadsRef.current = new Map(snapshot.assetPayloads);
-      const skeleton: CanvasFlowNode[] = [
-        ...canvasDocumentToImageNodes(cachedState.document),
-        ...canvasDocumentToTaskNodes(cachedState.document, {
-          onContentHeightChange: handleTaskNodeContentHeightChange,
-          taskBridge: taskBridgeRef.current,
-          taskWorkspaceId: taskWorkspaceIdRef.current,
-        }),
-        ...canvasDocumentToTextNodes(cachedState.document),
-        ...canvasDocumentToShapeNodes(cachedState.document),
-      ];
+      const skeleton = canvasDocumentToRuntimeSkeleton(cachedState.document, {
+        onContentHeightChange: handleTaskNodeContentHeightChange,
+        taskBridge: taskBridgeRef.current,
+        taskWorkspaceId: taskWorkspaceIdRef.current,
+      });
       // Keep the runtime-cache composition contract explicit for desktop-shell checks:
       // setNodes(withCachedAssetPayloads(skeleton, snapshot.assetPayloads))
       setNodes(
@@ -3308,7 +3309,7 @@ function InfiniteCanvasLocalShellSurface({
   );
 
   const createPdfNodeFromProjectFile = useCallback(
-    (file: ProjectFileRecord) => {
+    (file: ProjectFileRecord, position?: FlowPosition) => {
       if (
         file.mimeType !== "application/pdf" ||
         !shellStateRef.current.canvasId
@@ -3324,7 +3325,7 @@ function InfiniteCanvasLocalShellSurface({
         kind: "pdf" as const,
         fileId: file.id,
         lastKnownName: file.name,
-        position: centerPosition(),
+        position: position ?? centerPosition(),
         size: { width: 300, height: 180 },
         zIndex,
       };
@@ -3641,22 +3642,8 @@ function InfiniteCanvasLocalShellSurface({
     });
   }, []);
 
-  const onDrop = useCallback(
-    (event: ReactDragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      setDropActive(false);
-      if (!shouldPreventFileNavigation(transferPayload(event.nativeEvent)))
-        return;
-      void ingest(transferPayload(event.nativeEvent), "drop", {
-        x: event.clientX,
-        y: event.clientY,
-      });
-    },
-    [ingest],
-  );
-
   const uploadPdfFiles = useCallback(
-    async (files: File[]) => {
+    async (files: File[], position?: FlowPosition) => {
       if (!projectFileRepository || !projectId || files.length === 0) return;
       for (const file of files) {
         if (
@@ -3674,7 +3661,7 @@ function InfiniteCanvasLocalShellSurface({
             mimeType: "application/pdf",
             byteSize: file.size,
           });
-          createPdfNodeFromProjectFile(uploaded);
+          createPdfNodeFromProjectFile(uploaded, position);
         } catch (error: unknown) {
           setShellState((current) => ({
             ...current,
@@ -3691,6 +3678,45 @@ function InfiniteCanvasLocalShellSurface({
       projectId,
       shellWorkspaceId,
     ],
+  );
+
+  const onDrop = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      setDropActive(false);
+      const payload = transferPayload(event.nativeEvent);
+      if (!shouldPreventFileNavigation(payload)) return;
+      const client = { x: event.clientX, y: event.clientY };
+      const { imageFiles, pdfFiles } = partitionCanvasDropFiles(payload.files);
+      if (pdfFiles.length === 0) {
+        void ingest(payload, "drop", client);
+        return;
+      }
+      const pdfPosition = resolveCanvasDropFlowPosition(
+        client,
+        screenToFlowRef.current,
+      );
+      void runCanvasMixedDrop(
+        { imageFiles, pdfFiles },
+        {
+          ingestImages: async (files) => {
+            await ingest(
+              {
+                files: Array.from(files),
+                items: [],
+                types: files.map((file) => file.type),
+              },
+              "drop",
+              client,
+            );
+          },
+          uploadPdfs: async (files) => {
+            await uploadPdfFiles(Array.from(files), pdfPosition);
+          },
+        },
+      );
+    },
+    [ingest, uploadPdfFiles],
   );
 
   const onPicker = useCallback(
