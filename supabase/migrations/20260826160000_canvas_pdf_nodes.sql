@@ -99,7 +99,7 @@ begin
               'zIndex', item.value -> 'zIndex',
               'markdown', '',
               'style', jsonb_build_object(
-                'fontFamily','system','fontSize',16,'bold',false,'italic',false,'underline',false,'strikethrough',false,
+                'fontFamily','system','fontSize',18,'bold',false,'italic',false,'underline',false,'strikethrough',false,
                 'color','#000000','backgroundColor','transparent','textAlign','center'
               )
             )
