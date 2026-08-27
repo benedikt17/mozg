@@ -17,6 +17,7 @@ export const CANVAS_DOCUMENT_LIMITS = {
   maxEdges: 10_000,
   maxMarkdownLength: 250_000,
   maxTitleLength: 200,
+  maxFileNameLength: 255,
   maxIdLength: 256,
   maxAbsoluteCoordinate: 1_000_000_000,
   minNodeDimension: 1,
@@ -90,12 +91,19 @@ export type CanvasProjectFileImageNode = CanvasNodeBase & {
 export type CanvasImageNode =
   CanvasLegacyImageNode | CanvasProjectFileImageNode;
 
+export type CanvasPdfNode = CanvasNodeBase & {
+  kind: "pdf";
+  fileId: string;
+  lastKnownName?: string;
+};
+
 export type CanvasNode =
   | CanvasTaskNode
   | CanvasArticleNode
   | CanvasTextNode
   | CanvasShapeNode
-  | CanvasImageNode;
+  | CanvasImageNode
+  | CanvasPdfNode;
 
 export type CanvasEdge = {
   id: string;
@@ -354,6 +362,18 @@ function requireLastKnownTitle(value: unknown, path: string): string {
   return title;
 }
 
+function requireLastKnownFileName(value: unknown, path: string): string {
+  const name = requireString(value, path);
+  if (name.length > CANVAS_DOCUMENT_LIMITS.maxFileNameLength) {
+    fail(
+      "file_name_too_long",
+      path,
+      "lastKnownName exceeds the Canvas file name limit",
+    );
+  }
+  return name;
+}
+
 function requireBoolean(value: unknown, path: string): boolean {
   if (typeof value !== "boolean") {
     fail("boolean_required", path, "Expected a boolean");
@@ -456,15 +476,15 @@ function requireCanvasShapeStyle(
 function parseNode(
   value: unknown,
   path: string,
-  allowShape = false,
+  allowV2Extensions = false,
 ): CanvasNode {
   const node = requireRecord(value, path);
   const kind = requireString(node.kind, `${path}.kind`) as CanvasNode["kind"];
-  if (kind === "shape" && !allowShape) {
+  if ((kind === "shape" || kind === "pdf") && !allowV2Extensions) {
     fail(
       "unsupported_node_kind",
       `${path}.kind`,
-      "Canvas shape nodes require CanvasDocumentV2",
+      "This Canvas node kind requires CanvasDocumentV2",
     );
   }
   const optionalKeys = ["lastKnownTitle"];
@@ -473,7 +493,9 @@ function parseNode(
       ? optionalKeys
       : kind === "text"
         ? ["style"]
-        : [];
+        : kind === "pdf"
+          ? ["lastKnownName"]
+          : [];
   const hasImageAssetId =
     kind === "image" && Object.prototype.hasOwnProperty.call(node, "assetId");
   const hasImageFileId =
@@ -498,7 +520,9 @@ function parseNode(
               ? hasImageFileId
                 ? "fileId"
                 : "assetId"
-              : null;
+              : kind === "pdf"
+                ? "fileId"
+                : null;
   if (specificKey === null) {
     fail(
       "unsupported_node_kind",
@@ -604,6 +628,24 @@ function parseNode(
       markdown,
       style: requireCanvasShapeStyle(node.style, `${path}.style`),
     };
+  }
+
+  if (kind === "pdf") {
+    const result: CanvasPdfNode = {
+      id,
+      kind,
+      position,
+      size,
+      zIndex,
+      fileId: requireIdentifier(node.fileId, `${path}.fileId`),
+    };
+    if (Object.prototype.hasOwnProperty.call(node, "lastKnownName")) {
+      result.lastKnownName = requireLastKnownFileName(
+        node.lastKnownName,
+        `${path}.lastKnownName`,
+      );
+    }
+    return result;
   }
 
   const aspectRatioLocked = node.aspectRatioLocked;

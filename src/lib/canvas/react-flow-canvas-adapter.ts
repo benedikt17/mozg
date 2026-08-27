@@ -10,6 +10,7 @@ import {
   type CanvasImageNode,
   type CanvasNode,
   type CanvasPoint,
+  type CanvasPdfNode,
   type CanvasSize,
   type CanvasShapeNode,
   type CanvasShapeVariant,
@@ -62,6 +63,7 @@ import {
 } from "@/lib/canvas/canvas-image-variants";
 
 export const CANVAS_IMAGE_NODE_TYPE = "canvasImage";
+export const CANVAS_PDF_NODE_TYPE = "canvasPdf";
 export const CANVAS_TEXT_NODE_TYPE = "canvasText";
 export const CANVAS_SHAPE_NODE_TYPE = "canvasShape";
 export const CANVAS_TASK_NODE_TYPE = "canvasTask";
@@ -92,6 +94,16 @@ export type CanvasImageNodeData = {
 export type CanvasImageFlowNode = Node<
   CanvasImageNodeData,
   typeof CANVAS_IMAGE_NODE_TYPE
+>;
+
+export type CanvasPdfNodeData = {
+  fileId: string;
+  lastKnownName?: string;
+};
+
+export type CanvasPdfFlowNode = Node<
+  CanvasPdfNodeData,
+  typeof CANVAS_PDF_NODE_TYPE
 >;
 
 export type CanvasTextNodeData = {
@@ -132,6 +144,7 @@ export type CanvasTaskFlowNode = Node<
 
 export type CanvasFlowNode =
   | CanvasImageFlowNode
+  | CanvasPdfFlowNode
   | CanvasTextFlowNode
   | CanvasShapeFlowNode
   | CanvasTaskFlowNode;
@@ -616,6 +629,40 @@ export function createCanvasShapeFlowNode(input: {
   };
 }
 
+export function createCanvasPdfId(
+  idGenerator: () => string = () =>
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+): string {
+  return `pdf-node-${idGenerator()}`;
+}
+
+export function createCanvasPdfFlowNode(input: {
+  id: string;
+  fileId: string;
+  lastKnownName?: string;
+  position: FlowPosition;
+  size?: CanvasSize;
+  zIndex?: number;
+}): CanvasPdfFlowNode {
+  const size = input.size ?? { width: 300, height: 180 };
+  return {
+    id: input.id,
+    type: CANVAS_PDF_NODE_TYPE,
+    position: { ...input.position },
+    width: size.width,
+    height: size.height,
+    style: { width: size.width, height: size.height },
+    zIndex: input.zIndex,
+    data: {
+      fileId: input.fileId,
+      ...(input.lastKnownName === undefined
+        ? {}
+        : { lastKnownName: input.lastKnownName }),
+    },
+  };
+}
+
 export function createCanvasTaskId(
   idGenerator: () => string = () =>
     globalThis.crypto?.randomUUID?.() ??
@@ -691,6 +738,23 @@ export function canvasDocumentToShapeNodes(
         size: node.size,
         zIndex: node.zIndex,
         style: node.style,
+      }),
+    );
+}
+
+export function canvasDocumentToPdfNodes(
+  document: CanvasDocument,
+): CanvasPdfFlowNode[] {
+  return document.nodes
+    .filter((node): node is CanvasPdfNode => node.kind === "pdf")
+    .map((node) =>
+      createCanvasPdfFlowNode({
+        id: node.id,
+        fileId: node.fileId,
+        lastKnownName: node.lastKnownName,
+        position: node.position,
+        size: node.size,
+        zIndex: node.zIndex,
       }),
     );
 }
@@ -771,6 +835,13 @@ export function runtimeNodesToCanvasDocument(
     const runtime = byId.get(node.id);
     if (!runtime) return { ...node } as CanvasNode;
     if (node.kind === "image" && runtime.type === CANVAS_IMAGE_NODE_TYPE) {
+      return {
+        ...node,
+        position: { ...runtime.position },
+        size: runtimeNodeSize(runtime),
+      };
+    }
+    if (node.kind === "pdf" && runtime.type === CANVAS_PDF_NODE_TYPE) {
       return {
         ...node,
         position: { ...runtime.position },

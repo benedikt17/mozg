@@ -17,6 +17,8 @@ export type UiIconName =
   | "folder"
   | "folder-open"
   | "folder-plus"
+  | "fullscreen"
+  | "fullscreen-exit"
   | "inbox"
   | "layout"
   | "locate"
@@ -117,6 +119,22 @@ export function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
       <>
         <path d="M3 7h7l2 2h9" />
         <path d="M4 11h17l-2 8H5z" />
+      </>
+    ),
+    fullscreen: (
+      <>
+        <path d="M8 4H4v4" />
+        <path d="M16 4h4v4" />
+        <path d="M20 16v4h-4" />
+        <path d="M8 20H4v-4" />
+      </>
+    ),
+    "fullscreen-exit": (
+      <>
+        <path d="M4 9h5V4" />
+        <path d="M20 9h-5V4" />
+        <path d="M15 20v-5h5" />
+        <path d="M9 20v-5H4" />
       </>
     ),
     "folder-plus": (

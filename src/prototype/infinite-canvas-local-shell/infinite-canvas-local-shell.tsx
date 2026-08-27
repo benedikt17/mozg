@@ -30,6 +30,7 @@ import {
   CanvasDesktopSidebar,
   CanvasDesktopToolbar,
 } from "@/prototype/canvases/canvas-desktop-composition";
+import { UiIcon } from "@/prototype/desktop-icons";
 import {
   useCallback,
   useEffect,
@@ -102,16 +103,20 @@ import {
 } from "@/lib/canvas/canvas-alt-drag-duplicate";
 import {
   CANVAS_IMAGE_NODE_TYPE,
+  CANVAS_PDF_NODE_TYPE,
   CANVAS_SHAPE_NODE_TYPE,
   CANVAS_TASK_NODE_TYPE,
   CANVAS_TEXT_NODE_TYPE,
   CANVAS_EDGE_TYPE,
   canvasDocumentToEdges,
   canvasDocumentToImageNodes,
+  canvasDocumentToPdfNodes,
   canvasDocumentToShapeNodes,
   canvasDocumentToTaskNodes,
   canvasDocumentToTextNodes,
   canvasImageAdapterDependenciesForCanvas,
+  createCanvasPdfFlowNode,
+  createCanvasPdfId,
   createCanvasTaskFlowNode,
   createCanvasTaskId,
   createCanvasEdgeFromConnection,
@@ -129,6 +134,7 @@ import {
   type CanvasImageFlowNode,
   type CanvasShapeFlowNode,
   type CanvasTaskFlowNode,
+  type CanvasPdfFlowNode,
   type CanvasTextFlowNode,
   type FlowPosition,
 } from "@/lib/canvas/react-flow-canvas-adapter";
@@ -210,6 +216,12 @@ import {
   reconcileCachedRuntimeWithServer,
   serverCanvasMatchesCachedRuntime,
 } from "@/lib/canvas/canvas-runtime-cache-reconciliation";
+import {
+  partitionCanvasDropFiles,
+  resolveCanvasDropFlowPosition,
+  runCanvasMixedDrop,
+} from "@/lib/canvas/canvas-file-drop-routing";
+import { canvasDocumentToRuntimeSkeleton } from "@/lib/canvas/canvas-runtime-skeleton";
 import {
   CanvasEdgeMarkerDefinitions,
   CanvasVisibleEdge,
@@ -787,6 +799,31 @@ function CanvasTextEditor({
       }}
       onPaste={(event) => event.stopPropagation()}
     />
+  );
+}
+
+function PdfNodeBody({
+  data,
+  selected,
+}: NodeProps<CanvasPdfFlowNode>): React.JSX.Element {
+  return (
+    <CanvasNodeFrame
+      selected={selected}
+      minWidth={160}
+      minHeight={100}
+      className={styles.pdfNodeFrame}
+      connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
+    >
+      <div className={styles.pdfNodeContent}>
+        <span className={styles.pdfNodeBadge}>PDF</span>
+        <span
+          className={styles.pdfNodeName}
+          title={data.lastKnownName ?? "PDF"}
+        >
+          {data.lastKnownName ?? "PDF"}
+        </span>
+      </div>
+    </CanvasNodeFrame>
   );
 }
 
@@ -1390,6 +1427,7 @@ function CanvasConnectionLine({
 
 const nodeTypes = {
   [CANVAS_IMAGE_NODE_TYPE]: ImageNodeBody,
+  [CANVAS_PDF_NODE_TYPE]: PdfNodeBody,
   [CANVAS_TASK_NODE_TYPE]: TaskNodeBody,
   [CANVAS_TEXT_NODE_TYPE]: TextNodeBody,
   [CANVAS_SHAPE_NODE_TYPE]: ShapeNodeBody,
@@ -1552,6 +1590,20 @@ function InfiniteCanvasLocalShellSurface({
   const [taskQuery, setTaskQuery] = useState("");
   const [taskResults, setTaskResults] = useState<CanvasTaskProjection[]>([]);
   const [filePickerOpen, setFilePickerOpen] = useState(false);
+  const [openPdf, setOpenPdf] = useState<{
+    fileId: string;
+    name: string;
+    nodeId: string;
+    objectUrl: string;
+  } | null>(null);
+  const [pdfFullscreen, setPdfFullscreen] = useState(false);
+  const renderedNodes = useMemo<CanvasFlowNode[]>(() => {
+    const openNodeId = openPdf?.nodeId;
+    if (!openNodeId) return nodes;
+    return nodes.map((node) =>
+      node.id === openNodeId ? { ...node, selected: true } : node,
+    );
+  }, [nodes, openPdf?.nodeId]);
   const [fileQuery, setFileQuery] = useState("");
   const [fileCatalog, setFileCatalog] = useState<ProjectFileRecord[]>([]);
   const [fileSearchStatus, setFileSearchStatus] = useState<
@@ -1773,9 +1825,10 @@ function InfiniteCanvasLocalShellSurface({
               (file) =>
                 file.readyAt !== null &&
                 file.deletedAt === null &&
-                file.width !== null &&
-                file.height !== null &&
-                isProjectFileImageMimeType(file.mimeType),
+                (file.mimeType === "application/pdf" ||
+                  (file.width !== null &&
+                    file.height !== null &&
+                    isProjectFileImageMimeType(file.mimeType))),
             ),
           );
           setFileSearchStatus("ready");
@@ -2072,6 +2125,7 @@ function InfiniteCanvasLocalShellSurface({
       const signal = restoreControllerRef.current.signal;
       const placeholders: CanvasFlowNode[] = [
         ...canvasDocumentToImageNodes(nextState.document),
+        ...canvasDocumentToPdfNodes(nextState.document),
         ...canvasDocumentToTaskNodes(nextState.document, {
           onContentHeightChange: handleTaskNodeContentHeightChange,
           taskBridge: taskBridgeRef.current,
@@ -2412,16 +2466,11 @@ function InfiniteCanvasLocalShellSurface({
       if (!cachedState.canvasId) return;
       const generation = ++canvasGenerationRef.current;
       variantPayloadsRef.current = new Map(snapshot.assetPayloads);
-      const skeleton: CanvasFlowNode[] = [
-        ...canvasDocumentToImageNodes(cachedState.document),
-        ...canvasDocumentToTaskNodes(cachedState.document, {
-          onContentHeightChange: handleTaskNodeContentHeightChange,
-          taskBridge: taskBridgeRef.current,
-          taskWorkspaceId: taskWorkspaceIdRef.current,
-        }),
-        ...canvasDocumentToTextNodes(cachedState.document),
-        ...canvasDocumentToShapeNodes(cachedState.document),
-      ];
+      const skeleton = canvasDocumentToRuntimeSkeleton(cachedState.document, {
+        onContentHeightChange: handleTaskNodeContentHeightChange,
+        taskBridge: taskBridgeRef.current,
+        taskWorkspaceId: taskWorkspaceIdRef.current,
+      });
       // Keep the runtime-cache composition contract explicit for desktop-shell checks:
       // setNodes(withCachedAssetPayloads(skeleton, snapshot.assetPayloads))
       setNodes(
@@ -2449,6 +2498,16 @@ function InfiniteCanvasLocalShellSurface({
       setEdges,
       setNodes,
     ],
+  );
+
+  useEffect(
+    () => () => {
+      setOpenPdf((current) => {
+        if (current) URL.revokeObjectURL(current.objectUrl);
+        return null;
+      });
+    },
+    [],
   );
 
   useEffect(() => {
@@ -3131,6 +3190,17 @@ function InfiniteCanvasLocalShellSurface({
                 zIndex: node.zIndex,
               }),
             );
+          } else if (node.kind === "pdf") {
+            runtimeNodes.push(
+              createCanvasPdfFlowNode({
+                id: node.id,
+                fileId: node.fileId,
+                lastKnownName: node.lastKnownName,
+                position: node.position,
+                size: node.size,
+                zIndex: node.zIndex,
+              }),
+            );
           } else if (node.kind === "shape") {
             runtimeNodes.push(
               createCanvasShapeFlowNode({
@@ -3248,8 +3318,48 @@ function InfiniteCanvasLocalShellSurface({
     ],
   );
 
+  const createPdfNodeFromProjectFile = useCallback(
+    (file: ProjectFileRecord, position?: FlowPosition) => {
+      if (
+        file.mimeType !== "application/pdf" ||
+        !shellStateRef.current.canvasId
+      )
+        return;
+      const zIndex =
+        Math.max(
+          0,
+          ...controller.state.document.nodes.map((node) => node.zIndex),
+        ) + 1;
+      const canonical = {
+        id: createCanvasPdfId(),
+        kind: "pdf" as const,
+        fileId: file.id,
+        lastKnownName: file.name,
+        position: position ?? centerPosition(),
+        size: { width: 300, height: 180 },
+        zIndex,
+      };
+      const runtime = createCanvasPdfFlowNode(canonical);
+      setNodes((current) => [
+        ...current.map((node) =>
+          node.selected ? { ...node, selected: false } : node,
+        ),
+        { ...runtime, selected: true },
+      ]);
+      controller.insertCanvasNodes([canonical]);
+      syncState();
+      scheduleSave();
+      setFilePickerOpen(false);
+    },
+    [centerPosition, controller, scheduleSave, setNodes, syncState],
+  );
+
   const createProjectFileNode = useCallback(
     async (file: ProjectFileRecord) => {
+      if (file.mimeType === "application/pdf") {
+        createPdfNodeFromProjectFile(file);
+        return;
+      }
       const canvasId = shellStateRef.current.canvasId;
       if (!canvasId) return;
       const dependencies = projectFileImageDependenciesForCanvas(canvasId);
@@ -3304,6 +3414,7 @@ function InfiniteCanvasLocalShellSurface({
     [
       centerPosition,
       controller,
+      createPdfNodeFromProjectFile,
       projectFileImageDependenciesForCanvas,
       scheduleSave,
       setNodes,
@@ -3501,18 +3612,124 @@ function InfiniteCanvasLocalShellSurface({
     ],
   );
 
+  const openPdfNode = useCallback(
+    async (node: CanvasFlowNode) => {
+      if (
+        node.type !== CANVAS_PDF_NODE_TYPE ||
+        !projectFileRepository ||
+        !projectId
+      )
+        return;
+      try {
+        const downloaded = await projectFileRepository.downloadFile({
+          workspaceId: shellWorkspaceId,
+          projectId,
+          fileId: node.data.fileId,
+        });
+        setPdfFullscreen(false);
+        setOpenPdf((current) => {
+          if (current) URL.revokeObjectURL(current.objectUrl);
+          return {
+            fileId: node.data.fileId,
+            name: downloaded.name || node.data.lastKnownName || "PDF",
+            nodeId: node.id,
+            objectUrl: URL.createObjectURL(downloaded.blob),
+          };
+        });
+      } catch (error: unknown) {
+        setShellState((current) => ({
+          ...current,
+          status: "error",
+          error: error instanceof Error ? error.message : "PDF failed to open.",
+        }));
+      }
+    },
+    [projectFileRepository, projectId, shellWorkspaceId],
+  );
+
+  const closePdfReader = useCallback(() => {
+    setPdfFullscreen(false);
+    setOpenPdf((current) => {
+      if (current) URL.revokeObjectURL(current.objectUrl);
+      return null;
+    });
+  }, []);
+
+  const uploadPdfFiles = useCallback(
+    async (files: File[], position?: FlowPosition) => {
+      if (!projectFileRepository || !projectId || files.length === 0) return;
+      for (const file of files) {
+        if (
+          file.type !== "application/pdf" &&
+          !file.name.toLowerCase().endsWith(".pdf")
+        )
+          continue;
+        try {
+          const uploaded = await projectFileRepository.uploadFile({
+            workspaceId: shellWorkspaceId,
+            projectId,
+            name: file.name,
+            originalName: file.name,
+            blob: file,
+            mimeType: "application/pdf",
+            byteSize: file.size,
+          });
+          createPdfNodeFromProjectFile(uploaded, position);
+        } catch (error: unknown) {
+          setShellState((current) => ({
+            ...current,
+            status: "error",
+            error:
+              error instanceof Error ? error.message : "PDF upload failed.",
+          }));
+        }
+      }
+    },
+    [
+      createPdfNodeFromProjectFile,
+      projectFileRepository,
+      projectId,
+      shellWorkspaceId,
+    ],
+  );
+
   const onDrop = useCallback(
     (event: ReactDragEvent<HTMLDivElement>) => {
       event.preventDefault();
       setDropActive(false);
-      if (!shouldPreventFileNavigation(transferPayload(event.nativeEvent)))
+      const payload = transferPayload(event.nativeEvent);
+      if (!shouldPreventFileNavigation(payload)) return;
+      const client = { x: event.clientX, y: event.clientY };
+      const { imageFiles, pdfFiles } = partitionCanvasDropFiles(payload.files);
+      if (pdfFiles.length === 0) {
+        void ingest(payload, "drop", client);
         return;
-      void ingest(transferPayload(event.nativeEvent), "drop", {
-        x: event.clientX,
-        y: event.clientY,
-      });
+      }
+      const pdfPosition = resolveCanvasDropFlowPosition(
+        client,
+        screenToFlowRef.current,
+      );
+      void runCanvasMixedDrop(
+        { imageFiles, pdfFiles },
+        {
+          ingestImages: async (files) => {
+            await ingest(
+              {
+                files: Array.from(files),
+                items: [],
+                types: files.map((file) => file.type),
+              },
+              "drop",
+              client,
+            );
+          },
+          uploadPdfs: async (files) => {
+            await uploadPdfFiles(Array.from(files), pdfPosition);
+          },
+        },
+      );
     },
-    [ingest],
+    [ingest, uploadPdfFiles],
   );
 
   const onPicker = useCallback(
@@ -4078,6 +4295,7 @@ function InfiniteCanvasLocalShellSurface({
       interactive={Boolean(shellState.canvasId) && loadingLifecycle === "ready"}
       copy={copy}
       error={shellState.error}
+      onAddPdf={(files) => void uploadPdfFiles(files)}
       onAddImage={(files) =>
         void ingest(
           { files, items: [], types: files.map((file) => file.type) },
@@ -4263,79 +4481,130 @@ function InfiniteCanvasLocalShellSurface({
             : copy.error;
   if (embedded) {
     return desktopLayout(
-      <div className={styles.canvasWrap}>
-        <div
-          ref={wrapperRef}
-          className={`${styles.canvas} ${dropActive ? styles.dropActive : ""} ${styleEyedropperSourceId ? styles.canvasStyleEyedropperActive : ""}`}
-          onDragEnter={() => setDropActive(true)}
-          onDragLeave={() => setDropActive(false)}
-          onDragOver={(event) => {
-            if (transferHasFiles(transferPayload(event.nativeEvent)))
-              event.preventDefault();
-          }}
-          onDrop={onDrop}
-          onPointerDownCapture={handleCanvasPointerDown}
-          onPointerMoveCapture={handleCanvasPointerMove}
-          onWheelCapture={handleCanvasWheel}
-        >
-          <ReactFlow
-            className={`${styles.canvasViewport} ${viewportVisible ? "" : styles.canvasViewportHidden}`}
-            nodes={nodes}
-            edges={edges}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            onNodesChange={handleNodesChange}
-            onEdgesChange={handleEdgesChange}
-            onNodeDragStart={handleNodeDragStart}
-            onNodeDragStop={handleNodeDragStop}
-            onConnect={handleConnect}
-            connectionMode={ConnectionMode.Loose}
-            connectionLineComponent={CanvasConnectionLine}
-            minZoom={CANVAS_VIEWPORT_LIMITS.minZoom}
-            maxZoom={CANVAS_VIEWPORT_LIMITS.maxZoom}
-            panOnDrag={touchPrimaryInput ? [0, 1] : [1]}
-            selectionOnDrag={!touchPrimaryInput}
-            selectionMode={SelectionMode.Partial}
-            nodesDraggable={!touchViewportGestureActive}
-            nodesConnectable={!touchViewportGestureActive}
-            elementsSelectable={!touchViewportGestureActive}
-            nodeDragThreshold={touchPrimaryInput ? 8 : 1}
-            zoomOnPinch
-            onMove={handleViewportMove}
-            onMoveEnd={onMoveEnd}
-            onInit={() => setFlowInstanceEpoch((current) => current + 1)}
-            onPaneClick={(event) => {
-              if (touchViewportGestureActiveRef.current || event.detail !== 2)
-                return;
-              createTextNode({ x: event.clientX, y: event.clientY }, "", true);
+      <div className={styles.canvasWorkspace}>
+        <div className={styles.canvasWrap}>
+          <div
+            ref={wrapperRef}
+            className={`${styles.canvas} ${dropActive ? styles.dropActive : ""} ${styleEyedropperSourceId ? styles.canvasStyleEyedropperActive : ""}`}
+            onDragEnter={() => setDropActive(true)}
+            onDragLeave={() => setDropActive(false)}
+            onDragOver={(event) => {
+              if (transferHasFiles(transferPayload(event.nativeEvent)))
+                event.preventDefault();
             }}
-            deleteKeyCode={["Backspace", "Delete"]}
+            onDrop={onDrop}
+            onPointerDownCapture={handleCanvasPointerDown}
+            onPointerMoveCapture={handleCanvasPointerMove}
+            onWheelCapture={handleCanvasWheel}
           >
-            <Background gap={24} color="#d6d3d1" />
-            <Controls showInteractive={false} />
-            <MiniMap
-              className={styles.minimap}
-              position="bottom-right"
-              maskColor="rgba(28, 25, 23, 0.08)"
-              nodeColor={canvasMiniMapNodeColor}
-              nodeStrokeColor="#78716c"
-              nodeStrokeWidth={1}
-              pannable
-              zoomable
-            />
-            <CanvasEdgeMarkerDefinitions />
-          </ReactFlow>
-          {!viewportVisible ? (
-            <div className={styles.canvasLoading} role="status">
-              Preparing canvas…
+            <ReactFlow
+              className={`${styles.canvasViewport} ${viewportVisible ? "" : styles.canvasViewportHidden}`}
+              nodes={renderedNodes}
+              edges={edges}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              onNodesChange={handleNodesChange}
+              onEdgesChange={handleEdgesChange}
+              onNodeDragStart={handleNodeDragStart}
+              onNodeDragStop={handleNodeDragStop}
+              onNodeDoubleClick={(event, node) => {
+                if (node.type !== CANVAS_PDF_NODE_TYPE) return;
+                event.preventDefault();
+                void openPdfNode(node);
+              }}
+              onConnect={handleConnect}
+              connectionMode={ConnectionMode.Loose}
+              connectionLineComponent={CanvasConnectionLine}
+              minZoom={CANVAS_VIEWPORT_LIMITS.minZoom}
+              maxZoom={CANVAS_VIEWPORT_LIMITS.maxZoom}
+              panOnDrag={touchPrimaryInput ? [0, 1] : [1]}
+              selectionOnDrag={!touchPrimaryInput}
+              selectionMode={SelectionMode.Partial}
+              nodesDraggable={!touchViewportGestureActive}
+              nodesConnectable={!touchViewportGestureActive}
+              elementsSelectable={!touchViewportGestureActive}
+              nodeDragThreshold={touchPrimaryInput ? 8 : 1}
+              zoomOnPinch
+              onMove={handleViewportMove}
+              onMoveEnd={onMoveEnd}
+              onInit={() => setFlowInstanceEpoch((current) => current + 1)}
+              onPaneClick={(event) => {
+                if (touchViewportGestureActiveRef.current || event.detail !== 2)
+                  return;
+                createTextNode(
+                  { x: event.clientX, y: event.clientY },
+                  "",
+                  true,
+                );
+              }}
+              deleteKeyCode={["Backspace", "Delete"]}
+            >
+              <Background gap={24} color="#d6d3d1" />
+              <Controls showInteractive={false} />
+              <MiniMap
+                className={styles.minimap}
+                position="bottom-right"
+                maskColor="rgba(28, 25, 23, 0.08)"
+                nodeColor={canvasMiniMapNodeColor}
+                nodeStrokeColor="#78716c"
+                nodeStrokeWidth={1}
+                pannable
+                zoomable
+              />
+              <CanvasEdgeMarkerDefinitions />
+            </ReactFlow>
+            {!viewportVisible ? (
+              <div className={styles.canvasLoading} role="status">
+                Preparing canvas…
+              </div>
+            ) : null}
+            <div className={styles.canvasHint}>
+              {dropActive
+                ? "Drop PNG, JPEG, WebP or PDF here"
+                : "Paste, drop or choose a file · drag and resize are saved"}
             </div>
-          ) : null}
-          <div className={styles.canvasHint}>
-            {dropActive
-              ? "Drop PNG, JPEG or WebP here"
-              : "Paste, drop or choose an image · drag and resize are saved"}
           </div>
         </div>
+        {openPdf ? (
+          <aside
+            className={`${styles.pdfReader} canvas-pdf-reader ${pdfFullscreen ? `${styles.pdfReaderFullscreen} canvas-pdf-reader-fullscreen` : ""}`}
+            aria-label="Просмотр PDF"
+          >
+            <header className={styles.pdfReaderHeader}>
+              <strong title={openPdf.name}>{openPdf.name}</strong>
+              <div className={styles.pdfReaderHeaderActions}>
+                <button
+                  type="button"
+                  onClick={() => setPdfFullscreen((current) => !current)}
+                  aria-label={
+                    pdfFullscreen
+                      ? "Вернуть PDF в боковую панель"
+                      : "Развернуть PDF на весь экран"
+                  }
+                  aria-pressed={pdfFullscreen}
+                  title={pdfFullscreen ? "Вернуть в панель" : "На весь экран"}
+                >
+                  <UiIcon
+                    name={pdfFullscreen ? "fullscreen-exit" : "fullscreen"}
+                  />
+                </button>
+                <button
+                  type="button"
+                  onClick={closePdfReader}
+                  aria-label="Закрыть PDF"
+                  title="Закрыть PDF"
+                >
+                  <UiIcon name="close" />
+                </button>
+              </div>
+            </header>
+            <iframe
+              src={openPdf.objectUrl}
+              title={openPdf.name}
+              className={styles.pdfReaderFrame}
+            />
+          </aside>
+        ) : null}
       </div>,
     );
   }
@@ -4534,6 +4803,11 @@ function InfiniteCanvasLocalShellSurface({
             onEdgesChange={handleEdgesChange}
             onNodeDragStart={handleNodeDragStart}
             onNodeDragStop={handleNodeDragStop}
+            onNodeDoubleClick={(event, node) => {
+              if (node.type !== CANVAS_PDF_NODE_TYPE) return;
+              event.preventDefault();
+              void openPdfNode(node);
+            }}
             onConnect={handleConnect}
             connectionMode={ConnectionMode.Loose}
             connectionLineComponent={CanvasConnectionLine}

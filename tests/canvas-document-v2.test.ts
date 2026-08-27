@@ -173,6 +173,24 @@ describe("CanvasDocumentV2", () => {
     });
   });
 
+  it("accepts first-class PDF nodes in V2 and keeps them out of V1", () => {
+    const pdfNode = {
+      id: "pdf-node",
+      kind: "pdf" as const,
+      fileId: "file-1",
+      lastKnownName: "spec.pdf",
+      position: { x: 20, y: 30 },
+      size: { width: 300, height: 180 },
+      zIndex: 4,
+    };
+    expect(
+      parseCanvasDocumentV2({ schemaVersion: 2, nodes: [pdfNode], edges: [] }),
+    ).toEqual({ schemaVersion: 2, nodes: [pdfNode], edges: [] });
+    expect(() =>
+      parseCanvasDocumentV1({ schemaVersion: 1, nodes: [pdfNode], edges: [] }),
+    ).toThrow();
+  });
+
   it("keeps the dedicated V1 parser strict for legacy callers", () => {
     expect(() =>
       parseCanvasDocumentV1({ schemaVersion: 2, nodes: [], edges: [] }),
