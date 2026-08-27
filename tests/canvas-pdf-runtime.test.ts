@@ -42,27 +42,30 @@ describe("Canvas PDF runtime", () => {
     ]);
   });
 
-  it("partitions mixed image and PDF drops without sending PDF files to image ingestion", () => {
-    const image = { name: "photo.png", type: "image/png" };
-    const pdfByMime = { name: "brief.bin", type: "application/pdf" };
-    const pdfByExtension = {
-      name: "scan.PDF",
-      type: "application/octet-stream",
-    };
-    const unsupported = { name: "notes.txt", type: "text/plain" };
+  it(
+    "partitions mixed image and PDF drops without sending PDF files to image ingestion",
+    () => {
+      const image = { name: "photo.png", type: "image/png" };
+      const pdfByMime = { name: "brief.bin", type: "application/pdf" };
+      const pdfByExtension = {
+        name: "scan.PDF",
+        type: "application/octet-stream",
+      };
+      const unsupported = { name: "notes.txt", type: "text/plain" };
 
-    expect(
-      partitionCanvasDropFiles([
-        image,
-        pdfByMime,
-        pdfByExtension,
-        unsupported,
-      ]),
-    ).toEqual({
-      imageFiles: [image],
-      pdfFiles: [pdfByMime, pdfByExtension],
-    });
-  });
+      expect(
+        partitionCanvasDropFiles([
+          image,
+          pdfByMime,
+          pdfByExtension,
+          unsupported,
+        ]),
+      ).toEqual({
+        imageFiles: [image],
+        pdfFiles: [pdfByMime, pdfByExtension],
+      });
+    },
+  );
 
   it("processes images before PDFs for a mixed drop", async () => {
     const calls: string[] = [];
@@ -85,15 +88,18 @@ describe("Canvas PDF runtime", () => {
     expect(uploadPdfs).toHaveBeenCalledWith([pdf]);
   });
 
-  it("resolves the PDF node position from the original drop client point", () => {
-    const screenToFlow = vi.fn(({ x, y }: { x: number; y: number }) => ({
-      x: x - 100,
-      y: y + 25,
-    }));
+  it(
+    "resolves the PDF node position from the original drop client point",
+    () => {
+      const screenToFlow = vi.fn(({ x, y }: { x: number; y: number }) => ({
+        x: x - 100,
+        y: y + 25,
+      }));
 
-    expect(
-      resolveCanvasDropFlowPosition({ x: 320, y: 180 }, screenToFlow),
-    ).toEqual({ x: 220, y: 205 });
-    expect(screenToFlow).toHaveBeenCalledWith({ x: 320, y: 180 });
-  });
+      expect(
+        resolveCanvasDropFlowPosition({ x: 320, y: 180 }, screenToFlow),
+      ).toEqual({ x: 220, y: 205 });
+      expect(screenToFlow).toHaveBeenCalledWith({ x: 320, y: 180 });
+    },
+  );
 });
