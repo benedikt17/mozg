@@ -26,7 +26,12 @@ describe("CanvasNodeFrame composition", () => {
     expect(frame).toContain('data-slot="connections"');
     expect(frame).toContain('data-slot="toolbar"');
     expect(frame).toContain('data-slot="context-menu"');
+    expect(frame).toContain("selected: boolean;");
+    expect(frame).toContain("<NodeToolbarSlot selected={selected}>");
     expect(frame).toContain("isVisible={selected}");
+    expect(frame).toContain(
+      "selected text or shape node still exposes its own formatting tools",
+    );
   });
 
   it("is the only interaction frame used by task, text, image, shape, and PDF bodies", () => {
