@@ -143,13 +143,19 @@ export function ConnectionHandleLayer({
 
 function NodeToolbarSlot({
   children,
+  selected,
 }: {
   children: ReactNode;
+  selected: boolean;
 }): React.JSX.Element {
   return (
     <NodeToolbar
       className={styles.nodeToolbarSlot}
       data-slot="toolbar"
+      // Opening a PDF keeps its Canvas node selected as a persistent visual
+      // indicator. Opt out of React Flow's single-selection default so a
+      // selected text or shape node still exposes its own formatting tools.
+      isVisible={selected}
       position={Position.Top}
       offset={10}
     >
@@ -439,7 +445,7 @@ export function CanvasNodeFrame({
         />
       ) : null}
       {renderedToolbar ? (
-        <NodeToolbarSlot>{renderedToolbar}</NodeToolbarSlot>
+        <NodeToolbarSlot selected={selected}>{renderedToolbar}</NodeToolbarSlot>
       ) : null}
       {contextMenu ? (
         <NodeContextMenuSlot>{contextMenu}</NodeContextMenuSlot>
