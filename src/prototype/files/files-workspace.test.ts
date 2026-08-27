@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ProjectFolderRecord } from "@/lib/files/project-file-repository";
 import {
+  canOpenProjectFileInBrowser,
   formatProjectFileSize,
   getProjectFolderBreadcrumbs,
   getProjectFolderMoveTargets,
@@ -89,5 +90,19 @@ describe("formatProjectFileSize", () => {
     expect(formatProjectFileSize(512)).toBe("512 Б");
     expect(formatProjectFileSize(1536)).toBe("1,5 КБ");
     expect(formatProjectFileSize(5 * 1024 * 1024)).toBe("5 МБ");
+  });
+});
+
+describe("canOpenProjectFileInBrowser", () => {
+  it("offers direct opening for browser-readable search result formats", () => {
+    expect(canOpenProjectFileInBrowser("application/pdf")).toBe(true);
+    expect(canOpenProjectFileInBrowser("text/markdown")).toBe(true);
+    expect(canOpenProjectFileInBrowser("application/json")).toBe(true);
+    expect(canOpenProjectFileInBrowser("image/png")).toBe(true);
+    expect(
+      canOpenProjectFileInBrowser(
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ),
+    ).toBe(false);
   });
 });

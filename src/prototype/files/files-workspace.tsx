@@ -8,6 +8,7 @@ import {
 } from "@/lib/files/project-file-browser-upload";
 import { SupabaseProjectFileImageVariantRepository } from "@/lib/files/cloud-project-file-image-variant-repository";
 import { SupabaseProjectFileRepository } from "@/lib/files/cloud-project-file-repository";
+import { ensureProjectFileSearchIndex } from "@/lib/files/project-file-search-client";
 import { generateAndStoreProjectFileImageVariantsBestEffort } from "@/lib/files/project-file-image-variant-generation";
 import {
   chooseProjectFilePreviewVariant,
@@ -93,6 +94,7 @@ export function FilesWorkspace({
   const [location, setLocation] = useState<FilesLocation>({ kind: "inbox" });
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [status, setStatus] = useState<FilesLoadStatus>("loading");
   const [reloadToken, setReloadToken] = useState(0);
   const [actionState, setActionState] = useState<FilesActionState>("idle");
@@ -109,8 +111,21 @@ export function FilesWorkspace({
 
   useEffect(() => {
     if (!workspaceId) return;
+    void ensureProjectFileSearchIndex({ workspaceId, projectId }).catch(() => {
+      // Search content is a disposable derived index. Files stays usable when a
+      // best-effort background indexing pass is temporarily unavailable.
+    });
+  }, [projectId, workspaceId]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedQuery(query), 250);
+    return () => window.clearTimeout(timeout);
+  }, [query]);
+
+  useEffect(() => {
+    if (!workspaceId) return;
     let cancelled = false;
-    const trimmedQuery = query.trim();
+    const trimmedQuery = debouncedQuery.trim();
     const scope = { workspaceId, projectId };
 
     const filesPromise =
@@ -165,7 +180,7 @@ export function FilesWorkspace({
     activeFolderId,
     location.kind,
     projectId,
-    query,
+    debouncedQuery,
     reloadToken,
     repository,
     workspaceId,
@@ -202,6 +217,7 @@ export function FilesWorkspace({
   const openInbox = () => {
     setStatus("loading");
     setQuery("");
+    setDebouncedQuery("");
     setSelectedFileId(null);
     setActionMessage(null);
     setLocation({ kind: "inbox" });
@@ -210,6 +226,7 @@ export function FilesWorkspace({
   const openFolder = (folderId: string) => {
     setStatus("loading");
     setQuery("");
+    setDebouncedQuery("");
     setSelectedFileId(null);
     setActionMessage(null);
     setLocation({ kind: "folder", folderId });
@@ -218,6 +235,7 @@ export function FilesWorkspace({
   const openTrash = () => {
     setStatus("loading");
     setQuery("");
+    setDebouncedQuery("");
     setSelectedFileId(null);
     setActionMessage(null);
     setLocation({ kind: "trash" });
@@ -692,7 +710,7 @@ export function FilesWorkspace({
             placeholder={
               location.kind === "trash"
                 ? "Поиск в корзине позже"
-                : "Файл или папка"
+                : "Поиск по имени и содержимому"
             }
             type="search"
             value={query}
@@ -1237,6 +1255,7 @@ function ProjectFilePreview({
   const [loadError, setLoadError] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [downloadingOriginal, setDownloadingOriginal] = useState(false);
+  const [openingOriginal, setOpeningOriginal] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState(file.name);
   const [targetFolderId, setTargetFolderId] = useState(file.folderId ?? "");
@@ -1306,6 +1325,36 @@ function ProjectFilePreview({
     repository,
     workspaceId,
   ]);
+
+  const openOriginal = async () => {
+    if (openingOriginal) return;
+    setOpeningOriginal(true);
+    try {
+      const download = await repository.downloadFile({
+        workspaceId,
+        projectId,
+        fileId: file.id,
+      });
+      const browserBlob =
+        file.mimeType.startsWith("text/") ||
+        file.mimeType === "application/json"
+          ? new Blob([download.blob], {
+              type: `${file.mimeType};charset=utf-8`,
+            })
+          : download.blob;
+      const objectUrl = URL.createObjectURL(browserBlob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } finally {
+      setOpeningOriginal(false);
+    }
+  };
 
   const downloadOriginal = async () => {
     if (downloadingOriginal) return;
@@ -1401,6 +1450,16 @@ function ProjectFilePreview({
         className={styles.previewActions}
         style={{ flexWrap: "wrap", gap: 6 }}
       >
+        {canOpenProjectFileInBrowser(file.mimeType) ? (
+          <PrototypeButton
+            disabled={openingOriginal}
+            onClick={() => void openOriginal()}
+            size="compact"
+            variant="default"
+          >
+            {openingOriginal ? "Открытие…" : "Открыть"}
+          </PrototypeButton>
+        ) : null}
         <PrototypeButton
           disabled={downloadingOriginal}
           onClick={() => void downloadOriginal()}
@@ -1531,6 +1590,18 @@ function TrashFilePreview({
         </PrototypeButton>
       </div>
     </div>
+  );
+}
+
+export function canOpenProjectFileInBrowser(
+  mimeType: ProjectFileRecord["mimeType"],
+): boolean {
+  return (
+    mimeType.startsWith("image/") ||
+    mimeType === "application/pdf" ||
+    mimeType === "text/plain" ||
+    mimeType === "text/markdown" ||
+    mimeType === "application/json"
   );
 }
 
