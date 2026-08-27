@@ -211,6 +211,7 @@ import {
   type ProjectFileRecord,
   type ProjectFileRepository,
 } from "@/lib/files/project-file-repository";
+import { prepareProjectFileBrowserUpload } from "@/lib/files/project-file-browser-upload";
 import { shouldCloseCanvasTaskDetails } from "@/lib/canvas/canvas-task-selection";
 import {
   reconcileCachedRuntimeWithServer,
@@ -3665,14 +3666,12 @@ function InfiniteCanvasLocalShellSurface({
         )
           continue;
         try {
+          const prepared = await prepareProjectFileBrowserUpload(file);
+          if (prepared.mimeType !== "application/pdf") continue;
           const uploaded = await projectFileRepository.uploadFile({
             workspaceId: shellWorkspaceId,
             projectId,
-            name: file.name,
-            originalName: file.name,
-            blob: file,
-            mimeType: "application/pdf",
-            byteSize: file.size,
+            ...prepared,
           });
           createPdfNodeFromProjectFile(uploaded, position);
         } catch (error: unknown) {
