@@ -3674,10 +3674,8 @@ function InfiniteCanvasLocalShellSurface({
       const requestedRemovals = guardedChanges.filter(
         (
           change,
-        ): change is Extract<
-          NodeChange<CanvasFlowNode>,
-          { type: "remove" }
-        > => change.type === "remove",
+        ): change is Extract<NodeChange<CanvasFlowNode>, { type: "remove" }> =>
+          change.type === "remove",
       );
       // The open reader is a visual state, not a selection. This guard also
       // protects an already-open PDF from a stale React Flow selection when
