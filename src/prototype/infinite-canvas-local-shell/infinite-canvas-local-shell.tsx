@@ -819,7 +819,9 @@ function PdfNodeBody({
       selected={selected}
       minWidth={160}
       minHeight={100}
-      className={styles.pdfNodeFrame}
+      className={`${styles.pdfNodeFrame} ${
+        data.readerOpen ? styles.pdfNodeFrameReaderOpen : ""
+      }`.trim()}
       connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
     >
       <div className={styles.pdfNodeContent}>
@@ -1534,6 +1536,7 @@ function InfiniteCanvasLocalShellSurface({
     initialRuntime?.shellState ?? emptyShellState(),
   );
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pdfUploadInFlightRef = useRef(new Map<string, Promise<void>>());
   const viewportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const restoreControllerRef = useRef<AbortController | null>(null);
   const variantRefreshControllerRef = useRef<AbortController | null>(null);
@@ -1613,7 +1616,7 @@ function InfiniteCanvasLocalShellSurface({
     if (!openNodeId) return nodes;
     return nodes.map((node) =>
       node.id === openNodeId && node.type === CANVAS_PDF_NODE_TYPE
-        ? { ...node, selected: true, data: { ...node.data, readerOpen: true } }
+        ? { ...node, data: { ...node.data, readerOpen: true } }
         : node,
     );
   }, [nodes, openPdf?.nodeId]);
@@ -1955,8 +1958,15 @@ function InfiniteCanvasLocalShellSurface({
   }, [readConflictDraft]);
 
   useEffect(() => {
-    if (shellState.status === "conflict") saveConflictDraft(shellState);
-  }, [saveConflictDraft, shellState]);
+    // A rejected save is just as recoverable as a CAS conflict.  Persist the
+    // canonical draft before the user can navigate or reload the page.
+    if (
+      (shellState.status === "conflict" || shellState.status === "error") &&
+      controller.hasPendingSave
+    ) {
+      saveConflictDraft(shellState);
+    }
+  }, [controller, saveConflictDraft, shellState]);
 
   const refreshCatalog = useCallback(async (): Promise<{
     summaries: CanvasSummary[];
@@ -3440,12 +3450,50 @@ function InfiniteCanvasLocalShellSurface({
   );
 
   const createPdfNodeFromProjectFile = useCallback(
-    (file: ProjectFileRecord, position?: FlowPosition) => {
+    async (file: ProjectFileRecord, position?: FlowPosition) => {
       if (
         file.mimeType !== "application/pdf" ||
         !shellStateRef.current.canvasId
       )
         return;
+      const confirmAttachmentSaved = async (): Promise<void> => {
+        if (!controller.hasPendingSave) return;
+        try {
+          const result = await controller.flushPendingSave();
+          const saved = controller.state;
+          syncState();
+          if (result?.status !== "saved" || saved.status !== "saved") {
+            throw new Error(
+              saved.error ?? "Не удалось сохранить PDF-узел на холсте.",
+            );
+          }
+        } catch (error) {
+          // File upload and Canvas attachment are separate network operations.
+          // Keep a recoverable canonical draft if the second one fails.
+          saveConflictDraft(controller.state);
+          syncState();
+          throw error;
+        }
+      };
+      // Retrying the direct "Add PDF" action should focus on the already
+      // attached document, not make a second node for the same file. If its
+      // first Canvas save failed, this also retries the pending attachment.
+      if (
+        controller.state.document.nodes.some(
+          (node) => node.kind === "pdf" && node.fileId === file.id,
+        )
+      ) {
+        setNodes((current) =>
+          current.map((node) => ({
+            ...node,
+            selected:
+              node.type === CANVAS_PDF_NODE_TYPE &&
+              node.data.fileId === file.id,
+          })),
+        );
+        await confirmAttachmentSaved();
+        return;
+      }
       const zIndex =
         Math.max(
           0,
@@ -3469,16 +3517,16 @@ function InfiniteCanvasLocalShellSurface({
       ]);
       controller.insertCanvasNodes([canonical]);
       syncState();
-      scheduleSave();
+      await confirmAttachmentSaved();
       setFilePickerOpen(false);
     },
-    [centerPosition, controller, scheduleSave, setNodes, syncState],
+    [centerPosition, controller, saveConflictDraft, setNodes, syncState],
   );
 
   const createProjectFileNode = useCallback(
     async (file: ProjectFileRecord) => {
       if (file.mimeType === "application/pdf") {
-        createPdfNodeFromProjectFile(file);
+        await createPdfNodeFromProjectFile(file);
         return;
       }
       const canvasId = shellStateRef.current.canvasId;
@@ -3623,8 +3671,29 @@ function InfiniteCanvasLocalShellSurface({
         altDragDuplicateRef.current,
       );
       if (guardedChanges.length === 0) return;
+      const requestedRemovals = guardedChanges.filter(
+        (
+          change,
+        ): change is Extract<
+          NodeChange<CanvasFlowNode>,
+          { type: "remove" }
+        > => change.type === "remove",
+      );
+      // The open reader is a visual state, not a selection. This guard also
+      // protects an already-open PDF from a stale React Flow selection when
+      // deleting a group of other nodes.
+      const safeChanges =
+        openPdf?.nodeId &&
+        requestedRemovals.length > 1 &&
+        requestedRemovals.some((change) => change.id === openPdf.nodeId)
+          ? guardedChanges.filter(
+              (change) =>
+                change.type !== "remove" || change.id !== openPdf.nodeId,
+            )
+          : guardedChanges;
+      if (safeChanges.length === 0) return;
       if (
-        guardedChanges.some(
+        safeChanges.some(
           (change) => change.type === "position" && change.dragging === true,
         )
       ) {
@@ -3632,14 +3701,14 @@ function InfiniteCanvasLocalShellSurface({
         edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
       }
       if (
-        guardedChanges.some(
+        safeChanges.some(
           (change) => change.type === "position" && change.dragging === false,
         )
       ) {
         nodeDragActiveRef.current = false;
         edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
       }
-      const removed = guardedChanges.filter(
+      const removed = safeChanges.filter(
         (
           change,
         ): change is Extract<NodeChange<CanvasFlowNode>, { type: "remove" }> =>
@@ -3670,11 +3739,11 @@ function InfiniteCanvasLocalShellSurface({
         );
         syncState();
       }
-      const renderChanges = guardedChanges.filter(
+      const renderChanges = safeChanges.filter(
         (change) =>
           change.type !== "dimensions" || change.setAttributes === true,
       );
-      if (guardedChanges.some((change) => change.type === "position")) {
+      if (safeChanges.some((change) => change.type === "position")) {
         const transientNodes = applyNodeChanges(
           renderChanges,
           nodesRef.current,
@@ -3696,8 +3765,8 @@ function InfiniteCanvasLocalShellSurface({
       // React Flow must receive dimensions changes as well as positions. Filtering
       // them here leaves nodes uninitialized during a drag and causes connected
       // edges to be removed by the library's connection lifecycle.
-      onNodesChange(guardedChanges);
-      const shouldPersist = guardedChanges.some(
+      onNodesChange(safeChanges);
+      const shouldPersist = safeChanges.some(
         (change) =>
           change.type === "remove" ||
           (change.type === "position" && change.dragging === false) ||
@@ -3707,11 +3776,11 @@ function InfiniteCanvasLocalShellSurface({
         controller.setRuntimeNodes(
           projectExplicitCanvasResizes(
             applyNodeChanges(renderChanges, nodesRef.current),
-            guardedChanges,
+            safeChanges,
           ),
         );
         if (
-          guardedChanges.some(
+          safeChanges.some(
             (change) => change.type === "position" && change.dragging === false,
           )
         ) {
@@ -3725,6 +3794,7 @@ function InfiniteCanvasLocalShellSurface({
       controller,
       handleEdgeUpdate,
       objectUrls,
+      openPdf?.nodeId,
       onNodesChange,
       scheduleSave,
       setEdges,
@@ -3788,12 +3858,30 @@ function InfiniteCanvasLocalShellSurface({
         try {
           const prepared = await prepareProjectFileBrowserUpload(file);
           if (prepared.mimeType !== "application/pdf") continue;
-          const uploaded = await projectFileRepository.uploadFile({
-            workspaceId: shellWorkspaceId,
-            projectId,
-            ...prepared,
-          });
-          createPdfNodeFromProjectFile(uploaded, position);
+          const canvasId = shellStateRef.current.canvasId;
+          if (!canvasId) return;
+          const key = `${canvasId}:${prepared.checksum}`;
+          const existing = pdfUploadInFlightRef.current.get(key);
+          if (existing) {
+            await existing;
+            continue;
+          }
+          const pending = (async () => {
+            const uploaded = await projectFileRepository.uploadFile({
+              workspaceId: shellWorkspaceId,
+              projectId,
+              ...prepared,
+            });
+            await createPdfNodeFromProjectFile(uploaded, position);
+          })();
+          pdfUploadInFlightRef.current.set(key, pending);
+          try {
+            await pending;
+          } finally {
+            if (pdfUploadInFlightRef.current.get(key) === pending) {
+              pdfUploadInFlightRef.current.delete(key);
+            }
+          }
         } catch (error: unknown) {
           setShellState((current) => ({
             ...current,

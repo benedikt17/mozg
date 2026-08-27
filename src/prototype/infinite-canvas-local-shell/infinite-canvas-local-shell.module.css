@@ -1597,6 +1597,11 @@
   background: var(--surface, #fbfbfa);
   box-shadow: var(--shadow-sm, 0 1px 2px rgb(32 32 29 / 8%));
 }
+.pdfNodeFrameReaderOpen .nodeBody {
+  border-color: #0f766e;
+  box-shadow: 0 0 0 2px rgb(15 118 110 / 30%),
+    var(--shadow-sm, 0 1px 2px rgb(32 32 29 / 8%));
+}
 .pdfNodeContent {
   box-sizing: border-box;
   width: 100%;

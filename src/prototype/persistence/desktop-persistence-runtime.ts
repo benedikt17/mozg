@@ -2,6 +2,7 @@ import type { DesktopDomainSnapshot } from "@/prototype/persistence/domain-snaps
 import {
   DesktopPersistenceError,
   type DesktopPersistenceAdapter,
+  type DesktopPersistenceLoadResult,
 } from "@/prototype/persistence/persistence-adapter";
 
 export const DESKTOP_MVP_STORAGE_KEY = "desktop-mvp-workspace";
@@ -100,6 +101,121 @@ export class DesktopPersistenceRuntime {
 
   get lifecycle(): DesktopPersistenceLifecycle {
     return this.lifecycleValue;
+  }
+
+  /** Returns the user's current in-memory workspace for conflict recovery. */
+  getLocalSnapshot(): DesktopDomainSnapshot {
+    return structuredClone(this.latestSnapshot);
+  }
+
+  /**
+   * The user explicitly chose their local work after a conflict. Refresh the
+   * CAS revision first, then make one new save attempt. A further conflict is
+   * deliberately surfaced again; it must never silently replace local work.
+   */
+  async keepLocalChanges(): Promise<void> {
+    if (
+      this.disposed ||
+      this.lifecycleValue.status !== "conflict" ||
+      this.adapter.loadLatestWorkspace === undefined
+    ) {
+      return;
+    }
+    const localSnapshot = this.latestSnapshot;
+    let loaded: DesktopPersistenceLoadResult;
+    try {
+      loaded = await this.adapter.loadLatestWorkspace(this.storageKey);
+      if (loaded.kind !== "loaded") {
+        throw new DesktopPersistenceError(
+          "not-initialized",
+          "Workspace snapshot is not initialized.",
+        );
+      }
+      requireHydratableSnapshot(loaded.snapshot);
+    } catch (error) {
+      if (!this.disposed) {
+        this.setLifecycle({
+          status: "save-error",
+          revision: this.revision ?? 0,
+          error: persistenceError(error),
+        });
+      }
+      return;
+    }
+    if (this.disposed) return;
+    this.revision = loaded.revision;
+    this.savedAt = loaded.savedAt;
+    this.persistedFingerprint = fingerprintDesktopDomainSnapshot(
+      loaded.snapshot,
+    );
+    this.latestSnapshot = localSnapshot;
+    this.latestFingerprint = fingerprintDesktopDomainSnapshot(localSnapshot);
+    this.pendingSnapshot = localSnapshot;
+    this.pendingFingerprint = this.latestFingerprint;
+    this.setReadyLifecycle();
+    await this.beginSave();
+  }
+
+  /** Discards the local snapshot only after the user has explicitly asked. */
+  async discardLocalChanges(): Promise<void> {
+    if (
+      this.disposed ||
+      this.lifecycleValue.status !== "conflict" ||
+      this.adapter.loadLatestWorkspace === undefined
+    ) {
+      return;
+    }
+    try {
+      const loaded = await this.adapter.loadLatestWorkspace(this.storageKey);
+      if (loaded.kind !== "loaded") {
+        throw new DesktopPersistenceError(
+          "not-initialized",
+          "Workspace snapshot is not initialized.",
+        );
+      }
+      requireHydratableSnapshot(loaded.snapshot);
+      if (this.disposed) return;
+      this.revision = loaded.revision;
+      this.savedAt = loaded.savedAt;
+      this.persistedFingerprint = fingerprintDesktopDomainSnapshot(
+        loaded.snapshot,
+      );
+      this.latestSnapshot = loaded.snapshot;
+      this.latestFingerprint = this.persistedFingerprint;
+      this.pendingSnapshot = undefined;
+      this.pendingFingerprint = undefined;
+      this.onRefresh(loaded.snapshot);
+      this.setReadyLifecycle();
+    } catch (error) {
+      if (!this.disposed) {
+        this.setLifecycle({
+          status: "save-error",
+          revision: this.revision ?? 0,
+          error: persistenceError(error),
+        });
+      }
+    }
+  }
+
+  /** Restores a browser-local conflict copy without autosaving it. */
+  restoreConflictDraft(snapshot: DesktopDomainSnapshot): void {
+    if (this.disposed || this.revision === undefined) return;
+    requireHydratableSnapshot(snapshot);
+    this.latestSnapshot = structuredClone(snapshot);
+    this.latestFingerprint = fingerprintDesktopDomainSnapshot(
+      this.latestSnapshot,
+    );
+    this.pendingSnapshot = this.latestSnapshot;
+    this.pendingFingerprint = this.latestFingerprint;
+    this.onRefresh(this.latestSnapshot);
+    this.setLifecycle({
+      status: "conflict",
+      revision: this.revision,
+      error: new DesktopPersistenceError(
+        "conflict",
+        "Recovered local workspace changes require an explicit choice.",
+      ),
+    });
   }
 
   start(): Promise<void> {
