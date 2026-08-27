@@ -398,6 +398,13 @@ export function CanvasNodeFrame({
 }: CanvasNodeFrameProps): React.JSX.Element {
   const nodeId = useNodeId();
   const internalNode = useInternalNode(nodeId ?? "");
+  const selectedNonReaderNodeCount = useStore(
+    (state) =>
+      state.nodes.filter(
+        (node) =>
+          node.selected && !(node.data as { readerOpen?: boolean }).readerOpen,
+      ).length,
+  );
   const directChildCount = useStore((state) => {
     if (!nodeId) return 0;
     return new Set(
@@ -417,6 +424,7 @@ export function CanvasNodeFrame({
       }
     )?.style?.textAlign ?? "center";
   const renderedToolbar = toolbar;
+  const toolbarVisible = selected && selectedNonReaderNodeCount === 1;
   const renderedChildren = isTextFrame
     ? withCenteredTextContent(children, textAlign)
     : children;
@@ -445,7 +453,9 @@ export function CanvasNodeFrame({
         />
       ) : null}
       {renderedToolbar ? (
-        <NodeToolbarSlot selected={selected}>{renderedToolbar}</NodeToolbarSlot>
+        <NodeToolbarSlot selected={toolbarVisible}>
+          {renderedToolbar}
+        </NodeToolbarSlot>
       ) : null}
       {contextMenu ? (
         <NodeContextMenuSlot>{contextMenu}</NodeContextMenuSlot>

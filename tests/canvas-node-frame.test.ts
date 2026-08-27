@@ -27,7 +27,12 @@ describe("CanvasNodeFrame composition", () => {
     expect(frame).toContain('data-slot="toolbar"');
     expect(frame).toContain('data-slot="context-menu"');
     expect(frame).toContain("selected: boolean;");
-    expect(frame).toContain("<NodeToolbarSlot selected={selected}>");
+    expect(frame).toContain("const selectedNonReaderNodeCount");
+    expect(frame).toContain("readerOpen?: boolean");
+    expect(frame).toContain(
+      "const toolbarVisible = selected && selectedNonReaderNodeCount === 1;",
+    );
+    expect(frame).toContain("<NodeToolbarSlot selected={toolbarVisible}>");
     expect(frame).toContain("isVisible={selected}");
     expect(frame).toContain(
       "selected text or shape node still exposes its own formatting tools",

@@ -15,6 +15,7 @@ describe("Canvas PDF reader UI", () => {
     expect(shell).toContain("nodeId: node.id");
     expect(shell).toContain("node.id === openNodeId");
     expect(shell).toContain("{ ...node, selected: true }");
+    expect(shell).toContain("readerOpen: true");
     expect(shell).toContain("nodes={renderedNodes}");
   });
 
