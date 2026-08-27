@@ -3,6 +3,7 @@ name: Finalize Canvas PDF runtime (disabled)
 on:
   workflow_dispatch:
 
+# Trigger the PR finalizer job in CI; this file is removed by the final commit.
 jobs:
   disabled:
     if: ${{ false }}
