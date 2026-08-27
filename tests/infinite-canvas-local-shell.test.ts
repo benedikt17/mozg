@@ -1540,6 +1540,38 @@ describe("production-shaped local Canvas shell", () => {
     ).toEqual({ x: 50, y: 60 });
   });
 
+  it("lets the losing editor explicitly save its preserved local document", async () => {
+    const repository = new MemoryCanvasRepository();
+    const canvas = await repository.createCanvas({
+      workspaceId: WORKSPACE_A,
+      title: "Shared",
+    });
+    const first = new LocalCanvasShellController(controllerOptions(repository));
+    const second = new LocalCanvasShellController(
+      controllerOptions(repository),
+    );
+    await first.openCanvas(canvas.id);
+    await second.openCanvas(canvas.id);
+    first.setDocument(documentWithImage({ position: { x: 50, y: 60 } }));
+    expect(await first.save()).toEqual({ status: "saved", revision: 2 });
+    second.setDocument(documentWithImage({ position: { x: 900, y: 901 } }));
+    expect(await second.save()).toEqual({ status: "conflict", revision: 2 });
+
+    expect(await second.keepLocalChanges()).toEqual({
+      status: "saved",
+      revision: 3,
+    });
+    expect(second.state.autosaveBlocked).toBe(false);
+    expect(
+      (
+        await repository.loadCanvas({
+          workspaceId: WORKSPACE_A,
+          canvasId: canvas.id,
+        })
+      )?.document.nodes[0]?.position,
+    ).toEqual({ x: 900, y: 901 });
+  });
+
   it("restores assets progressively with bounded reads and cancels stale work", async () => {
     const repository = new MemoryCanvasRepository();
     const nodes = Array.from({ length: 8 }, (_, index) => ({
