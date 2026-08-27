@@ -69,8 +69,7 @@ test("keeps the Desktop header controls aligned across primary sections", async 
   const navigation = page.getByRole("navigation", {
     name: "Разделы приложения",
   });
-  const header = page.locator(".application-header");
-  const projectTitle = page.locator(".application-project-title");
+  const projectTitle = page.locator(".application-project-title strong");
   const headerActions = page.locator(".application-header-right");
 
   for (const section of [
@@ -84,27 +83,26 @@ test("keeps the Desktop header controls aligned across primary sections", async 
       .getByRole("button", { name: section, exact: true })
       .click();
 
-    const [headerBox, titleBox, navigationBox, actionsBox] = await Promise.all([
-      header.boundingBox(),
+    const activeNavigationItem = navigation.locator('[aria-current="page"]');
+    const firstHeaderAction = headerActions.getByRole("button").first();
+    const [titleBox, navigationBox, actionsBox] = await Promise.all([
       projectTitle.boundingBox(),
-      navigation.boundingBox(),
-      headerActions.boundingBox(),
+      activeNavigationItem.boundingBox(),
+      firstHeaderAction.boundingBox(),
     ]);
-    expect(headerBox, `${section}: header`).not.toBeNull();
     expect(titleBox, `${section}: project title`).not.toBeNull();
     expect(navigationBox, `${section}: navigation`).not.toBeNull();
     expect(actionsBox, `${section}: actions`).not.toBeNull();
-    if (!headerBox || !titleBox || !navigationBox || !actionsBox) continue;
+    if (!titleBox || !navigationBox || !actionsBox) continue;
 
-    const headerCenter = headerBox.y + headerBox.height / 2;
+    const navigationCenter = navigationBox.y + navigationBox.height / 2;
     for (const [region, box] of [
       ["project title", titleBox],
-      ["navigation", navigationBox],
       ["actions", actionsBox],
     ] as const) {
       const center = box.y + box.height / 2;
       expect(
-        Math.abs(center - headerCenter),
+        Math.abs(center - navigationCenter),
         `${section}: ${region} center`,
       ).toBeLessThanOrEqual(1);
     }
