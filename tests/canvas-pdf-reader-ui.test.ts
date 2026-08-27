@@ -66,6 +66,18 @@ describe("Canvas PDF reader UI", () => {
     );
   });
 
+  it("uses the shared resumable upload preparation for PDFs", () => {
+    const shell = source(
+      "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
+    );
+
+    expect(shell).toContain("prepareProjectFileBrowserUpload");
+    expect(shell).toContain(
+      "const prepared = await prepareProjectFileBrowserUpload(file);",
+    );
+    expect(shell).toContain("...prepared,");
+  });
+
   it("offers an accessible full-screen PDF control", () => {
     const shell = source(
       "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",

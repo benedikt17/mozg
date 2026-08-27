@@ -1,0 +1,4 @@
+-- This migration records the Production application of the PDF-node validator.
+-- The canonical schema change remains
+-- 20260826160000_canvas_pdf_nodes.sql; it was applied directly to Production
+-- on 2026-08-27 after the app deploy was found to be missing it.
