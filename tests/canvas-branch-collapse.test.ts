@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { Edge, Node } from "@xyflow/react";
 import {
+  canvasBranchCollapsedNodeIds,
   canvasBranchRuntimeState,
   projectCanvasBranchCollapse,
 } from "@/lib/canvas/canvas-branch-collapse";
+import { parseCanvasDocumentV2 } from "@/lib/canvas/canvas-document";
+import {
+  canvasDocumentToEdges,
+  canvasDocumentToTextNodes,
+  runtimeNodesToCanvasDocument,
+} from "@/lib/canvas/react-flow-canvas-adapter";
 
 function node(id: string): Node {
   return { id, position: { x: 0, y: 0 }, data: {} };
@@ -117,5 +124,59 @@ describe("Canvas branch collapse projection", () => {
         projected.nodes.find((item) => item.id === "root")?.data,
       )?.directChildCount,
     ).toBe(1);
+  });
+
+  it("reapplies persisted collapse state after a document is restored", () => {
+    const document = parseCanvasDocumentV2({
+      schemaVersion: 2,
+      nodes: [
+        {
+          id: "root",
+          kind: "text",
+          markdown: "Root",
+          position: { x: 0, y: 0 },
+          size: { width: 240, height: 56 },
+          zIndex: 1,
+          branchCollapsed: true,
+        },
+        {
+          id: "child",
+          kind: "text",
+          markdown: "Child",
+          position: { x: 320, y: 0 },
+          size: { width: 240, height: 56 },
+          zIndex: 2,
+        },
+      ],
+      edges: [
+        {
+          id: "root-child",
+          sourceNodeId: "root",
+          sourceHandle: "right",
+          targetNodeId: "child",
+          targetHandle: "left",
+          routing: "curved",
+          arrows: "none",
+        },
+      ],
+    });
+    const projected = projectCanvasBranchCollapse(
+      canvasDocumentToTextNodes(document),
+      canvasDocumentToEdges(document),
+      undefined,
+      canvasBranchCollapsedNodeIds(document.nodes),
+    );
+
+    expect(projected.nodes.find((node) => node.id === "child")?.hidden).toBe(
+      true,
+    );
+    expect(
+      canvasBranchRuntimeState(
+        projected.nodes.find((node) => node.id === "root")?.data,
+      )?.collapsed,
+    ).toBe(true);
+    expect(
+      runtimeNodesToCanvasDocument(document, projected.nodes).nodes[0],
+    ).toMatchObject({ branchCollapsed: true });
   });
 });

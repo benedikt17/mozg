@@ -26,6 +26,7 @@ import {
 } from "@/lib/canvas/canvas-edge-geometry";
 import {
   canvasBranchRuntimeState,
+  dispatchCanvasBranchCollapse,
   projectCanvasBranchCollapse,
 } from "@/lib/canvas/canvas-branch-collapse";
 import styles from "./infinite-canvas-local-shell.module.css";
@@ -350,6 +351,13 @@ function BranchCollapseControl({
         item,
       })),
     );
+    if (toggle) {
+      const collapsed =
+        canvasBranchRuntimeState(
+          projected.nodes.find((item) => item.id === nodeId)?.data,
+        )?.collapsed ?? false;
+      dispatchCanvasBranchCollapse({ nodeId, collapsed });
+    }
   };
 
   useEffect(() => {

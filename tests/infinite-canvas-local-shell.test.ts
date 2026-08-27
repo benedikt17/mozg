@@ -1415,6 +1415,60 @@ describe("production-shaped local Canvas shell", () => {
     ).toEqual([]);
   });
 
+  it("persists branch collapse across an independent Canvas reload", async () => {
+    const repository = new MemoryCanvasRepository();
+    const controller = new LocalCanvasShellController(
+      controllerOptions(repository),
+    );
+    const created = await controller.createCanvas("Collapsed branch");
+    controller.setDocument(
+      parseCanvasDocumentV2({
+        schemaVersion: 2,
+        nodes: [
+          {
+            id: "root",
+            kind: "text",
+            markdown: "Root",
+            position: { x: 0, y: 0 },
+            size: { width: 240, height: 56 },
+            zIndex: 1,
+          },
+          {
+            id: "child",
+            kind: "text",
+            markdown: "Child",
+            position: { x: 320, y: 0 },
+            size: { width: 240, height: 56 },
+            zIndex: 2,
+          },
+        ],
+        edges: [
+          {
+            id: "root-child",
+            sourceNodeId: "root",
+            sourceHandle: "right",
+            targetNodeId: "child",
+            targetHandle: "left",
+            routing: "curved",
+            arrows: "none",
+          },
+        ],
+      }),
+    );
+    controller.setCanvasBranchCollapsed("root", true);
+    await controller.save();
+
+    const reopened = new LocalCanvasShellController(
+      controllerOptions(repository),
+    );
+    const reloaded = await reopened.openCanvas(created.canvasId!);
+    expect(
+      reloaded.document.nodes.find((node) => node.id === "root"),
+    ).toMatchObject({
+      branchCollapsed: true,
+    });
+  });
+
   it("keeps viewport separate from Canvas revision and restores it", async () => {
     const repository = new MemoryCanvasRepository();
     const controller = new LocalCanvasShellController(
