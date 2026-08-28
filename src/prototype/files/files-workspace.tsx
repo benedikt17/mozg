@@ -14,6 +14,7 @@ import {
   generateAndStoreProjectFilePdfCover,
   generateAndStoreProjectFilePdfCoverBestEffort,
 } from "@/lib/files/project-file-pdf-preview-generation";
+import { generateProjectFilePdfCover } from "@/lib/files/project-file-pdf-preview";
 import {
   chooseProjectFilePreviewVariant,
   PROJECT_FILE_PREVIEW_PREFERRED_MAX_EDGE,
@@ -236,6 +237,46 @@ async function loadCachedProjectFilePdfCover({
         "Project File PDF cover is not ready.",
       );
     }
+    cacheProjectFilePreview(cacheKey, cover.blob);
+    return cover.blob;
+  })();
+  projectFilePreviewLoads.set(cacheKey, load);
+  try {
+    return await load;
+  } finally {
+    projectFilePreviewLoads.delete(cacheKey);
+  }
+}
+
+async function renderCachedProjectFilePdfCover({
+  repository,
+  workspaceId,
+  projectId,
+  fileId,
+}: {
+  repository: ProjectFileRepository;
+  workspaceId: string;
+  projectId: string;
+  fileId: string;
+}): Promise<Blob> {
+  const cacheKey = projectFilePreviewCacheKey({
+    workspaceId,
+    projectId,
+    fileId,
+    targetMaxEdge: 0,
+  });
+  const cached = getCachedProjectFilePreview(cacheKey);
+  if (cached) return cached;
+  const pending = projectFilePreviewLoads.get(cacheKey);
+  if (pending) return pending;
+
+  const load = (async () => {
+    const source = await repository.downloadFile({
+      workspaceId,
+      projectId,
+      fileId,
+    });
+    const cover = await generateProjectFilePdfCover(source.blob);
     cacheProjectFilePreview(cacheKey, cover.blob);
     return cover.blob;
   })();
@@ -1664,27 +1705,35 @@ function ProjectFileThumbnail({
     let objectUrl: string | null = null;
     void (async () => {
       try {
-        const cover = await pdfPreviewRepository.getPdfCover({
-          workspaceId,
-          projectId,
-          fileId: file.id,
-        });
+        let cover = null;
+        try {
+          cover = await pdfPreviewRepository.getPdfCover({
+            workspaceId,
+            projectId,
+            fileId: file.id,
+          });
+        } catch {
+          // A Preview deployment may arrive before its schema migration. The
+          // authenticated original remains a safe client-side fallback.
+        }
         if (cancelled) return;
-        if (!cover) {
-          setPdfCoverStatus("idle");
-          return;
-        }
-        if (cover.readyAt === null) {
+        if (cover?.readyAt === null) {
           setPdfCoverStatus(cover.processingError ? "failed" : "processing");
-          return;
         }
-        const blob = await loadCachedProjectFilePdfCover({
-          pdfPreviewRepository,
-          workspaceId,
-          projectId,
-          fileId: file.id,
-        });
-        if (cancelled || !blob) return;
+        const blob = cover?.readyAt
+          ? await loadCachedProjectFilePdfCover({
+              pdfPreviewRepository,
+              workspaceId,
+              projectId,
+              fileId: file.id,
+            })
+          : await renderCachedProjectFilePdfCover({
+              repository,
+              workspaceId,
+              projectId,
+              fileId: file.id,
+            });
+        if (cancelled || blob === null) return;
         objectUrl = URL.createObjectURL(blob);
         setImageUrl(objectUrl);
       } catch {
@@ -1702,6 +1751,7 @@ function ProjectFileThumbnail({
     pdfCoverRefresh,
     pdfPreviewRepository,
     projectId,
+    repository,
     workspaceId,
   ]);
 
@@ -2128,7 +2178,7 @@ function ProjectFilePreview({
   const [targetFolderId, setTargetFolderId] = useState(file.folderId ?? "");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [pdfCoverStatus, setPdfCoverStatus] = useState<
-    "missing" | "processing" | "ready" | "failed"
+    "missing" | "processing" | "ready" | "transient" | "failed"
   >("missing");
   const [pdfCoverError, setPdfCoverError] = useState<string | null>(null);
   const [pdfCoverRefresh, setPdfCoverRefresh] = useState(0);
@@ -2177,28 +2227,39 @@ function ProjectFilePreview({
     let objectUrl: string | null = null;
     void (async () => {
       try {
-        const cover = await pdfPreviewRepository.getPdfCover({
-          workspaceId,
-          projectId,
-          fileId: file.id,
-        });
-        if (cancelled) return;
-        if (!cover) return;
-        if (cover.readyAt === null) {
-          setPdfCoverStatus("processing");
-          setPdfCoverError(cover.processingError);
-          return;
+        let cover = null;
+        try {
+          cover = await pdfPreviewRepository.getPdfCover({
+            workspaceId,
+            projectId,
+            fileId: file.id,
+          });
+        } catch {
+          // Keep Files usable while a preview deployment waits for the schema.
         }
-        const blob = await loadCachedProjectFilePdfCover({
-          pdfPreviewRepository,
-          workspaceId,
-          projectId,
-          fileId: file.id,
-        });
-        if (cancelled || !blob) return;
+        if (cancelled) return;
+        const blob = cover?.readyAt
+          ? await loadCachedProjectFilePdfCover({
+              pdfPreviewRepository,
+              workspaceId,
+              projectId,
+              fileId: file.id,
+            })
+          : await renderCachedProjectFilePdfCover({
+              repository,
+              workspaceId,
+              projectId,
+              fileId: file.id,
+            });
+        if (cancelled || blob === null) return;
         objectUrl = URL.createObjectURL(blob);
         setImageUrl(objectUrl);
-        setPdfCoverStatus("ready");
+        setPdfCoverStatus(cover?.readyAt ? "ready" : "transient");
+        setPdfCoverError(
+          cover?.readyAt
+            ? null
+            : "Временная обложка сформирована в этом браузере.",
+        );
       } catch {
         if (!cancelled) {
           setPdfCoverStatus("failed");
@@ -2216,6 +2277,7 @@ function ProjectFilePreview({
     pdfCoverRefresh,
     pdfPreviewRepository,
     projectId,
+    repository,
     workspaceId,
   ]);
 
@@ -2380,7 +2442,9 @@ function ProjectFilePreview({
                 ? "Повторить превью"
                 : pdfCoverStatus === "ready"
                   ? "Обновить превью"
-                  : "Подготовить превью"}
+                  : pdfCoverStatus === "transient"
+                    ? "Сохранить превью"
+                    : "Подготовить превью"}
           </PrototypeButton>
         ) : null}
         <PrototypeButton
@@ -2400,11 +2464,13 @@ function ProjectFilePreview({
         <p className={styles.pdfCoverStatus} role="status">
           {pdfCoverStatus === "ready"
             ? "Обложка первой страницы готова."
-            : pdfCoverStatus === "processing"
-              ? "Подготавливаем обложку первой страницы…"
-              : pdfCoverStatus === "failed"
-                ? (pdfCoverError ?? "Не удалось подготовить обложку.")
-                : "Обложка первой страницы ещё не подготовлена."}
+            : pdfCoverStatus === "transient"
+              ? "Обложка первой страницы готова в этом браузере."
+              : pdfCoverStatus === "processing"
+                ? "Подготавливаем обложку первой страницы…"
+                : pdfCoverStatus === "failed"
+                  ? (pdfCoverError ?? "Не удалось подготовить обложку.")
+                  : "Обложка первой страницы ещё не подготовлена."}
         </p>
       ) : null}
 
