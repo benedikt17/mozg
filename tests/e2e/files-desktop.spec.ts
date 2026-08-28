@@ -148,6 +148,35 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
     })
     .toBe(true);
   expect(originalImageDownloadRequests).toBe(0);
+
+  await page
+    .getByRole("button", { name: "Крупные превью", exact: true })
+    .click();
+  const imageTile = page.getByRole("button", { name: /preview-image\.png/ });
+  await expect(imageTile).toBeVisible();
+  await imageTile.dblclick();
+
+  const imageViewer = page.getByRole("dialog", { name: "preview-image.png" });
+  await expect(imageViewer).toBeVisible();
+  await expect(
+    imageViewer.getByRole("img", { name: "preview-image.png" }),
+  ).toBeVisible();
+  expect(originalImageDownloadRequests).toBe(0);
+  await imageViewer.getByRole("button", { name: /Оригинал/ }).click();
+  await expect
+    .poll(() => originalImageDownloadRequests, {
+      message: "Viewer must only GET the original after the explicit action",
+      timeout: 10_000,
+    })
+    .toBeGreaterThan(0);
+  await imageViewer
+    .getByRole("button", { name: "Закрыть просмотр", exact: true })
+    .click();
+  await expect(imageViewer).toHaveCount(0);
+
+  const originalImageDownloadsBeforeExplicitDownload =
+    originalImageDownloadRequests;
+
   const downloadButton = preview.getByRole("button", {
     name: "Скачать оригинал",
     exact: true,
@@ -163,7 +192,7 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
       message: "Explicit download must GET the immutable original",
       timeout: 10_000,
     })
-    .toBeGreaterThan(0);
+    .toBeGreaterThan(originalImageDownloadsBeforeExplicitDownload);
 
   await filesNavigation
     .getByRole("button", { name: "Входящие", exact: true })
@@ -177,6 +206,38 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
   await expect(
     page.getByRole("button", { name: /preview-image\.png/ }),
   ).toHaveCount(0);
+});
+
+test("opens a PDF in the file viewer on double click", async ({ page }) => {
+  await signIn(page);
+  await openFiles(page);
+
+  const uploadButton = page.getByRole("button", {
+    name: "Загрузить файл",
+    exact: true,
+  });
+  const fileChooserPromise = page.waitForEvent("filechooser");
+  await uploadButton.click();
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles({
+    name: "viewer-contract.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from(
+      "%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF",
+    ),
+  });
+
+  await expect(
+    page.getByText("Загружен: viewer-contract.pdf", { exact: true }),
+  ).toBeVisible();
+  const pdfRow = page.getByRole("button", { name: /viewer-contract\.pdf/ });
+  await pdfRow.dblclick();
+
+  const pdfViewer = page.getByRole("dialog", {
+    name: "viewer-contract.pdf",
+  });
+  await expect(pdfViewer).toBeVisible();
+  await expect(pdfViewer.locator("iframe")).toHaveAttribute("src", /^blob:/);
 });
 
 test("keeps an interrupted TUS upload visible after F5 and resumes the same reservation", async ({

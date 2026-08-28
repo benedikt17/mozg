@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   prepareProjectFileBrowserUpload,
@@ -11,6 +11,7 @@ import { SupabaseProjectFileRepository } from "@/lib/files/cloud-project-file-re
 import { generateAndStoreProjectFileImageVariantsBestEffort } from "@/lib/files/project-file-image-variant-generation";
 import {
   chooseProjectFilePreviewVariant,
+  PROJECT_FILE_PREVIEW_PREFERRED_MAX_EDGE,
   type ProjectFileImageVariantMetadata,
   type ProjectFileImageVariantRepository,
 } from "@/lib/files/project-file-image-variants";
@@ -51,6 +52,7 @@ type FilesActionState =
 type FilesLocation =
   { kind: "inbox" } | { kind: "folder"; folderId: string } | { kind: "trash" };
 type FilesActionMessage = { kind: "error" | "info"; text: string };
+type FilesViewMode = "list" | "grid" | "large-grid";
 type ActiveProjectFileUpload = {
   fileName: string;
   currentFile: number;
@@ -62,6 +64,136 @@ type ActiveProjectFileUpload = {
 };
 
 const MOZG_FILE_DRAG_TYPE = "application/x-mozg-project-file-id";
+const PROJECT_FILE_PREVIEW_CACHE_LIMIT_BYTES = 96 * 1024 * 1024;
+const PROJECT_FILE_PREVIEW_CACHE_LIMIT_ENTRIES = 160;
+
+type ProjectFilePreviewCacheEntry = {
+  blob: Blob;
+  lastUsedAt: number;
+};
+
+const projectFilePreviewCache = new Map<string, ProjectFilePreviewCacheEntry>();
+const projectFilePreviewLoads = new Map<string, Promise<Blob>>();
+
+function projectFilePreviewCacheKey({
+  workspaceId,
+  projectId,
+  fileId,
+  targetMaxEdge,
+}: {
+  workspaceId: string;
+  projectId: string;
+  fileId: string;
+  targetMaxEdge: number;
+}): string {
+  return [workspaceId, projectId, fileId, targetMaxEdge].join(":");
+}
+
+function getCachedProjectFilePreview(key: string): Blob | null {
+  const cached = projectFilePreviewCache.get(key);
+  if (!cached) return null;
+  cached.lastUsedAt = Date.now();
+  return cached.blob;
+}
+
+function cacheProjectFilePreview(key: string, blob: Blob): void {
+  if (blob.size > PROJECT_FILE_PREVIEW_CACHE_LIMIT_BYTES) return;
+
+  projectFilePreviewCache.set(key, { blob, lastUsedAt: Date.now() });
+
+  let cachedBytes = [...projectFilePreviewCache.values()].reduce(
+    (total, entry) => total + entry.blob.size,
+    0,
+  );
+  const oldestFirst = [...projectFilePreviewCache.entries()].sort(
+    ([, left], [, right]) => left.lastUsedAt - right.lastUsedAt,
+  );
+
+  while (
+    (cachedBytes > PROJECT_FILE_PREVIEW_CACHE_LIMIT_BYTES ||
+      projectFilePreviewCache.size >
+        PROJECT_FILE_PREVIEW_CACHE_LIMIT_ENTRIES) &&
+    oldestFirst.length > 0
+  ) {
+    const [oldestKey, oldestEntry] = oldestFirst.shift()!;
+    projectFilePreviewCache.delete(oldestKey);
+    cachedBytes -= oldestEntry.blob.size;
+  }
+}
+
+async function loadCachedProjectFileImagePreview({
+  repository,
+  imageVariantRepository,
+  workspaceId,
+  projectId,
+  fileId,
+  targetMaxEdge,
+}: {
+  repository: ProjectFileRepository;
+  imageVariantRepository: ProjectFileImageVariantRepository;
+  workspaceId: string;
+  projectId: string;
+  fileId: string;
+  targetMaxEdge: number;
+}): Promise<Blob> {
+  const cacheKey = projectFilePreviewCacheKey({
+    workspaceId,
+    projectId,
+    fileId,
+    targetMaxEdge,
+  });
+  const cached = getCachedProjectFilePreview(cacheKey);
+  if (cached) return cached;
+
+  const pending = projectFilePreviewLoads.get(cacheKey);
+  if (pending) return pending;
+
+  const load = (async () => {
+    let variants: ProjectFileImageVariantMetadata[] = [];
+    try {
+      variants = await imageVariantRepository.listImageVariants({
+        workspaceId,
+        projectId,
+        fileId,
+      });
+    } catch {
+      // Derived images are an optional cache; the source remains the fallback.
+    }
+
+    const preferred = chooseProjectFilePreviewVariant(variants, targetMaxEdge);
+    if (preferred) {
+      try {
+        const variant = await imageVariantRepository.loadImageVariant({
+          workspaceId,
+          projectId,
+          fileId,
+          targetMaxEdge: preferred.targetMaxEdge,
+        });
+        if (variant) {
+          cacheProjectFilePreview(cacheKey, variant.blob);
+          return variant.blob;
+        }
+      } catch {
+        // A stale derivative must never make the original unavailable.
+      }
+    }
+
+    const original = await repository.downloadFile({
+      workspaceId,
+      projectId,
+      fileId,
+    });
+    cacheProjectFilePreview(cacheKey, original.blob);
+    return original.blob;
+  })();
+
+  projectFilePreviewLoads.set(cacheKey, load);
+  try {
+    return await load;
+  } finally {
+    projectFilePreviewLoads.delete(cacheKey);
+  }
+}
 
 export function FilesWorkspace({
   workspaceId,
@@ -92,6 +224,8 @@ export function FilesWorkspace({
   const [pendingFiles, setPendingFiles] = useState<ProjectFileRecord[]>([]);
   const [location, setLocation] = useState<FilesLocation>({ kind: "inbox" });
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+  const [openedFileId, setOpenedFileId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<FilesViewMode>("list");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<FilesLoadStatus>("loading");
   const [reloadToken, setReloadToken] = useState(0);
@@ -147,6 +281,11 @@ export function FilesWorkspace({
             ? currentFileId
             : null,
         );
+        setOpenedFileId((currentFileId) =>
+          currentFileId && nextFiles.some((file) => file.id === currentFileId)
+            ? currentFileId
+            : null,
+        );
         setStatus("ready");
       })
       .catch(() => {
@@ -178,6 +317,11 @@ export function FilesWorkspace({
       ? (folders.find((folder) => folder.id === location.folderId) ?? null)
       : null;
   const selectedFile = files.find((file) => file.id === selectedFileId) ?? null;
+  const openedFile = files.find((file) => file.id === openedFileId) ?? null;
+  const viewerFiles = useMemo(
+    () => files.filter(isProjectFilePreviewable),
+    [files],
+  );
   const folderTree = getProjectFolderTree(folders);
   const title = query.trim()
     ? "Результаты поиска"
@@ -604,6 +748,38 @@ export function FilesWorkspace({
     void moveFile(file, targetFolderId);
   };
 
+  const selectFile = (fileId: string) => {
+    setSelectedFileId(fileId);
+  };
+
+  const openFile = (file: ProjectFileRecord) => {
+    if (!isProjectFilePreviewable(file)) return;
+    setSelectedFileId(file.id);
+    setOpenedFileId(file.id);
+  };
+
+  const navigateViewer = (delta: -1 | 1) => {
+    const currentIndex = viewerFiles.findIndex(
+      (file) => file.id === openedFileId,
+    );
+    const nextFile = viewerFiles[currentIndex + delta];
+    if (!nextFile) return;
+    setSelectedFileId(nextFile.id);
+    setOpenedFileId(nextFile.id);
+  };
+
+  const activateFile = (file: ProjectFileRecord) => {
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 1023px)").matches &&
+      isProjectFilePreviewable(file)
+    ) {
+      openFile(file);
+      return;
+    }
+    selectFile(file.id);
+  };
+
   return (
     <div className={styles.workspace}>
       <aside className={styles.sidebar} aria-label="Навигация по файлам">
@@ -823,6 +999,36 @@ export function FilesWorkspace({
             <h2>{title}</h2>
           </div>
           <div
+            className={styles.viewControls}
+            aria-label="Вид файлов"
+            role="group"
+          >
+            <IconButton
+              icon={<UiIcon name="list" />}
+              label="Список"
+              onClick={() => setViewMode("list")}
+              active={viewMode === "list"}
+              title="Список"
+              variant="ghost"
+            />
+            <IconButton
+              icon={<UiIcon name="grid" />}
+              label="Превью"
+              onClick={() => setViewMode("grid")}
+              active={viewMode === "grid"}
+              title="Превью"
+              variant="ghost"
+            />
+            <IconButton
+              icon={<UiIcon name="grid-large" />}
+              label="Крупные превью"
+              onClick={() => setViewMode("large-grid")}
+              active={viewMode === "large-grid"}
+              title="Крупные превью"
+              variant="ghost"
+            />
+          </div>
+          <div
             style={{
               alignItems: "center",
               display: "flex",
@@ -1007,7 +1213,7 @@ export function FilesWorkspace({
             </div>
           ) : null}
 
-          {effectiveStatus === "ready" && hasEntries ? (
+          {effectiveStatus === "ready" && hasEntries && viewMode === "list" ? (
             <div className={styles.tableWrap}>
               <div className={styles.tableHeader} aria-hidden="true">
                 <span>Имя</span>
@@ -1052,7 +1258,8 @@ export function FilesWorkspace({
                     }`}
                     draggable={canMutate}
                     key={file.id}
-                    onClick={() => setSelectedFileId(file.id)}
+                    onClick={() => activateFile(file)}
+                    onDoubleClick={() => openFile(file)}
                     onDragStart={(event) => {
                       if (!canMutate) {
                         event.preventDefault();
@@ -1079,6 +1286,67 @@ export function FilesWorkspace({
               </div>
             </div>
           ) : null}
+
+          {effectiveStatus === "ready" && hasEntries && viewMode !== "list" ? (
+            <div
+              className={`${styles.fileGrid} ${
+                viewMode === "large-grid" ? styles.fileGridLarge : ""
+              }`}
+            >
+              {pendingFiles.map((file) => (
+                <div
+                  className={`${styles.fileTile} ${styles.fileTilePending}`}
+                  key={`pending-${file.id}`}
+                >
+                  <span className={styles.tileFallback} aria-hidden="true">
+                    ↻
+                  </span>
+                  <span className={styles.tileName} title={file.name}>
+                    {file.name}
+                  </span>
+                  <span className={styles.tileMeta}>Не завершено</span>
+                </div>
+              ))}
+              {files.map((file) => (
+                <button
+                  aria-pressed={file.id === selectedFileId}
+                  className={`${styles.fileTile} ${
+                    file.id === selectedFileId ? styles.fileTileSelected : ""
+                  }`}
+                  draggable={canMutate}
+                  key={file.id}
+                  onClick={() => activateFile(file)}
+                  onDoubleClick={() => openFile(file)}
+                  onDragStart={(event) => {
+                    if (!canMutate) {
+                      event.preventDefault();
+                      return;
+                    }
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData(MOZG_FILE_DRAG_TYPE, file.id);
+                  }}
+                  type="button"
+                >
+                  <ProjectFileThumbnail
+                    file={file}
+                    imageVariantRepository={imageVariantRepository}
+                    key={`${file.id}:${viewMode}`}
+                    projectId={projectId}
+                    repository={repository}
+                    targetMaxEdge={viewMode === "large-grid" ? 512 : 256}
+                    workspaceId={workspaceId}
+                  />
+                  <span className={styles.tileName} title={file.name}>
+                    {file.name}
+                  </span>
+                  <span className={styles.tileMeta}>
+                    {projectFileTypeLabel(file.mimeType)} ·{" "}
+                    {formatProjectFileSize(file.byteSize)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </section>
       </main>
 
@@ -1098,6 +1366,7 @@ export function FilesWorkspace({
               onDelete={deleteFile}
               onMove={moveFile}
               onRename={renameFile}
+              onOpen={openFile}
               projectId={projectId}
               repository={repository}
               imageVariantRepository={imageVariantRepository}
@@ -1112,6 +1381,20 @@ export function FilesWorkspace({
           </div>
         )}
       </aside>
+
+      {openedFile && workspaceId ? (
+        <ProjectFileViewer
+          file={openedFile}
+          files={viewerFiles}
+          key={openedFile.id}
+          imageVariantRepository={imageVariantRepository}
+          onClose={() => setOpenedFileId(null)}
+          onNavigate={navigateViewer}
+          projectId={projectId}
+          repository={repository}
+          workspaceId={workspaceId}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1208,6 +1491,459 @@ function FolderHeaderActions({
   );
 }
 
+function ProjectFileThumbnail({
+  repository,
+  imageVariantRepository,
+  workspaceId,
+  projectId,
+  file,
+  targetMaxEdge,
+}: {
+  repository: ProjectFileRepository;
+  imageVariantRepository: ProjectFileImageVariantRepository;
+  workspaceId?: string;
+  projectId: string;
+  file: ProjectFileRecord;
+  targetMaxEdge: number;
+}): React.JSX.Element {
+  const targetRef = useRef<HTMLDivElement>(null);
+  const [isNearViewport, setIsNearViewport] = useState(false);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const isImage = file.mimeType.startsWith("image/");
+  const aspectRatio = getProjectFileAspectRatio(file);
+
+  useEffect(() => {
+    if (!isImage) return;
+    const element = targetRef.current;
+    if (!element || typeof IntersectionObserver === "undefined") {
+      setIsNearViewport(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        setIsNearViewport(true);
+        observer.disconnect();
+      },
+      { rootMargin: "240px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [isImage]);
+
+  useEffect(() => {
+    if (!isImage || !isNearViewport || !workspaceId) return;
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    void (async () => {
+      try {
+        const blob = await loadCachedProjectFileImagePreview({
+          repository,
+          imageVariantRepository,
+          workspaceId,
+          projectId,
+          fileId: file.id,
+          targetMaxEdge,
+        });
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setImageUrl(objectUrl);
+      } catch {
+        if (!cancelled) setLoadError(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [
+    file.id,
+    imageVariantRepository,
+    isImage,
+    isNearViewport,
+    projectId,
+    repository,
+    targetMaxEdge,
+    workspaceId,
+  ]);
+
+  return (
+    <div
+      className={styles.tilePreview}
+      ref={targetRef}
+      style={aspectRatio ? { aspectRatio } : undefined}
+    >
+      {isImage ? (
+        imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- authenticated variant Blob URL.
+          <img alt="" loading="lazy" src={imageUrl} />
+        ) : loadError ? (
+          <UiIcon name="file" />
+        ) : (
+          <span className={styles.tileLoading}>Загрузка…</span>
+        )
+      ) : file.mimeType === "application/pdf" ? (
+        <span className={styles.pdfTileBadge}>PDF</span>
+      ) : (
+        <UiIcon name="file" />
+      )}
+    </div>
+  );
+}
+
+function ProjectFileViewer({
+  repository,
+  imageVariantRepository,
+  workspaceId,
+  projectId,
+  file,
+  files,
+  onClose,
+  onNavigate,
+}: {
+  repository: ProjectFileRepository;
+  imageVariantRepository: ProjectFileImageVariantRepository;
+  workspaceId: string;
+  projectId: string;
+  file: ProjectFileRecord;
+  files: readonly ProjectFileRecord[];
+  onClose: () => void;
+  onNavigate: (delta: -1 | 1) => void;
+}): React.JSX.Element {
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [usingOriginal, setUsingOriginal] = useState(false);
+  const [loadingOriginal, setLoadingOriginal] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const panStartRef = useRef({ x: 0, y: 0 });
+  const activePointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{ distance: number; zoom: number } | null>(null);
+  const activeObjectUrlRef = useRef<string | null>(null);
+  const isImage = file.mimeType.startsWith("image/");
+  const index = files.findIndex((candidate) => candidate.id === file.id);
+  const canNavigateBack = index > 0;
+  const canNavigateForward = index >= 0 && index < files.length - 1;
+
+  const replaceFileUrl = useCallback((blob: Blob) => {
+    const nextUrl = URL.createObjectURL(blob);
+    if (activeObjectUrlRef.current) {
+      URL.revokeObjectURL(activeObjectUrlRef.current);
+    }
+    activeObjectUrlRef.current = nextUrl;
+    setFileUrl(nextUrl);
+  }, []);
+
+  const resetImageViewport = () => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        if (isImage) {
+          let variants: ProjectFileImageVariantMetadata[] = [];
+          try {
+            variants = await imageVariantRepository.listImageVariants({
+              workspaceId,
+              projectId,
+              fileId: file.id,
+            });
+          } catch {
+            // A derivative is a cache. A ready source remains the fallback.
+          }
+          const preview = chooseProjectFilePreviewVariant(variants, 2048);
+          if (preview) {
+            try {
+              const variant = await imageVariantRepository.loadImageVariant({
+                workspaceId,
+                projectId,
+                fileId: file.id,
+                targetMaxEdge: preview.targetMaxEdge,
+              });
+              if (cancelled) return;
+              if (variant) {
+                replaceFileUrl(variant.blob);
+                setUsingOriginal(false);
+                return;
+              }
+            } catch {
+              // Stale derivative: use the immutable original below.
+            }
+          }
+        }
+        const download = await repository.downloadFile({
+          workspaceId,
+          projectId,
+          fileId: file.id,
+        });
+        if (cancelled) return;
+        replaceFileUrl(download.blob);
+        setUsingOriginal(true);
+      } catch {
+        if (!cancelled) setLoadError(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (activeObjectUrlRef.current) {
+        URL.revokeObjectURL(activeObjectUrlRef.current);
+        activeObjectUrlRef.current = null;
+      }
+    };
+  }, [
+    file.id,
+    imageVariantRepository,
+    isImage,
+    projectId,
+    replaceFileUrl,
+    repository,
+    workspaceId,
+  ]);
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+      if (event.key === "ArrowLeft") onNavigate(-1);
+      if (event.key === "ArrowRight") onNavigate(1);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose, onNavigate]);
+
+  const loadOriginal = async () => {
+    if (usingOriginal || loadingOriginal) return;
+    setLoadingOriginal(true);
+    try {
+      const download = await repository.downloadFile({
+        workspaceId,
+        projectId,
+        fileId: file.id,
+      });
+      replaceFileUrl(download.blob);
+      setUsingOriginal(true);
+    } finally {
+      setLoadingOriginal(false);
+    }
+  };
+
+  const updateZoom = (nextZoom: number) => {
+    const clampedZoom = Math.min(4, Math.max(1, nextZoom));
+    setZoom(clampedZoom);
+    if (clampedZoom === 1) setPan({ x: 0, y: 0 });
+  };
+
+  const updatePointer = (event: React.PointerEvent<HTMLImageElement>) => {
+    activePointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+  };
+
+  const pointerDistance = () => {
+    const [first, second] = [...activePointersRef.current.values()];
+    if (!first || !second) return null;
+    return Math.hypot(second.x - first.x, second.y - first.y);
+  };
+
+  return (
+    <div
+      className={styles.viewerBackdrop}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        aria-labelledby="project-file-viewer-title"
+        aria-modal="true"
+        className={styles.viewerDialog}
+        role="dialog"
+      >
+        <div className={styles.viewerStage}>
+          <div className={styles.viewerContent}>
+            {fileUrl && isImage ? (
+              // eslint-disable-next-line @next/next/no-img-element -- original is an authenticated Blob URL.
+              <img
+                alt={file.name}
+                className={styles.viewerImage}
+                draggable={false}
+                onDoubleClick={() => updateZoom(zoom === 1 ? 2 : 1)}
+                onPointerDown={(event) => {
+                  updatePointer(event);
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  if (activePointersRef.current.size === 2) {
+                    const distance = pointerDistance();
+                    if (distance !== null)
+                      pinchRef.current = { distance, zoom };
+                    return;
+                  }
+                  if (zoom === 1) return;
+                  pointerStartRef.current = {
+                    x: event.clientX,
+                    y: event.clientY,
+                  };
+                  panStartRef.current = pan;
+                }}
+                onPointerMove={(event) => {
+                  updatePointer(event);
+                  if (
+                    activePointersRef.current.size === 2 &&
+                    pinchRef.current
+                  ) {
+                    const distance = pointerDistance();
+                    if (distance !== null) {
+                      updateZoom(
+                        pinchRef.current.zoom *
+                          (distance / pinchRef.current.distance),
+                      );
+                    }
+                    return;
+                  }
+                  const start = pointerStartRef.current;
+                  if (!start || zoom === 1) return;
+                  setPan({
+                    x: panStartRef.current.x + event.clientX - start.x,
+                    y: panStartRef.current.y + event.clientY - start.y,
+                  });
+                }}
+                onPointerUp={(event) => {
+                  activePointersRef.current.delete(event.pointerId);
+                  if (activePointersRef.current.size < 2)
+                    pinchRef.current = null;
+                  pointerStartRef.current = null;
+                }}
+                onPointerCancel={(event) => {
+                  activePointersRef.current.delete(event.pointerId);
+                  if (activePointersRef.current.size < 2)
+                    pinchRef.current = null;
+                  pointerStartRef.current = null;
+                }}
+                onWheel={(event) => {
+                  event.preventDefault();
+                  updateZoom(zoom + (event.deltaY < 0 ? 0.2 : -0.2));
+                }}
+                src={fileUrl}
+                style={{
+                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                }}
+              />
+            ) : fileUrl ? (
+              <iframe src={fileUrl} title={file.name} />
+            ) : loadError ? (
+              <div className={styles.viewerState} role="alert">
+                Не удалось открыть файл. Попробуйте ещё раз.
+              </div>
+            ) : (
+              <div className={styles.viewerState} role="status">
+                Открываем файл…
+              </div>
+            )}
+          </div>
+          <IconButton
+            className={styles.viewerNavigationBack}
+            disabled={!canNavigateBack}
+            icon={<UiIcon name="arrow-left" />}
+            label="Предыдущий файл"
+            onClick={() => onNavigate(-1)}
+            title="Предыдущий файл"
+            variant="ghost"
+          />
+          <IconButton
+            className={styles.viewerNavigationForward}
+            disabled={!canNavigateForward}
+            icon={<UiIcon name="arrow-right" />}
+            label="Следующий файл"
+            onClick={() => onNavigate(1)}
+            title="Следующий файл"
+            variant="ghost"
+          />
+          {fileUrl && isImage ? (
+            <div className={styles.viewerZoomControls}>
+              <PrototypeButton
+                aria-label="Уменьшить масштаб"
+                disabled={zoom <= 1}
+                onClick={() => updateZoom(zoom - 0.25)}
+                size="compact"
+                variant="quiet"
+              >
+                −
+              </PrototypeButton>
+              <button
+                className={styles.viewerZoomValue}
+                onClick={() => resetImageViewport()}
+                type="button"
+              >
+                {Math.round(zoom * 100)}%
+              </button>
+              <PrototypeButton
+                aria-label="Увеличить масштаб"
+                disabled={zoom >= 4}
+                onClick={() => updateZoom(zoom + 0.25)}
+                size="compact"
+                variant="quiet"
+              >
+                +
+              </PrototypeButton>
+            </div>
+          ) : null}
+        </div>
+        <aside className={styles.viewerInfoPanel}>
+          <div className={styles.viewerInfoHeader}>
+            <span>
+              {index >= 0 ? `${index + 1} из ${files.length}` : "Файл"}
+            </span>
+            <IconButton
+              className={styles.viewerCloseButton}
+              icon={<UiIcon name="close" />}
+              label="Закрыть просмотр"
+              onClick={onClose}
+              title="Закрыть"
+              variant="ghost"
+            />
+          </div>
+          <div className={styles.viewerInfoBody}>
+            <h2 id="project-file-viewer-title">{file.name}</h2>
+            <dl className={styles.viewerMetadata}>
+              <div>
+                <dt>Тип</dt>
+                <dd>{projectFileTypeLabel(file.mimeType)}</dd>
+              </div>
+              <div>
+                <dt>Размер</dt>
+                <dd>{formatProjectFileSize(file.byteSize)}</dd>
+              </div>
+              <div>
+                <dt>Изменён</dt>
+                <dd>{formatProjectFileDate(file.updatedAt)}</dd>
+              </div>
+            </dl>
+          </div>
+          {isImage && !usingOriginal ? (
+            <div className={styles.viewerInfoActions}>
+              <PrototypeButton
+                disabled={loadingOriginal}
+                onClick={() => void loadOriginal()}
+                size="compact"
+                variant="quiet"
+              >
+                {loadingOriginal ? "Загрузка оригинала…" : "Открыть оригинал"}
+              </PrototypeButton>
+            </div>
+          ) : null}
+        </aside>
+      </section>
+    </div>
+  );
+}
+
 function ProjectFilePreview({
   repository,
   imageVariantRepository,
@@ -1219,6 +1955,7 @@ function ProjectFilePreview({
   onRename,
   onMove,
   onDelete,
+  onOpen,
 }: {
   repository: ProjectFileRepository;
   imageVariantRepository: ProjectFileImageVariantRepository;
@@ -1233,6 +1970,7 @@ function ProjectFilePreview({
     folderId: string | null,
   ) => Promise<boolean>;
   onDelete: (file: ProjectFileRecord) => Promise<boolean>;
+  onOpen: (file: ProjectFileRecord) => void;
 }): React.JSX.Element {
   const [loadError, setLoadError] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -1250,44 +1988,16 @@ function ProjectFilePreview({
 
     void (async () => {
       try {
-        let variants: ProjectFileImageVariantMetadata[] = [];
-        try {
-          variants = await imageVariantRepository.listImageVariants({
-            workspaceId,
-            projectId,
-            fileId: file.id,
-          });
-        } catch {
-          // Variant cache is optional. A ready original remains the fallback.
-        }
-        const preferred = chooseProjectFilePreviewVariant(variants);
-        if (preferred) {
-          try {
-            const variant = await imageVariantRepository.loadImageVariant({
-              workspaceId,
-              projectId,
-              fileId: file.id,
-              targetMaxEdge: preferred.targetMaxEdge,
-            });
-            if (cancelled) return;
-            if (variant) {
-              objectUrl = URL.createObjectURL(variant.blob);
-              setImageUrl(objectUrl);
-              return;
-            }
-          } catch {
-            // A stale/missing disposable derivative falls back to the original.
-          }
-        }
-
-        if (cancelled) return;
-        const original = await repository.downloadFile({
+        const blob = await loadCachedProjectFileImagePreview({
+          repository,
+          imageVariantRepository,
           workspaceId,
           projectId,
           fileId: file.id,
+          targetMaxEdge: PROJECT_FILE_PREVIEW_PREFERRED_MAX_EDGE,
         });
         if (cancelled) return;
-        objectUrl = URL.createObjectURL(original.blob);
+        objectUrl = URL.createObjectURL(blob);
         setImageUrl(objectUrl);
       } catch {
         if (!cancelled) setLoadError(true);
@@ -1409,6 +2119,15 @@ function ProjectFilePreview({
         >
           {downloadingOriginal ? "Скачивание…" : "Скачать оригинал"}
         </PrototypeButton>
+        {isProjectFilePreviewable(file) ? (
+          <PrototypeButton
+            onClick={() => onOpen(file)}
+            size="compact"
+            variant="quiet"
+          >
+            Открыть
+          </PrototypeButton>
+        ) : null}
         <PrototypeButton
           disabled={!canMutate}
           onClick={() => {
@@ -1659,6 +2378,28 @@ function projectFileTypeLabel(mimeType: string): string {
   if (mimeType.includes("presentationml")) return "PowerPoint";
   if (mimeType === "application/json") return "JSON";
   return "Файл";
+}
+
+export function isProjectFilePreviewable(
+  file: Pick<ProjectFileRecord, "mimeType">,
+): boolean {
+  return (
+    file.mimeType.startsWith("image/") || file.mimeType === "application/pdf"
+  );
+}
+
+export function getProjectFileAspectRatio(
+  file: Pick<ProjectFileRecord, "width" | "height">,
+): number | null {
+  if (
+    file.width === null ||
+    file.height === null ||
+    file.width <= 0 ||
+    file.height <= 0
+  ) {
+    return null;
+  }
+  return file.width / file.height;
 }
 
 const compactInputStyle = {

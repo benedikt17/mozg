@@ -17,10 +17,13 @@ export type UiIconName =
   | "folder"
   | "folder-open"
   | "folder-plus"
+  | "grid"
+  | "grid-large"
   | "fullscreen"
   | "fullscreen-exit"
   | "inbox"
   | "layout"
+  | "list"
   | "locate"
   | "more"
   | "nodes"
@@ -144,6 +147,22 @@ export function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
         <path d="M12.5 12.5v5" />
       </>
     ),
+    grid: (
+      <>
+        <rect x="4" y="4" width="6" height="6" rx="1" />
+        <rect x="14" y="4" width="6" height="6" rx="1" />
+        <rect x="4" y="14" width="6" height="6" rx="1" />
+        <rect x="14" y="14" width="6" height="6" rx="1" />
+      </>
+    ),
+    "grid-large": (
+      <>
+        <rect x="4" y="4" width="7" height="7" rx="1" />
+        <rect x="13" y="4" width="7" height="7" rx="1" />
+        <rect x="4" y="13" width="7" height="7" rx="1" />
+        <rect x="13" y="13" width="7" height="7" rx="1" />
+      </>
+    ),
     inbox: (
       <>
         <path d="M4 5h16l-2 10H6z" />
@@ -156,6 +175,16 @@ export function UiIcon({ name }: { name: UiIconName }): React.JSX.Element {
         <rect x="4" y="4" width="16" height="16" rx="2" />
         <path d="M4 10h16" />
         <path d="M10 10v10" />
+      </>
+    ),
+    list: (
+      <>
+        <path d="M9 6h10" />
+        <path d="M9 12h10" />
+        <path d="M9 18h10" />
+        <path d="M5 6h.01" />
+        <path d="M5 12h.01" />
+        <path d="M5 18h.01" />
       </>
     ),
     locate: (
