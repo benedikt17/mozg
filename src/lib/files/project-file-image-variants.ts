@@ -1,6 +1,6 @@
 export const PROJECT_FILE_IMAGE_VARIANT_MIME_TYPE = "image/webp" as const;
 export const PROJECT_FILE_IMAGE_VARIANT_TARGET_MAX_EDGES = [
-  256, 512, 1024, 2048, 4096,
+  256, 320, 512, 1024, 2048, 4096,
 ] as const;
 export const PROJECT_FILE_PREVIEW_PREFERRED_MAX_EDGE = 1024;
 export const PROJECT_FILE_IMAGE_VARIANT_QUALITY = 0.82;
@@ -162,20 +162,36 @@ function canvasToWebp(
   });
 }
 
-async function decodeProjectFileImage(blob: Blob): Promise<{
+type DecodedProjectFileImage = {
   source: CanvasImageSource;
+  width: number;
+  height: number;
   close?: () => void;
-}> {
+};
+
+async function decodeProjectFileImage(
+  blob: Blob,
+): Promise<DecodedProjectFileImage> {
   if (typeof createImageBitmap === "function") {
     try {
       const bitmap = await createImageBitmap(blob, {
         imageOrientation: "from-image",
       });
-      return { source: bitmap, close: () => bitmap.close() };
+      return {
+        source: bitmap,
+        width: bitmap.width,
+        height: bitmap.height,
+        close: () => bitmap.close(),
+      };
     } catch {
       try {
         const bitmap = await createImageBitmap(blob);
-        return { source: bitmap, close: () => bitmap.close() };
+        return {
+        source: bitmap,
+        width: bitmap.width,
+        height: bitmap.height,
+        close: () => bitmap.close(),
+      };
       } catch {
         // Fall through to HTMLImageElement. Some browser engines accept the
         // source image but reject one or both createImageBitmap paths.
@@ -197,9 +213,73 @@ async function decodeProjectFileImage(blob: Blob): Promise<{
         reject(new Error("Project File image variant decode failed."));
       image.src = url;
     });
-    return { source: image };
+    return {
+      source: image,
+      width: image.naturalWidth,
+      height: image.naturalHeight,
+    };
   } finally {
     URL.revokeObjectURL(url);
+  }
+}
+
+async function renderProjectFileImageVariant(
+  decoded: DecodedProjectFileImage,
+  dimensions: { width: number; height: number },
+  targetMaxEdge: number,
+): Promise<GeneratedProjectFileImageVariantTier> {
+  const target = scaledDimensions(
+    dimensions.width,
+    dimensions.height,
+    targetMaxEdge,
+  );
+  const canvas =
+    typeof OffscreenCanvas === "undefined"
+      ? Object.assign(document.createElement("canvas"), {
+          width: target.width,
+          height: target.height,
+        })
+      : new OffscreenCanvas(target.width, target.height);
+  const context = canvas.getContext("2d") as
+    | CanvasRenderingContext2D
+    | OffscreenCanvasRenderingContext2D
+    | null;
+  if (!context) {
+    throw new Error("Project File image 2D context is unavailable.");
+  }
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(decoded.source, 0, 0, target.width, target.height);
+  const generated = await canvasToWebp(canvas);
+  if (!generated || generated.type !== PROJECT_FILE_IMAGE_VARIANT_MIME_TYPE) {
+    throw new Error("Project File WebP encoding is unavailable.");
+  }
+  return {
+    targetMaxEdge,
+    blob: generated,
+    pixelWidth: target.width,
+    pixelHeight: target.height,
+  };
+}
+
+export async function generateProjectFileImageThumbnail(
+  blob: Blob,
+  targetMaxEdge: number,
+): Promise<GeneratedProjectFileImageVariantTier> {
+  if (!isProjectFileImageVariantTargetMaxEdge(targetMaxEdge)) {
+    throw new Error("Project File image thumbnail target is invalid.");
+  }
+  if (
+    typeof OffscreenCanvas === "undefined" &&
+    typeof document === "undefined"
+  ) {
+    throw new Error("Project File image thumbnail generation is unavailable.");
+  }
+  const decoded = await decodeProjectFileImage(blob);
+  try {
+    return await renderProjectFileImageVariant(decoded, decoded, targetMaxEdge);
+  } finally {
+    decoded.close?.();
   }
 }
 
@@ -227,39 +307,9 @@ export async function generateProjectFileImageVariantsProgressively(
   try {
     for (const targetMaxEdge of planned) {
       if (signal?.aborted) throw abortError();
-      const target = scaledDimensions(
-        dimensions.width,
-        dimensions.height,
-        targetMaxEdge,
+      await onTier(
+        await renderProjectFileImageVariant(decoded, dimensions, targetMaxEdge),
       );
-      const canvas =
-        typeof OffscreenCanvas === "undefined"
-          ? Object.assign(document.createElement("canvas"), {
-              width: target.width,
-              height: target.height,
-            })
-          : new OffscreenCanvas(target.width, target.height);
-      const context = canvas.getContext("2d") as
-        CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
-      if (!context) {
-        throw new Error("Project File image 2D context is unavailable.");
-      }
-      context.imageSmoothingEnabled = true;
-      context.imageSmoothingQuality = "high";
-      context.drawImage(decoded.source, 0, 0, target.width, target.height);
-      const generated = await canvasToWebp(canvas);
-      if (
-        !generated ||
-        generated.type !== PROJECT_FILE_IMAGE_VARIANT_MIME_TYPE
-      ) {
-        throw new Error("Project File WebP encoding is unavailable.");
-      }
-      await onTier({
-        targetMaxEdge,
-        blob: generated,
-        pixelWidth: target.width,
-        pixelHeight: target.height,
-      });
     }
   } finally {
     decoded.close?.();

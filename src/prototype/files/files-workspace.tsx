@@ -17,6 +17,7 @@ import {
 import { generateProjectFilePdfCover } from "@/lib/files/project-file-pdf-preview";
 import {
   chooseProjectFilePreviewVariant,
+  generateProjectFileImageThumbnail,
   PROJECT_FILE_PREVIEW_PREFERRED_MAX_EDGE,
   type ProjectFileImageVariantMetadata,
   type ProjectFileImageVariantRepository,
@@ -135,6 +136,7 @@ async function loadCachedProjectFileImagePreview({
   projectId,
   fileId,
   targetMaxEdge,
+  exactTarget = false,
 }: {
   repository: ProjectFileRepository;
   imageVariantRepository: ProjectFileImageVariantRepository;
@@ -142,6 +144,7 @@ async function loadCachedProjectFileImagePreview({
   projectId: string;
   fileId: string;
   targetMaxEdge: number;
+  exactTarget?: boolean;
 }): Promise<Blob> {
   const cacheKey = projectFilePreviewCacheKey({
     workspaceId,
@@ -167,7 +170,12 @@ async function loadCachedProjectFileImagePreview({
       // Derived images are an optional cache; the source remains the fallback.
     }
 
-    const preferred = chooseProjectFilePreviewVariant(variants, targetMaxEdge);
+    const preferred = exactTarget
+      ? variants.find(
+          (variant) =>
+            variant.readyAt !== null && variant.targetMaxEdge === targetMaxEdge,
+        )
+      : chooseProjectFilePreviewVariant(variants, targetMaxEdge);
     if (preferred) {
       try {
         const variant = await imageVariantRepository.loadImageVariant({
@@ -190,6 +198,14 @@ async function loadCachedProjectFileImagePreview({
       projectId,
       fileId,
     });
+    if (exactTarget) {
+      const thumbnail = await generateProjectFileImageThumbnail(
+        original.blob,
+        targetMaxEdge,
+      );
+      cacheProjectFilePreview(cacheKey, thumbnail.blob);
+      return thumbnail.blob;
+    }
     cacheProjectFilePreview(cacheKey, original.blob);
     return original.blob;
   })();
@@ -321,7 +337,7 @@ export function FilesWorkspace({
   const [location, setLocation] = useState<FilesLocation>({ kind: "inbox" });
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [openedFileId, setOpenedFileId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<FilesViewMode>("list");
+  const [viewMode, setViewMode] = useState<FilesViewMode>("grid");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<FilesLoadStatus>("loading");
   const [reloadToken, setReloadToken] = useState(0);
@@ -1434,7 +1450,7 @@ export function FilesWorkspace({
                     key={`${file.id}:${viewMode}`}
                     projectId={projectId}
                     repository={repository}
-                    targetMaxEdge={viewMode === "large-grid" ? 512 : 256}
+                    targetMaxEdge={viewMode === "large-grid" ? 320 : 256}
                     workspaceId={workspaceId}
                   />
                   <span className={styles.tileName} title={file.name}>
@@ -1650,6 +1666,7 @@ function ProjectFileThumbnail({
           projectId,
           fileId: file.id,
           targetMaxEdge,
+          exactTarget: true,
         });
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
