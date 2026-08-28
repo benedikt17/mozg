@@ -321,7 +321,7 @@ export function FilesWorkspace({
   const [location, setLocation] = useState<FilesLocation>({ kind: "inbox" });
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [openedFileId, setOpenedFileId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<FilesViewMode>("list");
+  const [viewMode, setViewMode] = useState<FilesViewMode>("grid");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<FilesLoadStatus>("loading");
   const [reloadToken, setReloadToken] = useState(0);

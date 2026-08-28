@@ -70,6 +70,10 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
   await signIn(page);
   await openFiles(page);
 
+  await expect(
+    page.getByRole("button", { name: "Превью", exact: true }),
+  ).toHaveClass(/is-active/);
+
   const uploadButton = page.getByRole("button", {
     name: "Загрузить файл",
     exact: true,
