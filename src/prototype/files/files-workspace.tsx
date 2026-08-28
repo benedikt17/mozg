@@ -51,6 +51,7 @@ type FilesActionState =
 type FilesLocation =
   { kind: "inbox" } | { kind: "folder"; folderId: string } | { kind: "trash" };
 type FilesActionMessage = { kind: "error" | "info"; text: string };
+type FilesViewMode = "list" | "grid" | "large-grid";
 type ActiveProjectFileUpload = {
   fileName: string;
   currentFile: number;
@@ -92,6 +93,8 @@ export function FilesWorkspace({
   const [pendingFiles, setPendingFiles] = useState<ProjectFileRecord[]>([]);
   const [location, setLocation] = useState<FilesLocation>({ kind: "inbox" });
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+  const [openedFileId, setOpenedFileId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<FilesViewMode>("list");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<FilesLoadStatus>("loading");
   const [reloadToken, setReloadToken] = useState(0);
@@ -147,6 +150,11 @@ export function FilesWorkspace({
             ? currentFileId
             : null,
         );
+        setOpenedFileId((currentFileId) =>
+          currentFileId && nextFiles.some((file) => file.id === currentFileId)
+            ? currentFileId
+            : null,
+        );
         setStatus("ready");
       })
       .catch(() => {
@@ -178,6 +186,7 @@ export function FilesWorkspace({
       ? (folders.find((folder) => folder.id === location.folderId) ?? null)
       : null;
   const selectedFile = files.find((file) => file.id === selectedFileId) ?? null;
+  const openedFile = files.find((file) => file.id === openedFileId) ?? null;
   const folderTree = getProjectFolderTree(folders);
   const title = query.trim()
     ? "Результаты поиска"
@@ -604,6 +613,28 @@ export function FilesWorkspace({
     void moveFile(file, targetFolderId);
   };
 
+  const selectFile = (fileId: string) => {
+    setSelectedFileId(fileId);
+  };
+
+  const openFile = (file: ProjectFileRecord) => {
+    if (!isProjectFilePreviewable(file)) return;
+    setSelectedFileId(file.id);
+    setOpenedFileId(file.id);
+  };
+
+  const activateFile = (file: ProjectFileRecord) => {
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 1023px)").matches &&
+      isProjectFilePreviewable(file)
+    ) {
+      openFile(file);
+      return;
+    }
+    selectFile(file.id);
+  };
+
   return (
     <div className={styles.workspace}>
       <aside className={styles.sidebar} aria-label="Навигация по файлам">
@@ -823,6 +854,36 @@ export function FilesWorkspace({
             <h2>{title}</h2>
           </div>
           <div
+            className={styles.viewControls}
+            aria-label="Вид файлов"
+            role="group"
+          >
+            <IconButton
+              icon={<UiIcon name="list" />}
+              label="Список"
+              onClick={() => setViewMode("list")}
+              active={viewMode === "list"}
+              title="Список"
+              variant="ghost"
+            />
+            <IconButton
+              icon={<UiIcon name="grid" />}
+              label="Превью"
+              onClick={() => setViewMode("grid")}
+              active={viewMode === "grid"}
+              title="Превью"
+              variant="ghost"
+            />
+            <IconButton
+              icon={<UiIcon name="grid-large" />}
+              label="Крупные превью"
+              onClick={() => setViewMode("large-grid")}
+              active={viewMode === "large-grid"}
+              title="Крупные превью"
+              variant="ghost"
+            />
+          </div>
+          <div
             style={{
               alignItems: "center",
               display: "flex",
@@ -1007,7 +1068,7 @@ export function FilesWorkspace({
             </div>
           ) : null}
 
-          {effectiveStatus === "ready" && hasEntries ? (
+          {effectiveStatus === "ready" && hasEntries && viewMode === "list" ? (
             <div className={styles.tableWrap}>
               <div className={styles.tableHeader} aria-hidden="true">
                 <span>Имя</span>
@@ -1052,7 +1113,8 @@ export function FilesWorkspace({
                     }`}
                     draggable={canMutate}
                     key={file.id}
-                    onClick={() => setSelectedFileId(file.id)}
+                    onClick={() => activateFile(file)}
+                    onDoubleClick={() => openFile(file)}
                     onDragStart={(event) => {
                       if (!canMutate) {
                         event.preventDefault();
@@ -1079,6 +1141,67 @@ export function FilesWorkspace({
               </div>
             </div>
           ) : null}
+
+          {effectiveStatus === "ready" && hasEntries && viewMode !== "list" ? (
+            <div
+              className={`${styles.fileGrid} ${
+                viewMode === "large-grid" ? styles.fileGridLarge : ""
+              }`}
+            >
+              {pendingFiles.map((file) => (
+                <div
+                  className={`${styles.fileTile} ${styles.fileTilePending}`}
+                  key={`pending-${file.id}`}
+                >
+                  <span className={styles.tileFallback} aria-hidden="true">
+                    ↻
+                  </span>
+                  <span className={styles.tileName} title={file.name}>
+                    {file.name}
+                  </span>
+                  <span className={styles.tileMeta}>Не завершено</span>
+                </div>
+              ))}
+              {files.map((file) => (
+                <button
+                  aria-pressed={file.id === selectedFileId}
+                  className={`${styles.fileTile} ${
+                    file.id === selectedFileId ? styles.fileTileSelected : ""
+                  }`}
+                  draggable={canMutate}
+                  key={file.id}
+                  onClick={() => activateFile(file)}
+                  onDoubleClick={() => openFile(file)}
+                  onDragStart={(event) => {
+                    if (!canMutate) {
+                      event.preventDefault();
+                      return;
+                    }
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData(MOZG_FILE_DRAG_TYPE, file.id);
+                  }}
+                  type="button"
+                >
+                  <ProjectFileThumbnail
+                    file={file}
+                    imageVariantRepository={imageVariantRepository}
+                    key={`${file.id}:${viewMode}`}
+                    projectId={projectId}
+                    repository={repository}
+                    targetMaxEdge={viewMode === "large-grid" ? 512 : 256}
+                    workspaceId={workspaceId}
+                  />
+                  <span className={styles.tileName} title={file.name}>
+                    {file.name}
+                  </span>
+                  <span className={styles.tileMeta}>
+                    {projectFileTypeLabel(file.mimeType)} ·{" "}
+                    {formatProjectFileSize(file.byteSize)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </section>
       </main>
 
@@ -1098,6 +1221,7 @@ export function FilesWorkspace({
               onDelete={deleteFile}
               onMove={moveFile}
               onRename={renameFile}
+              onOpen={openFile}
               projectId={projectId}
               repository={repository}
               imageVariantRepository={imageVariantRepository}
@@ -1112,6 +1236,17 @@ export function FilesWorkspace({
           </div>
         )}
       </aside>
+
+      {openedFile && workspaceId ? (
+        <ProjectFileViewer
+          file={openedFile}
+          key={openedFile.id}
+          onClose={() => setOpenedFileId(null)}
+          projectId={projectId}
+          repository={repository}
+          workspaceId={workspaceId}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1208,6 +1343,223 @@ function FolderHeaderActions({
   );
 }
 
+function ProjectFileThumbnail({
+  repository,
+  imageVariantRepository,
+  workspaceId,
+  projectId,
+  file,
+  targetMaxEdge,
+}: {
+  repository: ProjectFileRepository;
+  imageVariantRepository: ProjectFileImageVariantRepository;
+  workspaceId?: string;
+  projectId: string;
+  file: ProjectFileRecord;
+  targetMaxEdge: number;
+}): React.JSX.Element {
+  const targetRef = useRef<HTMLDivElement>(null);
+  const [isNearViewport, setIsNearViewport] = useState(false);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const isImage = file.mimeType.startsWith("image/");
+
+  useEffect(() => {
+    if (!isImage) return;
+    const element = targetRef.current;
+    if (!element || typeof IntersectionObserver === "undefined") {
+      setIsNearViewport(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        setIsNearViewport(true);
+        observer.disconnect();
+      },
+      { rootMargin: "240px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [isImage]);
+
+  useEffect(() => {
+    if (!isImage || !isNearViewport || !workspaceId) return;
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    void (async () => {
+      try {
+        let variants: ProjectFileImageVariantMetadata[] = [];
+        try {
+          variants = await imageVariantRepository.listImageVariants({
+            workspaceId,
+            projectId,
+            fileId: file.id,
+          });
+        } catch {
+          // Derived images are an optional cache; use the source if unavailable.
+        }
+        const preferred = chooseProjectFilePreviewVariant(
+          variants,
+          targetMaxEdge,
+        );
+        if (preferred) {
+          try {
+            const variant = await imageVariantRepository.loadImageVariant({
+              workspaceId,
+              projectId,
+              fileId: file.id,
+              targetMaxEdge: preferred.targetMaxEdge,
+            });
+            if (cancelled) return;
+            if (variant) {
+              objectUrl = URL.createObjectURL(variant.blob);
+              setImageUrl(objectUrl);
+              return;
+            }
+          } catch {
+            // A stale derivative must never make the original unavailable.
+          }
+        }
+        const original = await repository.downloadFile({
+          workspaceId,
+          projectId,
+          fileId: file.id,
+        });
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(original.blob);
+        setImageUrl(objectUrl);
+      } catch {
+        if (!cancelled) setLoadError(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [
+    file.id,
+    imageVariantRepository,
+    isImage,
+    isNearViewport,
+    projectId,
+    repository,
+    targetMaxEdge,
+    workspaceId,
+  ]);
+
+  return (
+    <div className={styles.tilePreview} ref={targetRef}>
+      {isImage ? (
+        imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- authenticated variant Blob URL.
+          <img alt="" loading="lazy" src={imageUrl} />
+        ) : loadError ? (
+          <UiIcon name="file" />
+        ) : (
+          <span className={styles.tileLoading}>Загрузка…</span>
+        )
+      ) : file.mimeType === "application/pdf" ? (
+        <span className={styles.pdfTileBadge}>PDF</span>
+      ) : (
+        <UiIcon name="file" />
+      )}
+    </div>
+  );
+}
+
+function ProjectFileViewer({
+  repository,
+  workspaceId,
+  projectId,
+  file,
+  onClose,
+}: {
+  repository: ProjectFileRepository;
+  workspaceId: string;
+  projectId: string;
+  file: ProjectFileRecord;
+  onClose: () => void;
+}): React.JSX.Element {
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const isImage = file.mimeType.startsWith("image/");
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    void repository
+      .downloadFile({ workspaceId, projectId, fileId: file.id })
+      .then((download) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(download.blob);
+        setFileUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadError(true);
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [file.id, projectId, repository, workspaceId]);
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  return (
+    <div
+      className={styles.viewerBackdrop}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        aria-labelledby="project-file-viewer-title"
+        aria-modal="true"
+        className={styles.viewerDialog}
+        role="dialog"
+      >
+        <header className={styles.viewerHeader}>
+          <strong id="project-file-viewer-title">{file.name}</strong>
+          <IconButton
+            icon={<UiIcon name="close" />}
+            label="Закрыть просмотр"
+            onClick={onClose}
+            title="Закрыть"
+            variant="ghost"
+          />
+        </header>
+        <div className={styles.viewerContent}>
+          {fileUrl && isImage ? (
+            // eslint-disable-next-line @next/next/no-img-element -- original is an authenticated Blob URL.
+            <img alt={file.name} src={fileUrl} />
+          ) : fileUrl ? (
+            <iframe src={fileUrl} title={file.name} />
+          ) : loadError ? (
+            <div className={styles.viewerState} role="alert">
+              Не удалось открыть файл. Попробуйте ещё раз.
+            </div>
+          ) : (
+            <div className={styles.viewerState} role="status">
+              Открываем файл…
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function ProjectFilePreview({
   repository,
   imageVariantRepository,
@@ -1219,6 +1571,7 @@ function ProjectFilePreview({
   onRename,
   onMove,
   onDelete,
+  onOpen,
 }: {
   repository: ProjectFileRepository;
   imageVariantRepository: ProjectFileImageVariantRepository;
@@ -1233,6 +1586,7 @@ function ProjectFilePreview({
     folderId: string | null,
   ) => Promise<boolean>;
   onDelete: (file: ProjectFileRecord) => Promise<boolean>;
+  onOpen: (file: ProjectFileRecord) => void;
 }): React.JSX.Element {
   const [loadError, setLoadError] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -1409,6 +1763,15 @@ function ProjectFilePreview({
         >
           {downloadingOriginal ? "Скачивание…" : "Скачать оригинал"}
         </PrototypeButton>
+        {isProjectFilePreviewable(file) ? (
+          <PrototypeButton
+            onClick={() => onOpen(file)}
+            size="compact"
+            variant="quiet"
+          >
+            Открыть
+          </PrototypeButton>
+        ) : null}
         <PrototypeButton
           disabled={!canMutate}
           onClick={() => {
@@ -1659,6 +2022,14 @@ function projectFileTypeLabel(mimeType: string): string {
   if (mimeType.includes("presentationml")) return "PowerPoint";
   if (mimeType === "application/json") return "JSON";
   return "Файл";
+}
+
+export function isProjectFilePreviewable(
+  file: Pick<ProjectFileRecord, "mimeType">,
+): boolean {
+  return (
+    file.mimeType.startsWith("image/") || file.mimeType === "application/pdf"
+  );
 }
 
 const compactInputStyle = {
