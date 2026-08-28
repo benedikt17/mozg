@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ProjectFolderRecord } from "@/lib/files/project-file-repository";
 import {
   formatProjectFileSize,
+  getProjectFileAspectRatio,
   getProjectFolderBreadcrumbs,
   getProjectFolderMoveTargets,
   getProjectFolderTree,
@@ -107,5 +108,18 @@ describe("isProjectFilePreviewable", () => {
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       }),
     ).toBe(false);
+  });
+});
+
+describe("getProjectFileAspectRatio", () => {
+  it("preserves known image proportions and ignores incomplete metadata", () => {
+    expect(getProjectFileAspectRatio({ width: 1920, height: 1080 })).toBe(
+      16 / 9,
+    );
+    expect(getProjectFileAspectRatio({ width: 1080, height: 1920 })).toBe(
+      9 / 16,
+    );
+    expect(getProjectFileAspectRatio({ width: null, height: 1080 })).toBeNull();
+    expect(getProjectFileAspectRatio({ width: 1080, height: 0 })).toBeNull();
   });
 });

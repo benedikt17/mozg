@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   prepareProjectFileBrowserUpload,
@@ -187,6 +187,10 @@ export function FilesWorkspace({
       : null;
   const selectedFile = files.find((file) => file.id === selectedFileId) ?? null;
   const openedFile = files.find((file) => file.id === openedFileId) ?? null;
+  const viewerFiles = useMemo(
+    () => files.filter(isProjectFilePreviewable),
+    [files],
+  );
   const folderTree = getProjectFolderTree(folders);
   const title = query.trim()
     ? "Результаты поиска"
@@ -621,6 +625,16 @@ export function FilesWorkspace({
     if (!isProjectFilePreviewable(file)) return;
     setSelectedFileId(file.id);
     setOpenedFileId(file.id);
+  };
+
+  const navigateViewer = (delta: -1 | 1) => {
+    const currentIndex = viewerFiles.findIndex(
+      (file) => file.id === openedFileId,
+    );
+    const nextFile = viewerFiles[currentIndex + delta];
+    if (!nextFile) return;
+    setSelectedFileId(nextFile.id);
+    setOpenedFileId(nextFile.id);
   };
 
   const activateFile = (file: ProjectFileRecord) => {
@@ -1240,8 +1254,11 @@ export function FilesWorkspace({
       {openedFile && workspaceId ? (
         <ProjectFileViewer
           file={openedFile}
+          files={viewerFiles}
           key={openedFile.id}
+          imageVariantRepository={imageVariantRepository}
           onClose={() => setOpenedFileId(null)}
+          onNavigate={navigateViewer}
           projectId={projectId}
           repository={repository}
           workspaceId={workspaceId}
@@ -1363,6 +1380,7 @@ function ProjectFileThumbnail({
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
   const isImage = file.mimeType.startsWith("image/");
+  const aspectRatio = getProjectFileAspectRatio(file);
 
   useEffect(() => {
     if (!isImage) return;
@@ -1451,7 +1469,11 @@ function ProjectFileThumbnail({
   ]);
 
   return (
-    <div className={styles.tilePreview} ref={targetRef}>
+    <div
+      className={styles.tilePreview}
+      ref={targetRef}
+      style={aspectRatio ? { aspectRatio } : undefined}
+    >
       {isImage ? (
         imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- authenticated variant Blob URL.
@@ -1472,49 +1494,163 @@ function ProjectFileThumbnail({
 
 function ProjectFileViewer({
   repository,
+  imageVariantRepository,
   workspaceId,
   projectId,
   file,
+  files,
   onClose,
+  onNavigate,
 }: {
   repository: ProjectFileRepository;
+  imageVariantRepository: ProjectFileImageVariantRepository;
   workspaceId: string;
   projectId: string;
   file: ProjectFileRecord;
+  files: readonly ProjectFileRecord[];
   onClose: () => void;
+  onNavigate: (delta: -1 | 1) => void;
 }): React.JSX.Element {
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [usingOriginal, setUsingOriginal] = useState(false);
+  const [loadingOriginal, setLoadingOriginal] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const panStartRef = useRef({ x: 0, y: 0 });
+  const activePointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{ distance: number; zoom: number } | null>(null);
+  const activeObjectUrlRef = useRef<string | null>(null);
   const isImage = file.mimeType.startsWith("image/");
+  const index = files.findIndex((candidate) => candidate.id === file.id);
+  const canNavigateBack = index > 0;
+  const canNavigateForward = index >= 0 && index < files.length - 1;
+
+  const replaceFileUrl = useCallback((blob: Blob) => {
+    const nextUrl = URL.createObjectURL(blob);
+    if (activeObjectUrlRef.current) {
+      URL.revokeObjectURL(activeObjectUrlRef.current);
+    }
+    activeObjectUrlRef.current = nextUrl;
+    setFileUrl(nextUrl);
+  }, []);
+
+  const resetImageViewport = () => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  };
 
   useEffect(() => {
     let cancelled = false;
-    let objectUrl: string | null = null;
 
-    void repository
-      .downloadFile({ workspaceId, projectId, fileId: file.id })
-      .then((download) => {
+    void (async () => {
+      try {
+        if (isImage) {
+          let variants: ProjectFileImageVariantMetadata[] = [];
+          try {
+            variants = await imageVariantRepository.listImageVariants({
+              workspaceId,
+              projectId,
+              fileId: file.id,
+            });
+          } catch {
+            // A derivative is a cache. A ready source remains the fallback.
+          }
+          const preview = chooseProjectFilePreviewVariant(variants, 2048);
+          if (preview) {
+            try {
+              const variant = await imageVariantRepository.loadImageVariant({
+                workspaceId,
+                projectId,
+                fileId: file.id,
+                targetMaxEdge: preview.targetMaxEdge,
+              });
+              if (cancelled) return;
+              if (variant) {
+                replaceFileUrl(variant.blob);
+                setUsingOriginal(false);
+                return;
+              }
+            } catch {
+              // Stale derivative: use the immutable original below.
+            }
+          }
+        }
+        const download = await repository.downloadFile({
+          workspaceId,
+          projectId,
+          fileId: file.id,
+        });
         if (cancelled) return;
-        objectUrl = URL.createObjectURL(download.blob);
-        setFileUrl(objectUrl);
-      })
-      .catch(() => {
+        replaceFileUrl(download.blob);
+        setUsingOriginal(true);
+      } catch {
         if (!cancelled) setLoadError(true);
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      if (activeObjectUrlRef.current) {
+        URL.revokeObjectURL(activeObjectUrlRef.current);
+        activeObjectUrlRef.current = null;
+      }
     };
-  }, [file.id, projectId, repository, workspaceId]);
+  }, [
+    file.id,
+    imageVariantRepository,
+    isImage,
+    projectId,
+    replaceFileUrl,
+    repository,
+    workspaceId,
+  ]);
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
+      if (event.key === "ArrowLeft") onNavigate(-1);
+      if (event.key === "ArrowRight") onNavigate(1);
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [onClose]);
+  }, [onClose, onNavigate]);
+
+  const loadOriginal = async () => {
+    if (usingOriginal || loadingOriginal) return;
+    setLoadingOriginal(true);
+    try {
+      const download = await repository.downloadFile({
+        workspaceId,
+        projectId,
+        fileId: file.id,
+      });
+      replaceFileUrl(download.blob);
+      setUsingOriginal(true);
+    } finally {
+      setLoadingOriginal(false);
+    }
+  };
+
+  const updateZoom = (nextZoom: number) => {
+    const clampedZoom = Math.min(4, Math.max(1, nextZoom));
+    setZoom(clampedZoom);
+    if (clampedZoom === 1) setPan({ x: 0, y: 0 });
+  };
+
+  const updatePointer = (event: React.PointerEvent<HTMLImageElement>) => {
+    activePointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+  };
+
+  const pointerDistance = () => {
+    const [first, second] = [...activePointersRef.current.values()];
+    if (!first || !second) return null;
+    return Math.hypot(second.x - first.x, second.y - first.y);
+  };
 
   return (
     <div
@@ -1531,18 +1667,105 @@ function ProjectFileViewer({
       >
         <header className={styles.viewerHeader}>
           <strong id="project-file-viewer-title">{file.name}</strong>
-          <IconButton
-            icon={<UiIcon name="close" />}
-            label="Закрыть просмотр"
-            onClick={onClose}
-            title="Закрыть"
-            variant="ghost"
-          />
+          <div className={styles.viewerActions}>
+            {isImage && !usingOriginal ? (
+              <PrototypeButton
+                disabled={loadingOriginal}
+                onClick={() => void loadOriginal()}
+                size="compact"
+                variant="quiet"
+              >
+                {loadingOriginal
+                  ? "Загрузка оригинала…"
+                  : `Оригинал · ${formatProjectFileSize(file.byteSize)}`}
+              </PrototypeButton>
+            ) : null}
+            <IconButton
+              disabled={!canNavigateBack}
+              icon={<UiIcon name="arrow-left" />}
+              label="Предыдущий файл"
+              onClick={() => onNavigate(-1)}
+              title="Предыдущий файл"
+              variant="ghost"
+            />
+            <IconButton
+              disabled={!canNavigateForward}
+              icon={<UiIcon name="arrow-right" />}
+              label="Следующий файл"
+              onClick={() => onNavigate(1)}
+              title="Следующий файл"
+              variant="ghost"
+            />
+            <IconButton
+              icon={<UiIcon name="close" />}
+              label="Закрыть просмотр"
+              onClick={onClose}
+              title="Закрыть"
+              variant="ghost"
+            />
+          </div>
         </header>
         <div className={styles.viewerContent}>
           {fileUrl && isImage ? (
             // eslint-disable-next-line @next/next/no-img-element -- original is an authenticated Blob URL.
-            <img alt={file.name} src={fileUrl} />
+            <img
+              alt={file.name}
+              className={styles.viewerImage}
+              draggable={false}
+              onDoubleClick={() => updateZoom(zoom === 1 ? 2 : 1)}
+              onPointerDown={(event) => {
+                updatePointer(event);
+                event.currentTarget.setPointerCapture(event.pointerId);
+                if (activePointersRef.current.size === 2) {
+                  const distance = pointerDistance();
+                  if (distance !== null) pinchRef.current = { distance, zoom };
+                  return;
+                }
+                if (zoom === 1) return;
+                pointerStartRef.current = {
+                  x: event.clientX,
+                  y: event.clientY,
+                };
+                panStartRef.current = pan;
+              }}
+              onPointerMove={(event) => {
+                updatePointer(event);
+                if (activePointersRef.current.size === 2 && pinchRef.current) {
+                  const distance = pointerDistance();
+                  if (distance !== null) {
+                    updateZoom(
+                      pinchRef.current.zoom *
+                        (distance / pinchRef.current.distance),
+                    );
+                  }
+                  return;
+                }
+                const start = pointerStartRef.current;
+                if (!start || zoom === 1) return;
+                setPan({
+                  x: panStartRef.current.x + event.clientX - start.x,
+                  y: panStartRef.current.y + event.clientY - start.y,
+                });
+              }}
+              onPointerUp={(event) => {
+                activePointersRef.current.delete(event.pointerId);
+                if (activePointersRef.current.size < 2) pinchRef.current = null;
+                pointerStartRef.current = null;
+              }}
+              onPointerCancel={(event) => {
+                activePointersRef.current.delete(event.pointerId);
+                if (activePointersRef.current.size < 2) pinchRef.current = null;
+                pointerStartRef.current = null;
+              }}
+              onWheel={(event) => {
+                event.preventDefault();
+                updateZoom(zoom + (event.deltaY < 0 ? 0.2 : -0.2));
+              }}
+              src={fileUrl}
+              style={{
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              }}
+            />
           ) : fileUrl ? (
             <iframe src={fileUrl} title={file.name} />
           ) : loadError ? (
@@ -1555,6 +1778,35 @@ function ProjectFileViewer({
             </div>
           )}
         </div>
+        {fileUrl && isImage ? (
+          <div className={styles.viewerZoomControls}>
+            <PrototypeButton
+              aria-label="Уменьшить масштаб"
+              disabled={zoom <= 1}
+              onClick={() => updateZoom(zoom - 0.25)}
+              size="compact"
+              variant="quiet"
+            >
+              −
+            </PrototypeButton>
+            <button
+              className={styles.viewerZoomValue}
+              onClick={() => resetImageViewport()}
+              type="button"
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+            <PrototypeButton
+              aria-label="Увеличить масштаб"
+              disabled={zoom >= 4}
+              onClick={() => updateZoom(zoom + 0.25)}
+              size="compact"
+              variant="quiet"
+            >
+              +
+            </PrototypeButton>
+          </div>
+        ) : null}
       </section>
     </div>
   );
@@ -2030,6 +2282,20 @@ export function isProjectFilePreviewable(
   return (
     file.mimeType.startsWith("image/") || file.mimeType === "application/pdf"
   );
+}
+
+export function getProjectFileAspectRatio(
+  file: Pick<ProjectFileRecord, "width" | "height">,
+): number | null {
+  if (
+    file.width === null ||
+    file.height === null ||
+    file.width <= 0 ||
+    file.height <= 0
+  ) {
+    return null;
+  }
+  return file.width / file.height;
 }
 
 const compactInputStyle = {

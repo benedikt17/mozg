@@ -161,6 +161,14 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
   await expect(
     imageViewer.getByRole("img", { name: "preview-image.png" }),
   ).toBeVisible();
+  expect(originalImageDownloadRequests).toBe(0);
+  await imageViewer.getByRole("button", { name: /Оригинал/ }).click();
+  await expect
+    .poll(() => originalImageDownloadRequests, {
+      message: "Viewer must only GET the original after the explicit action",
+      timeout: 10_000,
+    })
+    .toBeGreaterThan(0);
   await imageViewer
     .getByRole("button", { name: "Закрыть просмотр", exact: true })
     .click();
