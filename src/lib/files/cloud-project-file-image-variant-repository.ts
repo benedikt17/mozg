@@ -26,7 +26,7 @@ type ProjectFileVariantRow =
   Database["public"]["Tables"]["file_variants"]["Row"];
 
 const PROJECT_FILE_VARIANT_SELECT =
-  "workspace_id,project_id,file_id,kind,storage_path,mime_type,byte_size,pixel_width,pixel_height,target_max_edge,created_at,ready_at";
+  "workspace_id,project_id,file_id,kind,storage_path,mime_type,byte_size,pixel_width,pixel_height,target_max_edge,created_at,ready_at,processing_error";
 
 function statusCode(cause: unknown): string | undefined {
   if (typeof cause !== "object" || cause === null) return undefined;

@@ -289,6 +289,7 @@ export type Database = {
           mime_type: string
           pixel_height: number | null
           pixel_width: number | null
+          processing_error: string | null
           project_id: string
           ready_at: string | null
           storage_path: string
@@ -303,6 +304,7 @@ export type Database = {
           mime_type: string
           pixel_height?: number | null
           pixel_width?: number | null
+          processing_error?: string | null
           project_id: string
           ready_at?: string | null
           storage_path: string
@@ -317,6 +319,7 @@ export type Database = {
           mime_type?: string
           pixel_height?: number | null
           pixel_width?: number | null
+          processing_error?: string | null
           project_id?: string
           ready_at?: string | null
           storage_path?: string
@@ -1035,6 +1038,15 @@ export type Database = {
           workspace_id: string
         }[]
       }
+      fail_project_file_pdf_cover: {
+        Args: {
+          target_error: string
+          target_file_id: string
+          target_project_id: string
+          target_workspace_id: string
+        }
+        Returns: undefined
+      }
       finalize_project_file: {
         Args: {
           target_file_id: string
@@ -1068,6 +1080,34 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      finalize_project_file_pdf_cover: {
+        Args: {
+          target_file_id: string
+          target_project_id: string
+          target_workspace_id: string
+        }
+        Returns: {
+          byte_size: number
+          created_at: string
+          file_id: string
+          kind: string
+          mime_type: string
+          pixel_height: number | null
+          pixel_width: number | null
+          processing_error: string | null
+          project_id: string
+          ready_at: string | null
+          storage_path: string
+          target_max_edge: number | null
+          workspace_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "file_variants"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       finalize_project_file_variant: {
         Args: {
           requested_max_edge: number
@@ -1083,6 +1123,7 @@ export type Database = {
           mime_type: string
           pixel_height: number | null
           pixel_width: number | null
+          processing_error: string | null
           project_id: string
           ready_at: string | null
           storage_path: string
@@ -1409,6 +1450,37 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      reserve_project_file_pdf_cover: {
+        Args: {
+          target_byte_size: number
+          target_file_id: string
+          target_pixel_height: number
+          target_pixel_width: number
+          target_project_id: string
+          target_workspace_id: string
+        }
+        Returns: {
+          byte_size: number
+          created_at: string
+          file_id: string
+          kind: string
+          mime_type: string
+          pixel_height: number | null
+          pixel_width: number | null
+          processing_error: string | null
+          project_id: string
+          ready_at: string | null
+          storage_path: string
+          target_max_edge: number | null
+          workspace_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "file_variants"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       reserve_project_file_variant: {
         Args: {
           requested_max_edge: number
@@ -1427,6 +1499,7 @@ export type Database = {
           mime_type: string
           pixel_height: number | null
           pixel_width: number | null
+          processing_error: string | null
           project_id: string
           ready_at: string | null
           storage_path: string

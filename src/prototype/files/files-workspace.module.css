@@ -732,6 +732,13 @@
   margin-top: 16px;
 }
 
+.pdfCoverStatus {
+  margin: 10px 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 .previewEmpty {
   min-height: 0;
   display: flex;
