@@ -809,9 +809,16 @@
   min-height: 0;
   width: 100%;
   height: 100%;
-  display: grid;
+  /*
+   * A grid item can grow to an image's intrinsic min-content height. On tall
+   * images that made max-height: 100% resolve against the grown track rather
+   * than the visible stage, so the bottom was clipped. A constrained flex box
+   * gives the image a real available box to fit into.
+   */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
-  place-items: center;
   box-sizing: border-box;
   padding: 32px 92px 58px;
   background: radial-gradient(
@@ -823,6 +830,8 @@
 
 .viewerImage {
   display: block;
+  min-width: 0;
+  min-height: 0;
   width: auto;
   height: auto;
   max-width: 100%;
