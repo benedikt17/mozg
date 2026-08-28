@@ -1665,38 +1665,141 @@ function ProjectFileViewer({
         className={styles.viewerDialog}
         role="dialog"
       >
-        <header className={styles.viewerHeader}>
-          <strong id="project-file-viewer-title">{file.name}</strong>
-          <div className={styles.viewerActions}>
-            {isImage && !usingOriginal ? (
+        <div className={styles.viewerStage}>
+          <div className={styles.viewerContent}>
+            {fileUrl && isImage ? (
+              // eslint-disable-next-line @next/next/no-img-element -- original is an authenticated Blob URL.
+              <img
+                alt={file.name}
+                className={styles.viewerImage}
+                draggable={false}
+                onDoubleClick={() => updateZoom(zoom === 1 ? 2 : 1)}
+                onPointerDown={(event) => {
+                  updatePointer(event);
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  if (activePointersRef.current.size === 2) {
+                    const distance = pointerDistance();
+                    if (distance !== null)
+                      pinchRef.current = { distance, zoom };
+                    return;
+                  }
+                  if (zoom === 1) return;
+                  pointerStartRef.current = {
+                    x: event.clientX,
+                    y: event.clientY,
+                  };
+                  panStartRef.current = pan;
+                }}
+                onPointerMove={(event) => {
+                  updatePointer(event);
+                  if (
+                    activePointersRef.current.size === 2 &&
+                    pinchRef.current
+                  ) {
+                    const distance = pointerDistance();
+                    if (distance !== null) {
+                      updateZoom(
+                        pinchRef.current.zoom *
+                          (distance / pinchRef.current.distance),
+                      );
+                    }
+                    return;
+                  }
+                  const start = pointerStartRef.current;
+                  if (!start || zoom === 1) return;
+                  setPan({
+                    x: panStartRef.current.x + event.clientX - start.x,
+                    y: panStartRef.current.y + event.clientY - start.y,
+                  });
+                }}
+                onPointerUp={(event) => {
+                  activePointersRef.current.delete(event.pointerId);
+                  if (activePointersRef.current.size < 2)
+                    pinchRef.current = null;
+                  pointerStartRef.current = null;
+                }}
+                onPointerCancel={(event) => {
+                  activePointersRef.current.delete(event.pointerId);
+                  if (activePointersRef.current.size < 2)
+                    pinchRef.current = null;
+                  pointerStartRef.current = null;
+                }}
+                onWheel={(event) => {
+                  event.preventDefault();
+                  updateZoom(zoom + (event.deltaY < 0 ? 0.2 : -0.2));
+                }}
+                src={fileUrl}
+                style={{
+                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                }}
+              />
+            ) : fileUrl ? (
+              <iframe src={fileUrl} title={file.name} />
+            ) : loadError ? (
+              <div className={styles.viewerState} role="alert">
+                Не удалось открыть файл. Попробуйте ещё раз.
+              </div>
+            ) : (
+              <div className={styles.viewerState} role="status">
+                Открываем файл…
+              </div>
+            )}
+          </div>
+          <IconButton
+            className={styles.viewerNavigationBack}
+            disabled={!canNavigateBack}
+            icon={<UiIcon name="arrow-left" />}
+            label="Предыдущий файл"
+            onClick={() => onNavigate(-1)}
+            title="Предыдущий файл"
+            variant="ghost"
+          />
+          <IconButton
+            className={styles.viewerNavigationForward}
+            disabled={!canNavigateForward}
+            icon={<UiIcon name="arrow-right" />}
+            label="Следующий файл"
+            onClick={() => onNavigate(1)}
+            title="Следующий файл"
+            variant="ghost"
+          />
+          {fileUrl && isImage ? (
+            <div className={styles.viewerZoomControls}>
               <PrototypeButton
-                disabled={loadingOriginal}
-                onClick={() => void loadOriginal()}
+                aria-label="Уменьшить масштаб"
+                disabled={zoom <= 1}
+                onClick={() => updateZoom(zoom - 0.25)}
                 size="compact"
                 variant="quiet"
               >
-                {loadingOriginal
-                  ? "Загрузка оригинала…"
-                  : `Оригинал · ${formatProjectFileSize(file.byteSize)}`}
+                −
               </PrototypeButton>
-            ) : null}
+              <button
+                className={styles.viewerZoomValue}
+                onClick={() => resetImageViewport()}
+                type="button"
+              >
+                {Math.round(zoom * 100)}%
+              </button>
+              <PrototypeButton
+                aria-label="Увеличить масштаб"
+                disabled={zoom >= 4}
+                onClick={() => updateZoom(zoom + 0.25)}
+                size="compact"
+                variant="quiet"
+              >
+                +
+              </PrototypeButton>
+            </div>
+          ) : null}
+        </div>
+        <aside className={styles.viewerInfoPanel}>
+          <div className={styles.viewerInfoHeader}>
+            <span>
+              {index >= 0 ? `${index + 1} из ${files.length}` : "Файл"}
+            </span>
             <IconButton
-              disabled={!canNavigateBack}
-              icon={<UiIcon name="arrow-left" />}
-              label="Предыдущий файл"
-              onClick={() => onNavigate(-1)}
-              title="Предыдущий файл"
-              variant="ghost"
-            />
-            <IconButton
-              disabled={!canNavigateForward}
-              icon={<UiIcon name="arrow-right" />}
-              label="Следующий файл"
-              onClick={() => onNavigate(1)}
-              title="Следующий файл"
-              variant="ghost"
-            />
-            <IconButton
+              className={styles.viewerCloseButton}
               icon={<UiIcon name="close" />}
               label="Закрыть просмотр"
               onClick={onClose}
@@ -1704,109 +1807,36 @@ function ProjectFileViewer({
               variant="ghost"
             />
           </div>
-        </header>
-        <div className={styles.viewerContent}>
-          {fileUrl && isImage ? (
-            // eslint-disable-next-line @next/next/no-img-element -- original is an authenticated Blob URL.
-            <img
-              alt={file.name}
-              className={styles.viewerImage}
-              draggable={false}
-              onDoubleClick={() => updateZoom(zoom === 1 ? 2 : 1)}
-              onPointerDown={(event) => {
-                updatePointer(event);
-                event.currentTarget.setPointerCapture(event.pointerId);
-                if (activePointersRef.current.size === 2) {
-                  const distance = pointerDistance();
-                  if (distance !== null) pinchRef.current = { distance, zoom };
-                  return;
-                }
-                if (zoom === 1) return;
-                pointerStartRef.current = {
-                  x: event.clientX,
-                  y: event.clientY,
-                };
-                panStartRef.current = pan;
-              }}
-              onPointerMove={(event) => {
-                updatePointer(event);
-                if (activePointersRef.current.size === 2 && pinchRef.current) {
-                  const distance = pointerDistance();
-                  if (distance !== null) {
-                    updateZoom(
-                      pinchRef.current.zoom *
-                        (distance / pinchRef.current.distance),
-                    );
-                  }
-                  return;
-                }
-                const start = pointerStartRef.current;
-                if (!start || zoom === 1) return;
-                setPan({
-                  x: panStartRef.current.x + event.clientX - start.x,
-                  y: panStartRef.current.y + event.clientY - start.y,
-                });
-              }}
-              onPointerUp={(event) => {
-                activePointersRef.current.delete(event.pointerId);
-                if (activePointersRef.current.size < 2) pinchRef.current = null;
-                pointerStartRef.current = null;
-              }}
-              onPointerCancel={(event) => {
-                activePointersRef.current.delete(event.pointerId);
-                if (activePointersRef.current.size < 2) pinchRef.current = null;
-                pointerStartRef.current = null;
-              }}
-              onWheel={(event) => {
-                event.preventDefault();
-                updateZoom(zoom + (event.deltaY < 0 ? 0.2 : -0.2));
-              }}
-              src={fileUrl}
-              style={{
-                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-              }}
-            />
-          ) : fileUrl ? (
-            <iframe src={fileUrl} title={file.name} />
-          ) : loadError ? (
-            <div className={styles.viewerState} role="alert">
-              Не удалось открыть файл. Попробуйте ещё раз.
-            </div>
-          ) : (
-            <div className={styles.viewerState} role="status">
-              Открываем файл…
-            </div>
-          )}
-        </div>
-        {fileUrl && isImage ? (
-          <div className={styles.viewerZoomControls}>
-            <PrototypeButton
-              aria-label="Уменьшить масштаб"
-              disabled={zoom <= 1}
-              onClick={() => updateZoom(zoom - 0.25)}
-              size="compact"
-              variant="quiet"
-            >
-              −
-            </PrototypeButton>
-            <button
-              className={styles.viewerZoomValue}
-              onClick={() => resetImageViewport()}
-              type="button"
-            >
-              {Math.round(zoom * 100)}%
-            </button>
-            <PrototypeButton
-              aria-label="Увеличить масштаб"
-              disabled={zoom >= 4}
-              onClick={() => updateZoom(zoom + 0.25)}
-              size="compact"
-              variant="quiet"
-            >
-              +
-            </PrototypeButton>
+          <div className={styles.viewerInfoBody}>
+            <h2 id="project-file-viewer-title">{file.name}</h2>
+            <dl className={styles.viewerMetadata}>
+              <div>
+                <dt>Тип</dt>
+                <dd>{projectFileTypeLabel(file.mimeType)}</dd>
+              </div>
+              <div>
+                <dt>Размер</dt>
+                <dd>{formatProjectFileSize(file.byteSize)}</dd>
+              </div>
+              <div>
+                <dt>Изменён</dt>
+                <dd>{formatProjectFileDate(file.updatedAt)}</dd>
+              </div>
+            </dl>
           </div>
-        ) : null}
+          {isImage && !usingOriginal ? (
+            <div className={styles.viewerInfoActions}>
+              <PrototypeButton
+                disabled={loadingOriginal}
+                onClick={() => void loadOriginal()}
+                size="compact"
+                variant="quiet"
+              >
+                {loadingOriginal ? "Загрузка оригинала…" : "Открыть оригинал"}
+              </PrototypeButton>
+            </div>
+          ) : null}
+        </aside>
       </section>
     </div>
   );
