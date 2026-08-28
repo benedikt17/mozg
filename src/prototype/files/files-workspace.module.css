@@ -451,6 +451,11 @@
   aspect-ratio: 16 / 10;
 }
 
+.tilePreviewPdf,
+.fileGridLarge .tilePreviewPdf {
+  aspect-ratio: 1;
+}
+
 .tilePreview img {
   width: 100%;
   height: 100%;
@@ -479,16 +484,14 @@
 }
 
 .pdfTileBadge {
-  width: 58px;
-  min-height: 74px;
-  justify-self: center;
-  align-self: center;
-  border-radius: 5px;
-  background: #d92d20;
+  width: 100%;
+  min-height: 0;
+  height: 100%;
+  background: #e30613;
   color: white;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-size: clamp(28px, 4vw, 52px);
+  font-weight: 800;
+  letter-spacing: 0.06em;
 }
 
 .tileName,
@@ -730,6 +733,13 @@
 .previewActions {
   display: flex;
   margin-top: 16px;
+}
+
+.pdfCoverStatus {
+  margin: 10px 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .previewEmpty {

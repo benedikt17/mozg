@@ -10,6 +10,24 @@ select has_function(
 );
 select has_function(
   'public',
+  'reserve_project_file_pdf_cover',
+  array['uuid', 'text', 'uuid', 'bigint', 'integer', 'integer'],
+  'Project File PDF cover reserve RPC exists'
+);
+select has_function(
+  'public',
+  'finalize_project_file_pdf_cover',
+  array['uuid', 'text', 'uuid'],
+  'Project File PDF cover finalize RPC exists'
+);
+select has_function(
+  'public',
+  'fail_project_file_pdf_cover',
+  array['uuid', 'text', 'uuid', 'text'],
+  'Project File PDF cover failure RPC exists'
+);
+select has_function(
+  'public',
   'finalize_project_file_variant',
   array['uuid', 'text', 'uuid', 'integer'],
   'Project File variant finalize RPC exists'
@@ -20,9 +38,24 @@ select is(
   'variant reserve is SECURITY DEFINER'
 );
 select is(
+  (select prosecdef from pg_proc where oid = 'public.reserve_project_file_pdf_cover(uuid,text,uuid,bigint,integer,integer)'::regprocedure),
+  true,
+  'PDF cover reserve is SECURITY DEFINER'
+);
+select is(
   has_function_privilege('authenticated', 'public.reserve_project_file_variant(uuid,text,uuid,integer,bigint,integer,integer)', 'EXECUTE'),
   true,
   'authenticated clients receive the variant reserve grant'
+);
+select is(
+  has_function_privilege('authenticated', 'public.reserve_project_file_pdf_cover(uuid,text,uuid,bigint,integer,integer)', 'EXECUTE'),
+  true,
+  'authenticated clients receive the PDF cover reserve grant'
+);
+select is(
+  has_function_privilege('anon', 'public.reserve_project_file_pdf_cover(uuid,text,uuid,bigint,integer,integer)', 'EXECUTE'),
+  false,
+  'anonymous clients do not receive the PDF cover reserve grant'
 );
 select is(
   has_function_privilege('anon', 'public.reserve_project_file_variant(uuid,text,uuid,integer,bigint,integer,integer)', 'EXECUTE'),
@@ -192,11 +225,99 @@ select results_eq(
   'owner can finalize the exact reserved derivative after Storage metadata matches'
 );
 
+select results_eq(
+  $$ select kind || ':' || target_max_edge::text || ':' || (ready_at is null)::text
+     from public.reserve_project_file_pdf_cover(
+       '89000000-0000-4000-8000-000000000001'::uuid,
+       'project-a',
+       '8a000000-0000-4000-8000-000000000002'::uuid,
+       384, 512, 384
+     ) $$,
+  array['pdf-page-1:512:true'::text],
+  'owner can reserve a private first-page PDF cover'
+);
+select is(
+  (select count(*)::integer from public.file_variants
+    where file_id = '8a000000-0000-4000-8000-000000000002'::uuid
+      and processing_error is null),
+  1,
+  'editor can observe only the pending PDF cover status needed for retry'
+);
+select lives_ok(
+  $$ select public.fail_project_file_pdf_cover(
+       '89000000-0000-4000-8000-000000000001'::uuid,
+       'project-a',
+       '8a000000-0000-4000-8000-000000000002'::uuid,
+       'render-failed'
+     ) $$,
+  'owner can record a recoverable PDF cover failure'
+);
+select results_eq(
+  $$ select coalesce(processing_error, '')
+     from public.file_variants
+    where file_id = '8a000000-0000-4000-8000-000000000002'::uuid $$,
+  array['render-failed'::text],
+  'owner sees the PDF cover failure for retry'
+);
+select results_eq(
+  $$ select kind || ':' || coalesce(processing_error, '')
+     from public.reserve_project_file_pdf_cover(
+       '89000000-0000-4000-8000-000000000001'::uuid,
+       'project-a',
+       '8a000000-0000-4000-8000-000000000002'::uuid,
+       384, 512, 384
+     ) $$,
+  array['pdf-page-1:'::text],
+  'a PDF cover retry clears the recorded failure'
+);
+select lives_ok(
+  $$ insert into storage.objects (
+       id, bucket_id, name, owner, metadata, version, owner_id, user_metadata
+     ) values (
+       gen_random_uuid(),
+       'project-files',
+       '89000000-0000-4000-8000-000000000001/8a000000-0000-4000-8000-000000000002/variants/pdf-page-1.webp',
+       '88000000-0000-4000-8000-000000000001',
+       '{"mimetype":"image/webp","size":384}',
+       'project-file-pdf-cover-version',
+       '88000000-0000-4000-8000-000000000001',
+       '{}'
+     ) $$,
+  'owner can insert the exact pending PDF cover object through Storage RLS'
+);
+select results_eq(
+  $$ select kind || ':' || (ready_at is not null)::text
+     from public.finalize_project_file_pdf_cover(
+       '89000000-0000-4000-8000-000000000001'::uuid,
+       'project-a',
+       '8a000000-0000-4000-8000-000000000002'::uuid
+     ) $$,
+  array['pdf-page-1:true'::text],
+  'owner can finalize the PDF cover after private Storage metadata matches'
+);
+
 select set_config('request.jwt.claim.sub', '88000000-0000-4000-8000-000000000002', true);
+select throws_ok(
+  $$ select * from public.reserve_project_file_pdf_cover(
+       '89000000-0000-4000-8000-000000000001'::uuid,
+       'project-a',
+       '8a000000-0000-4000-8000-000000000002'::uuid,
+       384, 512, 384
+     ) $$,
+  '42501',
+  'Project file PDF cover access denied',
+  'viewer cannot reserve a PDF cover'
+);
 select is(
   (select count(*)::integer from public.file_variants where file_id = '8a000000-0000-4000-8000-000000000001'::uuid),
   1,
   'workspace viewer can read ready derivative metadata'
+);
+select is(
+  (select count(*)::integer from public.file_variants
+    where file_id = '8a000000-0000-4000-8000-000000000002'::uuid),
+  1,
+  'workspace viewer can read the ready PDF cover but not its pending state'
 );
 select is(
   (select count(*)::integer from storage.objects
