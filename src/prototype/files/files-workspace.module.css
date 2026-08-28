@@ -430,7 +430,7 @@
 }
 
 .fileTileSelected {
-  box-shadow: inset 2px 0 0 #ff5200;
+  box-shadow: inset 0 0 0 2px #ff5200;
 }
 
 .fileTilePending {
@@ -532,7 +532,7 @@
 }
 
 .entryRowSelected {
-  box-shadow: inset 2px 0 0 #ff5200;
+  box-shadow: inset 0 0 0 2px #ff5200;
 }
 
 .pendingEntryRow {
