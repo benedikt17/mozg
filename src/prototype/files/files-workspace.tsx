@@ -73,7 +73,6 @@ type ActiveProjectFileUpload = {
 const MOZG_FILE_DRAG_TYPE = "application/x-mozg-project-file-id";
 const PROJECT_FILE_PREVIEW_CACHE_LIMIT_BYTES = 96 * 1024 * 1024;
 const PROJECT_FILE_PREVIEW_CACHE_LIMIT_ENTRIES = 160;
-const PROJECT_FILE_PDF_COVER_CHANGED_EVENT = "mozg:project-file-pdf-cover";
 
 type ProjectFilePreviewCacheEntry = {
   blob: Blob;
@@ -1433,7 +1432,6 @@ export function FilesWorkspace({
                     file={file}
                     imageVariantRepository={imageVariantRepository}
                     key={`${file.id}:${viewMode}`}
-                    pdfPreviewRepository={pdfPreviewRepository}
                     projectId={projectId}
                     repository={repository}
                     targetMaxEdge={viewMode === "large-grid" ? 512 : 256}
@@ -1443,8 +1441,9 @@ export function FilesWorkspace({
                     {file.name}
                   </span>
                   <span className={styles.tileMeta}>
-                    {projectFileTypeLabel(file.mimeType)} ·{" "}
-                    {formatProjectFileSize(file.byteSize)}
+                    {file.mimeType === "application/pdf"
+                      ? formatProjectFileSize(file.byteSize)
+                      : `${projectFileTypeLabel(file.mimeType)} · ${formatProjectFileSize(file.byteSize)}`}
                   </span>
                 </button>
               ))}
@@ -1598,7 +1597,6 @@ function FolderHeaderActions({
 function ProjectFileThumbnail({
   repository,
   imageVariantRepository,
-  pdfPreviewRepository,
   workspaceId,
   projectId,
   file,
@@ -1606,7 +1604,6 @@ function ProjectFileThumbnail({
 }: {
   repository: ProjectFileRepository;
   imageVariantRepository: ProjectFileImageVariantRepository;
-  pdfPreviewRepository: ProjectFilePdfPreviewRepository;
   workspaceId?: string;
   projectId: string;
   file: ProjectFileRecord;
@@ -1616,16 +1613,12 @@ function ProjectFileThumbnail({
   const [isNearViewport, setIsNearViewport] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [pdfCoverStatus, setPdfCoverStatus] = useState<
-    "idle" | "processing" | "failed"
-  >("idle");
-  const [pdfCoverRefresh, setPdfCoverRefresh] = useState(0);
   const isImage = file.mimeType.startsWith("image/");
   const isPdf = file.mimeType === "application/pdf";
   const aspectRatio = getProjectFileAspectRatio(file);
 
   useEffect(() => {
-    if (!isImage && !isPdf) return;
+    if (!isImage) return;
     const element = targetRef.current;
     if (!element || typeof IntersectionObserver === "undefined") {
       setIsNearViewport(true);
@@ -1641,25 +1634,7 @@ function ProjectFileThumbnail({
     );
     observer.observe(element);
     return () => observer.disconnect();
-  }, [isImage, isPdf]);
-
-  useEffect(() => {
-    const refreshPdfCover = (event: Event) => {
-      const detail = (event as CustomEvent<{ fileId?: unknown }>).detail;
-      if (detail?.fileId === file.id) {
-        setPdfCoverRefresh((current) => current + 1);
-      }
-    };
-    window.addEventListener(
-      PROJECT_FILE_PDF_COVER_CHANGED_EVENT,
-      refreshPdfCover,
-    );
-    return () =>
-      window.removeEventListener(
-        PROJECT_FILE_PDF_COVER_CHANGED_EVENT,
-        refreshPdfCover,
-      );
-  }, [file.id]);
+  }, [isImage]);
 
   useEffect(() => {
     if (!isImage || !isNearViewport || !workspaceId) return;
@@ -1699,69 +1674,13 @@ function ProjectFileThumbnail({
     workspaceId,
   ]);
 
-  useEffect(() => {
-    if (!isPdf || !isNearViewport || !workspaceId) return;
-    let cancelled = false;
-    let objectUrl: string | null = null;
-    void (async () => {
-      try {
-        let cover = null;
-        try {
-          cover = await pdfPreviewRepository.getPdfCover({
-            workspaceId,
-            projectId,
-            fileId: file.id,
-          });
-        } catch {
-          // A Preview deployment may arrive before its schema migration. The
-          // authenticated original remains a safe client-side fallback.
-        }
-        if (cancelled) return;
-        if (cover?.readyAt === null) {
-          setPdfCoverStatus(cover.processingError ? "failed" : "processing");
-        }
-        const blob = cover?.readyAt
-          ? await loadCachedProjectFilePdfCover({
-              pdfPreviewRepository,
-              workspaceId,
-              projectId,
-              fileId: file.id,
-            })
-          : await renderCachedProjectFilePdfCover({
-              repository,
-              workspaceId,
-              projectId,
-              fileId: file.id,
-            });
-        if (cancelled || blob === null) return;
-        objectUrl = URL.createObjectURL(blob);
-        setImageUrl(objectUrl);
-      } catch {
-        if (!cancelled) setPdfCoverStatus("failed");
-      }
-    })();
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [
-    file.id,
-    isNearViewport,
-    isPdf,
-    pdfCoverRefresh,
-    pdfPreviewRepository,
-    projectId,
-    repository,
-    workspaceId,
-  ]);
-
   return (
     <div
-      className={styles.tilePreview}
+      className={`${styles.tilePreview} ${isPdf ? styles.tilePreviewPdf : ""}`}
       ref={targetRef}
-      style={aspectRatio ? { aspectRatio } : undefined}
+      style={isPdf || !aspectRatio ? undefined : { aspectRatio }}
     >
-      {isImage || (isPdf && imageUrl) ? (
+      {isImage ? (
         imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- authenticated variant Blob URL.
           <img alt="" loading="lazy" src={imageUrl} />
@@ -1771,18 +1690,7 @@ function ProjectFileThumbnail({
           <span className={styles.tileLoading}>Загрузка…</span>
         )
       ) : isPdf ? (
-        <span
-          className={styles.pdfTileBadge}
-          title={
-            pdfCoverStatus === "processing"
-              ? "Обложка PDF подготавливается"
-              : pdfCoverStatus === "failed"
-                ? "Не удалось подготовить обложку PDF"
-                : "PDF"
-          }
-        >
-          {pdfCoverStatus === "processing" ? "…" : "PDF"}
-        </span>
+        <span className={styles.pdfTileBadge}>PDF</span>
       ) : (
         <UiIcon name="file" />
       )}
@@ -2327,11 +2235,6 @@ function ProjectFilePreview({
       });
       cacheProjectFilePreview(cacheKey, generated.blob);
       setPdfCoverRefresh((current) => current + 1);
-      window.dispatchEvent(
-        new CustomEvent(PROJECT_FILE_PDF_COVER_CHANGED_EVENT, {
-          detail: { fileId: file.id },
-        }),
-      );
     } catch {
       setPdfCoverStatus("failed");
       setPdfCoverError("Не удалось подготовить обложку. Попробуйте ещё раз.");
