@@ -778,6 +778,7 @@
   height: 100%;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 292px;
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
   border: 0;
   border-radius: 0;
@@ -788,6 +789,7 @@
   position: relative;
   min-width: 0;
   min-height: 0;
+  height: 100%;
   display: grid;
   overflow: hidden;
 }
@@ -795,9 +797,12 @@
 .viewerContent {
   min-width: 0;
   min-height: 0;
+  width: 100%;
+  height: 100%;
   display: grid;
   overflow: hidden;
   place-items: center;
+  box-sizing: border-box;
   padding: 32px 92px 58px;
   background: radial-gradient(
     circle at center,
@@ -807,10 +812,12 @@
 }
 
 .viewerImage {
+  display: block;
   width: auto;
   height: auto;
   max-width: 100%;
   max-height: 100%;
+  object-fit: contain;
   touch-action: none;
   user-select: none;
   will-change: transform;
@@ -847,6 +854,15 @@
   color: rgb(255 255 255 / 92%);
   backdrop-filter: blur(10px);
   transform: translateY(-50%);
+}
+
+.viewerNavigationBack.viewerNavigationBack,
+.viewerNavigationForward.viewerNavigationForward {
+  display: grid;
+  place-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
 }
 
 .viewerNavigationBack {
@@ -897,17 +913,22 @@
   line-height: 18px;
 }
 
-.viewerCloseButton {
+.viewerCloseButton.viewerCloseButton {
   width: 46px;
   min-width: 46px;
   height: 46px;
   min-height: 46px;
+  display: grid;
+  place-items: center;
+  justify-content: center;
   border: 1px solid transparent;
   border-radius: 50%;
+  padding: 0;
+  line-height: 1;
   color: rgb(255 255 255 / 88%);
 }
 
-.viewerCloseButton:hover {
+.viewerCloseButton.viewerCloseButton:hover {
   border-color: rgb(255 255 255 / 26%);
   background: rgb(255 255 255 / 11%);
   color: white;
@@ -994,7 +1015,21 @@
 
 .viewerZoomControls :global(.ui-button) {
   min-width: 30px;
+  border-color: transparent;
+  background: transparent;
   color: #f4f4f2;
+}
+
+.viewerZoomControls :global(.ui-button.ui-button-quiet) {
+  border-color: transparent;
+  background: transparent;
+  color: #f4f4f2;
+}
+
+.viewerZoomControls :global(.ui-button.ui-button-quiet:hover:not(:disabled)) {
+  border-color: transparent;
+  background: rgb(255 255 255 / 16%);
+  color: white;
 }
 
 .viewerZoomValue {

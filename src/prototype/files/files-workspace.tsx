@@ -11,6 +11,7 @@ import { SupabaseProjectFileRepository } from "@/lib/files/cloud-project-file-re
 import { generateAndStoreProjectFileImageVariantsBestEffort } from "@/lib/files/project-file-image-variant-generation";
 import {
   chooseProjectFilePreviewVariant,
+  PROJECT_FILE_PREVIEW_PREFERRED_MAX_EDGE,
   type ProjectFileImageVariantMetadata,
   type ProjectFileImageVariantRepository,
 } from "@/lib/files/project-file-image-variants";
@@ -63,6 +64,136 @@ type ActiveProjectFileUpload = {
 };
 
 const MOZG_FILE_DRAG_TYPE = "application/x-mozg-project-file-id";
+const PROJECT_FILE_PREVIEW_CACHE_LIMIT_BYTES = 96 * 1024 * 1024;
+const PROJECT_FILE_PREVIEW_CACHE_LIMIT_ENTRIES = 160;
+
+type ProjectFilePreviewCacheEntry = {
+  blob: Blob;
+  lastUsedAt: number;
+};
+
+const projectFilePreviewCache = new Map<string, ProjectFilePreviewCacheEntry>();
+const projectFilePreviewLoads = new Map<string, Promise<Blob>>();
+
+function projectFilePreviewCacheKey({
+  workspaceId,
+  projectId,
+  fileId,
+  targetMaxEdge,
+}: {
+  workspaceId: string;
+  projectId: string;
+  fileId: string;
+  targetMaxEdge: number;
+}): string {
+  return [workspaceId, projectId, fileId, targetMaxEdge].join(":");
+}
+
+function getCachedProjectFilePreview(key: string): Blob | null {
+  const cached = projectFilePreviewCache.get(key);
+  if (!cached) return null;
+  cached.lastUsedAt = Date.now();
+  return cached.blob;
+}
+
+function cacheProjectFilePreview(key: string, blob: Blob): void {
+  if (blob.size > PROJECT_FILE_PREVIEW_CACHE_LIMIT_BYTES) return;
+
+  projectFilePreviewCache.set(key, { blob, lastUsedAt: Date.now() });
+
+  let cachedBytes = [...projectFilePreviewCache.values()].reduce(
+    (total, entry) => total + entry.blob.size,
+    0,
+  );
+  const oldestFirst = [...projectFilePreviewCache.entries()].sort(
+    ([, left], [, right]) => left.lastUsedAt - right.lastUsedAt,
+  );
+
+  while (
+    (cachedBytes > PROJECT_FILE_PREVIEW_CACHE_LIMIT_BYTES ||
+      projectFilePreviewCache.size >
+        PROJECT_FILE_PREVIEW_CACHE_LIMIT_ENTRIES) &&
+    oldestFirst.length > 0
+  ) {
+    const [oldestKey, oldestEntry] = oldestFirst.shift()!;
+    projectFilePreviewCache.delete(oldestKey);
+    cachedBytes -= oldestEntry.blob.size;
+  }
+}
+
+async function loadCachedProjectFileImagePreview({
+  repository,
+  imageVariantRepository,
+  workspaceId,
+  projectId,
+  fileId,
+  targetMaxEdge,
+}: {
+  repository: ProjectFileRepository;
+  imageVariantRepository: ProjectFileImageVariantRepository;
+  workspaceId: string;
+  projectId: string;
+  fileId: string;
+  targetMaxEdge: number;
+}): Promise<Blob> {
+  const cacheKey = projectFilePreviewCacheKey({
+    workspaceId,
+    projectId,
+    fileId,
+    targetMaxEdge,
+  });
+  const cached = getCachedProjectFilePreview(cacheKey);
+  if (cached) return cached;
+
+  const pending = projectFilePreviewLoads.get(cacheKey);
+  if (pending) return pending;
+
+  const load = (async () => {
+    let variants: ProjectFileImageVariantMetadata[] = [];
+    try {
+      variants = await imageVariantRepository.listImageVariants({
+        workspaceId,
+        projectId,
+        fileId,
+      });
+    } catch {
+      // Derived images are an optional cache; the source remains the fallback.
+    }
+
+    const preferred = chooseProjectFilePreviewVariant(variants, targetMaxEdge);
+    if (preferred) {
+      try {
+        const variant = await imageVariantRepository.loadImageVariant({
+          workspaceId,
+          projectId,
+          fileId,
+          targetMaxEdge: preferred.targetMaxEdge,
+        });
+        if (variant) {
+          cacheProjectFilePreview(cacheKey, variant.blob);
+          return variant.blob;
+        }
+      } catch {
+        // A stale derivative must never make the original unavailable.
+      }
+    }
+
+    const original = await repository.downloadFile({
+      workspaceId,
+      projectId,
+      fileId,
+    });
+    cacheProjectFilePreview(cacheKey, original.blob);
+    return original.blob;
+  })();
+
+  projectFilePreviewLoads.set(cacheKey, load);
+  try {
+    return await load;
+  } finally {
+    projectFilePreviewLoads.delete(cacheKey);
+  }
+}
 
 export function FilesWorkspace({
   workspaceId,
@@ -1408,45 +1539,16 @@ function ProjectFileThumbnail({
 
     void (async () => {
       try {
-        let variants: ProjectFileImageVariantMetadata[] = [];
-        try {
-          variants = await imageVariantRepository.listImageVariants({
-            workspaceId,
-            projectId,
-            fileId: file.id,
-          });
-        } catch {
-          // Derived images are an optional cache; use the source if unavailable.
-        }
-        const preferred = chooseProjectFilePreviewVariant(
-          variants,
-          targetMaxEdge,
-        );
-        if (preferred) {
-          try {
-            const variant = await imageVariantRepository.loadImageVariant({
-              workspaceId,
-              projectId,
-              fileId: file.id,
-              targetMaxEdge: preferred.targetMaxEdge,
-            });
-            if (cancelled) return;
-            if (variant) {
-              objectUrl = URL.createObjectURL(variant.blob);
-              setImageUrl(objectUrl);
-              return;
-            }
-          } catch {
-            // A stale derivative must never make the original unavailable.
-          }
-        }
-        const original = await repository.downloadFile({
+        const blob = await loadCachedProjectFileImagePreview({
+          repository,
+          imageVariantRepository,
           workspaceId,
           projectId,
           fileId: file.id,
+          targetMaxEdge,
         });
         if (cancelled) return;
-        objectUrl = URL.createObjectURL(original.blob);
+        objectUrl = URL.createObjectURL(blob);
         setImageUrl(objectUrl);
       } catch {
         if (!cancelled) setLoadError(true);
@@ -1886,44 +1988,16 @@ function ProjectFilePreview({
 
     void (async () => {
       try {
-        let variants: ProjectFileImageVariantMetadata[] = [];
-        try {
-          variants = await imageVariantRepository.listImageVariants({
-            workspaceId,
-            projectId,
-            fileId: file.id,
-          });
-        } catch {
-          // Variant cache is optional. A ready original remains the fallback.
-        }
-        const preferred = chooseProjectFilePreviewVariant(variants);
-        if (preferred) {
-          try {
-            const variant = await imageVariantRepository.loadImageVariant({
-              workspaceId,
-              projectId,
-              fileId: file.id,
-              targetMaxEdge: preferred.targetMaxEdge,
-            });
-            if (cancelled) return;
-            if (variant) {
-              objectUrl = URL.createObjectURL(variant.blob);
-              setImageUrl(objectUrl);
-              return;
-            }
-          } catch {
-            // A stale/missing disposable derivative falls back to the original.
-          }
-        }
-
-        if (cancelled) return;
-        const original = await repository.downloadFile({
+        const blob = await loadCachedProjectFileImagePreview({
+          repository,
+          imageVariantRepository,
           workspaceId,
           projectId,
           fileId: file.id,
+          targetMaxEdge: PROJECT_FILE_PREVIEW_PREFERRED_MAX_EDGE,
         });
         if (cancelled) return;
-        objectUrl = URL.createObjectURL(original.blob);
+        objectUrl = URL.createObjectURL(blob);
         setImageUrl(objectUrl);
       } catch {
         if (!cancelled) setLoadError(true);
