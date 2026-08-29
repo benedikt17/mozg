@@ -11,6 +11,9 @@ describe("desktop Canvas composition", () => {
       "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
     );
     const sidebar = source("src/prototype/canvases/canvas-groups-sidebar.tsx");
+    const toolbar = source(
+      "src/prototype/canvases/canvas-desktop-composition.tsx",
+    );
 
     expect(shell).toContain("<CanvasDesktopSidebar");
     expect(shell).toContain("groups={groups}");
@@ -32,6 +35,12 @@ describe("desktop Canvas composition", () => {
     expect(sidebar).not.toContain("knowledge-tree");
     expect(shell).toContain("desktopCanvasPageSidebarCollapsed");
     expect(shell).toContain("onToggleSidebar");
+    expect(shell).toContain("const canvasBreadcrumb = useMemo");
+    expect(shell).toContain("highlightedCanvasGroupId");
+    expect(sidebar).toContain("highlightedGroupId");
+    expect(sidebar).toContain("effectiveExpandedGroupIds");
+    expect(sidebar).toContain("canvasTreeRowBreadcrumbTarget");
+    expect(toolbar).toContain('aria-label="Путь к текущему холсту"');
   });
 
   it("keeps the isolated route independent from the desktop composition", () => {

@@ -900,6 +900,49 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.canvasBreadcrumb {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  color: var(--text-2, #52524c);
+}
+.canvasBreadcrumbItem {
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  line-height: inherit;
+  padding: 2px 3px;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.canvasBreadcrumbItem:hover,
+.canvasBreadcrumbItem:focus-visible,
+.canvasBreadcrumbItemSelected {
+  color: #ea580c;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.canvasBreadcrumbSeparator {
+  flex: 0 0 auto;
+  color: var(--text-3, #7a7a72);
+}
+.canvasToolbarSaveState {
+  flex: 0 0 auto;
+  margin-left: 5px;
+  color: var(--text-3, #7a7a72);
+}
+.canvasToolbarSaveStateSaved {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #65a30d;
+}
 .desktopCanvasToolbarStatusConflict {
   color: #a15c00;
 }
@@ -1134,6 +1177,11 @@
 .canvasTreeRowDropTarget {
   background: color-mix(in srgb, var(--accent, #8a6d3b) 10%, transparent);
   box-shadow: inset 0 0 0 1px var(--accent, #8a6d3b);
+}
+.canvasTreeRowBreadcrumbTarget {
+  background: color-mix(in srgb, #f97316 10%, transparent);
+  box-shadow: inset 0 0 0 2px #f97316;
+  color: #9a3412;
 }
 .canvasTreeSelect {
   min-width: 0;
