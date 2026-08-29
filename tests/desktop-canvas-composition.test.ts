@@ -92,6 +92,12 @@ describe("desktop Canvas composition", () => {
     expect(shell).toContain("const transientNodes = applyNodeChanges(");
     expect(shell).toContain("canvasDocumentToEdges(");
     expect(shell).toContain("canonical.filter((edge) => !known.has(edge.id))");
+    expect(toolbar).toContain('label="Открыть статью"');
+    expect(toolbar).toContain('aria-label="Открыть статью"');
+    expect(toolbar).toContain("articlePickerPanelRef");
+    expect(shell).toContain("saveOpenArticleId");
+    expect(shell).toContain("canvas-article-reader");
+    expect(shell).toContain("MarkdownDocumentPreview");
   });
 
   it("uses one centered fixed-size trigger primitive for Canvas and group rows", () => {

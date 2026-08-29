@@ -31,7 +31,7 @@ const CANVAS_SUMMARY_SELECT =
 const CANVAS_LOAD_SELECT =
   "id,workspace_id,title,schema_version,document,revision,created_at,updated_at,deleted_at";
 const VIEW_STATE_SELECT =
-  "canvas_id,user_id,viewport_x,viewport_y,zoom,updated_at";
+  "canvas_id,user_id,viewport_x,viewport_y,zoom,open_article_id,updated_at";
 const CANVAS_GROUP_SELECT =
   "id,workspace_id,parent_group_id,title,sort_order,created_at,updated_at,deleted_at";
 
@@ -87,6 +87,7 @@ export type CloudCanvasSaveResult =
 
 export type CloudCanvasViewState = {
   canvasId: string;
+  openArticleId?: string | null;
   userId: string;
   viewportX: number;
   viewportY: number;
@@ -97,6 +98,7 @@ export type CloudCanvasViewState = {
 export type SaveCanvasViewStateInput = {
   workspaceId: string;
   canvasId: string;
+  openArticleId?: string | null;
   viewportX: number;
   viewportY: number;
   zoom: number;
@@ -190,6 +192,11 @@ function inputViewport(input: SaveCanvasViewStateInput): void {
       "Canvas viewport is invalid.",
     );
   }
+}
+
+function inputOpenArticleId(value: string | null | undefined): void {
+  if (value === null || value === undefined) return;
+  inputIdentifier(value, "openArticleId");
 }
 
 function serverString(value: unknown, field: string): string {
@@ -419,8 +426,13 @@ function mapViewState(value: unknown, canvasId: string): CloudCanvasViewState {
       "Cloud Canvas view state has invalid viewport values.",
     );
   }
+  const openArticleId =
+    value.open_article_id === null || value.open_article_id === undefined
+      ? null
+      : serverIdentifier(value.open_article_id, "open_article_id");
   return {
     canvasId: rowCanvasId,
+    openArticleId,
     userId: serverIdentifier(value.user_id, "user_id"),
     viewportX: value.viewport_x,
     viewportY: value.viewport_y,
@@ -856,6 +868,7 @@ export class SupabaseCloudCanvasRepository
       const workspaceId = inputIdentifier(input.workspaceId, "workspaceId");
       const canvasId = inputIdentifier(input.canvasId, "canvasId");
       inputViewport(input);
+      inputOpenArticleId(input.openArticleId);
       await this.loadCanvas(workspaceId, canvasId);
       const userId = await authenticatedUserId(this.supabase);
       const { error } = await this.supabase.from("canvas_view_states").upsert(
@@ -865,6 +878,7 @@ export class SupabaseCloudCanvasRepository
           viewport_x: input.viewportX,
           viewport_y: input.viewportY,
           zoom: input.zoom,
+          open_article_id: input.openArticleId ?? null,
         },
         { onConflict: "canvas_id,user_id" },
       );

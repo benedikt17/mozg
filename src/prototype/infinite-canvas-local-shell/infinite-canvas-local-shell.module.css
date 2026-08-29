@@ -1566,7 +1566,8 @@
   grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
 }
-.pdfReader {
+.pdfReader,
+.articleReader {
   position: fixed;
   inset: 0 0 0 auto;
   z-index: 90;
@@ -1639,6 +1640,20 @@
   border: 0;
   background: #fff;
 }
+.articleReaderDocument {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+}
+.articleReaderMissing {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  color: var(--text-3, #7a7a72);
+  text-align: center;
+}
 .pdfNodeFrame .nodeBody {
   border: 1px solid var(--border, #deddd8);
   border-radius: var(--radius-lg, 8px);
@@ -1684,7 +1699,8 @@
   line-height: 24px;
 }
 @media (max-width: 900px) {
-  .pdfReader {
+  .pdfReader,
+  .articleReader {
     inset: 0;
     width: 100vw;
     border-left: 0;

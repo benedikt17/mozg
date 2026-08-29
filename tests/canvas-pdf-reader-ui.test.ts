@@ -57,10 +57,14 @@ describe("Canvas PDF reader UI", () => {
     const shellStyles = source("src/prototype/desktop-shell.css");
 
     expect(shell).toContain("canvas-pdf-reader");
-    expect(readerStyles).toMatch(/\.pdfReader\s*\{[^}]*position: fixed;/u);
-    expect(readerStyles).toMatch(/\.pdfReader\s*\{[^}]*inset: 0 0 0 auto;/u);
+    expect(readerStyles).toMatch(
+      /\.pdfReader,\s*\.articleReader\s*\{[^}]*position: fixed;/u,
+    );
+    expect(readerStyles).toMatch(
+      /\.pdfReader,\s*\.articleReader\s*\{[^}]*inset: 0 0 0 auto;/u,
+    );
     expect(shellStyles).toContain(
-      ":scope:has(.canvas-pdf-reader) .project-workspace",
+      ":scope:has(.canvas-pdf-reader, .canvas-article-reader) .project-workspace",
     );
     expect(shellStyles).toContain(
       "padding-right: var(--canvas-pdf-reader-width);",
@@ -79,7 +83,7 @@ describe("Canvas PDF reader UI", () => {
     expect(shell).not.toContain("beginPdfReaderResize");
     expect(readerStyles).not.toContain(".pdfReaderResizeHandle");
     expect(readerStyles).toMatch(
-      /\.pdfReader\s*\{[^}]*width: var\(--canvas-pdf-reader-width, 50vw\);/u,
+      /\.pdfReader,\s*\.articleReader\s*\{[^}]*width: var\(--canvas-pdf-reader-width, 50vw\);/u,
     );
   });
 

@@ -63,9 +63,16 @@ export function getActiveProjectDocuments(
   state: DesktopPrototypeState,
   projectId = state.activeProjectId,
 ): PrototypeDocument[] {
-  return getProjectDocuments(state, projectId).filter(
-    (document) => document.deletedAt === undefined,
-  );
+  return getActiveProjectDocumentsForProject(state.documents, projectId);
+}
+
+export function getActiveProjectDocumentsForProject(
+  documents: readonly PrototypeDocument[],
+  projectId: string,
+): PrototypeDocument[] {
+  return documents
+    .filter((document) => document.projectId === projectId)
+    .filter((document) => document.deletedAt === undefined);
 }
 
 export function getActiveDocumentById(

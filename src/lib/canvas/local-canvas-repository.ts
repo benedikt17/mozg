@@ -115,6 +115,7 @@ export interface CanvasRepository {
 }
 export type CanvasViewState = {
   canvasId: string;
+  openArticleId?: string | null;
   userId: string;
   viewportX: number;
   viewportY: number;
@@ -431,6 +432,15 @@ function viewport(value: Pick<CanvasViewport, "x" | "y" | "zoom">): void {
       "Canvas viewport is invalid.",
     );
 }
+function openArticleId(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string")
+    throw new CanvasRepositoryError(
+      "invalid-input",
+      "openArticleId is invalid.",
+    );
+  return identifier(value, "openArticleId");
+}
 function supportedMime(value: unknown): value is ImageMimeType {
   return (
     typeof value === "string" &&
@@ -661,6 +671,7 @@ function storedViewState(value: unknown): StoredViewState {
   return {
     key: key(canvasId, userId),
     canvasId,
+    openArticleId: openArticleId(value.openArticleId),
     userId,
     viewportX: value.viewportX,
     viewportY: value.viewportY,
@@ -1317,6 +1328,7 @@ export class IndexedDbCanvasRepository
   async saveViewState(input: CanvasViewState): Promise<void> {
     identifier(input.canvasId, "canvasId");
     identifier(input.userId, "userId");
+    openArticleId(input.openArticleId);
     viewport({ x: input.viewportX, y: input.viewportY, zoom: input.zoom });
     const updatedAt = inputTimestamp(input.updatedAt);
     const db = await this.open();

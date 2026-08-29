@@ -2,6 +2,7 @@ import { createPortal } from "react-dom";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { CanvasTaskProjection } from "@/lib/canvas/canvas-task-bridge";
 import type { ProjectFileRecord } from "@/lib/files/project-file-repository";
+import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
 import { CanvasProjectFilePicker } from "@/prototype/canvases/canvas-project-file-picker";
 import { CanvasAutoLayoutButton } from "@/prototype/canvases/canvas-auto-layout-button";
 import type { CanvasBreadcrumbSegment } from "@/prototype/canvases/canvas-breadcrumb";
@@ -372,6 +373,7 @@ export function CanvasDesktopToolbar({
   onAddRectangle,
   onAddCircle,
   onCloseFilePicker,
+  onCloseArticlePicker,
   onCloseTaskPicker,
   onFileQueryChange,
   onKeepLocalChanges,
@@ -380,9 +382,12 @@ export function CanvasDesktopToolbar({
   onRestoreLocalDraft,
   onRetry,
   onSelectFile,
+  onSelectArticle,
   onSelectTask,
+  onArticleQueryChange,
   onTaskQueryChange,
   onToggleFilePicker,
+  onToggleArticlePicker,
   onToggleSidebar,
   onToggleTaskPicker,
   onUndo,
@@ -392,6 +397,10 @@ export function CanvasDesktopToolbar({
   fileSearchStatus,
   fileToolsReady,
   conflictDraftAvailable,
+  articlePickerOpen,
+  articleQuery,
+  articleResults,
+  articleToolsReady,
   sidebarOpen,
   status,
   taskPickerOpen,
@@ -417,6 +426,7 @@ export function CanvasDesktopToolbar({
   onAddRectangle: () => void;
   onAddCircle: () => void;
   onCloseFilePicker: () => void;
+  onCloseArticlePicker: () => void;
   onCloseTaskPicker: () => void;
   onFileQueryChange: (query: string) => void;
   onKeepLocalChanges: () => void;
@@ -425,9 +435,12 @@ export function CanvasDesktopToolbar({
   onRestoreLocalDraft: () => void;
   onRetry: () => void;
   onSelectFile: (file: ProjectFileRecord) => void;
+  onSelectArticle: (article: PrototypeDocument) => void;
   onSelectTask: (task: CanvasTaskProjection) => void;
+  onArticleQueryChange: (query: string) => void;
   onTaskQueryChange: (query: string) => void;
   onToggleFilePicker: () => void;
+  onToggleArticlePicker: () => void;
   onToggleSidebar: () => void;
   onToggleTaskPicker: () => void;
   onUndo: () => void;
@@ -437,6 +450,10 @@ export function CanvasDesktopToolbar({
   fileSearchStatus: "idle" | "loading" | "ready" | "error";
   fileToolsReady: boolean;
   conflictDraftAvailable: boolean;
+  articlePickerOpen: boolean;
+  articleQuery: string;
+  articleResults: readonly PrototypeDocument[];
+  articleToolsReady: boolean;
   sidebarOpen: boolean;
   status: LocalCanvasShellStatus;
   taskPickerOpen: boolean;
@@ -449,7 +466,13 @@ export function CanvasDesktopToolbar({
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const taskPickerTriggerRef = useRef<HTMLDivElement>(null);
   const taskPickerPanelRef = useRef<HTMLDivElement>(null);
+  const articlePickerTriggerRef = useRef<HTMLDivElement>(null);
+  const articlePickerPanelRef = useRef<HTMLDivElement>(null);
   const [taskPickerPosition, setTaskPickerPosition] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+  const [articlePickerPosition, setArticlePickerPosition] = useState<{
     top: number;
     left: number;
   } | null>(null);
@@ -502,6 +525,42 @@ export function CanvasDesktopToolbar({
       window.removeEventListener("pointerdown", onPointerDown);
     };
   }, [onCloseTaskPicker, taskPickerOpen]);
+
+  useEffect(() => {
+    if (!articlePickerOpen) return;
+    const updatePosition = (): void => {
+      const trigger = articlePickerTriggerRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const width = Math.min(340, window.innerWidth - 32);
+      setArticlePickerPosition({
+        top: rect.bottom + 8,
+        left: Math.max(
+          16,
+          Math.min(rect.right - width, window.innerWidth - width - 16),
+        ),
+      });
+    };
+    const onPointerDown = (event: PointerEvent): void => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (
+        articlePickerTriggerRef.current?.contains(target) ||
+        articlePickerPanelRef.current?.contains(target)
+      )
+        return;
+      onCloseArticlePicker();
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [articlePickerOpen, onCloseArticlePicker]);
 
   return (
     <div
@@ -709,6 +768,77 @@ export function CanvasDesktopToolbar({
                           <strong>{task.title}</strong>
                           <span>
                             {task.completed ? "Выполнено" : "В работе"}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>,
+                document.body,
+              )
+            : null}
+        </div>
+        <div
+          className={styles.desktopCanvasTaskPicker}
+          ref={articlePickerTriggerRef}
+        >
+          <IconButton
+            aria-expanded={articlePickerOpen}
+            disabled={!isReady || !articleToolsReady}
+            icon={<UiIcon name="file" />}
+            label="Открыть статью"
+            onClick={onToggleArticlePicker}
+            title="Открыть статью"
+            variant="quiet"
+          />
+          {articlePickerOpen && articlePickerPosition
+            ? createPortal(
+                <div
+                  aria-label="Открыть статью"
+                  className={styles.desktopCanvasTaskPickerPanel}
+                  ref={articlePickerPanelRef}
+                  role="dialog"
+                  style={articlePickerPosition}
+                >
+                  <div className={styles.desktopCanvasTaskPickerHeader}>
+                    <strong>Открыть статью</strong>
+                    <IconButton
+                      icon={<UiIcon name="close" />}
+                      label="Закрыть выбор статьи"
+                      onClick={onCloseArticlePicker}
+                      title="Закрыть выбор статьи"
+                      variant="ghost"
+                    />
+                  </div>
+                  <input
+                    aria-label="Поиск статей"
+                    autoFocus
+                    onChange={(event) =>
+                      onArticleQueryChange(event.target.value)
+                    }
+                    placeholder="Поиск по названию"
+                    type="search"
+                    value={articleQuery}
+                  />
+                  <div className={styles.desktopCanvasTaskPickerResults}>
+                    {articleResults.length === 0 ? (
+                      <p>
+                        {articleQuery.trim()
+                          ? "Совпадений нет"
+                          : "В этом проекте нет статей"}
+                      </p>
+                    ) : (
+                      articleResults.map((article) => (
+                        <button
+                          key={article.id}
+                          onClick={() => onSelectArticle(article)}
+                          type="button"
+                        >
+                          <strong>{article.title}</strong>
+                          <span>
+                            {article.folderPath?.join(" / ") ||
+                              article.folder ||
+                              "Корень"}
                           </span>
                         </button>
                       ))

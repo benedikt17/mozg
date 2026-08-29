@@ -179,7 +179,11 @@ import {
   plainTextFromClipboard,
   commitTextMarkdown,
 } from "@/lib/canvas/text-canvas-interactions";
-import { MarkdownStringPreview } from "@/prototype/knowledge/markdown-document-preview";
+import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
+import {
+  MarkdownDocumentPreview,
+  MarkdownStringPreview,
+} from "@/prototype/knowledge/markdown-document-preview";
 import type {
   CanvasTaskBridge,
   CanvasTaskProjection,
@@ -1500,6 +1504,7 @@ function InfiniteCanvasLocalShellSurface({
   embedded = false,
   copy,
   groupRepository,
+  knowledgeArticles = [],
   projectFileRepository,
   projectFileVariantRepository,
   projectId,
@@ -1516,6 +1521,7 @@ function InfiniteCanvasLocalShellSurface({
   embedded?: boolean;
   copy: CanvasShellCopy;
   groupRepository?: CanvasGroupRepository;
+  knowledgeArticles?: readonly PrototypeDocument[];
   projectFileRepository?: ProjectFileRepository;
   projectFileVariantRepository?: ProjectFileImageVariantRepository;
   projectId?: string;
@@ -1614,6 +1620,8 @@ function InfiniteCanvasLocalShellSurface({
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [taskQuery, setTaskQuery] = useState("");
   const [taskResults, setTaskResults] = useState<CanvasTaskProjection[]>([]);
+  const [articlePickerOpen, setArticlePickerOpen] = useState(false);
+  const [articleQuery, setArticleQuery] = useState("");
   const [filePickerOpen, setFilePickerOpen] = useState(false);
   const [openPdf, setOpenPdf] = useState<{
     fileId: string;
@@ -1622,6 +1630,22 @@ function InfiniteCanvasLocalShellSurface({
     objectUrl: string;
   } | null>(null);
   const [pdfFullscreen, setPdfFullscreen] = useState(false);
+  const articleResults = useMemo(() => {
+    const normalizedQuery = articleQuery.trim().toLocaleLowerCase("ru");
+    if (!normalizedQuery) return knowledgeArticles;
+    return knowledgeArticles.filter((article) =>
+      article.title.toLocaleLowerCase("ru").includes(normalizedQuery),
+    );
+  }, [articleQuery, knowledgeArticles]);
+  const openArticle = useMemo(
+    () =>
+      shellState.openArticleId
+        ? (knowledgeArticles.find(
+            (article) => article.id === shellState.openArticleId,
+          ) ?? null)
+        : null,
+    [knowledgeArticles, shellState.openArticleId],
+  );
   const renderedNodes = useMemo<CanvasFlowNode[]>(() => {
     const openNodeId = openPdf?.nodeId;
     if (!openNodeId) return nodes;
@@ -1919,6 +1943,15 @@ function InfiniteCanvasLocalShellSurface({
   const syncState = useCallback(
     () => setShellState(controller.state),
     [controller],
+  );
+
+  const saveOpenArticleId = useCallback(
+    (openArticleId: string | null) => {
+      const save = controller.saveOpenArticleId(openArticleId);
+      syncState();
+      void save.catch(syncState);
+    },
+    [controller, syncState],
   );
 
   const saveConflictDraft = useCallback(
@@ -3826,6 +3859,7 @@ function InfiniteCanvasLocalShellSurface({
           projectId,
           fileId: node.data.fileId,
         });
+        saveOpenArticleId(null);
         setPdfFullscreen(false);
         setOpenPdf((current) => {
           if (current) URL.revokeObjectURL(current.objectUrl);
@@ -3844,7 +3878,7 @@ function InfiniteCanvasLocalShellSurface({
         }));
       }
     },
-    [projectFileRepository, projectId, shellWorkspaceId],
+    [projectFileRepository, projectId, saveOpenArticleId, shellWorkspaceId],
   );
 
   const closePdfReader = useCallback(() => {
@@ -4561,6 +4595,10 @@ function InfiniteCanvasLocalShellSurface({
       copy={copy}
       error={shellState.error}
       conflictDraftAvailable={conflictDraftAvailable}
+      articlePickerOpen={articlePickerOpen}
+      articleQuery={articleQuery}
+      articleResults={articleResults}
+      articleToolsReady={knowledgeArticles.length > 0}
       onAddPdf={(files) => void uploadPdfFiles(files)}
       onAddImage={(files) =>
         void ingest(
@@ -4572,6 +4610,7 @@ function InfiniteCanvasLocalShellSurface({
       onAddText={() => createTextNode(null, "", true)}
       onAddRectangle={() => createShapeNode("rectangle")}
       onAddCircle={() => createShapeNode("circle")}
+      onCloseArticlePicker={() => setArticlePickerOpen(false)}
       onCloseFilePicker={() => setFilePickerOpen(false)}
       onCloseTaskPicker={() => setTaskPickerOpen(false)}
       onFileQueryChange={setFileQuery}
@@ -4584,14 +4623,27 @@ function InfiniteCanvasLocalShellSurface({
         else window.location.reload();
       }}
       onSelectFile={(file) => void createProjectFileNode(file)}
+      onSelectArticle={(article) => {
+        closePdfReader();
+        setArticlePickerOpen(false);
+        saveOpenArticleId(article.id);
+      }}
       onSelectTask={createTaskNode}
+      onArticleQueryChange={setArticleQuery}
       onTaskQueryChange={setTaskQuery}
       onToggleFilePicker={() => {
+        setArticlePickerOpen(false);
         setTaskPickerOpen(false);
         setFilePickerOpen((current) => !current);
       }}
+      onToggleArticlePicker={() => {
+        setFilePickerOpen(false);
+        setTaskPickerOpen(false);
+        setArticlePickerOpen((current) => !current);
+      }}
       onToggleSidebar={() => setDesktopSidebarOpen((current) => !current)}
       onToggleTaskPicker={() => {
+        setArticlePickerOpen(false);
         setFilePickerOpen(false);
         setTaskPickerOpen((current) => !current);
       }}
@@ -4869,6 +4921,53 @@ function InfiniteCanvasLocalShellSurface({
               title={openPdf.name}
               className={styles.pdfReaderFrame}
             />
+          </aside>
+        ) : null}
+        {shellState.openArticleId ? (
+          <aside
+            aria-label="Просмотр статьи"
+            className={`${styles.articleReader} canvas-article-reader`}
+          >
+            <header className={styles.pdfReaderHeader}>
+              <strong title={openArticle?.title ?? "Статья недоступна"}>
+                {openArticle?.title ?? "Статья недоступна"}
+              </strong>
+              <div className={styles.pdfReaderHeaderActions}>
+                <button
+                  aria-label="Закрыть статью"
+                  onClick={() => saveOpenArticleId(null)}
+                  title="Закрыть статью"
+                  type="button"
+                >
+                  <UiIcon name="close" />
+                </button>
+              </div>
+            </header>
+            {openArticle ? (
+              <article
+                aria-label={openArticle.title}
+                className={`document-page ${styles.articleReaderDocument}`}
+              >
+                <div className="document-page-inner">
+                  <MarkdownDocumentPreview
+                    document={openArticle}
+                    onInternalLink={(documentId) => {
+                      if (
+                        knowledgeArticles.some(
+                          (article) => article.id === documentId,
+                        )
+                      )
+                        saveOpenArticleId(documentId);
+                    }}
+                  />
+                </div>
+              </article>
+            ) : (
+              <div className={styles.articleReaderMissing} role="status">
+                Статья больше недоступна. Выберите другую через кнопку «Открыть
+                статью» в верхней панели.
+              </div>
+            )}
           </aside>
         ) : null}
       </div>,
@@ -5189,6 +5288,7 @@ export function InfiniteCanvasLocalShell({
   copy,
   embedded,
   groupRepository,
+  knowledgeArticles,
   projectFileRepository,
   projectFileVariantRepository,
   projectId,
@@ -5205,6 +5305,7 @@ export function InfiniteCanvasLocalShell({
   copy: CanvasShellCopy;
   embedded?: boolean;
   groupRepository?: CanvasGroupRepository;
+  knowledgeArticles?: readonly PrototypeDocument[];
   projectFileRepository?: ProjectFileRepository;
   projectFileVariantRepository?: ProjectFileImageVariantRepository;
   projectId?: string;
@@ -5224,6 +5325,7 @@ export function InfiniteCanvasLocalShell({
         copy={copy}
         embedded={embedded}
         groupRepository={groupRepository}
+        knowledgeArticles={knowledgeArticles}
         projectFileRepository={projectFileRepository}
         projectFileVariantRepository={projectFileVariantRepository}
         projectId={projectId}

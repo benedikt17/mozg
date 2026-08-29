@@ -4,6 +4,7 @@ select no_plan();
 
 select has_table('public', 'canvases', 'canvases table exists');
 select has_table('public', 'canvas_view_states', 'canvas_view_states table exists');
+select has_column('public', 'canvas_view_states', 'open_article_id', 'canvas view state stores the open article');
 select has_table('public', 'canvas_assets', 'canvas_assets table exists');
 select has_table('public', 'canvas_asset_variants', 'canvas_asset_variants table exists');
 select has_function(
@@ -602,6 +603,15 @@ select results_eq(
 select lives_ok(
   $$ update public.canvas_view_states set viewport_x = 11, viewport_y = 21, zoom = 2 where canvas_id = current_setting('test.active_canvas_id')::uuid and user_id = (select auth.uid()) $$,
   'member can update their own Canvas view state'
+);
+select lives_ok(
+  $$ update public.canvas_view_states set open_article_id = 'doc-l-koschei' where canvas_id = current_setting('test.active_canvas_id')::uuid and user_id = (select auth.uid()) $$,
+  'member can store the currently open Canvas article'
+);
+select results_eq(
+  $$ select open_article_id from public.canvas_view_states where canvas_id = current_setting('test.active_canvas_id')::uuid and user_id = (select auth.uid()) $$,
+  array['doc-l-koschei'::text],
+  'member can restore the currently open Canvas article'
 );
 select is(
   (select revision from public.canvases where id = current_setting('test.active_canvas_id')::uuid),

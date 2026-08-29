@@ -81,8 +81,11 @@ export function CloudCanvasWorkspace({
   activeTaskDetailsTaskId?: string;
   workspaceId: string;
 }): React.JSX.Element {
-  const { taskBridge, taskProjectId: projectId } =
-    useDesktopCanvasTaskRuntime();
+  const {
+    knowledgeArticles,
+    taskBridge,
+    taskProjectId: projectId,
+  } = useDesktopCanvasTaskRuntime();
   const supabase = useMemo(() => createClient(), []);
   const runtimeCache = useMemo(
     () => projectRuntimeCache(workspaceId, projectId),
@@ -206,6 +209,7 @@ export function CloudCanvasWorkspace({
       key={`${workspaceId}:${projectId}`}
       repository={dependencies.repository}
       groupRepository={dependencies.repository}
+      knowledgeArticles={knowledgeArticles}
       projectFileRepository={projectFileRepository}
       projectFileVariantRepository={projectFileVariantRepository}
       projectId={projectId}

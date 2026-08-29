@@ -10,12 +10,14 @@ import {
   type ReactNode,
 } from "react";
 import type { DesktopRuntimeMode } from "@/lib/desktop-runtime-mode";
+import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
 import type { DesktopCloudBootstrap } from "@/prototype/persistence/cloud-snapshot-bridge";
 import {
   desktopPrototypeReducer,
   initialDesktopPrototypeState,
 } from "@/prototype/desktop-state";
 import { desktopRuntimeReducer } from "@/prototype/state/desktop-runtime-reducer";
+import { getActiveProjectDocumentsForProject } from "@/prototype/state/knowledge-state";
 import {
   useDesktopPersistence,
   type UseDesktopPersistenceResult,
@@ -39,6 +41,7 @@ type DesktopTaskRuntimeContextValue = {
 };
 
 type DesktopCanvasTaskRuntimeContextValue = {
+  knowledgeArticles: readonly PrototypeDocument[];
   taskBridge: CanvasTaskBridge;
   taskProjectId: string;
 };
@@ -164,10 +167,14 @@ export function DesktopTaskRuntimeProvider({
   );
   const canvasTaskRuntimeValue = useMemo(
     () => ({
+      knowledgeArticles: getActiveProjectDocumentsForProject(
+        state.documents,
+        state.activeProjectId,
+      ),
       taskBridge,
       taskProjectId: state.activeProjectId,
     }),
-    [state.activeProjectId, taskBridge],
+    [state.activeProjectId, state.documents, taskBridge],
   );
 
   return (
