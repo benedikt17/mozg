@@ -16,10 +16,29 @@ describe("Canvas PDF reader UI", () => {
     );
 
     expect(shell).toContain("nodeId: node.id");
-    expect(renderedNodes).toContain("node.id === openNodeId");
+    expect(renderedNodes).toContain("node.id === openPdfNodeId");
     expect(renderedNodes).toContain("readerOpen: true");
     expect(renderedNodes).not.toContain("selected: true");
     expect(shell).toContain("nodes={renderedNodes}");
+  });
+
+  it("adds articles as Canvas nodes that open the reader on double click", () => {
+    const shell = source(
+      "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
+    );
+    const styles = source(
+      "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css",
+    );
+
+    expect(shell).toContain("const createArticleNode");
+    expect(shell).toContain('kind: "article" as const');
+    expect(shell).toContain("createCanvasArticleFlowNode(canonical)");
+    expect(shell).toContain("onSelectArticle={createArticleNode}");
+    expect(shell).toContain("onNodeDoubleClick={(event, node) => {");
+    expect(shell).toContain("node.type === CANVAS_ARTICLE_NODE_TYPE");
+    expect(shell).toContain("openArticleNode(node);");
+    expect(shell).toContain("saveOpenArticleId(node.data.articleId)");
+    expect(styles).toContain(".articleNodeFrameReaderOpen .nodeBody");
   });
 
   it("does not delete an open PDF as part of another selected group", () => {
@@ -57,14 +76,36 @@ describe("Canvas PDF reader UI", () => {
     const shellStyles = source("src/prototype/desktop-shell.css");
 
     expect(shell).toContain("canvas-pdf-reader");
-    expect(readerStyles).toMatch(/\.pdfReader\s*\{[^}]*position: fixed;/u);
-    expect(readerStyles).toMatch(/\.pdfReader\s*\{[^}]*inset: 0 0 0 auto;/u);
+    expect(readerStyles).toMatch(
+      /\.pdfReader,\s*\.articleReader\s*\{[^}]*position: fixed;/u,
+    );
+    expect(readerStyles).toMatch(
+      /\.pdfReader,\s*\.articleReader\s*\{[^}]*inset: 0 0 0 auto;/u,
+    );
     expect(shellStyles).toContain(
-      ":scope:has(.canvas-pdf-reader) .project-workspace",
+      ":scope:has(.canvas-pdf-reader, .canvas-article-reader) .project-workspace",
     );
     expect(shellStyles).toContain(
       "padding-right: var(--canvas-pdf-reader-width);",
     );
+  });
+
+  it("re-centers the source node and restores only an automatically hidden sidebar", () => {
+    const shell = source(
+      "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
+    );
+
+    expect(shell).toContain("const readerSidebarWasAutoCollapsedRef");
+    expect(shell).toContain("const centerReaderNodeAfterLayout");
+    expect(shell).toContain("reactFlow.setCenter(");
+    expect(shell).toContain("const enterReaderLayout");
+    expect(shell).toContain("const leaveReaderLayout");
+    expect(shell).toContain(
+      "readerSidebarWasAutoCollapsedRef.current = false;",
+    );
+    expect(shell).toContain("enterReaderLayout(node.id);");
+    expect(shell).toContain("leaveReaderLayout(openNodeId);");
+    expect(shell).toContain("const closeArticleReader");
   });
 
   it("opens at a stable half-width layout", () => {
@@ -79,7 +120,7 @@ describe("Canvas PDF reader UI", () => {
     expect(shell).not.toContain("beginPdfReaderResize");
     expect(readerStyles).not.toContain(".pdfReaderResizeHandle");
     expect(readerStyles).toMatch(
-      /\.pdfReader\s*\{[^}]*width: var\(--canvas-pdf-reader-width, 50vw\);/u,
+      /\.pdfReader,\s*\.articleReader\s*\{[^}]*width: var\(--canvas-pdf-reader-width, 50vw\);/u,
     );
   });
 

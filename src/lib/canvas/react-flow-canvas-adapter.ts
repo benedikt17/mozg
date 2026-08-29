@@ -10,12 +10,17 @@ import {
   type CanvasImageNode,
   type CanvasNode,
   type CanvasPoint,
+  type CanvasArticleNode,
   type CanvasPdfNode,
   type CanvasSize,
   type CanvasShapeNode,
   type CanvasShapeVariant,
   type CanvasTextNode,
 } from "@/lib/canvas/canvas-document";
+import {
+  DEFAULT_CANVAS_ARTICLE_STYLE,
+  type CanvasArticleStyle,
+} from "@/lib/canvas/canvas-article-style";
 import {
   extractCanvasImageTransfer,
   ingestCanvasImageCandidates,
@@ -64,6 +69,7 @@ import {
 
 export const CANVAS_IMAGE_NODE_TYPE = "canvasImage";
 export const CANVAS_PDF_NODE_TYPE = "canvasPdf";
+export const CANVAS_ARTICLE_NODE_TYPE = "canvasArticle";
 export const CANVAS_TEXT_NODE_TYPE = "canvasText";
 export const CANVAS_SHAPE_NODE_TYPE = "canvasShape";
 export const CANVAS_TASK_NODE_TYPE = "canvasTask";
@@ -108,6 +114,19 @@ export type CanvasPdfFlowNode = Node<
   typeof CANVAS_PDF_NODE_TYPE
 >;
 
+export type CanvasArticleNodeData = {
+  articleId: string;
+  lastKnownTitle?: string;
+  style: CanvasArticleStyle;
+  /** Ephemeral UI marker; never persisted into the Canvas document. */
+  readerOpen?: boolean;
+};
+
+export type CanvasArticleFlowNode = Node<
+  CanvasArticleNodeData,
+  typeof CANVAS_ARTICLE_NODE_TYPE
+>;
+
 export type CanvasTextNodeData = {
   markdown: string;
   style: CanvasTextStyle;
@@ -147,6 +166,7 @@ export type CanvasTaskFlowNode = Node<
 export type CanvasFlowNode =
   | CanvasImageFlowNode
   | CanvasPdfFlowNode
+  | CanvasArticleFlowNode
   | CanvasTextFlowNode
   | CanvasShapeFlowNode
   | CanvasTaskFlowNode;
@@ -665,6 +685,42 @@ export function createCanvasPdfFlowNode(input: {
   };
 }
 
+export function createCanvasArticleId(
+  idGenerator: () => string = () =>
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+): string {
+  return `article-node-${idGenerator()}`;
+}
+
+export function createCanvasArticleFlowNode(input: {
+  id: string;
+  articleId: string;
+  lastKnownTitle?: string;
+  style?: CanvasArticleStyle;
+  position: FlowPosition;
+  size?: CanvasSize;
+  zIndex?: number;
+}): CanvasArticleFlowNode {
+  const size = input.size ?? { width: 300, height: 120 };
+  return {
+    id: input.id,
+    type: CANVAS_ARTICLE_NODE_TYPE,
+    position: { ...input.position },
+    width: size.width,
+    height: size.height,
+    style: { width: size.width, height: size.height },
+    zIndex: input.zIndex,
+    data: {
+      articleId: input.articleId,
+      ...(input.lastKnownTitle === undefined
+        ? {}
+        : { lastKnownTitle: input.lastKnownTitle }),
+      style: { ...(input.style ?? DEFAULT_CANVAS_ARTICLE_STYLE) },
+    },
+  };
+}
+
 export function createCanvasTaskId(
   idGenerator: () => string = () =>
     globalThis.crypto?.randomUUID?.() ??
@@ -761,6 +817,24 @@ export function canvasDocumentToPdfNodes(
     );
 }
 
+export function canvasDocumentToArticleNodes(
+  document: CanvasDocument,
+): CanvasArticleFlowNode[] {
+  return document.nodes
+    .filter((node): node is CanvasArticleNode => node.kind === "article")
+    .map((node) =>
+      createCanvasArticleFlowNode({
+        id: node.id,
+        articleId: node.articleId,
+        lastKnownTitle: node.lastKnownTitle,
+        style: node.style,
+        position: node.position,
+        size: node.size,
+        zIndex: node.zIndex,
+      }),
+    );
+}
+
 export function canvasDocumentToTaskNodes(
   document: CanvasDocument,
   options: {
@@ -846,6 +920,14 @@ export function runtimeNodesToCanvasDocument(
     if (node.kind === "pdf" && runtime.type === CANVAS_PDF_NODE_TYPE) {
       return {
         ...node,
+        position: { ...runtime.position },
+        size: runtimeNodeSize(runtime),
+      };
+    }
+    if (node.kind === "article" && runtime.type === CANVAS_ARTICLE_NODE_TYPE) {
+      return {
+        ...node,
+        style: { ...runtime.data.style },
         position: { ...runtime.position },
         size: runtimeNodeSize(runtime),
       };

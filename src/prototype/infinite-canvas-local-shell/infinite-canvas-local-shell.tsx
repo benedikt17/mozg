@@ -88,6 +88,7 @@ import {
   canvasTextStylePatchToShapeStyle,
   type CanvasShapeStyle,
 } from "@/lib/canvas/canvas-shape-style";
+import type { CanvasArticleStyle } from "@/lib/canvas/canvas-article-style";
 import {
   CANVAS_NODE_CLIPBOARD_MIME,
   createCanvasNodeClipboardPayload,
@@ -105,11 +106,15 @@ import {
 } from "@/lib/canvas/canvas-alt-drag-duplicate";
 import {
   CANVAS_BRANCH_COLLAPSE_EVENT,
+  canvasBranchDescendantNodeIds,
   canvasBranchCollapsedNodeIds,
+  canvasBranchRuntimeState,
   projectCanvasBranchCollapse,
+  translateCanvasBranchDescendants,
   type CanvasBranchCollapseEventDetail,
 } from "@/lib/canvas/canvas-branch-collapse";
 import {
+  CANVAS_ARTICLE_NODE_TYPE,
   CANVAS_IMAGE_NODE_TYPE,
   CANVAS_PDF_NODE_TYPE,
   CANVAS_SHAPE_NODE_TYPE,
@@ -117,6 +122,7 @@ import {
   CANVAS_TEXT_NODE_TYPE,
   CANVAS_EDGE_TYPE,
   canvasDocumentToEdges,
+  canvasDocumentToArticleNodes,
   canvasDocumentToImageNodes,
   canvasDocumentToPdfNodes,
   canvasDocumentToShapeNodes,
@@ -125,6 +131,8 @@ import {
   canvasImageAdapterDependenciesForCanvas,
   createCanvasPdfFlowNode,
   createCanvasPdfId,
+  createCanvasArticleFlowNode,
+  createCanvasArticleId,
   createCanvasTaskFlowNode,
   createCanvasTaskId,
   createCanvasEdgeFromConnection,
@@ -140,6 +148,7 @@ import {
   type CanvasEdgeFlow,
   type CanvasEdgeFlowData,
   type CanvasImageFlowNode,
+  type CanvasArticleFlowNode,
   type CanvasShapeFlowNode,
   type CanvasTaskFlowNode,
   type CanvasPdfFlowNode,
@@ -179,7 +188,11 @@ import {
   plainTextFromClipboard,
   commitTextMarkdown,
 } from "@/lib/canvas/text-canvas-interactions";
-import { MarkdownStringPreview } from "@/prototype/knowledge/markdown-document-preview";
+import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
+import {
+  MarkdownDocumentPreview,
+  MarkdownStringPreview,
+} from "@/prototype/knowledge/markdown-document-preview";
 import type {
   CanvasTaskBridge,
   CanvasTaskProjection,
@@ -499,6 +512,114 @@ function dispatchCanvasStyleEyedropperStart(id: string): void {
     new CustomEvent("mozg:canvas-style-eyedropper-start", {
       detail: { id },
     }),
+  );
+}
+
+function dispatchCanvasArticleStylePatch(
+  id: string,
+  patch: Partial<CanvasArticleStyle>,
+): void {
+  window.dispatchEvent(
+    new CustomEvent("mozg:canvas-article-style", { detail: { id, patch } }),
+  );
+}
+
+function dispatchCanvasArticleStyleEyedropperStart(id: string): void {
+  window.dispatchEvent(
+    new CustomEvent("mozg:canvas-style-eyedropper-start", { detail: { id } }),
+  );
+}
+
+function ArticleSelectionToolbar({
+  id,
+  style,
+}: {
+  id: string;
+  style: CanvasArticleStyle;
+}): React.JSX.Element | null {
+  const selectedNodeCount = useStore((state) =>
+    Array.from(state.nodeLookup.values()).reduce(
+      (count, node) => count + (node.selected ? 1 : 0),
+      0,
+    ),
+  );
+  if (selectedNodeCount !== 1) return null;
+  const patchStyle = (patch: Partial<CanvasArticleStyle>): void =>
+    dispatchCanvasArticleStylePatch(id, patch);
+  return (
+    <div
+      className={`${styles.textSelectionToolbar} nodrag nopan nowheel`}
+      aria-label="Панель оформления статьи"
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <button
+        type="button"
+        className={styles.textToolbarButton}
+        aria-label="Уменьшить размер названия статьи"
+        title="Уменьшить размер названия"
+        onClick={() =>
+          patchStyle({
+            titleFontSize: previousCanvasTextFontSize(style.titleFontSize),
+          })
+        }
+      >
+        −
+      </button>
+      <span className={styles.articleToolbarSize} aria-label="Размер названия">
+        {style.titleFontSize}
+      </span>
+      <button
+        type="button"
+        className={styles.textToolbarButton}
+        aria-label="Увеличить размер названия статьи"
+        title="Увеличить размер названия"
+        onClick={() =>
+          patchStyle({
+            titleFontSize: nextCanvasTextFontSize(style.titleFontSize),
+          })
+        }
+      >
+        +
+      </button>
+      <span className={styles.textToolbarDivider} aria-hidden="true" />
+      <CanvasColorPicker
+        label="Цвет надписи «СТАТЬЯ»"
+        value={style.badgeColor}
+        onCommit={(badgeColor) => patchStyle({ badgeColor })}
+      />
+      <CanvasColorPicker
+        label="Цвет названия статьи"
+        value={style.titleColor}
+        onCommit={(titleColor) => patchStyle({ titleColor })}
+      />
+      <CanvasColorPicker
+        label="Цвет заливки статьи"
+        value={style.backgroundColor}
+        onCommit={(backgroundColor) => patchStyle({ backgroundColor })}
+      />
+      <button
+        type="button"
+        className={`${styles.textToolbarButton} ${styles.styleEyedropperButton}`}
+        aria-label="Пипетка статьи"
+        title="Скопировать оформление другой статьи"
+        onClick={() => dispatchCanvasArticleStyleEyedropperStart(id)}
+      >
+        <svg
+          className={styles.styleEyedropperIcon}
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+        >
+          <path
+            d="m14.5 5.5 4-4a2.12 2.12 0 0 1 3 3l-4 4m-3-3 4 4m-4-4-9.8 9.8a2 2 0 0 0-.5.8L3 21l4.9-1.2a2 2 0 0 0 .8-.5l9.8-9.8"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+    </div>
   );
 }
 
@@ -833,6 +954,48 @@ function PdfNodeBody({
           title={data.lastKnownName ?? "PDF"}
         >
           {data.lastKnownName ?? "PDF"}
+        </span>
+      </div>
+    </CanvasNodeFrame>
+  );
+}
+
+function ArticleNodeBody({
+  id,
+  data,
+  selected,
+}: NodeProps<CanvasArticleFlowNode>): React.JSX.Element {
+  return (
+    <CanvasNodeFrame
+      selected={selected}
+      minWidth={180}
+      minHeight={88}
+      className={`${styles.articleNodeFrame} ${
+        data.readerOpen ? styles.articleNodeFrameReaderOpen : ""
+      }`.trim()}
+      toolbar={<ArticleSelectionToolbar id={id} style={data.style} />}
+      toolbarWhenReaderOpen
+      connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
+    >
+      <div
+        className={styles.articleNodeContent}
+        style={{ backgroundColor: data.style.backgroundColor }}
+      >
+        <span
+          className={styles.articleNodeBadge}
+          style={{ color: data.style.badgeColor }}
+        >
+          СТАТЬЯ
+        </span>
+        <span
+          className={styles.articleNodeName}
+          title={data.lastKnownTitle ?? "Статья"}
+          style={{
+            color: data.style.titleColor,
+            fontSize: data.style.titleFontSize,
+          }}
+        >
+          {data.lastKnownTitle ?? "Статья"}
         </span>
       </div>
     </CanvasNodeFrame>
@@ -1446,6 +1609,7 @@ function CanvasConnectionLine({
 const nodeTypes = {
   [CANVAS_IMAGE_NODE_TYPE]: ImageNodeBody,
   [CANVAS_PDF_NODE_TYPE]: PdfNodeBody,
+  [CANVAS_ARTICLE_NODE_TYPE]: ArticleNodeBody,
   [CANVAS_TASK_NODE_TYPE]: TaskNodeBody,
   [CANVAS_TEXT_NODE_TYPE]: TextNodeBody,
   [CANVAS_SHAPE_NODE_TYPE]: ShapeNodeBody,
@@ -1500,6 +1664,7 @@ function InfiniteCanvasLocalShellSurface({
   embedded = false,
   copy,
   groupRepository,
+  knowledgeArticles = [],
   projectFileRepository,
   projectFileVariantRepository,
   projectId,
@@ -1516,6 +1681,7 @@ function InfiniteCanvasLocalShellSurface({
   embedded?: boolean;
   copy: CanvasShellCopy;
   groupRepository?: CanvasGroupRepository;
+  knowledgeArticles?: readonly PrototypeDocument[];
   projectFileRepository?: ProjectFileRepository;
   projectFileVariantRepository?: ProjectFileImageVariantRepository;
   projectId?: string;
@@ -1565,6 +1731,11 @@ function InfiniteCanvasLocalShellSurface({
   const pendingContentHeightSaveRef = useRef(false);
   const nodeGeometrySignatureRef = useRef("");
   const nodeDragActiveRef = useRef(false);
+  const collapsedBranchDragRef = useRef<{
+    descendantNodeIds: Set<string>;
+    nodeId: string;
+    startPosition: FlowPosition;
+  } | null>(null);
   const altDragDuplicateRef = useRef<CanvasAltDragDuplicateSession | null>(
     null,
   );
@@ -1578,6 +1749,8 @@ function InfiniteCanvasLocalShellSurface({
   const panInertiaVelocityRef = useRef<CanvasPanVelocity | null>(null);
   const panInertiaViewportRef = useRef<CanvasPanViewport | null>(null);
   const panInertiaLastFrameRef = useRef<number | null>(null);
+  const readerSidebarWasAutoCollapsedRef = useRef(false);
+  const readerCenterFrameRef = useRef<number | null>(null);
   const edgeRemovalSuppressionUntilRef = useRef(0);
   const hydratingRef = useRef(true);
   const canvasGenerationRef = useRef(0);
@@ -1614,6 +1787,8 @@ function InfiniteCanvasLocalShellSurface({
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [taskQuery, setTaskQuery] = useState("");
   const [taskResults, setTaskResults] = useState<CanvasTaskProjection[]>([]);
+  const [articlePickerOpen, setArticlePickerOpen] = useState(false);
+  const [articleQuery, setArticleQuery] = useState("");
   const [filePickerOpen, setFilePickerOpen] = useState(false);
   const [openPdf, setOpenPdf] = useState<{
     fileId: string;
@@ -1622,15 +1797,35 @@ function InfiniteCanvasLocalShellSurface({
     objectUrl: string;
   } | null>(null);
   const [pdfFullscreen, setPdfFullscreen] = useState(false);
-  const renderedNodes = useMemo<CanvasFlowNode[]>(() => {
-    const openNodeId = openPdf?.nodeId;
-    if (!openNodeId) return nodes;
-    return nodes.map((node) =>
-      node.id === openNodeId && node.type === CANVAS_PDF_NODE_TYPE
-        ? { ...node, data: { ...node.data, readerOpen: true } }
-        : node,
+  const articleResults = useMemo(() => {
+    const normalizedQuery = articleQuery.trim().toLocaleLowerCase("ru");
+    if (!normalizedQuery) return knowledgeArticles;
+    return knowledgeArticles.filter((article) =>
+      article.title.toLocaleLowerCase("ru").includes(normalizedQuery),
     );
-  }, [nodes, openPdf?.nodeId]);
+  }, [articleQuery, knowledgeArticles]);
+  const openArticle = useMemo(
+    () =>
+      shellState.openArticleId
+        ? (knowledgeArticles.find(
+            (article) => article.id === shellState.openArticleId,
+          ) ?? null)
+        : null,
+    [knowledgeArticles, shellState.openArticleId],
+  );
+  const renderedNodes = useMemo<CanvasFlowNode[]>(() => {
+    const openPdfNodeId = openPdf?.nodeId;
+    const openArticleId = shellState.openArticleId;
+    if (!openPdfNodeId && !openArticleId) return nodes;
+    return nodes.map((node) =>
+      node.type === CANVAS_PDF_NODE_TYPE && node.id === openPdfNodeId
+        ? { ...node, data: { ...node.data, readerOpen: true } }
+        : node.type === CANVAS_ARTICLE_NODE_TYPE &&
+            node.data.articleId === openArticleId
+          ? { ...node, data: { ...node.data, readerOpen: true } }
+          : node,
+    );
+  }, [nodes, openPdf?.nodeId, shellState.openArticleId]);
   const [fileQuery, setFileQuery] = useState("");
   const [fileCatalog, setFileCatalog] = useState<ProjectFileRecord[]>([]);
   const [fileSearchStatus, setFileSearchStatus] = useState<
@@ -1694,6 +1889,53 @@ function InfiniteCanvasLocalShellSurface({
     })(),
   );
   const reactFlow = useReactFlow<CanvasFlowNode>();
+
+  const centerReaderNodeAfterLayout = useCallback(
+    (nodeId: string | null) => {
+      if (!nodeId) return;
+      if (readerCenterFrameRef.current !== null)
+        cancelAnimationFrame(readerCenterFrameRef.current);
+      readerCenterFrameRef.current = requestAnimationFrame(() => {
+        readerCenterFrameRef.current = requestAnimationFrame(() => {
+          readerCenterFrameRef.current = null;
+          const node = nodesRef.current.find((item) => item.id === nodeId);
+          if (!node) return;
+          const width = node.width ?? (Number(node.style?.width) || 0);
+          const height = node.height ?? (Number(node.style?.height) || 0);
+          if (width <= 0 || height <= 0) return;
+          void reactFlow.setCenter(
+            node.position.x + width / 2,
+            node.position.y + height / 2,
+            { duration: 220, zoom: reactFlow.getZoom() },
+          );
+        });
+      });
+    },
+    [reactFlow],
+  );
+
+  const enterReaderLayout = useCallback(
+    (nodeId: string) => {
+      const canAutoCollapseSidebar =
+        embedded && window.matchMedia("(min-width: 768px)").matches;
+      if (canAutoCollapseSidebar && desktopSidebarOpen) {
+        readerSidebarWasAutoCollapsedRef.current = true;
+        setDesktopSidebarOpen(false);
+      }
+      centerReaderNodeAfterLayout(nodeId);
+    },
+    [centerReaderNodeAfterLayout, desktopSidebarOpen, embedded],
+  );
+
+  const leaveReaderLayout = useCallback(
+    (nodeId: string | null) => {
+      const restoreSidebar = readerSidebarWasAutoCollapsedRef.current;
+      readerSidebarWasAutoCollapsedRef.current = false;
+      if (restoreSidebar) setDesktopSidebarOpen(true);
+      centerReaderNodeAfterLayout(nodeId);
+    },
+    [centerReaderNodeAfterLayout],
+  );
 
   useEffect(() => {
     const activeTaskId = activeTaskDetailsTaskId;
@@ -1921,6 +2163,15 @@ function InfiniteCanvasLocalShellSurface({
     [controller],
   );
 
+  const saveOpenArticleId = useCallback(
+    (openArticleId: string | null) => {
+      const save = controller.saveOpenArticleId(openArticleId);
+      syncState();
+      void save.catch(syncState);
+    },
+    [controller, syncState],
+  );
+
   const saveConflictDraft = useCallback(
     (state: LocalCanvasShellState): void => {
       if (!state.canvasId || typeof window === "undefined") return;
@@ -2129,7 +2380,21 @@ function InfiniteCanvasLocalShellSurface({
       nodeDragActiveRef.current = true;
       edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
       altDragDuplicateRef.current = null;
-      if (!event.altKey) return;
+      collapsedBranchDragRef.current = null;
+      if (!event.altKey) {
+        if (!canvasBranchRuntimeState(node.data)?.collapsed) return;
+        const descendantNodeIds = canvasBranchDescendantNodeIds(
+          node.id,
+          edgesRef.current,
+        );
+        if (descendantNodeIds.size === 0) return;
+        collapsedBranchDragRef.current = {
+          descendantNodeIds,
+          nodeId: node.id,
+          startPosition: { ...node.position },
+        };
+        return;
+      }
       if (
         nodesRef.current.some(
           (candidate) => candidate.selected && candidate.id !== node.id,
@@ -2166,42 +2431,70 @@ function InfiniteCanvasLocalShellSurface({
     [controller, setNodes],
   );
 
-  const handleNodeDragStop = useCallback((): void => {
-    nodeDragActiveRef.current = false;
-    edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
-    if (touchViewportGestureActiveRef.current) return;
+  const handleNodeDragStop = useCallback(
+    (_event: MouseEvent | TouchEvent, node: CanvasFlowNode): void => {
+      nodeDragActiveRef.current = false;
+      edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
+      if (touchViewportGestureActiveRef.current) return;
 
-    const duplicateSession = altDragDuplicateRef.current;
-    altDragDuplicateRef.current = null;
-    if (duplicateSession) {
-      const duplicate = finalizeCanvasAltDragDuplicate(duplicateSession);
-      const nextNodes = nodesRef.current.map((candidate) => {
-        if (candidate.id === duplicateSession.sourceNodeId)
-          return { ...candidate, selected: false };
-        if (candidate.id === duplicateSession.duplicateNodeId)
-          return {
-            ...candidate,
-            position: { ...duplicate.position },
-            selected: true,
-          };
-        return candidate;
-      });
-      nodesRef.current = nextNodes;
-      setNodes(nextNodes);
-      controller.insertCanvasNodes([duplicate]);
-      controller.setRuntimeEdges(edgesRef.current);
-      syncState();
-      scheduleSave();
-      return;
-    }
+      const duplicateSession = altDragDuplicateRef.current;
+      altDragDuplicateRef.current = null;
+      if (duplicateSession) {
+        const duplicate = finalizeCanvasAltDragDuplicate(duplicateSession);
+        const nextNodes = nodesRef.current.map((candidate) => {
+          if (candidate.id === duplicateSession.sourceNodeId)
+            return { ...candidate, selected: false };
+          if (candidate.id === duplicateSession.duplicateNodeId)
+            return {
+              ...candidate,
+              position: { ...duplicate.position },
+              selected: true,
+            };
+          return candidate;
+        });
+        nodesRef.current = nextNodes;
+        setNodes(nextNodes);
+        controller.insertCanvasNodes([duplicate]);
+        controller.setRuntimeEdges(edgesRef.current);
+        syncState();
+        scheduleSave();
+        return;
+      }
 
-    window.setTimeout(() => {
-      if (!shellStateRef.current.canvasId) return;
-      controller.setRuntimeEdges(edgesRef.current);
-      syncState();
-      scheduleSave();
-    }, 0);
-  }, [controller, scheduleSave, setNodes, syncState]);
+      const collapsedBranchDrag = collapsedBranchDragRef.current;
+      collapsedBranchDragRef.current = null;
+      if (collapsedBranchDrag?.nodeId === node.id) {
+        const delta = {
+          x: node.position.x - collapsedBranchDrag.startPosition.x,
+          y: node.position.y - collapsedBranchDrag.startPosition.y,
+        };
+        const translated = translateCanvasBranchDescendants(
+          nodesRef.current,
+          collapsedBranchDrag.descendantNodeIds,
+          delta,
+        ).map((candidate) =>
+          candidate.id === node.id
+            ? { ...candidate, position: { ...node.position } }
+            : candidate,
+        );
+        nodesRef.current = translated;
+        setNodes(translated);
+        controller.setRuntimeNodes(translated);
+        controller.setRuntimeEdges(edgesRef.current);
+        syncState();
+        scheduleSave();
+        return;
+      }
+
+      window.setTimeout(() => {
+        if (!shellStateRef.current.canvasId) return;
+        controller.setRuntimeEdges(edgesRef.current);
+        syncState();
+        scheduleSave();
+      }, 0);
+    },
+    [controller, scheduleSave, setNodes, syncState],
+  );
 
   const handleTaskNodeContentHeightChange = useCallback((): void => {
     // Task projection is runtime-only; it must never resize canonical bounds.
@@ -2241,6 +2534,7 @@ function InfiniteCanvasLocalShellSurface({
       const placeholders: CanvasFlowNode[] = [
         ...canvasDocumentToImageNodes(nextState.document),
         ...canvasDocumentToPdfNodes(nextState.document),
+        ...canvasDocumentToArticleNodes(nextState.document),
         ...canvasDocumentToTaskNodes(nextState.document, {
           onContentHeightChange: handleTaskNodeContentHeightChange,
           taskBridge: taskBridgeRef.current,
@@ -2971,6 +3265,28 @@ function InfiniteCanvasLocalShellSurface({
     [controller, scheduleSave, setNodes, syncState],
   );
 
+  const updateArticleStyle = useCallback(
+    (id: string, patch: Partial<CanvasArticleStyle>) => {
+      let found = false;
+      const nextNodes = nodesRef.current.map((node) => {
+        if (node.id !== id || node.type !== CANVAS_ARTICLE_NODE_TYPE)
+          return node;
+        found = true;
+        return {
+          ...node,
+          data: { ...node.data, style: { ...node.data.style, ...patch } },
+        };
+      });
+      if (!found) return;
+      nodesRef.current = nextNodes;
+      setNodes(nextNodes);
+      controller.setRuntimeNodes(nextNodes);
+      syncState();
+      scheduleSave();
+    },
+    [controller, scheduleSave, setNodes, syncState],
+  );
+
   const createTextNode = useCallback(
     (client: FlowPosition | null, markdown: string, editing = true) => {
       if (!shellState.canvasId) return;
@@ -3216,6 +3532,16 @@ function InfiniteCanvasLocalShellSurface({
       ).detail;
       if (detail.id && detail.patch) updateShapeStyle(detail.id, detail.patch);
     };
+    const onArticleStyle = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          id?: string;
+          patch?: Partial<CanvasArticleStyle>;
+        }>
+      ).detail;
+      if (detail.id && detail.patch)
+        updateArticleStyle(detail.id, detail.patch);
+    };
     const onEyedropperStart = (event: Event) => {
       const id = (event as CustomEvent<{ id?: string }>).detail?.id;
       if (id) setStyleEyedropperSourceId(id);
@@ -3228,6 +3554,7 @@ function InfiniteCanvasLocalShellSurface({
     window.addEventListener("mozg:canvas-shape-commit", onShapeCommit);
     window.addEventListener("mozg:canvas-shape-cancel", onShapeCancel);
     window.addEventListener("mozg:canvas-shape-style", onShapeStyle);
+    window.addEventListener("mozg:canvas-article-style", onArticleStyle);
     window.addEventListener(
       "mozg:canvas-style-eyedropper-start",
       onEyedropperStart,
@@ -3241,6 +3568,7 @@ function InfiniteCanvasLocalShellSurface({
       window.removeEventListener("mozg:canvas-shape-commit", onShapeCommit);
       window.removeEventListener("mozg:canvas-shape-cancel", onShapeCancel);
       window.removeEventListener("mozg:canvas-shape-style", onShapeStyle);
+      window.removeEventListener("mozg:canvas-article-style", onArticleStyle);
       window.removeEventListener(
         "mozg:canvas-style-eyedropper-start",
         onEyedropperStart,
@@ -3252,6 +3580,7 @@ function InfiniteCanvasLocalShellSurface({
     setShapeEditing,
     setTextEditing,
     updateShapeStyle,
+    updateArticleStyle,
     updateTextStyle,
   ]);
 
@@ -3826,6 +4155,7 @@ function InfiniteCanvasLocalShellSurface({
           projectId,
           fileId: node.data.fileId,
         });
+        saveOpenArticleId(null);
         setPdfFullscreen(false);
         setOpenPdf((current) => {
           if (current) URL.revokeObjectURL(current.objectUrl);
@@ -3836,6 +4166,7 @@ function InfiniteCanvasLocalShellSurface({
             objectUrl: URL.createObjectURL(downloaded.blob),
           };
         });
+        enterReaderLayout(node.id);
       } catch (error: unknown) {
         setShellState((current) => ({
           ...current,
@@ -3844,16 +4175,116 @@ function InfiniteCanvasLocalShellSurface({
         }));
       }
     },
-    [projectFileRepository, projectId, shellWorkspaceId],
+    [
+      enterReaderLayout,
+      projectFileRepository,
+      projectId,
+      saveOpenArticleId,
+      shellWorkspaceId,
+    ],
   );
 
-  const closePdfReader = useCallback(() => {
-    setPdfFullscreen(false);
-    setOpenPdf((current) => {
-      if (current) URL.revokeObjectURL(current.objectUrl);
-      return null;
-    });
-  }, []);
+  const closePdfReader = useCallback(
+    (restoreLayout = true) => {
+      const openNodeId = openPdf?.nodeId ?? null;
+      setPdfFullscreen(false);
+      setOpenPdf((current) => {
+        if (current) URL.revokeObjectURL(current.objectUrl);
+        return null;
+      });
+      if (restoreLayout) leaveReaderLayout(openNodeId);
+    },
+    [leaveReaderLayout, openPdf?.nodeId],
+  );
+
+  const closeArticleReader = useCallback(() => {
+    const nodeId = nodesRef.current.find(
+      (node) =>
+        node.type === CANVAS_ARTICLE_NODE_TYPE &&
+        node.data.articleId === shellStateRef.current.openArticleId,
+    )?.id;
+    saveOpenArticleId(null);
+    leaveReaderLayout(nodeId ?? null);
+  }, [leaveReaderLayout, saveOpenArticleId]);
+
+  const openArticleNode = useCallback(
+    (node: CanvasFlowNode) => {
+      if (node.type !== CANVAS_ARTICLE_NODE_TYPE) return;
+      closePdfReader(false);
+      saveOpenArticleId(node.data.articleId);
+      enterReaderLayout(node.id);
+    },
+    [closePdfReader, enterReaderLayout, saveOpenArticleId],
+  );
+
+  const openArticleFromReader = useCallback(
+    (articleId: string) => {
+      const matchingNode = nodesRef.current.find(
+        (node) =>
+          node.type === CANVAS_ARTICLE_NODE_TYPE &&
+          node.data.articleId === articleId,
+      );
+      saveOpenArticleId(articleId);
+      if (matchingNode) enterReaderLayout(matchingNode.id);
+    },
+    [enterReaderLayout, saveOpenArticleId],
+  );
+
+  const createArticleNode = useCallback(
+    (article: PrototypeDocument) => {
+      if (!shellStateRef.current.canvasId) return;
+      const existing = nodesRef.current.find(
+        (node) =>
+          node.type === CANVAS_ARTICLE_NODE_TYPE &&
+          node.data.articleId === article.id,
+      );
+      if (existing) {
+        setNodes((current) =>
+          current.map((node) => ({
+            ...node,
+            selected: node.id === existing.id,
+          })),
+        );
+        openArticleNode(existing);
+        setArticlePickerOpen(false);
+        setArticleQuery("");
+        return;
+      }
+      const zIndex =
+        Math.max(
+          0,
+          ...controller.state.document.nodes.map((node) => node.zIndex),
+        ) + 1;
+      const canonical = {
+        id: createCanvasArticleId(),
+        kind: "article" as const,
+        articleId: article.id,
+        lastKnownTitle: article.title,
+        position: centerPosition(),
+        size: { width: 300, height: 120 },
+        zIndex,
+      };
+      const runtime = createCanvasArticleFlowNode(canonical);
+      setNodes((current) => [
+        ...current.map((node) => ({ ...node, selected: false })),
+        { ...runtime, selected: true },
+      ]);
+      controller.insertCanvasNodes([canonical]);
+      syncState();
+      scheduleSave();
+      openArticleNode(runtime);
+      setArticlePickerOpen(false);
+      setArticleQuery("");
+    },
+    [
+      centerPosition,
+      controller,
+      openArticleNode,
+      scheduleSave,
+      setNodes,
+      syncState,
+    ],
+  );
 
   const uploadPdfFiles = useCallback(
     async (files: File[], position?: FlowPosition) => {
@@ -4373,6 +4804,14 @@ function InfiniteCanvasLocalShellSurface({
             setStyleEyedropperSourceId(null);
             return;
           }
+          if (
+            sourceNode?.type === CANVAS_ARTICLE_NODE_TYPE &&
+            targetNode?.type === CANVAS_ARTICLE_NODE_TYPE
+          ) {
+            updateArticleStyle(sourceId, targetNode.data.style);
+            setStyleEyedropperSourceId(null);
+            return;
+          }
           return;
         }
       }
@@ -4400,6 +4839,7 @@ function InfiniteCanvasLocalShellSurface({
       reactFlow,
       styleEyedropperSourceId,
       updateShapeStyle,
+      updateArticleStyle,
       updateTextStyle,
     ],
   );
@@ -4561,6 +5001,10 @@ function InfiniteCanvasLocalShellSurface({
       copy={copy}
       error={shellState.error}
       conflictDraftAvailable={conflictDraftAvailable}
+      articlePickerOpen={articlePickerOpen}
+      articleQuery={articleQuery}
+      articleResults={articleResults}
+      articleToolsReady={knowledgeArticles.length > 0}
       onAddPdf={(files) => void uploadPdfFiles(files)}
       onAddImage={(files) =>
         void ingest(
@@ -4572,6 +5016,7 @@ function InfiniteCanvasLocalShellSurface({
       onAddText={() => createTextNode(null, "", true)}
       onAddRectangle={() => createShapeNode("rectangle")}
       onAddCircle={() => createShapeNode("circle")}
+      onCloseArticlePicker={() => setArticlePickerOpen(false)}
       onCloseFilePicker={() => setFilePickerOpen(false)}
       onCloseTaskPicker={() => setTaskPickerOpen(false)}
       onFileQueryChange={setFileQuery}
@@ -4584,14 +5029,26 @@ function InfiniteCanvasLocalShellSurface({
         else window.location.reload();
       }}
       onSelectFile={(file) => void createProjectFileNode(file)}
+      onSelectArticle={createArticleNode}
       onSelectTask={createTaskNode}
+      onArticleQueryChange={setArticleQuery}
       onTaskQueryChange={setTaskQuery}
       onToggleFilePicker={() => {
+        setArticlePickerOpen(false);
         setTaskPickerOpen(false);
         setFilePickerOpen((current) => !current);
       }}
-      onToggleSidebar={() => setDesktopSidebarOpen((current) => !current)}
+      onToggleArticlePicker={() => {
+        setFilePickerOpen(false);
+        setTaskPickerOpen(false);
+        setArticlePickerOpen((current) => !current);
+      }}
+      onToggleSidebar={() => {
+        readerSidebarWasAutoCollapsedRef.current = false;
+        setDesktopSidebarOpen((current) => !current);
+      }}
       onToggleTaskPicker={() => {
+        setArticlePickerOpen(false);
         setFilePickerOpen(false);
         setTaskPickerOpen((current) => !current);
       }}
@@ -4774,6 +5231,11 @@ function InfiniteCanvasLocalShellSurface({
               onNodeDragStart={handleNodeDragStart}
               onNodeDragStop={handleNodeDragStop}
               onNodeDoubleClick={(event, node) => {
+                if (node.type === CANVAS_ARTICLE_NODE_TYPE) {
+                  event.preventDefault();
+                  openArticleNode(node);
+                  return;
+                }
                 if (node.type !== CANVAS_PDF_NODE_TYPE) return;
                 event.preventDefault();
                 void openPdfNode(node);
@@ -4856,7 +5318,7 @@ function InfiniteCanvasLocalShellSurface({
                 </button>
                 <button
                   type="button"
-                  onClick={closePdfReader}
+                  onClick={() => closePdfReader()}
                   aria-label="Закрыть PDF"
                   title="Закрыть PDF"
                 >
@@ -4869,6 +5331,53 @@ function InfiniteCanvasLocalShellSurface({
               title={openPdf.name}
               className={styles.pdfReaderFrame}
             />
+          </aside>
+        ) : null}
+        {shellState.openArticleId ? (
+          <aside
+            aria-label="Просмотр статьи"
+            className={`${styles.articleReader} canvas-article-reader`}
+          >
+            <header className={styles.pdfReaderHeader}>
+              <strong title={openArticle?.title ?? "Статья недоступна"}>
+                {openArticle?.title ?? "Статья недоступна"}
+              </strong>
+              <div className={styles.pdfReaderHeaderActions}>
+                <button
+                  aria-label="Закрыть статью"
+                  onClick={closeArticleReader}
+                  title="Закрыть статью"
+                  type="button"
+                >
+                  <UiIcon name="close" />
+                </button>
+              </div>
+            </header>
+            {openArticle ? (
+              <article
+                aria-label={openArticle.title}
+                className={`document-page ${styles.articleReaderDocument}`}
+              >
+                <div className="document-page-inner">
+                  <MarkdownDocumentPreview
+                    document={openArticle}
+                    onInternalLink={(documentId) => {
+                      if (
+                        knowledgeArticles.some(
+                          (article) => article.id === documentId,
+                        )
+                      )
+                        openArticleFromReader(documentId);
+                    }}
+                  />
+                </div>
+              </article>
+            ) : (
+              <div className={styles.articleReaderMissing} role="status">
+                Статья больше недоступна. Выберите другую через кнопку «Открыть
+                статью» в верхней панели.
+              </div>
+            )}
           </aside>
         ) : null}
       </div>,
@@ -5087,6 +5596,11 @@ function InfiniteCanvasLocalShellSurface({
             onNodeDragStart={handleNodeDragStart}
             onNodeDragStop={handleNodeDragStop}
             onNodeDoubleClick={(event, node) => {
+              if (node.type === CANVAS_ARTICLE_NODE_TYPE) {
+                event.preventDefault();
+                openArticleNode(node);
+                return;
+              }
               if (node.type !== CANVAS_PDF_NODE_TYPE) return;
               event.preventDefault();
               void openPdfNode(node);
@@ -5189,6 +5703,7 @@ export function InfiniteCanvasLocalShell({
   copy,
   embedded,
   groupRepository,
+  knowledgeArticles,
   projectFileRepository,
   projectFileVariantRepository,
   projectId,
@@ -5205,6 +5720,7 @@ export function InfiniteCanvasLocalShell({
   copy: CanvasShellCopy;
   embedded?: boolean;
   groupRepository?: CanvasGroupRepository;
+  knowledgeArticles?: readonly PrototypeDocument[];
   projectFileRepository?: ProjectFileRepository;
   projectFileVariantRepository?: ProjectFileImageVariantRepository;
   projectId?: string;
@@ -5224,6 +5740,7 @@ export function InfiniteCanvasLocalShell({
         copy={copy}
         embedded={embedded}
         groupRepository={groupRepository}
+        knowledgeArticles={knowledgeArticles}
         projectFileRepository={projectFileRepository}
         projectFileVariantRepository={projectFileVariantRepository}
         projectId={projectId}

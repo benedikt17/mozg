@@ -5,6 +5,7 @@ import {
 } from "@/lib/canvas/local-canvas-shell-controller";
 import type {
   CanvasRepository,
+  CanvasViewState,
   CanvasViewStateRepository,
 } from "@/lib/canvas/local-canvas-repository";
 
@@ -25,6 +26,36 @@ function controller(): LocalCanvasShellController {
 }
 
 describe("LocalCanvasShellController.insertCanvasNodes", () => {
+  it("persists the open article as Canvas view state without mutating the graph", async () => {
+    const savedViewStates: CanvasViewState[] = [];
+    const repository = {
+      saveViewState: async (viewState: CanvasViewState): Promise<void> => {
+        savedViewStates.push(viewState);
+      },
+    } as CanvasRepository & CanvasViewStateRepository;
+    const instance = new LocalCanvasShellController({
+      repository,
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      clock: () => "2026-08-29T00:00:00.000Z",
+    });
+    instance.restoreRuntimeState({
+      ...emptyShellState(),
+      canvasId: "canvas-1",
+      title: "Canvas",
+      status: "saved",
+    });
+    const document = instance.state.document;
+
+    await instance.saveOpenArticleId("doc-l-koschei");
+
+    expect(instance.state.openArticleId).toBe("doc-l-koschei");
+    expect(instance.state.document).toEqual(document);
+    expect(savedViewStates).toMatchObject([
+      { canvasId: "canvas-1", openArticleId: "doc-l-koschei" },
+    ]);
+  });
+
   it("appends a heterogeneous node group in one pending mutation", () => {
     const instance = controller();
     const next = instance.insertCanvasNodes([

@@ -40,6 +40,8 @@ export type CanvasNodeFrameProps = {
   centerTextContent?: boolean;
   className?: string;
   toolbar?: ReactNode;
+  /** Keep this node's toolbar available while its companion reader is open. */
+  toolbarWhenReaderOpen?: boolean;
   contextMenu?: ReactNode;
   /** Shared interaction layer for persistent Canvas connections. */
   connectionHandleLayer?: ReactNode;
@@ -401,6 +403,7 @@ export function CanvasNodeFrame({
   centerTextContent,
   className,
   toolbar,
+  toolbarWhenReaderOpen = false,
   contextMenu,
   connectionHandleLayer,
 }: CanvasNodeFrameProps): React.JSX.Element {
@@ -412,6 +415,9 @@ export function CanvasNodeFrame({
         (node) =>
           node.selected && !(node.data as { readerOpen?: boolean }).readerOpen,
       ).length,
+  );
+  const selectedNodeCount = useStore(
+    (state) => state.nodes.filter((node) => node.selected).length,
   );
   const directChildCount = useStore((state) => {
     if (!nodeId) return 0;
@@ -432,7 +438,11 @@ export function CanvasNodeFrame({
       }
     )?.style?.textAlign ?? "center";
   const renderedToolbar = toolbar;
-  const toolbarVisible = selected && selectedNonReaderNodeCount === 1;
+  const toolbarVisible =
+    selected &&
+    (toolbarWhenReaderOpen
+      ? selectedNodeCount === 1
+      : selectedNonReaderNodeCount === 1);
   const renderedChildren = isTextFrame
     ? withCenteredTextContent(children, textAlign)
     : children;

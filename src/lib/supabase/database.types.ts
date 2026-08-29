@@ -185,6 +185,7 @@ export type Database = {
       canvas_view_states: {
         Row: {
           canvas_id: string
+          open_article_id: string | null
           updated_at: string
           user_id: string
           viewport_x: number
@@ -193,6 +194,7 @@ export type Database = {
         }
         Insert: {
           canvas_id: string
+          open_article_id?: string | null
           updated_at?: string
           user_id: string
           viewport_x?: number
@@ -201,6 +203,7 @@ export type Database = {
         }
         Update: {
           canvas_id?: string
+          open_article_id?: string | null
           updated_at?: string
           user_id?: string
           viewport_x?: number

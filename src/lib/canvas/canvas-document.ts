@@ -8,6 +8,7 @@ import {
   type CanvasTextStyle,
 } from "@/lib/canvas/canvas-text-style";
 import type { CanvasShapeStyle } from "@/lib/canvas/canvas-shape-style";
+import type { CanvasArticleStyle } from "@/lib/canvas/canvas-article-style";
 
 export const CANVAS_DOCUMENT_SCHEMA_VERSION = 1 as const;
 export const CANVAS_DOCUMENT_V2_SCHEMA_VERSION = 2 as const;
@@ -60,6 +61,7 @@ export type CanvasArticleNode = CanvasNodeBase & {
   kind: "article";
   articleId: string;
   lastKnownTitle?: string;
+  style?: CanvasArticleStyle;
 };
 
 export type CanvasTextNode = CanvasNodeBase & {
@@ -232,6 +234,12 @@ const SHAPE_STYLE_KEYS = [
   "fillColor",
 ];
 const SHAPE_STYLE_OPTIONAL_KEYS = ["textAlign"];
+const ARTICLE_STYLE_KEYS = [
+  "badgeColor",
+  "titleColor",
+  "backgroundColor",
+  "titleFontSize",
+];
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -395,6 +403,14 @@ function requireCanvasTextColor(value: unknown, path: string): string {
   return color;
 }
 
+function requireCanvasArticleColor(value: unknown, path: string): string {
+  const color = requireCanvasTextColor(value, path);
+  if (color === "transparent") {
+    fail("invalid_article_color", path, "Expected a six-digit hex color");
+  }
+  return color;
+}
+
 function requireCanvasTextStyle(value: unknown, path: string): CanvasTextStyle {
   const style = requireRecord(value, path);
   requireExactKeys(style, TEXT_STYLE_KEYS, TEXT_STYLE_OPTIONAL_KEYS, path);
@@ -437,6 +453,36 @@ function requireCanvasTextStyle(value: unknown, path: string): CanvasTextStyle {
       `${path}.backgroundColor`,
     ),
     textAlign: textAlign as CanvasTextAlignment,
+  };
+}
+
+function requireCanvasArticleStyle(
+  value: unknown,
+  path: string,
+): CanvasArticleStyle {
+  const style = requireRecord(value, path);
+  requireExactKeys(style, ARTICLE_STYLE_KEYS, [], path);
+  const titleFontSize = style.titleFontSize;
+  if (
+    typeof titleFontSize !== "number" ||
+    !CANVAS_TEXT_FONT_SIZES.includes(titleFontSize as CanvasTextFontSize)
+  ) {
+    fail("invalid_font_size", `${path}.titleFontSize`, "Unsupported font size");
+  }
+  return {
+    badgeColor: requireCanvasArticleColor(
+      style.badgeColor,
+      `${path}.badgeColor`,
+    ),
+    titleColor: requireCanvasArticleColor(
+      style.titleColor,
+      `${path}.titleColor`,
+    ),
+    backgroundColor: requireCanvasArticleColor(
+      style.backgroundColor,
+      `${path}.backgroundColor`,
+    ),
+    titleFontSize: titleFontSize as CanvasTextFontSize,
   };
 }
 
@@ -491,13 +537,15 @@ function parseNode(
   }
   const branchCollapseOptionalKey = ["branchCollapsed"];
   const allowedKeys =
-    kind === "task" || kind === "article"
+    kind === "task"
       ? ["lastKnownTitle", ...branchCollapseOptionalKey]
-      : kind === "text"
-        ? ["style", ...branchCollapseOptionalKey]
-        : kind === "pdf"
-          ? ["lastKnownName", ...branchCollapseOptionalKey]
-          : branchCollapseOptionalKey;
+      : kind === "article"
+        ? ["lastKnownTitle", "style", ...branchCollapseOptionalKey]
+        : kind === "text"
+          ? ["style", ...branchCollapseOptionalKey]
+          : kind === "pdf"
+            ? ["lastKnownName", ...branchCollapseOptionalKey]
+            : branchCollapseOptionalKey;
   const hasImageAssetId =
     kind === "image" && Object.prototype.hasOwnProperty.call(node, "assetId");
   const hasImageFileId =
@@ -587,6 +635,9 @@ function parseNode(
         node.lastKnownTitle,
         `${path}.lastKnownTitle`,
       );
+    }
+    if (Object.prototype.hasOwnProperty.call(node, "style")) {
+      result.style = requireCanvasArticleStyle(node.style, `${path}.style`);
     }
     return result;
   }

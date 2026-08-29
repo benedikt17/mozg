@@ -17,6 +17,7 @@ import {
   useDesktopCanvasTaskRuntime,
   useDesktopTaskRuntime,
 } from "@/prototype/tasks/desktop-task-runtime";
+import { getActiveProjectDocuments } from "@/prototype/state/knowledge-state";
 import styles from "./infinite-canvas-local-shell.module.css";
 import "@/prototype/desktop-shell.css";
 import "@/prototype/desktop-workspaces.css";
@@ -95,6 +96,7 @@ function InfiniteCanvasLocalShellComposition(): React.JSX.Element {
               assetRepository={repository}
               copy={localCanvasShellCopy}
               groupRepository={repository}
+              knowledgeArticles={getActiveProjectDocuments(state)}
               repository={repository}
               showDiagnostics
               userId={INFINITE_CANVAS_LOCAL_SHELL_USER_ID}

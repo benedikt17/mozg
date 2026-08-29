@@ -40,6 +40,7 @@ export type LocalCanvasShellStatus =
 
 export type LocalCanvasShellState = {
   canvasId: string | null;
+  openArticleId?: string | null;
   title: string;
   revision: number;
   document: CanvasDocumentV2;
@@ -86,6 +87,7 @@ function sameDocument(
 export function emptyShellState(): LocalCanvasShellState {
   return {
     canvasId: null,
+    openArticleId: null,
     title: "",
     revision: 1,
     document: createEmptyCanvasDocumentV2(),
@@ -151,7 +153,10 @@ export class LocalCanvasShellController {
 
   restoreRuntimeState(state: LocalCanvasShellState): LocalCanvasShellState {
     this.beginCanvasNavigation(state.canvasId);
-    this.stateValue = clone(state);
+    this.stateValue = {
+      ...clone(state),
+      openArticleId: state.openArticleId ?? null,
+    };
     this.documentHistory.reset();
     this.saveInFlight = null;
     this.savedMutationVersion = 0;
@@ -262,6 +267,7 @@ export class LocalCanvasShellController {
     const document = parseCanvasDocumentV2(canvas.document);
     this.stateValue = {
       canvasId: canvas.id,
+      openArticleId: viewState?.openArticleId ?? null,
       title: canvas.title,
       revision: canvas.revision,
       document: clone(document),
@@ -718,18 +724,41 @@ export class LocalCanvasShellController {
     }
   }
 
-  async saveViewport(viewport: CanvasViewport): Promise<void> {
+  private viewStateSaveQueue: Promise<void> = Promise.resolve();
+
+  private persistViewState(): Promise<void> {
     const current = this.stateValue;
-    if (!current.canvasId) return;
-    await this.repository.saveViewState({
+    if (!current.canvasId) return Promise.resolve();
+    const snapshot = {
       canvasId: current.canvasId,
-      userId: this.userId,
-      viewportX: viewport.x,
-      viewportY: viewport.y,
-      zoom: viewport.zoom,
-      updatedAt: now(this.clock),
-    });
+      openArticleId: current.openArticleId ?? null,
+      viewport: { ...current.viewport },
+    };
+    const saved = this.viewStateSaveQueue.then(() =>
+      this.repository.saveViewState({
+        canvasId: snapshot.canvasId,
+        userId: this.userId,
+        viewportX: snapshot.viewport.x,
+        viewportY: snapshot.viewport.y,
+        zoom: snapshot.viewport.zoom,
+        openArticleId: snapshot.openArticleId,
+        updatedAt: now(this.clock),
+      }),
+    );
+    this.viewStateSaveQueue = saved.catch(() => undefined);
+    return saved;
+  }
+
+  async saveViewport(viewport: CanvasViewport): Promise<void> {
+    if (!this.stateValue.canvasId) return;
     this.stateValue = { ...this.stateValue, viewport: { ...viewport } };
+    await this.persistViewState();
+  }
+
+  async saveOpenArticleId(openArticleId: string | null): Promise<void> {
+    if (!this.stateValue.canvasId) return;
+    this.stateValue = { ...this.stateValue, openArticleId };
+    await this.persistViewState();
   }
 
   async reloadAfterConflict(): Promise<LocalCanvasShellState> {
