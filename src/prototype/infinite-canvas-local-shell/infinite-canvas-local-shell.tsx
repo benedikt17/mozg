@@ -18,6 +18,7 @@ import {
   useNodesState,
   useInternalNode,
   useReactFlow,
+  useStore,
   type Connection,
   type ConnectionLineComponentProps,
   type EdgeChange,
@@ -30,6 +31,7 @@ import {
   CanvasDesktopSidebar,
   CanvasDesktopToolbar,
 } from "@/prototype/canvases/canvas-desktop-composition";
+import { getCanvasBreadcrumb } from "@/prototype/canvases/canvas-breadcrumb";
 import { UiIcon } from "@/prototype/desktop-icons";
 import {
   useCallback,
@@ -1154,6 +1156,11 @@ export function CanvasEdgeBody({
 }: EdgeProps<CanvasEdgeFlow>): React.JSX.Element | null {
   const [lineTypeOpen, setLineTypeOpen] = useState(false);
   const [lastPath, setLastPath] = useState("M0,0 L0,0");
+  const selectedElementCount = useStore(
+    (state) =>
+      state.nodes.filter((node) => node.selected).length +
+      state.edges.filter((edge) => edge.selected).length,
+  );
   const sourceNode = useInternalNode<CanvasFlowNode>(source);
   const targetNode = useInternalNode<CanvasFlowNode>(target);
   const sourcePositionSide = sourcePosition as CanvasHandleSide;
@@ -1230,6 +1237,7 @@ export function CanvasEdgeBody({
   const stopToolbarEvent = (event: React.SyntheticEvent): void => {
     event.stopPropagation();
   };
+  const toolbarVisible = selected && selectedElementCount === 1;
   return (
     <>
       <g
@@ -1246,12 +1254,12 @@ export function CanvasEdgeBody({
           interactionWidth={24}
         />
       </g>
-      {selected ? (
+      {toolbarVisible ? (
         <EdgeToolbar
           edgeId={id}
           x={labelX}
           y={labelY}
-          isVisible={selected}
+          isVisible={toolbarVisible}
           alignY="top"
           className={`${styles.edgeToolbar} nodrag nopan nowheel`}
           onPointerDown={stopToolbarEvent}
@@ -1586,6 +1594,9 @@ function InfiniteCanvasLocalShellSurface({
   );
   const [groups, setGroups] = useState<CanvasGroup[]>([]);
   const [groupsError, setGroupsError] = useState<string | null>(null);
+  const [highlightedCanvasGroupId, setHighlightedCanvasGroupId] = useState<
+    string | null
+  >(null);
   const [shellState, setShellState] = useState<LocalCanvasShellState>(
     initialRuntime?.shellState ?? emptyShellState,
   );
@@ -4493,6 +4504,14 @@ function InfiniteCanvasLocalShellSurface({
         : loadingLifecycle === "error" && summaries.length === 0
           ? "error"
           : "ready";
+  const canvasBreadcrumb = useMemo(
+    () =>
+      getCanvasBreadcrumb(
+        groups,
+        summaries.find((summary) => summary.id === shellState.canvasId),
+      ),
+    [groups, shellState.canvasId, summaries],
+  );
   const desktopSidebar = embedded ? (
     <CanvasDesktopSidebar
       activeCanvasId={shellState.canvasId}
@@ -4500,6 +4519,7 @@ function InfiniteCanvasLocalShellSurface({
       error={shellState.error}
       groups={groups}
       groupsError={groupsError}
+      highlightedGroupId={highlightedCanvasGroupId}
       listState={desktopListState}
       onCreateCanvas={(title, groupId) => void createCanvas(title, groupId)}
       onCreateGroup={(title, parentGroupId) =>
@@ -4516,13 +4536,25 @@ function InfiniteCanvasLocalShellSurface({
       onRenameCanvas={renameCanvasById}
       onRenameGroup={(groupId, title) => void renameCanvasGroup(groupId, title)}
       onRetry={() => window.location.reload()}
-      onSelectCanvas={(canvasId) => void openCanvas(canvasId)}
+      onSelectCanvas={(canvasId) => {
+        setHighlightedCanvasGroupId(null);
+        void openCanvas(canvasId);
+      }}
       summaries={summaries}
     />
   ) : null;
 
   const desktopToolbar = embedded ? (
     <CanvasDesktopToolbar
+      breadcrumb={{
+        highlightedGroupId: highlightedCanvasGroupId,
+        onSelectCanvas: (canvasId) => {
+          setHighlightedCanvasGroupId(null);
+          void openCanvas(canvasId);
+        },
+        onSelectGroup: setHighlightedCanvasGroupId,
+        segments: canvasBreadcrumb,
+      }}
       canRedo={controller.canRedo}
       canUndo={controller.canUndo}
       interactive={Boolean(shellState.canvasId) && loadingLifecycle === "ready"}

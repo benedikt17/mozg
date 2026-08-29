@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { CanvasGroup } from "@/lib/canvas/canvas-group-repository";
 import type { CanvasSummary } from "@/lib/canvas/local-canvas-repository";
+import { getCanvasGroupAncestorIds } from "@/prototype/canvases/canvas-breadcrumb";
 import { canCreateCanvasFromSidebar } from "@/prototype/canvases/canvas-create-readiness";
 import { UiIcon } from "@/prototype/desktop-icons";
 import { IconButton, PrototypeButton } from "@/prototype/desktop-ui";
@@ -15,6 +16,7 @@ export type CanvasGroupsSidebarProps = {
   error: string | null;
   groups: readonly CanvasGroup[];
   groupsError: string | null;
+  highlightedGroupId: string | null;
   listState: "loading" | "ready" | "empty" | "error";
   onCreateCanvas: (title: string, groupId: string | null) => void;
   onCreateGroup: (title: string, parentGroupId: string | null) => void;
@@ -104,6 +106,7 @@ type GroupTreeProps = {
   editingGroupId: string | null;
   expandedGroupIds: Set<string>;
   group: GroupTree;
+  highlightedGroupId: string | null;
   draft: string;
   searching: boolean;
   onCreate: (kind: "canvas" | "group", parentGroupId: string | null) => void;
@@ -250,6 +253,7 @@ function CanvasGroupTree(props: GroupTreeProps): React.JSX.Element {
     editingGroupId,
     expandedGroupIds,
     group,
+    highlightedGroupId,
     draft,
     searching,
     onCreate,
@@ -275,7 +279,7 @@ function CanvasGroupTree(props: GroupTreeProps): React.JSX.Element {
       data-canvas-group-id={group.id}
     >
       <div
-        className={`${styles.canvasTreeRow} ${dropTargetId === group.id ? styles.canvasTreeRowDropTarget : ""}`}
+        className={`${styles.canvasTreeRow} ${dropTargetId === group.id ? styles.canvasTreeRowDropTarget : ""} ${highlightedGroupId === group.id ? styles.canvasTreeRowBreadcrumbTarget : ""}`}
       >
         {editingGroupId === group.id ? (
           <input
@@ -418,6 +422,7 @@ export function CanvasGroupsSidebar({
   error,
   groups,
   groupsError,
+  highlightedGroupId,
   listState,
   onCreateCanvas,
   onCreateGroup,
@@ -475,6 +480,13 @@ export function CanvasGroupsSidebar({
     listState,
     activeCanvasId,
   );
+  const effectiveExpandedGroupIds = useMemo(() => {
+    if (!highlightedGroupId) return expandedGroupIds;
+    return new Set([
+      ...expandedGroupIds,
+      ...getCanvasGroupAncestorIds(groups, highlightedGroupId),
+    ]);
+  }, [expandedGroupIds, groups, highlightedGroupId]);
 
   const openCreate = (
     kind: "canvas" | "group",
@@ -520,8 +532,9 @@ export function CanvasGroupsSidebar({
     dropTargetId,
     editingCanvasId,
     editingGroupId,
-    expandedGroupIds,
+    expandedGroupIds: effectiveExpandedGroupIds,
     group,
+    highlightedGroupId,
     draft,
     searching,
     onCreate: openCreate,
