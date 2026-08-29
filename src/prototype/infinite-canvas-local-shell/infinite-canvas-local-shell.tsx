@@ -106,8 +106,11 @@ import {
 } from "@/lib/canvas/canvas-alt-drag-duplicate";
 import {
   CANVAS_BRANCH_COLLAPSE_EVENT,
+  canvasBranchDescendantNodeIds,
   canvasBranchCollapsedNodeIds,
+  canvasBranchRuntimeState,
   projectCanvasBranchCollapse,
+  translateCanvasBranchDescendants,
   type CanvasBranchCollapseEventDetail,
 } from "@/lib/canvas/canvas-branch-collapse";
 import {
@@ -1728,6 +1731,11 @@ function InfiniteCanvasLocalShellSurface({
   const pendingContentHeightSaveRef = useRef(false);
   const nodeGeometrySignatureRef = useRef("");
   const nodeDragActiveRef = useRef(false);
+  const collapsedBranchDragRef = useRef<{
+    descendantNodeIds: Set<string>;
+    nodeId: string;
+    startPosition: FlowPosition;
+  } | null>(null);
   const altDragDuplicateRef = useRef<CanvasAltDragDuplicateSession | null>(
     null,
   );
@@ -2372,7 +2380,21 @@ function InfiniteCanvasLocalShellSurface({
       nodeDragActiveRef.current = true;
       edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
       altDragDuplicateRef.current = null;
-      if (!event.altKey) return;
+      collapsedBranchDragRef.current = null;
+      if (!event.altKey) {
+        if (!canvasBranchRuntimeState(node.data)?.collapsed) return;
+        const descendantNodeIds = canvasBranchDescendantNodeIds(
+          node.id,
+          edgesRef.current,
+        );
+        if (descendantNodeIds.size === 0) return;
+        collapsedBranchDragRef.current = {
+          descendantNodeIds,
+          nodeId: node.id,
+          startPosition: { ...node.position },
+        };
+        return;
+      }
       if (
         nodesRef.current.some(
           (candidate) => candidate.selected && candidate.id !== node.id,
@@ -2409,42 +2431,70 @@ function InfiniteCanvasLocalShellSurface({
     [controller, setNodes],
   );
 
-  const handleNodeDragStop = useCallback((): void => {
-    nodeDragActiveRef.current = false;
-    edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
-    if (touchViewportGestureActiveRef.current) return;
+  const handleNodeDragStop = useCallback(
+    (_event: MouseEvent | TouchEvent, node: CanvasFlowNode): void => {
+      nodeDragActiveRef.current = false;
+      edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
+      if (touchViewportGestureActiveRef.current) return;
 
-    const duplicateSession = altDragDuplicateRef.current;
-    altDragDuplicateRef.current = null;
-    if (duplicateSession) {
-      const duplicate = finalizeCanvasAltDragDuplicate(duplicateSession);
-      const nextNodes = nodesRef.current.map((candidate) => {
-        if (candidate.id === duplicateSession.sourceNodeId)
-          return { ...candidate, selected: false };
-        if (candidate.id === duplicateSession.duplicateNodeId)
-          return {
-            ...candidate,
-            position: { ...duplicate.position },
-            selected: true,
-          };
-        return candidate;
-      });
-      nodesRef.current = nextNodes;
-      setNodes(nextNodes);
-      controller.insertCanvasNodes([duplicate]);
-      controller.setRuntimeEdges(edgesRef.current);
-      syncState();
-      scheduleSave();
-      return;
-    }
+      const duplicateSession = altDragDuplicateRef.current;
+      altDragDuplicateRef.current = null;
+      if (duplicateSession) {
+        const duplicate = finalizeCanvasAltDragDuplicate(duplicateSession);
+        const nextNodes = nodesRef.current.map((candidate) => {
+          if (candidate.id === duplicateSession.sourceNodeId)
+            return { ...candidate, selected: false };
+          if (candidate.id === duplicateSession.duplicateNodeId)
+            return {
+              ...candidate,
+              position: { ...duplicate.position },
+              selected: true,
+            };
+          return candidate;
+        });
+        nodesRef.current = nextNodes;
+        setNodes(nextNodes);
+        controller.insertCanvasNodes([duplicate]);
+        controller.setRuntimeEdges(edgesRef.current);
+        syncState();
+        scheduleSave();
+        return;
+      }
 
-    window.setTimeout(() => {
-      if (!shellStateRef.current.canvasId) return;
-      controller.setRuntimeEdges(edgesRef.current);
-      syncState();
-      scheduleSave();
-    }, 0);
-  }, [controller, scheduleSave, setNodes, syncState]);
+      const collapsedBranchDrag = collapsedBranchDragRef.current;
+      collapsedBranchDragRef.current = null;
+      if (collapsedBranchDrag?.nodeId === node.id) {
+        const delta = {
+          x: node.position.x - collapsedBranchDrag.startPosition.x,
+          y: node.position.y - collapsedBranchDrag.startPosition.y,
+        };
+        const translated = translateCanvasBranchDescendants(
+          nodesRef.current,
+          collapsedBranchDrag.descendantNodeIds,
+          delta,
+        ).map((candidate) =>
+          candidate.id === node.id
+            ? { ...candidate, position: { ...node.position } }
+            : candidate,
+        );
+        nodesRef.current = translated;
+        setNodes(translated);
+        controller.setRuntimeNodes(translated);
+        controller.setRuntimeEdges(edgesRef.current);
+        syncState();
+        scheduleSave();
+        return;
+      }
+
+      window.setTimeout(() => {
+        if (!shellStateRef.current.canvasId) return;
+        controller.setRuntimeEdges(edgesRef.current);
+        syncState();
+        scheduleSave();
+      }, 0);
+    },
+    [controller, scheduleSave, setNodes, syncState],
+  );
 
   const handleTaskNodeContentHeightChange = useCallback((): void => {
     // Task projection is runtime-only; it must never resize canonical bounds.
@@ -5180,12 +5230,12 @@ function InfiniteCanvasLocalShellSurface({
               onEdgesChange={handleEdgesChange}
               onNodeDragStart={handleNodeDragStart}
               onNodeDragStop={handleNodeDragStop}
-              onNodeClick={(event, node) => {
-                if (node.type !== CANVAS_ARTICLE_NODE_TYPE) return;
-                event.preventDefault();
-                openArticleNode(node);
-              }}
               onNodeDoubleClick={(event, node) => {
+                if (node.type === CANVAS_ARTICLE_NODE_TYPE) {
+                  event.preventDefault();
+                  openArticleNode(node);
+                  return;
+                }
                 if (node.type !== CANVAS_PDF_NODE_TYPE) return;
                 event.preventDefault();
                 void openPdfNode(node);
@@ -5545,12 +5595,12 @@ function InfiniteCanvasLocalShellSurface({
             onEdgesChange={handleEdgesChange}
             onNodeDragStart={handleNodeDragStart}
             onNodeDragStop={handleNodeDragStop}
-            onNodeClick={(event, node) => {
-              if (node.type !== CANVAS_ARTICLE_NODE_TYPE) return;
-              event.preventDefault();
-              openArticleNode(node);
-            }}
             onNodeDoubleClick={(event, node) => {
+              if (node.type === CANVAS_ARTICLE_NODE_TYPE) {
+                event.preventDefault();
+                openArticleNode(node);
+                return;
+              }
               if (node.type !== CANVAS_PDF_NODE_TYPE) return;
               event.preventDefault();
               void openPdfNode(node);

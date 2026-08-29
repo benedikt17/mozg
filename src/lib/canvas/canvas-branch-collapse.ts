@@ -83,6 +83,37 @@ function descendantsOf(
   return descendants;
 }
 
+/**
+ * Returns every downstream node in a branch, without treating a cycle back to
+ * the root as a descendant.  Consumers use this when a collapsed parent moves
+ * so its hidden layout keeps the same relative geometry.
+ */
+export function canvasBranchDescendantNodeIds(
+  rootId: string,
+  edges: readonly Edge[],
+): Set<string> {
+  return descendantsOf(rootId, adjacencyForEdges(edges));
+}
+
+export function translateCanvasBranchDescendants<TNode extends Node>(
+  nodes: readonly TNode[],
+  descendantNodeIds: ReadonlySet<string>,
+  delta: { x: number; y: number },
+): TNode[] {
+  if (delta.x === 0 && delta.y === 0) return [...nodes];
+  return nodes.map((node) =>
+    descendantNodeIds.has(node.id)
+      ? {
+          ...node,
+          position: {
+            x: node.position.x + delta.x,
+            y: node.position.y + delta.y,
+          },
+        }
+      : node,
+  ) as TNode[];
+}
+
 export function projectCanvasBranchCollapse<
   TNode extends Node,
   TEdge extends Edge,

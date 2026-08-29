@@ -480,13 +480,15 @@ export function CanvasGroupsSidebar({
     listState,
     activeCanvasId,
   );
+  const activeCanvasGroupId = summaries.find(
+    (canvas) => canvas.id === activeCanvasId,
+  )?.groupId;
   const effectiveExpandedGroupIds = useMemo(() => {
-    if (!highlightedGroupId) return expandedGroupIds;
-    return new Set([
-      ...expandedGroupIds,
-      ...getCanvasGroupAncestorIds(groups, highlightedGroupId),
-    ]);
-  }, [expandedGroupIds, groups, highlightedGroupId]);
+    const requiredPathGroupIds = [highlightedGroupId, activeCanvasGroupId]
+      .filter((groupId): groupId is string => Boolean(groupId))
+      .flatMap((groupId) => getCanvasGroupAncestorIds(groups, groupId));
+    return new Set([...expandedGroupIds, ...requiredPathGroupIds]);
+  }, [activeCanvasGroupId, expandedGroupIds, groups, highlightedGroupId]);
 
   const openCreate = (
     kind: "canvas" | "group",

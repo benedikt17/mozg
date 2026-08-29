@@ -22,7 +22,7 @@ describe("Canvas PDF reader UI", () => {
     expect(shell).toContain("nodes={renderedNodes}");
   });
 
-  it("adds articles as Canvas nodes that open the reader on click", () => {
+  it("adds articles as Canvas nodes that open the reader on double click", () => {
     const shell = source(
       "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
     );
@@ -34,7 +34,8 @@ describe("Canvas PDF reader UI", () => {
     expect(shell).toContain('kind: "article" as const');
     expect(shell).toContain("createCanvasArticleFlowNode(canonical)");
     expect(shell).toContain("onSelectArticle={createArticleNode}");
-    expect(shell).toContain("onNodeClick={(event, node) => {");
+    expect(shell).toContain("onNodeDoubleClick={(event, node) => {");
+    expect(shell).toContain("node.type === CANVAS_ARTICLE_NODE_TYPE");
     expect(shell).toContain("openArticleNode(node);");
     expect(shell).toContain("saveOpenArticleId(node.data.articleId)");
     expect(styles).toContain(".articleNodeFrameReaderOpen .nodeBody");
@@ -99,7 +100,9 @@ describe("Canvas PDF reader UI", () => {
     expect(shell).toContain("reactFlow.setCenter(");
     expect(shell).toContain("const enterReaderLayout");
     expect(shell).toContain("const leaveReaderLayout");
-    expect(shell).toContain("readerSidebarWasAutoCollapsedRef.current = false;");
+    expect(shell).toContain(
+      "readerSidebarWasAutoCollapsedRef.current = false;",
+    );
     expect(shell).toContain("enterReaderLayout(node.id);");
     expect(shell).toContain("leaveReaderLayout(openNodeId);");
     expect(shell).toContain("const closeArticleReader");

@@ -39,6 +39,8 @@ describe("desktop Canvas composition", () => {
     expect(shell).toContain("highlightedCanvasGroupId");
     expect(sidebar).toContain("highlightedGroupId");
     expect(sidebar).toContain("effectiveExpandedGroupIds");
+    expect(sidebar).toContain("activeCanvasGroupId");
+    expect(sidebar).toContain("requiredPathGroupIds");
     expect(sidebar).toContain("canvasTreeRowBreadcrumbTarget");
     expect(toolbar).toContain('aria-label="Путь к текущему холсту"');
   });
