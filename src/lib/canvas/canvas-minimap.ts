@@ -1,5 +1,6 @@
 import type { Node } from "@xyflow/react";
 import {
+  CANVAS_ARTICLE_NODE_TYPE,
   CANVAS_IMAGE_NODE_TYPE,
   CANVAS_SHAPE_NODE_TYPE,
   CANVAS_TASK_NODE_TYPE,
@@ -12,6 +13,8 @@ export function canvasMiniMapNodeColor(node: Pick<Node, "type">): string {
       return "#9a3412";
     case CANVAS_TASK_NODE_TYPE:
       return "#0f766e";
+    case CANVAS_ARTICLE_NODE_TYPE:
+      return "#d97706";
     case CANVAS_SHAPE_NODE_TYPE:
       return "#d97706";
     case CANVAS_TEXT_NODE_TYPE:

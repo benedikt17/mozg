@@ -39,20 +39,22 @@ describe("CanvasNodeFrame composition", () => {
     );
   });
 
-  it("is the only interaction frame used by task, text, image, shape, and PDF bodies", () => {
+  it("is the only interaction frame used by task, article, text, image, shape, and PDF bodies", () => {
     const shell = source(
       "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
     );
 
     expect(shell).toContain("function ImageNodeBody");
     expect(shell).toContain("function PdfNodeBody");
+    expect(shell).toContain("function ArticleNodeBody");
     expect(shell).toContain("function TextNodeBody");
     expect(shell).toContain("function ShapeNodeBody");
     expect(shell).toContain("function TaskNodeBody");
-    expect(shell.match(/<CanvasNodeFrame/g)).toHaveLength(5);
+    expect(shell.match(/<CanvasNodeFrame/g)).toHaveLength(6);
     expect(shell).not.toContain("NodeResizer");
     expect(shell).toContain("CANVAS_IMAGE_NODE_TYPE]: ImageNodeBody");
     expect(shell).toContain("CANVAS_PDF_NODE_TYPE]: PdfNodeBody");
+    expect(shell).toContain("CANVAS_ARTICLE_NODE_TYPE]: ArticleNodeBody");
     expect(shell).toContain("CANVAS_TEXT_NODE_TYPE]: TextNodeBody");
     expect(shell).toContain("CANVAS_SHAPE_NODE_TYPE]: ShapeNodeBody");
     expect(shell).toContain("CANVAS_TASK_NODE_TYPE]: TaskNodeBody");

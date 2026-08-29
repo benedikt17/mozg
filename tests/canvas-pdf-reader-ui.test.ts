@@ -16,10 +16,28 @@ describe("Canvas PDF reader UI", () => {
     );
 
     expect(shell).toContain("nodeId: node.id");
-    expect(renderedNodes).toContain("node.id === openNodeId");
+    expect(renderedNodes).toContain("node.id === openPdfNodeId");
     expect(renderedNodes).toContain("readerOpen: true");
     expect(renderedNodes).not.toContain("selected: true");
     expect(shell).toContain("nodes={renderedNodes}");
+  });
+
+  it("adds articles as Canvas nodes that open the reader on click", () => {
+    const shell = source(
+      "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
+    );
+    const styles = source(
+      "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css",
+    );
+
+    expect(shell).toContain("const createArticleNode");
+    expect(shell).toContain('kind: "article" as const');
+    expect(shell).toContain("createCanvasArticleFlowNode(canonical)");
+    expect(shell).toContain("onSelectArticle={createArticleNode}");
+    expect(shell).toContain("onNodeClick={(event, node) => {");
+    expect(shell).toContain("openArticleNode(node);");
+    expect(shell).toContain("saveOpenArticleId(node.data.articleId)");
+    expect(styles).toContain(".articleNodeFrameReaderOpen .nodeBody");
   });
 
   it("does not delete an open PDF as part of another selected group", () => {
