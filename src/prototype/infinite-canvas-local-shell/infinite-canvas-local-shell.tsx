@@ -1617,6 +1617,8 @@ function InfiniteCanvasLocalShellSurface({
   const panInertiaVelocityRef = useRef<CanvasPanVelocity | null>(null);
   const panInertiaViewportRef = useRef<CanvasPanViewport | null>(null);
   const panInertiaLastFrameRef = useRef<number | null>(null);
+  const readerSidebarWasAutoCollapsedRef = useRef(false);
+  const readerCenterFrameRef = useRef<number | null>(null);
   const edgeRemovalSuppressionUntilRef = useRef(0);
   const hydratingRef = useRef(true);
   const canvasGenerationRef = useRef(0);
@@ -1755,6 +1757,53 @@ function InfiniteCanvasLocalShellSurface({
     })(),
   );
   const reactFlow = useReactFlow<CanvasFlowNode>();
+
+  const centerReaderNodeAfterLayout = useCallback(
+    (nodeId: string | null) => {
+      if (!nodeId) return;
+      if (readerCenterFrameRef.current !== null)
+        cancelAnimationFrame(readerCenterFrameRef.current);
+      readerCenterFrameRef.current = requestAnimationFrame(() => {
+        readerCenterFrameRef.current = requestAnimationFrame(() => {
+          readerCenterFrameRef.current = null;
+          const node = nodesRef.current.find((item) => item.id === nodeId);
+          if (!node) return;
+          const width = node.width ?? (Number(node.style?.width) || 0);
+          const height = node.height ?? (Number(node.style?.height) || 0);
+          if (width <= 0 || height <= 0) return;
+          void reactFlow.setCenter(
+            node.position.x + width / 2,
+            node.position.y + height / 2,
+            { duration: 220, zoom: reactFlow.getZoom() },
+          );
+        });
+      });
+    },
+    [reactFlow],
+  );
+
+  const enterReaderLayout = useCallback(
+    (nodeId: string) => {
+      const canAutoCollapseSidebar =
+        embedded && window.matchMedia("(min-width: 768px)").matches;
+      if (canAutoCollapseSidebar && desktopSidebarOpen) {
+        readerSidebarWasAutoCollapsedRef.current = true;
+        setDesktopSidebarOpen(false);
+      }
+      centerReaderNodeAfterLayout(nodeId);
+    },
+    [centerReaderNodeAfterLayout, desktopSidebarOpen, embedded],
+  );
+
+  const leaveReaderLayout = useCallback(
+    (nodeId: string | null) => {
+      const restoreSidebar = readerSidebarWasAutoCollapsedRef.current;
+      readerSidebarWasAutoCollapsedRef.current = false;
+      if (restoreSidebar) setDesktopSidebarOpen(true);
+      centerReaderNodeAfterLayout(nodeId);
+    },
+    [centerReaderNodeAfterLayout],
+  );
 
   useEffect(() => {
     const activeTaskId = activeTaskDetailsTaskId;
@@ -3908,6 +3957,7 @@ function InfiniteCanvasLocalShellSurface({
             objectUrl: URL.createObjectURL(downloaded.blob),
           };
         });
+        enterReaderLayout(node.id);
       } catch (error: unknown) {
         setShellState((current) => ({
           ...current,
@@ -3916,24 +3966,59 @@ function InfiniteCanvasLocalShellSurface({
         }));
       }
     },
-    [projectFileRepository, projectId, saveOpenArticleId, shellWorkspaceId],
+    [
+      enterReaderLayout,
+      projectFileRepository,
+      projectId,
+      saveOpenArticleId,
+      shellWorkspaceId,
+    ],
   );
 
-  const closePdfReader = useCallback(() => {
-    setPdfFullscreen(false);
-    setOpenPdf((current) => {
-      if (current) URL.revokeObjectURL(current.objectUrl);
-      return null;
-    });
-  }, []);
+  const closePdfReader = useCallback(
+    (restoreLayout = true) => {
+      const openNodeId = openPdf?.nodeId ?? null;
+      setPdfFullscreen(false);
+      setOpenPdf((current) => {
+        if (current) URL.revokeObjectURL(current.objectUrl);
+        return null;
+      });
+      if (restoreLayout) leaveReaderLayout(openNodeId);
+    },
+    [leaveReaderLayout, openPdf?.nodeId],
+  );
+
+  const closeArticleReader = useCallback(() => {
+    const nodeId = nodesRef.current.find(
+      (node) =>
+        node.type === CANVAS_ARTICLE_NODE_TYPE &&
+        node.data.articleId === shellStateRef.current.openArticleId,
+    )?.id;
+    saveOpenArticleId(null);
+    leaveReaderLayout(nodeId ?? null);
+  }, [leaveReaderLayout, saveOpenArticleId]);
 
   const openArticleNode = useCallback(
     (node: CanvasFlowNode) => {
       if (node.type !== CANVAS_ARTICLE_NODE_TYPE) return;
-      closePdfReader();
+      closePdfReader(false);
       saveOpenArticleId(node.data.articleId);
+      enterReaderLayout(node.id);
     },
-    [closePdfReader, saveOpenArticleId],
+    [closePdfReader, enterReaderLayout, saveOpenArticleId],
+  );
+
+  const openArticleFromReader = useCallback(
+    (articleId: string) => {
+      const matchingNode = nodesRef.current.find(
+        (node) =>
+          node.type === CANVAS_ARTICLE_NODE_TYPE &&
+          node.data.articleId === articleId,
+      );
+      saveOpenArticleId(articleId);
+      if (matchingNode) enterReaderLayout(matchingNode.id);
+    },
+    [enterReaderLayout, saveOpenArticleId],
   );
 
   const createArticleNode = useCallback(
@@ -4740,7 +4825,10 @@ function InfiniteCanvasLocalShellSurface({
         setTaskPickerOpen(false);
         setArticlePickerOpen((current) => !current);
       }}
-      onToggleSidebar={() => setDesktopSidebarOpen((current) => !current)}
+      onToggleSidebar={() => {
+        readerSidebarWasAutoCollapsedRef.current = false;
+        setDesktopSidebarOpen((current) => !current);
+      }}
       onToggleTaskPicker={() => {
         setArticlePickerOpen(false);
         setFilePickerOpen(false);
@@ -5012,7 +5100,7 @@ function InfiniteCanvasLocalShellSurface({
                 </button>
                 <button
                   type="button"
-                  onClick={closePdfReader}
+                  onClick={() => closePdfReader()}
                   aria-label="Закрыть PDF"
                   title="Закрыть PDF"
                 >
@@ -5039,7 +5127,7 @@ function InfiniteCanvasLocalShellSurface({
               <div className={styles.pdfReaderHeaderActions}>
                 <button
                   aria-label="Закрыть статью"
-                  onClick={() => saveOpenArticleId(null)}
+                  onClick={closeArticleReader}
                   title="Закрыть статью"
                   type="button"
                 >
@@ -5061,7 +5149,7 @@ function InfiniteCanvasLocalShellSurface({
                           (article) => article.id === documentId,
                         )
                       )
-                        saveOpenArticleId(documentId);
+                        openArticleFromReader(documentId);
                     }}
                   />
                 </div>

@@ -89,6 +89,22 @@ describe("Canvas PDF reader UI", () => {
     );
   });
 
+  it("re-centers the source node and restores only an automatically hidden sidebar", () => {
+    const shell = source(
+      "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
+    );
+
+    expect(shell).toContain("const readerSidebarWasAutoCollapsedRef");
+    expect(shell).toContain("const centerReaderNodeAfterLayout");
+    expect(shell).toContain("reactFlow.setCenter(");
+    expect(shell).toContain("const enterReaderLayout");
+    expect(shell).toContain("const leaveReaderLayout");
+    expect(shell).toContain("readerSidebarWasAutoCollapsedRef.current = false;");
+    expect(shell).toContain("enterReaderLayout(node.id);");
+    expect(shell).toContain("leaveReaderLayout(openNodeId);");
+    expect(shell).toContain("const closeArticleReader");
+  });
+
   it("opens at a stable half-width layout", () => {
     const shell = source(
       "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
