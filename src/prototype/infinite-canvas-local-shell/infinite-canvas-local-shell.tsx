@@ -88,6 +88,7 @@ import {
   canvasTextStylePatchToShapeStyle,
   type CanvasShapeStyle,
 } from "@/lib/canvas/canvas-shape-style";
+import type { CanvasArticleStyle } from "@/lib/canvas/canvas-article-style";
 import {
   CANVAS_NODE_CLIPBOARD_MIME,
   createCanvasNodeClipboardPayload,
@@ -511,6 +512,114 @@ function dispatchCanvasStyleEyedropperStart(id: string): void {
   );
 }
 
+function dispatchCanvasArticleStylePatch(
+  id: string,
+  patch: Partial<CanvasArticleStyle>,
+): void {
+  window.dispatchEvent(
+    new CustomEvent("mozg:canvas-article-style", { detail: { id, patch } }),
+  );
+}
+
+function dispatchCanvasArticleStyleEyedropperStart(id: string): void {
+  window.dispatchEvent(
+    new CustomEvent("mozg:canvas-style-eyedropper-start", { detail: { id } }),
+  );
+}
+
+function ArticleSelectionToolbar({
+  id,
+  style,
+}: {
+  id: string;
+  style: CanvasArticleStyle;
+}): React.JSX.Element | null {
+  const selectedNodeCount = useStore((state) =>
+    Array.from(state.nodeLookup.values()).reduce(
+      (count, node) => count + (node.selected ? 1 : 0),
+      0,
+    ),
+  );
+  if (selectedNodeCount !== 1) return null;
+  const patchStyle = (patch: Partial<CanvasArticleStyle>): void =>
+    dispatchCanvasArticleStylePatch(id, patch);
+  return (
+    <div
+      className={`${styles.textSelectionToolbar} nodrag nopan nowheel`}
+      aria-label="Панель оформления статьи"
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <button
+        type="button"
+        className={styles.textToolbarButton}
+        aria-label="Уменьшить размер названия статьи"
+        title="Уменьшить размер названия"
+        onClick={() =>
+          patchStyle({
+            titleFontSize: previousCanvasTextFontSize(style.titleFontSize),
+          })
+        }
+      >
+        −
+      </button>
+      <span className={styles.articleToolbarSize} aria-label="Размер названия">
+        {style.titleFontSize}
+      </span>
+      <button
+        type="button"
+        className={styles.textToolbarButton}
+        aria-label="Увеличить размер названия статьи"
+        title="Увеличить размер названия"
+        onClick={() =>
+          patchStyle({
+            titleFontSize: nextCanvasTextFontSize(style.titleFontSize),
+          })
+        }
+      >
+        +
+      </button>
+      <span className={styles.textToolbarDivider} aria-hidden="true" />
+      <CanvasColorPicker
+        label="Цвет надписи «СТАТЬЯ»"
+        value={style.badgeColor}
+        onCommit={(badgeColor) => patchStyle({ badgeColor })}
+      />
+      <CanvasColorPicker
+        label="Цвет названия статьи"
+        value={style.titleColor}
+        onCommit={(titleColor) => patchStyle({ titleColor })}
+      />
+      <CanvasColorPicker
+        label="Цвет заливки статьи"
+        value={style.backgroundColor}
+        onCommit={(backgroundColor) => patchStyle({ backgroundColor })}
+      />
+      <button
+        type="button"
+        className={`${styles.textToolbarButton} ${styles.styleEyedropperButton}`}
+        aria-label="Пипетка статьи"
+        title="Скопировать оформление другой статьи"
+        onClick={() => dispatchCanvasArticleStyleEyedropperStart(id)}
+      >
+        <svg
+          className={styles.styleEyedropperIcon}
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+        >
+          <path
+            d="m14.5 5.5 4-4a2.12 2.12 0 0 1 3 3l-4 4m-3-3 4 4m-4-4-9.8 9.8a2 2 0 0 0-.5.8L3 21l4.9-1.2a2 2 0 0 0 .8-.5l9.8-9.8"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 function TextSelectionToolbar({
   id,
   style,
@@ -849,6 +958,7 @@ function PdfNodeBody({
 }
 
 function ArticleNodeBody({
+  id,
   data,
   selected,
 }: NodeProps<CanvasArticleFlowNode>): React.JSX.Element {
@@ -860,13 +970,26 @@ function ArticleNodeBody({
       className={`${styles.articleNodeFrame} ${
         data.readerOpen ? styles.articleNodeFrameReaderOpen : ""
       }`.trim()}
+      toolbar={<ArticleSelectionToolbar id={id} style={data.style} />}
       connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
     >
-      <div className={styles.articleNodeContent}>
-        <span className={styles.articleNodeBadge}>СТАТЬЯ</span>
+      <div
+        className={styles.articleNodeContent}
+        style={{ backgroundColor: data.style.backgroundColor }}
+      >
+        <span
+          className={styles.articleNodeBadge}
+          style={{ color: data.style.badgeColor }}
+        >
+          СТАТЬЯ
+        </span>
         <span
           className={styles.articleNodeName}
           title={data.lastKnownTitle ?? "Статья"}
+          style={{
+            color: data.style.titleColor,
+            fontSize: data.style.titleFontSize,
+          }}
         >
           {data.lastKnownTitle ?? "Статья"}
         </span>
@@ -3091,6 +3214,28 @@ function InfiniteCanvasLocalShellSurface({
     [controller, scheduleSave, setNodes, syncState],
   );
 
+  const updateArticleStyle = useCallback(
+    (id: string, patch: Partial<CanvasArticleStyle>) => {
+      let found = false;
+      const nextNodes = nodesRef.current.map((node) => {
+        if (node.id !== id || node.type !== CANVAS_ARTICLE_NODE_TYPE)
+          return node;
+        found = true;
+        return {
+          ...node,
+          data: { ...node.data, style: { ...node.data.style, ...patch } },
+        };
+      });
+      if (!found) return;
+      nodesRef.current = nextNodes;
+      setNodes(nextNodes);
+      controller.setRuntimeNodes(nextNodes);
+      syncState();
+      scheduleSave();
+    },
+    [controller, scheduleSave, setNodes, syncState],
+  );
+
   const createTextNode = useCallback(
     (client: FlowPosition | null, markdown: string, editing = true) => {
       if (!shellState.canvasId) return;
@@ -3336,6 +3481,16 @@ function InfiniteCanvasLocalShellSurface({
       ).detail;
       if (detail.id && detail.patch) updateShapeStyle(detail.id, detail.patch);
     };
+    const onArticleStyle = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          id?: string;
+          patch?: Partial<CanvasArticleStyle>;
+        }>
+      ).detail;
+      if (detail.id && detail.patch)
+        updateArticleStyle(detail.id, detail.patch);
+    };
     const onEyedropperStart = (event: Event) => {
       const id = (event as CustomEvent<{ id?: string }>).detail?.id;
       if (id) setStyleEyedropperSourceId(id);
@@ -3348,6 +3503,7 @@ function InfiniteCanvasLocalShellSurface({
     window.addEventListener("mozg:canvas-shape-commit", onShapeCommit);
     window.addEventListener("mozg:canvas-shape-cancel", onShapeCancel);
     window.addEventListener("mozg:canvas-shape-style", onShapeStyle);
+    window.addEventListener("mozg:canvas-article-style", onArticleStyle);
     window.addEventListener(
       "mozg:canvas-style-eyedropper-start",
       onEyedropperStart,
@@ -3361,6 +3517,7 @@ function InfiniteCanvasLocalShellSurface({
       window.removeEventListener("mozg:canvas-shape-commit", onShapeCommit);
       window.removeEventListener("mozg:canvas-shape-cancel", onShapeCancel);
       window.removeEventListener("mozg:canvas-shape-style", onShapeStyle);
+      window.removeEventListener("mozg:canvas-article-style", onArticleStyle);
       window.removeEventListener(
         "mozg:canvas-style-eyedropper-start",
         onEyedropperStart,
@@ -3372,6 +3529,7 @@ function InfiniteCanvasLocalShellSurface({
     setShapeEditing,
     setTextEditing,
     updateShapeStyle,
+    updateArticleStyle,
     updateTextStyle,
   ]);
 
@@ -4595,6 +4753,14 @@ function InfiniteCanvasLocalShellSurface({
             setStyleEyedropperSourceId(null);
             return;
           }
+          if (
+            sourceNode?.type === CANVAS_ARTICLE_NODE_TYPE &&
+            targetNode?.type === CANVAS_ARTICLE_NODE_TYPE
+          ) {
+            updateArticleStyle(sourceId, targetNode.data.style);
+            setStyleEyedropperSourceId(null);
+            return;
+          }
           return;
         }
       }
@@ -4622,6 +4788,7 @@ function InfiniteCanvasLocalShellSurface({
       reactFlow,
       styleEyedropperSourceId,
       updateShapeStyle,
+      updateArticleStyle,
       updateTextStyle,
     ],
   );

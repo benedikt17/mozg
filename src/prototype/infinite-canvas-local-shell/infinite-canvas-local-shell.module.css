@@ -1701,7 +1701,7 @@
 .articleNodeFrame .nodeBody {
   border: 1px solid var(--border, #deddd8);
   border-radius: var(--radius-lg, 8px);
-  background: var(--surface, #fbfbfa);
+  background: transparent;
   box-shadow: var(--shadow-sm, 0 1px 2px rgb(32 32 29 / 8%));
 }
 .articleNodeFrameReaderOpen .nodeBody {
@@ -1720,10 +1720,9 @@
   gap: 10px;
   padding: 18px;
   text-align: left;
-  color: var(--text-1, #24241f);
+  border-radius: inherit;
 }
 .articleNodeBadge {
-  color: #9a3412;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -1733,9 +1732,15 @@
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  font-size: 18px;
   font-weight: 650;
   line-height: 24px;
+}
+.articleToolbarSize {
+  min-width: 26px;
+  color: #78716c;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 @media (max-width: 900px) {
   .pdfReader,

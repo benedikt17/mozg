@@ -18,6 +18,10 @@ import {
   type CanvasTextNode,
 } from "@/lib/canvas/canvas-document";
 import {
+  DEFAULT_CANVAS_ARTICLE_STYLE,
+  type CanvasArticleStyle,
+} from "@/lib/canvas/canvas-article-style";
+import {
   extractCanvasImageTransfer,
   ingestCanvasImageCandidates,
   type AcceptedCanvasImage,
@@ -113,6 +117,7 @@ export type CanvasPdfFlowNode = Node<
 export type CanvasArticleNodeData = {
   articleId: string;
   lastKnownTitle?: string;
+  style: CanvasArticleStyle;
   /** Ephemeral UI marker; never persisted into the Canvas document. */
   readerOpen?: boolean;
 };
@@ -692,6 +697,7 @@ export function createCanvasArticleFlowNode(input: {
   id: string;
   articleId: string;
   lastKnownTitle?: string;
+  style?: CanvasArticleStyle;
   position: FlowPosition;
   size?: CanvasSize;
   zIndex?: number;
@@ -710,6 +716,7 @@ export function createCanvasArticleFlowNode(input: {
       ...(input.lastKnownTitle === undefined
         ? {}
         : { lastKnownTitle: input.lastKnownTitle }),
+      style: { ...(input.style ?? DEFAULT_CANVAS_ARTICLE_STYLE) },
     },
   };
 }
@@ -820,6 +827,7 @@ export function canvasDocumentToArticleNodes(
         id: node.id,
         articleId: node.articleId,
         lastKnownTitle: node.lastKnownTitle,
+        style: node.style,
         position: node.position,
         size: node.size,
         zIndex: node.zIndex,
@@ -916,12 +924,10 @@ export function runtimeNodesToCanvasDocument(
         size: runtimeNodeSize(runtime),
       };
     }
-    if (
-      node.kind === "article" &&
-      runtime.type === CANVAS_ARTICLE_NODE_TYPE
-    ) {
+    if (node.kind === "article" && runtime.type === CANVAS_ARTICLE_NODE_TYPE) {
       return {
         ...node,
+        style: { ...runtime.data.style },
         position: { ...runtime.position },
         size: runtimeNodeSize(runtime),
       };
