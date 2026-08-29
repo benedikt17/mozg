@@ -28,9 +28,10 @@ describe("CanvasNodeFrame composition", () => {
     expect(frame).toContain('data-slot="context-menu"');
     expect(frame).toContain("selected: boolean;");
     expect(frame).toContain("const selectedNonReaderNodeCount");
+    expect(frame).toContain("const selectedNodeCount");
     expect(frame).toContain("readerOpen?: boolean");
     expect(frame).toContain(
-      "const toolbarVisible = selected && selectedNonReaderNodeCount === 1;",
+      "toolbarWhenReaderOpen\n      ? selectedNodeCount === 1\n      : selectedNonReaderNodeCount === 1",
     );
     expect(frame).toContain("<NodeToolbarSlot selected={toolbarVisible}>");
     expect(frame).toContain("isVisible={selected}");
@@ -47,6 +48,7 @@ describe("CanvasNodeFrame composition", () => {
     expect(shell).toContain("function ImageNodeBody");
     expect(shell).toContain("function PdfNodeBody");
     expect(shell).toContain("function ArticleNodeBody");
+    expect(shell).toContain("toolbarWhenReaderOpen");
     expect(shell).toContain("function TextNodeBody");
     expect(shell).toContain("function ShapeNodeBody");
     expect(shell).toContain("function TaskNodeBody");

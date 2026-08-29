@@ -17,6 +17,7 @@ describe("Canvas article style toolbar", () => {
     expect(shellSource).toContain(
       "toolbar={<ArticleSelectionToolbar id={id} style={data.style} />}",
     );
+    expect(shellSource).toContain("toolbarWhenReaderOpen");
   });
 
   it("offers title size plus the three article colors", () => {

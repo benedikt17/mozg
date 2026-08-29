@@ -971,6 +971,7 @@ function ArticleNodeBody({
         data.readerOpen ? styles.articleNodeFrameReaderOpen : ""
       }`.trim()}
       toolbar={<ArticleSelectionToolbar id={id} style={data.style} />}
+      toolbarWhenReaderOpen
       connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
     >
       <div
