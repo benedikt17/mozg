@@ -1,5947 +1,57 @@
-"use client";
-
-import {
-  Background,
-  ConnectionMode,
-  Controls,
-  SelectionMode,
-  EdgeToolbar,
-  MiniMap,
-  ReactFlow,
-  ReactFlowProvider,
-  applyEdgeChanges,
-  applyNodeChanges,
-  getBezierPath,
-  getSmoothStepPath,
-  getStraightPath,
-  useEdgesState,
-  useNodesState,
-  useInternalNode,
-  useReactFlow,
-  useStore,
-  type Connection,
-  type ConnectionLineComponentProps,
-  type EdgeChange,
-  type EdgeProps,
-  type InternalNode,
-  type NodeChange,
-  type NodeProps,
-} from "@xyflow/react";
-import {
-  CanvasDesktopSidebar,
-  CanvasDesktopToolbar,
-} from "@/prototype/canvases/canvas-desktop-composition";
-import { getCanvasBreadcrumb } from "@/prototype/canvases/canvas-breadcrumb";
-import { UiIcon } from "@/prototype/desktop-icons";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type CSSProperties,
-  type DragEvent as ReactDragEvent,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
-import {
-  attachCanvasImagePasteListener,
-  createObjectUrlRegistry,
-  eventTouchesEditingSurface,
-  shouldPreventCanvasImagePaste,
-  shouldPreventFileNavigation,
-  transferHasSupportedImage,
-  transferHasFiles,
-  type CanvasImageTransferPayload,
-} from "@/lib/canvas/canvas-image-ingestion";
-import {
-  isCurrentViewportInitialization,
-  isProgrammaticViewportMove,
-  scheduleViewportReveal,
-  type CanvasViewportInitialization,
-} from "@/lib/canvas/canvas-viewport-initialization";
-import {
-  isExplicitCanvasResize,
-  projectExplicitCanvasResizes,
-} from "@/lib/canvas/canvas-runtime-projection";
-import {
-  advanceCanvasPanInertia,
-  canvasPanReleaseVelocity,
-  type CanvasPanSample,
-  type CanvasPanVelocity,
-  type CanvasPanViewport,
-} from "@/lib/canvas/canvas-pan-inertia";
-import { canvasMiniMapNodeColor } from "@/lib/canvas/canvas-minimap";
-import {
-  CANVAS_TEXT_FONT_FAMILIES,
-  CANVAS_TEXT_FONT_SIZES,
-  canvasTextFontFamilyCss,
-  nextCanvasTextFontSize,
-  previousCanvasTextFontSize,
-  type CanvasTextFontFamily,
-  type CanvasTextFontSize,
-  type CanvasTextStyle,
-} from "@/lib/canvas/canvas-text-style";
-import {
-  DEFAULT_CANVAS_SHAPE_STYLE,
-  canvasShapeStyleAsTextStyle,
-  canvasTextStylePatchToShapeStyle,
-  type CanvasShapeStyle,
-} from "@/lib/canvas/canvas-shape-style";
-import type { CanvasArticleStyle } from "@/lib/canvas/canvas-article-style";
-import {
-  CANVAS_NODE_CLIPBOARD_MIME,
-  createCanvasNodeClipboardPayload,
-  materializeCanvasNodeClipboardPaste,
-  parseCanvasNodeClipboardPayload,
-  serializeCanvasNodeClipboardPayload,
-  type CanvasNodeClipboardPayload,
-} from "@/lib/canvas/canvas-node-clipboard";
-import {
-  createCanvasAltDragDuplicate,
-  createCanvasAltDragRuntimeNode,
-  finalizeCanvasAltDragDuplicate,
-  redirectCanvasAltDragNodeChanges,
-  type CanvasAltDragDuplicateSession,
-} from "@/lib/canvas/canvas-alt-drag-duplicate";
-import {
-  CANVAS_BRANCH_COLLAPSE_EVENT,
-  canvasBranchDescendantNodeIds,
-  canvasBranchCollapsedNodeIds,
-  canvasBranchRuntimeState,
-  projectCanvasBranchCollapse,
-  translateCanvasBranchDescendants,
-  type CanvasBranchCollapseEventDetail,
-} from "@/lib/canvas/canvas-branch-collapse";
-import {
-  CANVAS_ARTICLE_NODE_TYPE,
-  CANVAS_IMAGE_NODE_TYPE,
-  CANVAS_PDF_NODE_TYPE,
-  CANVAS_SHAPE_NODE_TYPE,
-  CANVAS_SUMMARY_NODE_TYPE,
-  CANVAS_TASK_NODE_TYPE,
-  CANVAS_TEXT_NODE_TYPE,
-  CANVAS_EDGE_TYPE,
-  canvasDocumentToEdges,
-  canvasDocumentToArticleNodes,
-  canvasDocumentToImageNodes,
-  canvasDocumentToPdfNodes,
-  canvasDocumentToShapeNodes,
-  canvasDocumentToSummaryNodes,
-  canvasDocumentToTaskNodes,
-  canvasDocumentToTextNodes,
-  canvasImageAdapterDependenciesForCanvas,
-  createCanvasPdfFlowNode,
-  createCanvasPdfId,
-  createCanvasArticleFlowNode,
-  createCanvasArticleId,
-  createCanvasTaskFlowNode,
-  createCanvasTaskId,
-  createCanvasEdgeFromConnection,
-  createCanvasShapeFlowNode,
-  createCanvasShapeId,
-  createCanvasSummaryFlowNode,
-  createCanvasSummaryId,
-  createCanvasTextFlowNode,
-  findCachedCanvasImagePayload,
-  ingestCanvasImageTransferToNodes,
-  restoreCanvasImageNodes,
-  updateCanvasEdgeFlowRuntime,
-  type CanvasImageAdapterDependencies,
-  type CanvasFlowNode,
-  type CanvasEdgeFlow,
-  type CanvasEdgeFlowData,
-  type CanvasImageFlowNode,
-  type CanvasArticleFlowNode,
-  type CanvasShapeFlowNode,
-  type CanvasSummaryFlowNode,
-  type CanvasTaskFlowNode,
-  type CanvasPdfFlowNode,
-  type CanvasTextFlowNode,
-  type FlowPosition,
-} from "@/lib/canvas/react-flow-canvas-adapter";
-import { CanvasImageLoadCache } from "@/lib/canvas/canvas-image-load-cache";
-import {
-  CANVAS_DOCUMENT_LIMITS,
-  CANVAS_VIEWPORT_LIMITS,
-  type CanvasEdgeArrows,
-  type CanvasEdgeV2,
-  type CanvasEdgeRouting,
-  type CanvasHandleSide,
-  type CanvasShapeNode,
-  type CanvasShapeVariant,
-  type CanvasSummaryNode,
-} from "@/lib/canvas/canvas-document";
-import {
-  canvasSummaryEntries,
-  isCanvasSummarySourceNode,
-  nextCanvasSummaryOrder,
-} from "@/lib/canvas/canvas-summary";
-import type { CanvasAssetVariantRepository } from "@/lib/canvas/canvas-image-variants";
-import {
-  canvasArrowsToEndpointArrows,
-  endpointArrowsToCanvasArrows,
-  swapCanvasEdgeArrows,
-} from "@/lib/canvas/canvas-edge-controls";
-import {
-  canvasHandleCenterToPerimeter,
-  canvasNodePerimeterAnchor,
-  type CanvasNodeBounds,
-} from "@/lib/canvas/canvas-edge-geometry";
-import {
-  findShortestCanvasHandlePair,
-  recomputeCanvasRuntimeEdgeHandles,
-  type CanvasNodeBoundsRecord,
-} from "@/lib/canvas/canvas-shortest-handle-pair";
-import {
-  createCanvasTextId,
-  hasMeaningfulPlainText,
-  plainTextFromClipboard,
-  commitTextMarkdown,
-} from "@/lib/canvas/text-canvas-interactions";
-import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
-import {
-  MarkdownDocumentPreview,
-  MarkdownStringPreview,
-} from "@/prototype/knowledge/markdown-document-preview";
-import type {
-  CanvasTaskBridge,
-  CanvasTaskProjection,
-} from "@/lib/canvas/canvas-task-bridge";
-import type {
-  CanvasGroup,
-  CanvasGroupRepository,
-} from "@/lib/canvas/canvas-group-repository";
-import {
-  type CanvasAssetRepository,
-  type CanvasRepository,
-  type CanvasSummary,
-  type CanvasViewStateRepository,
-} from "@/lib/canvas/local-canvas-repository";
-import {
-  emptyShellState,
-  LocalCanvasShellController,
-  type LocalCanvasConflictDraft,
-  type LocalCanvasShellState,
-} from "@/lib/canvas/local-canvas-shell-controller";
-import type {
-  CloudCanvasRuntimeCache,
-  CanvasImageRuntimePayload,
-  CloudCanvasRuntimeSnapshot,
-} from "@/lib/canvas/cloud-canvas-runtime-cache";
-import {
-  canvasImageResolutionSourceCacheKey,
-  canvasImageResolutionSourceFromLegacyKind,
-} from "@/lib/canvas/canvas-image-variants";
-import { CanvasImagePyramidScheduler } from "@/lib/canvas/canvas-image-pyramid";
-import {
-  createCanvasProjectFileImageNode,
-  restoreProjectFileCanvasImageNodes,
-} from "@/lib/canvas/project-file-canvas-image-adapter";
-import type { ProjectFileImageVariantRepository } from "@/lib/files/project-file-image-variants";
-import {
-  isProjectFileImageMimeType,
-  type ProjectFileRecord,
-  type ProjectFileRepository,
-} from "@/lib/files/project-file-repository";
-import { prepareProjectFileBrowserUpload } from "@/lib/files/project-file-browser-upload";
-import { shouldCloseCanvasTaskDetails } from "@/lib/canvas/canvas-task-selection";
-import {
-  reconcileCachedRuntimeWithServer,
-  serverCanvasMatchesCachedRuntime,
-} from "@/lib/canvas/canvas-runtime-cache-reconciliation";
-import {
-  partitionCanvasDropFiles,
-  resolveCanvasDropFlowPosition,
-  runCanvasMixedDrop,
-} from "@/lib/canvas/canvas-file-drop-routing";
-import { canvasDocumentToRuntimeSkeleton } from "@/lib/canvas/canvas-runtime-skeleton";
-import {
-  CanvasEdgeMarkerDefinitions,
-  CanvasVisibleEdge,
-} from "@/lib/canvas/canvas-visible-edge";
-import {
-  CanvasNodeFrame,
-  ConnectionHandleLayer,
-  TextAlignmentControls,
-} from "./canvas-node-frame";
-import { CanvasColorPicker } from "./canvas-color-picker";
-import styles from "./infinite-canvas-local-shell.module.css";
-
-type RestoreStats = {
-  reads: number;
-  maxConcurrency: number;
-  missing: number;
-};
-
-const EMPTY_RESTORE_STATS: RestoreStats = {
-  reads: 0,
-  maxConcurrency: 0,
-  missing: 0,
-};
-
-function rememberImageRuntimePayload(
-  payloads: Map<string, CanvasImageRuntimePayload>,
-  node: CanvasImageFlowNode,
-  scope: { workspaceId: string; canvasId: string },
-): void {
-  if (!node.data.objectUrl) return;
-  payloads.set(
-    canvasImageResolutionSourceCacheKey({
-      workspaceId: scope.workspaceId,
-      canvasId: scope.canvasId,
-      assetId: node.data.assetId,
-      source:
-        node.data.resolutionSource ??
-        canvasImageResolutionSourceFromLegacyKind(
-          node.data.variantKind ?? "original",
-        ),
-    }),
-    {
-      objectUrl: node.data.objectUrl,
-      mimeType: node.data.mimeType,
-      intrinsicWidth: node.data.intrinsicWidth,
-      intrinsicHeight: node.data.intrinsicHeight,
-      source: node.data.source,
-      variantKind: node.data.variantKind,
-      resolutionSource: node.data.resolutionSource,
-    },
-  );
-}
-
-function renderedImageCssSizes(): Map<
-  string,
-  { width: number; height: number }
-> {
-  if (typeof document === "undefined") return new Map();
-  const sizes = new Map<string, { width: number; height: number }>();
-  for (const image of document.querySelectorAll<HTMLImageElement>(
-    "img[data-canvas-image-node-id]",
-  )) {
-    const nodeId = image.dataset.canvasImageNodeId;
-    const rect = image.getBoundingClientRect();
-    if (!nodeId || rect.width <= 0 || rect.height <= 0) continue;
-    sizes.set(nodeId, { width: rect.width, height: rect.height });
-  }
-  return sizes;
-}
-
-function withCachedAssetPayloads(
-  nodes: readonly CanvasFlowNode[],
-  assetPayloads: ReadonlyMap<string, CanvasImageRuntimePayload>,
-  scope: { workspaceId: string; canvasId: string },
-): CanvasFlowNode[] {
-  return nodes.map((node) => {
-    if (node.type !== CANVAS_IMAGE_NODE_TYPE) return node;
-    const requestedSource =
-      node.data.resolutionSource ??
-      canvasImageResolutionSourceFromLegacyKind(
-        node.data.variantKind ?? "original",
-      );
-    const cached = findCachedCanvasImagePayload({
-      payloads: assetPayloads,
-      workspaceId: scope.workspaceId,
-      canvasId: scope.canvasId,
-      assetId: node.data.assetId,
-      requestedSource,
-    });
-    return cached
-      ? { ...node, data: { ...node.data, ...cached.payload } }
-      : node;
-  });
-}
-
-function canvasFlowNodeBounds(
-  node: CanvasFlowNode,
-): CanvasNodeBoundsRecord | null {
-  const width = node.measured?.width ?? node.width ?? node.style?.width;
-  const height = node.measured?.height ?? node.height ?? node.style?.height;
-  if (typeof width !== "number" || typeof height !== "number") return null;
-  return {
-    id: node.id,
-    x: node.position.x,
-    y: node.position.y,
-    width,
-    height,
-  };
-}
-
-function canvasInternalNodeBounds(
-  node: InternalNode<CanvasFlowNode> | undefined,
-): CanvasNodeBounds | null {
-  if (!node) return null;
-  const width = node.measured.width ?? node.width ?? node.style?.width;
-  const height = node.measured.height ?? node.height ?? node.style?.height;
-  if (typeof width !== "number" || typeof height !== "number") return null;
-  return {
-    x: node.internals.positionAbsolute.x,
-    y: node.internals.positionAbsolute.y,
-    width,
-    height,
-  };
-}
-
-function canvasFlowNodeBoundsRecords(
-  nodes: readonly CanvasFlowNode[],
-): CanvasNodeBoundsRecord[] {
-  return nodes.flatMap((node) => {
-    const bounds = canvasFlowNodeBounds(node);
-    return bounds ? [bounds] : [];
-  });
-}
-
-function snapshotCanvasTouchGestureNodes(
-  nodes: readonly CanvasFlowNode[],
-): CanvasFlowNode[] {
-  return nodes.map((node) => ({
-    ...node,
-    position: { ...node.position },
-    ...(node.measured ? { measured: { ...node.measured } } : {}),
-    ...(node.style ? { style: { ...node.style } } : {}),
-  }));
-}
-
-function autoAttachCanvasEdge(
-  edge: CanvasEdgeV2,
-  bounds: readonly CanvasNodeBoundsRecord[],
-): CanvasEdgeV2 {
-  const boundsById = new Map(bounds.map((node) => [node.id, node]));
-  const sourceBounds = boundsById.get(edge.sourceNodeId);
-  const targetBounds = boundsById.get(edge.targetNodeId);
-  if (!sourceBounds || !targetBounds) return edge;
-  const pair = findShortestCanvasHandlePair(sourceBounds, targetBounds);
-  return {
-    ...edge,
-    sourceHandle: pair.sourceHandle,
-    targetHandle: pair.targetHandle,
-  };
-}
-
-function transferPayload(
-  event: ClipboardEvent | DragEvent,
-): CanvasImageTransferPayload {
-  const transfer =
-    "clipboardData" in event ? event.clipboardData : event.dataTransfer;
-  return {
-    items: transfer ? Array.from(transfer.items) : [],
-    files: transfer ? Array.from(transfer.files) : [],
-    types: transfer ? Array.from(transfer.types) : [],
-  };
-}
-
-function DecodedCanvasImage({
-  nodeId,
-  assetId,
-  sourceUrl,
-}: {
-  nodeId: string;
-  assetId: string;
-  sourceUrl: string;
-}): React.JSX.Element {
-  const [activeUrl, setActiveUrl] = useState(sourceUrl);
-
-  useEffect(() => {
-    if (sourceUrl === activeUrl) return;
-    let cancelled = false;
-    const image = new Image();
-    const commit = () => {
-      if (!cancelled) setActiveUrl(sourceUrl);
-    };
-    image.onload = () => {
-      if (typeof image.decode !== "function") {
-        commit();
-        return;
-      }
-      void image.decode().then(commit, () => undefined);
-    };
-    image.onerror = () => undefined;
-    image.src = sourceUrl;
-    return () => {
-      cancelled = true;
-    };
-  }, [activeUrl, sourceUrl]);
-
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      className={styles.image}
-      src={activeUrl}
-      alt={`Canvas asset ${assetId}`}
-      data-canvas-image-node-id={nodeId}
-      draggable={false}
-    />
-  );
-}
-
-function ImageNodeBody({
-  id,
-  data,
-  selected,
-}: NodeProps<CanvasImageFlowNode>): React.JSX.Element {
-  return (
-    <CanvasNodeFrame
-      selected={selected}
-      minWidth={120}
-      minHeight={80}
-      keepAspectRatio
-      className={styles.imageNodeFrame}
-      connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
-    >
-      {data.objectUrl ? (
-        <DecodedCanvasImage
-          nodeId={id}
-          assetId={data.assetId}
-          sourceUrl={data.objectUrl}
-        />
-      ) : (
-        <div className={styles.image} aria-label="Loading canvas image" />
-      )}
-    </CanvasNodeFrame>
-  );
-}
-
-const CANVAS_TEXT_FONT_LABELS: Record<CanvasTextFontFamily, string> = {
-  system: "System",
-  arial: "Arial",
-  georgia: "Georgia",
-  "times-new-roman": "Times New Roman",
-  "courier-new": "Courier New",
-  verdana: "Verdana",
-};
-
-function dispatchCanvasTextStylePatch(
-  id: string,
-  patch: Partial<CanvasTextStyle>,
-): void {
-  window.dispatchEvent(
-    new CustomEvent("mozg:canvas-text-style", { detail: { id, patch } }),
-  );
-}
-
-function dispatchCanvasStyleEyedropperStart(id: string): void {
-  window.dispatchEvent(
-    new CustomEvent("mozg:canvas-style-eyedropper-start", {
-      detail: { id },
-    }),
-  );
-}
-
-function dispatchCanvasArticleStylePatch(
-  id: string,
-  patch: Partial<CanvasArticleStyle>,
-): void {
-  window.dispatchEvent(
-    new CustomEvent("mozg:canvas-article-style", { detail: { id, patch } }),
-  );
-}
-
-function dispatchCanvasArticleStyleEyedropperStart(id: string): void {
-  window.dispatchEvent(
-    new CustomEvent("mozg:canvas-style-eyedropper-start", { detail: { id } }),
-  );
-}
-
-function ArticleSelectionToolbar({
-  id,
-  style,
-}: {
-  id: string;
-  style: CanvasArticleStyle;
-}): React.JSX.Element | null {
-  const selectedNodeCount = useStore((state) =>
-    Array.from(state.nodeLookup.values()).reduce(
-      (count, node) => count + (node.selected ? 1 : 0),
-      0,
-    ),
-  );
-  if (selectedNodeCount !== 1) return null;
-  const patchStyle = (patch: Partial<CanvasArticleStyle>): void =>
-    dispatchCanvasArticleStylePatch(id, patch);
-  return (
-    <div
-      className={`${styles.textSelectionToolbar} nodrag nopan nowheel`}
-      aria-label="ĞŸĞ°Ğ½ĞµĞ»ÑŒ Ğ¾Ñ„Ğ¾Ñ€Ğ¼Ğ»ĞµĞ½Ğ¸Ñ ÑÑ‚Ğ°Ñ‚ÑŒĞ¸"
-      onPointerDown={(event) => event.stopPropagation()}
-    >
-      <button
-        type="button"
-        className={styles.textToolbarButton}
-        aria-label="Ğ£Ğ¼ĞµĞ½ÑŒÑˆĞ¸Ñ‚ÑŒ Ñ€Ğ°Ğ·Ğ¼ĞµÑ€ Ğ½Ğ°Ğ·Ğ²Ğ°Ğ½Ğ¸Ñ ÑÑ‚Ğ°Ñ‚ÑŒĞ¸"
-        title="Ğ£Ğ¼ĞµĞ½ÑŒÑˆĞ¸Ñ‚ÑŒ Ñ€Ğ°Ğ·Ğ¼ĞµÑ€ Ğ½Ğ°Ğ·Ğ²Ğ°Ğ½Ğ¸Ñ"
-        onClick={() =>
-          patchStyle({
-            titleFontSize: previousCanvasTextFontSize(style.titleFontSize),
-          })
-        }
-      >
-        âˆ’
-      </button>
-      <span className={styles.articleToolbarSize} aria-label="Ğ Ğ°Ğ·Ğ¼ĞµÑ€ Ğ½Ğ°Ğ·Ğ²Ğ°Ğ½Ğ¸Ñ">
-        {style.titleFontSize}
-      </span>
-      <button
-        type="button"
-        className={styles.textToolbarButton}
-        aria-label="Ğ£Ğ²ĞµĞ»Ğ¸Ñ‡Ğ¸Ñ‚ÑŒ Ñ€Ğ°Ğ·Ğ¼ĞµÑ€ Ğ½Ğ°Ğ·Ğ²Ğ°Ğ½Ğ¸Ñ ÑÑ‚Ğ°Ñ‚ÑŒĞ¸"
-        title="Ğ£Ğ²ĞµĞ»Ğ¸Ñ‡Ğ¸Ñ‚ÑŒ Ñ€Ğ°Ğ·Ğ¼ĞµÑ€ Ğ½Ğ°Ğ·Ğ²Ğ°Ğ½Ğ¸Ñ"
-        onClick={() =>
-          patchStyle({
-            titleFontSize: nextCanvasTextFontSize(style.titleFontSize),
-          })
-        }
-      >
-        +
-      </button>
-      <span className={styles.textToolbarDivider} aria-hidden="true" />
-      <CanvasColorPicker
-        label="Ğ¦Ğ²ĞµÑ‚ Ğ½Ğ°Ğ´Ğ¿Ğ¸ÑĞ¸ Â«Ğ¡Ğ¢ĞĞ¢Ğ¬Ğ¯Â»"
-        value={style.badgeColor}
-        onCommit={(badgeColor) => patchStyle({ badgeColor })}
-      />
-      <CanvasColorPicker
-        label="Ğ¦Ğ²ĞµÑ‚ Ğ½Ğ°Ğ·Ğ²Ğ°Ğ½Ğ¸Ñ ÑÑ‚Ğ°Ñ‚ÑŒĞ¸"
-        value={style.titleColor}
-        onCommit={(titleColor) => patchStyle({ titleColor })}
-      />
-      <CanvasColorPicker
-        label="Ğ¦Ğ²ĞµÑ‚ Ğ·Ğ°Ğ»Ğ¸Ğ²ĞºĞ¸ ÑÑ‚Ğ°Ñ‚ÑŒĞ¸"
-        value={style.backgroundColor}
-        onCommit={(backgroundColor) => patchStyle({ backgroundColor })}
-      />
-      <button
-        type="button"
-        className={`${styles.textToolbarButton} ${styles.styleEyedropperButton}`}
-        aria-label="ĞŸĞ¸Ğ¿ĞµÑ‚ĞºĞ° ÑÑ‚Ğ°Ñ‚ÑŒĞ¸"
-        title="Ğ¡ĞºĞ¾Ğ¿Ğ¸Ñ€Ğ¾Ğ²Ğ°Ñ‚ÑŒ Ğ¾Ñ„Ğ¾Ñ€Ğ¼Ğ»ĞµĞ½Ğ¸Ğµ Ğ´Ñ€ÑƒĞ³Ğ¾Ğ¹ ÑÑ‚Ğ°Ñ‚ÑŒĞ¸"
-        onClick={() => dispatchCanvasArticleStyleEyedropperStart(id)}
-      >
-        <svg
-          className={styles.styleEyedropperIcon}
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          fill="none"
-        >
-          <path
-            d="m14.5 5.5 4-4a2.12 2.12 0 0 1 3 3l-4 4m-3-3 4 4m-4-4-9.8 9.8a2 2 0 0 0-.5.8L3 21l4.9-1.2a2 2 0 0 0 .8-.5l9.8-9.8"
-            stroke="currentColor"
-            strokeWidth="1.7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
-    </div>
-  );
-}
-
-function TextSelectionToolbar({
-  id,
-  style,
-  onPatchStyle,
-  toolbarLabel = "ĞŸĞ°Ğ½ĞµĞ»ÑŒ Ñ„Ğ¾Ñ€Ğ¼Ğ°Ñ‚Ğ¸Ñ€Ğ¾Ğ²Ğ°Ğ½Ğ¸Ñ Ñ‚ĞµĞºÑÑ‚Ğ°",
-  typeLabel = "Ğ¢ĞµĞºÑÑ‚",
-  typeGlyph = "T",
-  fillLabel = "Ğ¦Ğ²ĞµÑ‚ Ñ„Ğ¾Ğ½Ğ°",
-  eyedropperTitle = "Ğ¡ĞºĞ¾Ğ¿Ğ¸Ñ€Ğ¾Ğ²Ğ°Ñ‚ÑŒ Ñ†Ğ²ĞµÑ‚ Ñ‚ĞµĞºÑÑ‚Ğ° Ğ¸ Ñ„Ğ¾Ğ½Ğ°",
-  resetLabel = "Ğ£Ğ±Ñ€Ğ°Ñ‚ÑŒ Ñ†Ğ²ĞµÑ‚ Ñ„Ğ¾Ğ½Ğ°",
-  resetTitle = "Ğ£Ğ±Ñ€Ğ°Ñ‚ÑŒ Ñ„Ğ¾Ğ½",
-}: {
-  id: string;
-  style: CanvasTextStyle;
-  onPatchStyle?: (patch: Partial<CanvasTextStyle>) => void;
-  toolbarLabel?: string;
-  typeLabel?: string;
-  typeGlyph?: string;
-  fillLabel?: string;
-  eyedropperTitle?: string;
-  resetLabel?: string;
-  resetTitle?: string;
-}): React.JSX.Element {
-  const patchStyle =
-    onPatchStyle ??
-    ((patch: Partial<CanvasTextStyle>) =>
-      dispatchCanvasTextStylePatch(id, patch));
-  return (
-    <div
-      className={`${styles.textSelectionToolbar} nodrag nopan nowheel`}
-      aria-label={toolbarLabel}
-      onPointerDown={(event) => event.stopPropagation()}
-    >
-      <button
-        type="button"
-        className={styles.textToolbarButton}
-        aria-label={typeLabel}
-        title={typeLabel}
-        disabled
-      >
-        {typeGlyph}
-      </button>
-      <span className={styles.textToolbarDivider} aria-hidden="true" />
-      <select
-        className={`${styles.textToolbarSelect} ${styles.textToolbarFontSelect}`}
-        aria-label="Ğ¨Ñ€Ğ¸Ñ„Ñ‚"
-        value={style.fontFamily}
-        onChange={(event) =>
-          patchStyle({ fontFamily: event.target.value as CanvasTextFontFamily })
-        }
-      >
-        {CANVAS_TEXT_FONT_FAMILIES.map((fontFamily) => (
-          <option key={fontFamily} value={fontFamily}>
-            {CANVAS_TEXT_FONT_LABELS[fontFamily]}
-          </option>
-        ))}
-      </select>
-      <span className={styles.textToolbarDivider} aria-hidden="true" />
-      <button
-        type="button"
-        className={styles.textToolbarButton}
-        aria-label="Ğ£Ğ¼ĞµĞ½ÑŒÑˆĞ¸Ñ‚ÑŒ Ñ€Ğ°Ğ·Ğ¼ĞµÑ€ ÑˆÑ€Ğ¸Ñ„Ñ‚Ğ°"
-        title="Ğ£Ğ¼ĞµĞ½ÑŒÑˆĞ¸Ñ‚ÑŒ Ñ€Ğ°Ğ·Ğ¼ĞµÑ€"
-        onClick={() =>
-          patchStyle({ fontSize: previousCanvasTextFontSize(style.fontSize) })
-        }
-      >
-        âˆ’
-      </button>
-      <select
-        className={`${styles.textToolbarSelect} ${styles.textToolbarSizeSelect}`}
-        aria-label="Ğ Ğ°Ğ·Ğ¼ĞµÑ€ ÑˆÑ€Ğ¸Ñ„Ñ‚Ğ°"
-        value={style.fontSize}
-        onChange={(event) =>
-          patchStyle({
-            fontSize: Number(event.target.value) as CanvasTextFontSize,
-          })
-        }
-      >
-        {CANVAS_TEXT_FONT_SIZES.map((fontSize) => (
-          <option key={fontSize} value={fontSize}>
-            {fontSize}
-          </option>
-        ))}
-      </select>
-      <button
-        type="button"
-        className={styles.textToolbarButton}
-        aria-label="Ğ£Ğ²ĞµĞ»Ğ¸Ñ‡Ğ¸Ñ‚ÑŒ Ñ€Ğ°Ğ·Ğ¼ĞµÑ€ ÑˆÑ€Ğ¸Ñ„Ñ‚Ğ°"
-        title="Ğ£Ğ²ĞµĞ»Ğ¸Ñ‡Ğ¸Ñ‚ÑŒ Ñ€Ğ°Ğ·Ğ¼ĞµÑ€"
-        onClick={() =>
-          patchStyle({ fontSize: nextCanvasTextFontSize(style.fontSize) })
-        }
-      >
-        +
-      </button>
-      <span className={styles.textToolbarDivider} aria-hidden="true" />
-      <button
-        type="button"
-        className={styles.textToolbarButton}
-        aria-label="ĞŸĞ¾Ğ»ÑƒĞ¶Ğ¸Ñ€Ğ½Ñ‹Ğ¹"
-        aria-pressed={style.bold}
-        title="ĞŸĞ¾Ğ»ÑƒĞ¶Ğ¸Ñ€Ğ½Ñ‹Ğ¹"
-        onClick={() => patchStyle({ bold: !style.bold })}
-      >
-        <strong>B</strong>
-      </button>
-      <button
-        type="button"
-        className={styles.textToolbarButton}
-        aria-label="ĞšÑƒÑ€ÑĞ¸Ğ²"
-        aria-pressed={style.italic}
-        title="ĞšÑƒÑ€ÑĞ¸Ğ²"
-        onClick={() => patchStyle({ italic: !style.italic })}
-      >
-        <em>I</em>
-      </button>
-      <button
-        type="button"
-        className={styles.textToolbarButton}
-        aria-label="ĞŸĞ¾Ğ´Ñ‡ĞµÑ€ĞºĞ½ÑƒÑ‚Ñ‹Ğ¹"
-        aria-pressed={style.underline}
-        title="ĞŸĞ¾Ğ´Ñ‡ĞµÑ€ĞºĞ½ÑƒÑ‚Ñ‹Ğ¹"
-        onClick={() => patchStyle({ underline: !style.underline })}
-      >
-        <u>U</u>
-      </button>
-      <button
-        type="button"
-        className={styles.textToolbarButton}
-        aria-label="ĞŸĞµÑ€ĞµÑ‡ĞµÑ€ĞºĞ½ÑƒÑ‚Ñ‹Ğ¹"
-        aria-pressed={style.strikethrough}
-        title="ĞŸĞµÑ€ĞµÑ‡ĞµÑ€ĞºĞ½ÑƒÑ‚Ñ‹Ğ¹"
-        onClick={() => patchStyle({ strikethrough: !style.strikethrough })}
-      >
-        <s>S</s>
-      </button>
-      <span className={styles.textToolbarDivider} aria-hidden="true" />
-      <CanvasColorPicker
-        label="Ğ¦Ğ²ĞµÑ‚ Ñ‚ĞµĞºÑÑ‚Ğ°"
-        value={style.color}
-        onCommit={(color) => patchStyle({ color })}
-      />
-      <CanvasColorPicker
-        label={fillLabel}
-        value={
-          style.backgroundColor === "transparent"
-            ? "#ffffff"
-            : style.backgroundColor
-        }
-        onCommit={(backgroundColor) => patchStyle({ backgroundColor })}
-      />
-      <button
-        type="button"
-        className={`${styles.textToolbarButton} ${styles.styleEyedropperButton}`}
-        aria-label="ĞŸĞ¸Ğ¿ĞµÑ‚ĞºĞ°"
-        title={eyedropperTitle}
-        onClick={() => dispatchCanvasStyleEyedropperStart(id)}
-      >
-        <svg
-          className={styles.styleEyedropperIcon}
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          fill="none"
-        >
-          <path
-            d="m14.5 5.5 4-4a2.12 2.12 0 0 1 3 3l-4 4m-3-3 4 4m-4-4-9.8 9.8a2 2 0 0 0-.5.8L3 21l4.9-1.2a2 2 0 0 0 .8-.5l9.8-9.8"
-            stroke="currentColor"
-            strokeWidth="1.7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
-      <span className={styles.textToolbarDivider} aria-hidden="true" />
-      <TextAlignmentControls
-        id={id}
-        value={style.textAlign}
-        onChange={(textAlign) => patchStyle({ textAlign })}
-      />
-      <button
-        type="button"
-        className={styles.textToolbarButton}
-        aria-label={resetLabel}
-        title={resetTitle}
-        disabled={style.backgroundColor === "transparent"}
-        onClick={() => patchStyle({ backgroundColor: "transparent" })}
-      >
-        Ã—
-      </button>
-    </div>
-  );
-}
-
-function dispatchCanvasShapeStylePatch(
-  id: string,
-  patch: Partial<CanvasShapeStyle>,
-): void {
-  window.dispatchEvent(
-    new CustomEvent("mozg:canvas-shape-style", { detail: { id, patch } }),
-  );
-}
-
-function ShapeSelectionToolbar({
-  id,
-  style,
-}: {
-  id: string;
-  style: CanvasShapeStyle;
-}): React.JSX.Element {
-  return (
-    <TextSelectionToolbar
-      id={id}
-      style={canvasShapeStyleAsTextStyle(style)}
-      onPatchStyle={(patch) =>
-        dispatchCanvasShapeStylePatch(
-          id,
-          canvasTextStylePatchToShapeStyle(patch),
-        )
-      }
-      toolbarLabel="ĞŸĞ°Ğ½ĞµĞ»ÑŒ Ñ„Ğ¾Ñ€Ğ¼Ğ°Ñ‚Ğ¸Ñ€Ğ¾Ğ²Ğ°Ğ½Ğ¸Ñ Ñ„Ğ¸Ğ³ÑƒÑ€Ñ‹"
-      typeLabel="Ğ¤Ğ¸Ğ³ÑƒÑ€Ğ°"
-      typeGlyph="â—‡"
-      fillLabel="Ğ¦Ğ²ĞµÑ‚ Ğ·Ğ°Ğ»Ğ¸Ğ²ĞºĞ¸"
-      eyedropperTitle="Ğ¡ĞºĞ¾Ğ¿Ğ¸Ñ€Ğ¾Ğ²Ğ°Ñ‚ÑŒ Ñ†Ğ²ĞµÑ‚ Ñ‚ĞµĞºÑÑ‚Ğ° Ğ¸ Ğ·Ğ°Ğ»Ğ¸Ğ²ĞºĞ¸"
-      resetLabel="Ğ£Ğ±Ñ€Ğ°Ñ‚ÑŒ Ğ·Ğ°Ğ»Ğ¸Ğ²ĞºÑƒ"
-      resetTitle="Ğ£Ğ±Ñ€Ğ°Ñ‚ÑŒ Ğ·Ğ°Ğ»Ğ¸Ğ²ĞºÑƒ"
-    />
-  );
-}
-
-function canvasTextCss(style: CanvasTextStyle): CSSProperties {
-  const decorations = [
-    style.underline ? "underline" : "",
-    style.strikethrough ? "line-through" : "",
-  ].filter(Boolean);
-  return {
-    fontFamily: canvasTextFontFamilyCss(style.fontFamily),
-    fontSize: `${style.fontSize}px`,
-    fontWeight: style.bold ? 700 : 400,
-    fontStyle: style.italic ? "italic" : "normal",
-    textDecoration: decorations.length > 0 ? decorations.join(" ") : "none",
-    color: style.color,
-    backgroundColor: style.backgroundColor,
-    textAlign: style.textAlign,
-  };
-}
-
-function CanvasTextEditor({
-  id,
-  markdown,
-  eventKind = "text",
-}: {
-  id: string;
-  markdown: string;
-  eventKind?: "text" | "shape";
-}): React.JSX.Element {
-  const [draft, setDraft] = useState(markdown);
-  const skipNextBlurCommitRef = useRef(false);
-  const update = (value: string) => {
-    setDraft(value);
-    window.dispatchEvent(
-      new CustomEvent(`mozg:canvas-${eventKind}-draft`, {
-        detail: { id, markdown: value },
-      }),
-    );
-  };
-  const commit = () => {
-    window.dispatchEvent(
-      new CustomEvent(`mozg:canvas-${eventKind}-commit`, {
-        detail: { id, markdown: commitTextMarkdown(draft) },
-      }),
-    );
-  };
-  const cancel = () => {
-    skipNextBlurCommitRef.current = true;
-    window.dispatchEvent(
-      new CustomEvent(`mozg:canvas-${eventKind}-cancel`, { detail: { id } }),
-    );
-  };
-  return (
-    <textarea
-      autoFocus
-      value={draft}
-      placeholder="Type something"
-      aria-label="Canvas text"
-      className={`${styles.textEditorInput} nodrag nopan nowheel`}
-      onBlur={() => {
-        if (skipNextBlurCommitRef.current) {
-          skipNextBlurCommitRef.current = false;
-          return;
-        }
-        commit();
-      }}
-      onChange={(event) => update(event.target.value)}
-      onKeyDown={(event) => {
-        event.stopPropagation();
-        if (event.key === "Escape") {
-          event.preventDefault();
-          cancel();
-        } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-          event.preventDefault();
-          event.currentTarget.blur();
-        }
-      }}
-      onPaste={(event) => event.stopPropagation()}
-    />
-  );
-}
-
-function PdfNodeBody({
-  data,
-  selected,
-}: NodeProps<CanvasPdfFlowNode>): React.JSX.Element {
-  return (
-    <CanvasNodeFrame
-      selected={selected}
-      minWidth={160}
-      minHeight={100}
-      className={`${styles.pdfNodeFrame} ${
-        data.readerOpen ? styles.pdfNodeFrameReaderOpen : ""
-      }`.trim()}
-      connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
-    >
-      <div className={styles.pdfNodeContent}>
-        <span className={styles.pdfNodeBadge}>PDF</span>
-        <span
-          className={styles.pdfNodeName}
-          title={data.lastKnownName ?? "PDF"}
-        >
-          {data.lastKnownName ?? "PDF"}
-        </span>
-      </div>
-    </CanvasNodeFrame>
-  );
-}
-
-function ArticleNodeBody({
-  id,
-  data,
-  selected,
-}: NodeProps<CanvasArticleFlowNode>): React.JSX.Element {
-  return (
-    <CanvasNodeFrame
-      selected={selected}
-      minWidth={180}
-      minHeight={88}
-      className={`${styles.articleNodeFrame} ${
-        data.readerOpen ? styles.articleNodeFrameReaderOpen : ""
-      }`.trim()}
-      toolbar={<ArticleSelectionToolbar id={id} style={data.style} />}
-      toolbarWhenReaderOpen
-      connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
-    >
-      <div
-        className={styles.articleNodeContent}
-        style={{ backgroundColor: data.style.backgroundColor }}
-      >
-        <span
-          className={styles.articleNodeBadge}
-          style={{ color: data.style.badgeColor }}
-        >
-          Ğ¡Ğ¢ĞĞ¢Ğ¬Ğ¯
-        </span>
-        <span
-          className={styles.articleNodeName}
-          title={data.lastKnownTitle ?? "Ğ¡Ñ‚Ğ°Ñ‚ÑŒÑ"}
-          style={{
-            color: data.style.titleColor,
-            fontSize: data.style.titleFontSize,
-          }}
-        >
-          {data.lastKnownTitle ?? "Ğ¡Ñ‚Ğ°Ñ‚ÑŒÑ"}
-        </span>
-      </div>
-    </CanvasNodeFrame>
-  );
-}
-
-function SummaryNodeBody({
-  data,
-  selected,
-}: NodeProps<CanvasSummaryFlowNode>): React.JSX.Element {
-  return (
-    <CanvasNodeFrame
-      selected={selected}
-      minWidth={132}
-      minHeight={80}
-      className={`${styles.summaryNodeFrame} ${
-        data.readerOpen ? styles.summaryNodeFrameReaderOpen : ""
-      }`.trim()}
-      connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
-    >
-      <div className={styles.summaryNodeContent}>
-        <span aria-hidden="true" className={styles.summaryNodeSymbol}>
-          Î£
-        </span>
-        <span className={styles.summaryNodeTitle} title={data.title}>
-          {data.title}
-        </span>
-      </div>
-    </CanvasNodeFrame>
-  );
-}
-
-function TextNodeBody({
-  data,
-  selected,
-  id,
-}: NodeProps<CanvasTextFlowNode>): React.JSX.Element {
-  const textStyle = canvasTextCss(data.style);
-  return (
-    <CanvasNodeFrame
-      selected={selected}
-      minWidth={120}
-      minHeight={32}
-      className={styles.textNodeFrame}
-      toolbar={<TextSelectionToolbar id={id} style={data.style} />}
-      connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
-    >
-      <div
-        className={styles.textNodeContent}
-        style={textStyle}
-        onDoubleClick={(event) => {
-          event.stopPropagation();
-          window.dispatchEvent(
-            new CustomEvent("mozg:canvas-text-edit", { detail: { id } }),
-          );
-        }}
-      >
-        {data.isEditing ? (
-          <CanvasTextEditor id={id} markdown={data.markdown} />
-        ) : data.markdown.trim() ? (
-          <div className={styles.textPreview}>
-            <MarkdownStringPreview contentId={id} markdown={data.markdown} />
-          </div>
-        ) : (
-          <span className={styles.textPlaceholder}>Type something</span>
-        )}
-      </div>
-    </CanvasNodeFrame>
-  );
-}
-
-function ShapeNodeBody({
-  data,
-  selected,
-  id,
-}: NodeProps<CanvasShapeFlowNode>): React.JSX.Element {
-  const visualStyle = canvasTextCss(canvasShapeStyleAsTextStyle(data.style));
-  return (
-    <CanvasNodeFrame
-      selected={selected}
-      minWidth={data.shape === "circle" ? 80 : 100}
-      minHeight={data.shape === "circle" ? 80 : 60}
-      keepAspectRatio={data.shape === "circle"}
-      centerTextContent
-      className={styles.shapeNodeFrame}
-      toolbar={<ShapeSelectionToolbar id={id} style={data.style} />}
-      connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
-    >
-      <div
-        className={`${styles.shapeNodeContent} ${
-          data.shape === "circle"
-            ? styles.shapeNodeCircle
-            : styles.shapeNodeRectangle
-        }`}
-        style={visualStyle}
-        data-canvas-shape={data.shape}
-        onDoubleClick={(event) => {
-          event.stopPropagation();
-          window.dispatchEvent(
-            new CustomEvent("mozg:canvas-shape-edit", { detail: { id } }),
-          );
-        }}
-      >
-        {data.isEditing ? (
-          <CanvasTextEditor
-            id={id}
-            markdown={data.markdown}
-            eventKind="shape"
-          />
-        ) : data.markdown.trim() ? (
-          <div className={styles.textPreview}>
-            <MarkdownStringPreview contentId={id} markdown={data.markdown} />
-          </div>
-        ) : (
-          <span className={styles.textPlaceholder}>Ğ’Ğ²ĞµĞ´Ğ¸Ñ‚Ğµ Ñ‚ĞµĞºÑÑ‚</span>
-        )}
-      </div>
-    </CanvasNodeFrame>
-  );
-}
-
-function TaskNodeBody({
-  data,
-  id,
-  selected,
-}: NodeProps<CanvasTaskFlowNode>): React.JSX.Element {
-  const runtimeKey = `${data.taskWorkspaceId ?? "none"}:${data.taskId}:${data.taskBridge ? "ready" : "waiting"}`;
-  const [projectionState, setProjectionState] = useState<{
-    key: string;
-    projection: CanvasTaskProjection | null;
-  }>({ key: "", projection: null });
-  const [mutationState, setMutationState] = useState({
-    key: "",
-    hasError: false,
-  });
-  const [contentMinHeight, setContentMinHeight] = useState(120);
-  const taskContentRef = useRef<HTMLDivElement | null>(null);
-  const reactFlow = useReactFlow<CanvasFlowNode>();
-  const projection =
-    projectionState.key === runtimeKey ? projectionState.projection : undefined;
-  const mutationError =
-    mutationState.key === runtimeKey && mutationState.hasError;
-
-  useEffect(() => {
-    if (!data.taskBridge || !data.taskWorkspaceId) {
-      return;
-    }
-    let active = true;
-    const unsubscribe = data.taskBridge.subscribeToTask(
-      data.taskWorkspaceId,
-      data.taskId,
-      (nextProjection) => {
-        if (active)
-          setProjectionState({ key: runtimeKey, projection: nextProjection });
-      },
-    );
-    return () => {
-      active = false;
-      unsubscribe();
-    };
-  }, [data.taskBridge, data.taskId, data.taskWorkspaceId, runtimeKey]);
-
-  const resolved = projection !== undefined && projection !== null;
-  const title = projection?.title ?? data.lastKnownTitle ?? "Ğ—Ğ°Ğ´Ğ°Ñ‡Ğ°";
-  const missingLabel = data.taskBridge
-    ? "Ğ—Ğ°Ğ´Ğ°Ñ‡Ğ° Ğ½ĞµĞ´Ğ¾ÑÑ‚ÑƒĞ¿Ğ½Ğ°"
-    : "ĞŸĞ¾Ğ´ĞºĞ»ÑÑ‡ĞµĞ½Ğ¸Ğµ Ğ·Ğ°Ğ´Ğ°Ñ‡â€¦";
-
-  const toggleCompleted = (): void => {
-    if (!data.taskBridge || !data.taskWorkspaceId || !resolved) return;
-    setMutationState({ key: runtimeKey, hasError: false });
-    void Promise.resolve(
-      data.taskBridge.toggleTaskCompleted(data.taskWorkspaceId, data.taskId),
-    ).catch(() => setMutationState({ key: runtimeKey, hasError: true }));
-  };
-
-  const toggleSubtaskCompleted = (subtaskId: string): void => {
-    if (!data.taskBridge || !data.taskWorkspaceId || !resolved) return;
-    void Promise.resolve(
-      data.taskBridge.toggleSubtaskCompleted(
-        data.taskWorkspaceId,
-        data.taskId,
-        subtaskId,
-      ),
-    ).catch(() => undefined);
-  };
-
-  const activateNode = (): void => {
-    reactFlow.setNodes((current) =>
-      current.map((node) => {
-        const nextSelected = node.id === id;
-        return node.selected === nextSelected
-          ? node
-          : { ...node, selected: nextSelected };
-      }),
-    );
-  };
-
-  const openDetails = (): void => {
-    if (!data.taskBridge) return;
-    activateNode();
-    data.taskBridge.openTask(data.taskId);
-  };
-
-  const toggleDetails = (): void => {
-    if (!data.taskBridge || !resolved) return;
-    if (projection?.detailsOpen) data.taskBridge.closeTaskDetails(data.taskId);
-    else openDetails();
-  };
-
-  const subtasks = projection?.subtasks ?? [];
-  const onContentHeightChange = data.onContentHeightChange;
-
-  const measureContentHeight = useCallback((): void => {
-    const content = taskContentRef.current;
-    if (!content || !onContentHeightChange) return;
-    const requiredHeight = Math.max(120, Math.ceil(content.scrollHeight + 18));
-    setContentMinHeight((current) =>
-      current === requiredHeight ? current : requiredHeight,
-    );
-    onContentHeightChange(id, requiredHeight);
-  }, [id, onContentHeightChange]);
-
-  useEffect(() => {
-    measureContentHeight();
-    const content = taskContentRef.current;
-    if (!content || !onContentHeightChange) return;
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measureContentHeight);
-    observer.observe(content);
-    return () => observer.disconnect();
-  }, [
-    measureContentHeight,
-    mutationError,
-    onContentHeightChange,
-    projection,
-    title,
-  ]);
-
-  return (
-    <CanvasNodeFrame
-      selected={selected}
-      minWidth={220}
-      minHeight={contentMinHeight}
-      className={styles.taskNodeFrame}
-      connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
-    >
-      <div
-        ref={taskContentRef}
-        className={styles.taskNodeContent}
-        onDoubleClick={(event) => {
-          event.stopPropagation();
-          openDetails();
-        }}
-      >
-        <div className={styles.taskNodeHeader}>
-          <span className={styles.taskNodeType}>Ğ—Ğ°Ğ´Ğ°Ñ‡Ğ°</span>
-          <span className={styles.taskNodeReference} title={data.taskId}>
-            {data.taskId}
-          </span>
-        </div>
-        <div className={styles.taskNodeBody}>
-          <input
-            type="checkbox"
-            className="nodrag nopan"
-            checked={projection?.completed ?? false}
-            disabled={!resolved}
-            aria-label={`Ğ—Ğ°Ğ²ĞµÑ€ÑˆĞ¸Ñ‚ÑŒ Ğ·Ğ°Ğ´Ğ°Ñ‡Ñƒ Â«${title}Â»`}
-            onPointerDown={(event) => event.stopPropagation()}
-            onChange={(event) => {
-              event.stopPropagation();
-              toggleCompleted();
-            }}
-          />
-          <strong
-            className={resolved ? undefined : styles.taskNodeMissingTitle}
-          >
-            {title}
-          </strong>
-        </div>
-        {resolved ? (
-          <span className={styles.taskNodeStatus}>
-            {projection.completed ? "Ğ’Ñ‹Ğ¿Ğ¾Ğ»Ğ½ĞµĞ½Ğ¾" : "Ğ’ Ñ€Ğ°Ğ±Ğ¾Ñ‚Ğµ"}
-          </span>
-        ) : (
-          <span className={styles.taskNodeMissing} role="status">
-            {missingLabel}
-          </span>
-        )}
-        {subtasks.length > 0 ? (
-          <ul className={styles.taskNodeSubtasks} aria-label="ĞŸĞ¾Ğ´Ğ·Ğ°Ğ´Ğ°Ñ‡Ğ¸">
-            {subtasks.map((subtask) => (
-              <li
-                className={`${styles.taskNodeSubtask} ${subtask.completed ? styles.taskNodeSubtaskComplete : ""}`}
-                key={subtask.id}
-              >
-                <input
-                  aria-label={`${subtask.completed ? "ĞÑ‚Ğ¼ĞµÑ‚Ğ¸Ñ‚ÑŒ Ğ½ĞµĞ²Ñ‹Ğ¿Ğ¾Ğ»Ğ½ĞµĞ½Ğ½Ğ¾Ğ¹" : "ĞÑ‚Ğ¼ĞµÑ‚Ğ¸Ñ‚ÑŒ Ğ²Ñ‹Ğ¿Ğ¾Ğ»Ğ½ĞµĞ½Ğ½Ğ¾Ğ¹"}: ${subtask.title}`}
-                  checked={subtask.completed}
-                  className="nodrag nopan"
-                  disabled={!resolved}
-                  onClick={(event) => event.stopPropagation()}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onChange={(event) => {
-                    event.stopPropagation();
-                    toggleSubtaskCompleted(subtask.id);
-                  }}
-                  type="checkbox"
-                />
-                <span title={subtask.title}>{subtask.title}</span>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        {mutationError ? (
-          <span className={styles.taskNodeError} role="alert">
-            ĞĞµ ÑƒĞ´Ğ°Ğ»Ğ¾ÑÑŒ Ğ¸Ğ·Ğ¼ĞµĞ½Ğ¸Ñ‚ÑŒ Ğ·Ğ°Ğ´Ğ°Ñ‡Ñƒ
-          </span>
-        ) : null}
-        <button
-          type="button"
-          className={`${styles.taskNodeDetails} nodrag nopan`}
-          disabled={!data.taskBridge || !resolved}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            toggleDetails();
-          }}
-        >
-          {projection?.detailsOpen ? "Ğ—Ğ°ĞºÑ€Ñ‹Ñ‚ÑŒ Ğ´ĞµÑ‚Ğ°Ğ»Ğ¸" : "ĞÑ‚ĞºÑ€Ñ‹Ñ‚ÑŒ Ğ´ĞµÑ‚Ğ°Ğ»Ğ¸"}
-        </button>
-      </div>
-    </CanvasNodeFrame>
-  );
-}
-
-export function CanvasEdgeBody({
-  id,
-  source,
-  sourcePosition,
-  targetPosition,
-  target,
-  selected,
-  data,
-  markerStart,
-  markerEnd,
-}: EdgeProps<CanvasEdgeFlow>): React.JSX.Element | null {
-  const [lineTypeOpen, setLineTypeOpen] = useState(false);
-  const [lastPath, setLastPath] = useState("M0,0 L0,0");
-  const selectedElementCount = useStore(
-    (state) =>
-      state.nodes.filter((node) => node.selected).length +
-      state.edges.filter((edge) => edge.selected).length,
-  );
-  const sourceNode = useInternalNode<CanvasFlowNode>(source);
-  const targetNode = useInternalNode<CanvasFlowNode>(target);
-  const sourcePositionSide = sourcePosition as CanvasHandleSide;
-  const targetPositionSide = targetPosition as CanvasHandleSide;
-  const sourceBounds = canvasInternalNodeBounds(sourceNode);
-  const targetBounds = canvasInternalNodeBounds(targetNode);
-  const geometry =
-    sourceBounds && targetBounds
-      ? {
-          sourceAnchor: canvasNodePerimeterAnchor(
-            sourceBounds,
-            sourcePositionSide,
-          ),
-          targetAnchor: canvasNodePerimeterAnchor(
-            targetBounds,
-            targetPositionSide,
-          ),
-        }
-      : null;
-  const computedPath = geometry
-    ? data?.routing === "orthogonal"
-      ? getSmoothStepPath({
-          sourceX: geometry.sourceAnchor.x,
-          sourceY: geometry.sourceAnchor.y,
-          sourcePosition,
-          targetX: geometry.targetAnchor.x,
-          targetY: geometry.targetAnchor.y,
-          targetPosition,
-        })
-      : data?.routing === "straight"
-        ? getStraightPath({
-            sourceX: geometry.sourceAnchor.x,
-            sourceY: geometry.sourceAnchor.y,
-            targetX: geometry.targetAnchor.x,
-            targetY: geometry.targetAnchor.y,
-          })
-        : getBezierPath({
-            sourceX: geometry.sourceAnchor.x,
-            sourceY: geometry.sourceAnchor.y,
-            sourcePosition,
-            targetX: geometry.targetAnchor.x,
-            targetY: geometry.targetAnchor.y,
-            targetPosition,
-          })
-    : null;
-  const computedPathValue = computedPath?.[0] ?? null;
-  useEffect(() => {
-    if (!computedPathValue || computedPathValue === lastPath) return;
-    const timer = window.setTimeout(() => setLastPath(computedPathValue), 0);
-    return () => window.clearTimeout(timer);
-  }, [computedPathValue, lastPath]);
-  if (!computedPath) {
-    return (
-      <g
-        data-canvas-edge-id={id}
-        data-source-node-id={source}
-        data-target-node-id={target}
-      >
-        <CanvasVisibleEdge
-          id={id}
-          path={lastPath}
-          className={selected ? styles.selectedEdge : styles.canvasEdge}
-          markerStart={markerStart}
-          markerEnd={markerEnd}
-          interactionWidth={24}
-        />
-      </g>
-    );
-  }
-  const [path, labelX, labelY] = computedPath;
-  const arrows = data?.arrows ?? "none";
-  const endpointArrows = canvasArrowsToEndpointArrows(arrows);
-  const routing = data?.routing ?? "curved";
-  const stopToolbarEvent = (event: React.SyntheticEvent): void => {
-    event.stopPropagation();
-  };
-  const toolbarVisible = selected && selectedElementCount === 1;
-  return (
-    <>
-      <g
-        data-canvas-edge-id={id}
-        data-source-node-id={source}
-        data-target-node-id={target}
-      >
-        <CanvasVisibleEdge
-          id={id}
-          path={path}
-          className={selected ? styles.selectedEdge : styles.canvasEdge}
-          markerStart={markerStart}
-          markerEnd={markerEnd}
-          interactionWidth={24}
-        />
-      </g>
-      {toolbarVisible ? (
-        <EdgeToolbar
-          edgeId={id}
-          x={labelX}
-          y={labelY}
-          isVisible={toolbarVisible}
-          alignY="top"
-          className={`${styles.edgeToolbar} nodrag nopan nowheel`}
-          onPointerDown={stopToolbarEvent}
-          onPointerUp={stopToolbarEvent}
-          onClick={stopToolbarEvent}
-          onWheel={stopToolbarEvent}
-        >
-          <button
-            type="button"
-            className={`${styles.edgeToolButton} nodrag nopan nowheel`}
-            aria-label="ĞŸĞµÑ€ĞµĞºĞ»ÑÑ‡Ğ¸Ñ‚ÑŒ ÑÑ‚Ñ€ĞµĞ»ĞºÑƒ Ğ² Ğ½Ğ°Ñ‡Ğ°Ğ»Ğµ Ğ»Ğ¸Ğ½Ğ¸Ğ¸"
-            aria-pressed={endpointArrows.source}
-            title="Ğ¡Ñ‚Ñ€ĞµĞ»ĞºĞ° Ğ² Ğ½Ğ°Ñ‡Ğ°Ğ»Ğµ"
-            onClick={() =>
-              data?.onUpdate?.(id, {
-                routing,
-                arrows: endpointArrowsToCanvasArrows({
-                  source: !endpointArrows.source,
-                  target: endpointArrows.target,
-                }),
-              })
-            }
-          >
-            {endpointArrows.source ? "â—€" : "â—‹"}
-          </button>
-          <button
-            type="button"
-            className={`${styles.edgeToolButton} nodrag nopan nowheel`}
-            aria-label="ĞŸĞ¾Ğ¼ĞµĞ½ÑÑ‚ÑŒ ÑÑ‚Ñ€ĞµĞ»ĞºĞ¸ Ğ¼ĞµÑÑ‚Ğ°Ğ¼Ğ¸"
-            title="ĞŸĞ¾Ğ¼ĞµĞ½ÑÑ‚ÑŒ ÑÑ‚Ñ€ĞµĞ»ĞºĞ¸ Ğ¼ĞµÑÑ‚Ğ°Ğ¼Ğ¸"
-            onClick={() =>
-              data?.onUpdate?.(id, {
-                routing,
-                arrows: swapCanvasEdgeArrows(arrows),
-              })
-            }
-          >
-            â†”
-          </button>
-          <button
-            type="button"
-            className={`${styles.edgeToolButton} nodrag nopan nowheel`}
-            aria-label="ĞŸĞµÑ€ĞµĞºĞ»ÑÑ‡Ğ¸Ñ‚ÑŒ ÑÑ‚Ñ€ĞµĞ»ĞºÑƒ Ğ² ĞºĞ¾Ğ½Ñ†Ğµ Ğ»Ğ¸Ğ½Ğ¸Ğ¸"
-            aria-pressed={endpointArrows.target}
-            title="Ğ¡Ñ‚Ñ€ĞµĞ»ĞºĞ° Ğ² ĞºĞ¾Ğ½Ñ†Ğµ"
-            onClick={() =>
-              data?.onUpdate?.(id, {
-                routing,
-                arrows: endpointArrowsToCanvasArrows({
-                  source: endpointArrows.source,
-                  target: !endpointArrows.target,
-                }),
-              })
-            }
-          >
-            {endpointArrows.target ? "â–¶" : "â—‹"}
-          </button>
-          <button
-            type="button"
-            className={`${styles.edgeToolButton} nodrag nopan nowheel`}
-            aria-label="Ğ¢Ğ¸Ğ¿ Ğ»Ğ¸Ğ½Ğ¸Ğ¸: Ğ¾Ñ‚ĞºÑ€Ñ‹Ñ‚ÑŒ Ğ²Ñ‹Ğ±Ğ¾Ñ€"
-            aria-expanded={lineTypeOpen}
-            title="Ğ¢Ğ¸Ğ¿ Ğ»Ğ¸Ğ½Ğ¸Ğ¸"
-            onClick={(event) => {
-              stopToolbarEvent(event);
-              setLineTypeOpen((open) => !open);
-            }}
-          >
-            {routing === "orthogonal"
-              ? "â”"
-              : routing === "straight"
-                ? "ï¼"
-                : "âŒ’"}
-          </button>
-          {lineTypeOpen ? (
-            <div className={styles.edgeLinePopover} role="menu">
-              {(
-                [
-                  ["orthogonal", "â”", "ĞŸÑ€ÑĞ¼Ğ¾ÑƒĞ³Ğ¾Ğ»ÑŒĞ½Ğ°Ñ"],
-                  ["curved", "âŒ’", "Ğ”ÑƒĞ³Ğ¾Ğ¾Ğ±Ñ€Ğ°Ğ·Ğ½Ğ°Ñ"],
-                  ["straight", "ï¼", "ĞŸÑ€ÑĞ¼Ğ°Ñ"],
-                ] as const
-              ).map(([value, glyph, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={`${styles.edgeLineOption} nodrag nopan nowheel`}
-                  role="menuitemradio"
-                  aria-checked={routing === value}
-                  onClick={(event) => {
-                    stopToolbarEvent(event);
-                    setLineTypeOpen(false);
-                    data?.onUpdate?.(id, {
-                      routing: value,
-                      arrows,
-                    });
-                  }}
-                >
-                  <span aria-hidden="true">{glyph}</span>
-                  {label}
-                </button>
-              ))}
-            </div>
-          ) : null}
-          <label>
-            Ğ›Ğ¸Ğ½Ğ¸Ñ
-            <select
-              className="nodrag nopan"
-              value={data?.routing ?? "curved"}
-              onChange={(event) =>
-                data?.onUpdate?.(id, {
-                  routing: event.target.value as CanvasEdgeRouting,
-                  arrows,
-                })
-              }
-            >
-              <option value="orthogonal">ĞŸÑ€ÑĞ¼Ğ¾ÑƒĞ³Ğ¾Ğ»ÑŒĞ½Ğ°Ñ</option>
-              <option value="curved">Ğ”ÑƒĞ³Ğ¾Ğ¾Ğ±Ñ€Ğ°Ğ·Ğ½Ğ°Ñ</option>
-              <option value="straight">ĞŸÑ€ÑĞ¼Ğ°Ñ</option>
-            </select>
-          </label>
-          <label>
-            Ğ¡Ñ‚Ñ€ĞµĞ»ĞºĞ¸
-            <select
-              className="nodrag nopan"
-              value={arrows}
-              onChange={(event) =>
-                data?.onUpdate?.(id, {
-                  routing: data?.routing ?? "curved",
-                  arrows: event.target.value as CanvasEdgeArrows,
-                })
-              }
-            >
-              <option value="none">ĞĞµÑ‚</option>
-              <option value="start">Ğ’ Ğ½Ğ°Ñ‡Ğ°Ğ»Ğµ</option>
-              <option value="end">Ğ’ ĞºĞ¾Ğ½Ñ†Ğµ</option>
-              <option value="both">Ğ¡ Ğ¾Ğ±ĞµĞ¸Ñ… ÑÑ‚Ğ¾Ñ€Ğ¾Ğ½</option>
-            </select>
-          </label>
-        </EdgeToolbar>
-      ) : null}
-    </>
-  );
-}
-
-function CanvasConnectionLine({
-  fromX,
-  fromY,
-  fromPosition,
-  toX,
-  toY,
-  toPosition,
-  toHandle,
-  connectionStatus,
-}: ConnectionLineComponentProps<CanvasFlowNode>): React.JSX.Element {
-  const source = canvasHandleCenterToPerimeter(
-    { x: fromX, y: fromY },
-    fromPosition as CanvasHandleSide,
-  );
-  const target = toHandle
-    ? canvasHandleCenterToPerimeter(
-        { x: toX, y: toY },
-        toPosition as CanvasHandleSide,
-      )
-    : { x: toX, y: toY };
-  const [path] = getBezierPath({
-    sourceX: source.x,
-    sourceY: source.y,
-    sourcePosition: fromPosition,
-    targetX: target.x,
-    targetY: target.y,
-    targetPosition: toPosition,
-  });
-  return (
-    <path
-      d={path}
-      fill="none"
-      className={styles.connectionPreview}
-      data-status={connectionStatus ?? "pending"}
-    />
-  );
-}
-
-const nodeTypes = {
-  [CANVAS_IMAGE_NODE_TYPE]: ImageNodeBody,
-  [CANVAS_PDF_NODE_TYPE]: PdfNodeBody,
-  [CANVAS_ARTICLE_NODE_TYPE]: ArticleNodeBody,
-  [CANVAS_SUMMARY_NODE_TYPE]: SummaryNodeBody,
-  [CANVAS_TASK_NODE_TYPE]: TaskNodeBody,
-  [CANVAS_TEXT_NODE_TYPE]: TextNodeBody,
-  [CANVAS_SHAPE_NODE_TYPE]: ShapeNodeBody,
-};
-
-const edgeTypes = {
-  [CANVAS_EDGE_TYPE]: CanvasEdgeBody,
-};
-
-export type CanvasShellCopy = {
-  eyebrow: string;
-  defaultTitle: string;
-  emptyTitle: string;
-  emptyDescription: string;
-  create: string;
-  rename: string;
-  newCanvas: string;
-  delete: string;
-  addImage: string;
-  text: string;
-  saved: string;
-  saving: string;
-  conflict: string;
-  loading: string;
-  error: string;
-  reloadWinner: string;
-  keepLocalChanges: string;
-  restoreLocalDraft: string;
-  isolated: string;
-  status: string;
-};
-
-type CanvasShellRepository = CanvasRepository &
-  CanvasViewStateRepository & {
-    close?: () => void;
-    setActiveCanvas?: (canvasId: string | null) => void;
-  };
-
-type CanvasLoadingLifecycle =
-  | "list-loading"
-  | "empty-confirmed"
-  | "canvas-selected"
-  | "document-loading"
-  | "skeleton-ready"
-  | "content-hydrating"
-  | "ready"
-  | "error";
-
-function InfiniteCanvasLocalShellSurface({
-  activeTaskDetailsTaskId,
-  assetRepository,
-  embedded = false,
-  copy,
-  groupRepository,
-  knowledgeArticles = [],
-  projectFileRepository,
-  projectFileVariantRepository,
-  projectId,
-  repository: providedRepository,
-  runtimeCache,
-  showDiagnostics,
-  taskBridge,
-  taskWorkspaceId,
-  userId,
-  workspaceId,
-}: {
-  activeTaskDetailsTaskId?: string;
-  assetRepository: CanvasAssetRepository;
-  embedded?: boolean;
-  copy: CanvasShellCopy;
-  groupRepository?: CanvasGroupRepository;
-  knowledgeArticles?: readonly PrototypeDocument[];
-  projectFileRepository?: ProjectFileRepository;
-  projectFileVariantRepository?: ProjectFileImageVariantRepository;
-  projectId?: string;
-  repository: CanvasShellRepository;
-  runtimeCache?: CloudCanvasRuntimeCache;
-  showDiagnostics: boolean;
-  taskBridge?: CanvasTaskBridge;
-  taskWorkspaceId?: string;
-  userId: string;
-  workspaceId: string;
-}): React.JSX.Element {
-  const initialRuntimeRef = useRef<CloudCanvasRuntimeSnapshot | null>(
-    runtimeCache?.getActive({ workspaceId, userId }) ?? null,
-  );
-  const initialRuntime = initialRuntimeRef.current;
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const taskBridgeRef = useRef<CanvasTaskBridge | undefined>(taskBridge);
-  const taskWorkspaceIdRef = useRef<string | undefined>(taskWorkspaceId);
-  taskBridgeRef.current = taskBridge;
-  taskWorkspaceIdRef.current = taskWorkspaceId;
-  const pointerRef = useRef<FlowPosition | null>(null);
-  const nodesRef = useRef<CanvasFlowNode[]>([]);
-  const edgesRef = useRef<CanvasEdgeFlow[]>([]);
-  const summariesRef = useRef<CanvasSummary[]>([]);
-  const shellStateRef = useRef<LocalCanvasShellState>(
-    initialRuntime?.shellState ?? emptyShellState(),
-  );
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pdfUploadInFlightRef = useRef(new Map<string, Promise<void>>());
-  const viewportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const restoreControllerRef = useRef<AbortController | null>(null);
-  const variantRefreshControllerRef = useRef<AbortController | null>(null);
-  const variantRefreshSequenceRef = useRef(0);
-  const variantRefreshFrameRef = useRef<number | null>(null);
-  const variantDowngradeTimerRef = useRef<number | null>(null);
-  const imageLoadCacheRef = useRef(new CanvasImageLoadCache());
-  const pyramidSchedulerRef = useRef(new CanvasImagePyramidScheduler());
-  const imageLoadCacheCanvasIdRef = useRef<string | null>(
-    initialRuntime?.shellState.canvasId ?? null,
-  );
-  const refreshImageVariantsRef = useRef<
-    (viewportZoom: number, allowDowngrade: boolean) => void
-  >(() => undefined);
-  const variantPayloadsRef = useRef<Map<string, CanvasImageRuntimePayload>>(
-    new Map(initialRuntime?.assetPayloads),
-  );
-  const pendingContentHeightSaveRef = useRef(false);
-  const nodeGeometrySignatureRef = useRef("");
-  const nodeDragActiveRef = useRef(false);
-  const collapsedBranchDragRef = useRef<{
-    descendantNodeIds: Set<string>;
-    nodeId: string;
-    startPosition: FlowPosition;
-  } | null>(null);
-  const altDragDuplicateRef = useRef<CanvasAltDragDuplicateSession | null>(
-    null,
-  );
-  const middlePanActiveRef = useRef(false);
-  const activeTouchPointersRef = useRef(new Set<number>());
-  const touchGestureNodesRef = useRef<CanvasFlowNode[] | null>(null);
-  const touchViewportGestureActiveRef = useRef(false);
-  const panSamplesRef = useRef<CanvasPanSample[]>([]);
-  const panInertiaFrameRef = useRef<number | null>(null);
-  const panInertiaActiveRef = useRef(false);
-  const panInertiaVelocityRef = useRef<CanvasPanVelocity | null>(null);
-  const panInertiaViewportRef = useRef<CanvasPanViewport | null>(null);
-  const panInertiaLastFrameRef = useRef<number | null>(null);
-  const readerSidebarWasAutoCollapsedRef = useRef(false);
-  const readerCenterFrameRef = useRef<number | null>(null);
-  const edgeRemovalSuppressionUntilRef = useRef(0);
-  const hydratingRef = useRef(true);
-  const canvasGenerationRef = useRef(0);
-  const programmaticViewportRef = useRef<CanvasViewportInitialization | null>(
-    null,
-  );
-  const screenToFlowRef = useRef<
-    (point: { x: number; y: number }) => FlowPosition
-  >(() => ({ x: 0, y: 0 }));
-  const [nodes, setNodes, onNodesChange] = useNodesState<CanvasFlowNode>([]);
-  const [edges, setEdges] = useEdgesState<CanvasEdgeFlow>([]);
-  const [summaries, setSummaries] = useState<CanvasSummary[]>(
-    initialRuntime?.summaries ?? [],
-  );
-  const [groups, setGroups] = useState<CanvasGroup[]>([]);
-  const [groupsError, setGroupsError] = useState<string | null>(null);
-  const [highlightedCanvasGroupId, setHighlightedCanvasGroupId] = useState<
-    string | null
-  >(null);
-  const [shellState, setShellState] = useState<LocalCanvasShellState>(
-    initialRuntime?.shellState ?? emptyShellState,
-  );
-  const [conflictDraftAvailable, setConflictDraftAvailable] = useState(false);
-  const [loadingLifecycle, setLoadingLifecycle] =
-    useState<CanvasLoadingLifecycle>(
-      initialRuntime?.shellState.canvasId ? "ready" : "list-loading",
-    );
-  const [restoreStats, setRestoreStats] =
-    useState<RestoreStats>(EMPTY_RESTORE_STATS);
-  const [dropActive, setDropActive] = useState(false);
-  const [newTitle, setNewTitle] = useState(copy.defaultTitle);
-  const [renameTitle, setRenameTitle] = useState("");
-  const renameInFlightRef = useRef(new Set<string>());
-  const [taskPickerOpen, setTaskPickerOpen] = useState(false);
-  const [taskQuery, setTaskQuery] = useState("");
-  const [taskResults, setTaskResults] = useState<CanvasTaskProjection[]>([]);
-  const [articlePickerOpen, setArticlePickerOpen] = useState(false);
-  const [articleQuery, setArticleQuery] = useState("");
-  const [filePickerOpen, setFilePickerOpen] = useState(false);
-  const [openPdf, setOpenPdf] = useState<{
-    fileId: string;
-    name: string;
-    nodeId: string;
-    objectUrl: string;
-  } | null>(null);
-  const [pdfFullscreen, setPdfFullscreen] = useState(false);
-  const articleResults = useMemo(() => {
-    const normalizedQuery = articleQuery.trim().toLocaleLowerCase("ru");
-    if (!normalizedQuery) return knowledgeArticles;
-    return knowledgeArticles.filter((article) =>
-      article.title.toLocaleLowerCase("ru").includes(normalizedQuery),
-    );
-  }, [articleQuery, knowledgeArticles]);
-  const openArticle = useMemo(
-    () =>
-      shellState.openArticleId
-        ? (knowledgeArticles.find(
-            (article) => article.id === shellState.openArticleId,
-          ) ?? null)
-        : null,
-    [knowledgeArticles, shellState.openArticleId],
-  );
-  const [openSummaryNodeId, setOpenSummaryNodeId] = useState<string | null>(
-    null,
-  );
-  const openSummary = useMemo(
-    () =>
-      openSummaryNodeId
-        ? (shellState.document.nodes.find(
-            (node): node is CanvasSummaryNode =>
-              node.id === openSummaryNodeId && node.kind === "summary",
-          ) ?? null)
-        : null,
-    [openSummaryNodeId, shellState.document.nodes],
-  );
-  const openSummaryEntries = useMemo(
-    () =>
-      openSummary
-        ? canvasSummaryEntries(shellState.document, openSummary.id)
-        : [],
-    [openSummary, shellState.document],
-  );
-  const renderedNodes = useMemo<CanvasFlowNode[]>(() => {
-    const openPdfNodeId = openPdf?.nodeId;
-    const openArticleId = shellState.openArticleId;
-    if (!openPdfNodeId && !openArticleId && !openSummaryNodeId) return nodes;
-    return nodes.map((node) =>
-      node.type === CANVAS_PDF_NODE_TYPE && node.id === openPdfNodeId
-        ? { ...node, data: { ...node.data, readerOpen: true } }
-        : node.type === CANVAS_ARTICLE_NODE_TYPE &&
-            node.data.articleId === openArticleId
-          ? { ...node, data: { ...node.data, readerOpen: true } }
-          : node.type === CANVAS_SUMMARY_NODE_TYPE &&
-              node.id === openSummaryNodeId
-            ? { ...node, data: { ...node.data, readerOpen: true } }
-            : node,
-    );
-  }, [nodes, openPdf?.nodeId, openSummaryNodeId, shellState.openArticleId]);
-  const [fileQuery, setFileQuery] = useState("");
-  const [fileCatalog, setFileCatalog] = useState<ProjectFileRecord[]>([]);
-  const [fileSearchStatus, setFileSearchStatus] = useState<
-    "idle" | "loading" | "ready" | "error"
-  >("idle");
-  const [taskSearchStatus, setTaskSearchStatus] = useState<
-    "idle" | "loading" | "ready" | "error"
-  >("idle");
-  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
-  const [touchPrimaryInput, setTouchPrimaryInput] = useState(false);
-  const [touchViewportGestureActive, setTouchViewportGestureActive] =
-    useState(false);
-  const [styleEyedropperSourceId, setStyleEyedropperSourceId] = useState<
-    string | null
-  >(null);
-  useEffect(() => {
-    if (!window.matchMedia("(max-width: 767px)").matches) return;
-    const frame = window.requestAnimationFrame(() => {
-      setDesktopSidebarOpen(false);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
-  useEffect(() => {
-    const media = window.matchMedia("(pointer: coarse)");
-    const syncPrimaryTouchInput = (): void => {
-      setTouchPrimaryInput(media.matches);
-    };
-    syncPrimaryTouchInput();
-    media.addEventListener("change", syncPrimaryTouchInput);
-    return () => media.removeEventListener("change", syncPrimaryTouchInput);
-  }, []);
-  const [flowInstanceEpoch, setFlowInstanceEpoch] = useState(0);
-  const [viewportInitialization, setViewportInitialization] =
-    useState<CanvasViewportInitialization | null>(null);
-  const [viewportVisible, setViewportVisible] = useState(
-    Boolean(initialRuntime?.shellState.canvasId),
-  );
-  const repository = providedRepository;
-  const groupsRepository = groupRepository;
-  const imageRepository = assetRepository;
-  const shellWorkspaceId = workspaceId;
-  const shellUserId = userId;
-  const conflictDraftStorageKey = useMemo(
-    () =>
-      `mozg:canvas-conflict-draft:v1:${shellUserId}:${shellWorkspaceId}:${projectId ?? "default"}:${shellState.canvasId ?? "none"}`,
-    [projectId, shellState.canvasId, shellUserId, shellWorkspaceId],
-  );
-  const imageLoadCacheUserIdRef = useRef(shellUserId);
-  const [objectUrls] = useState(
-    () => initialRuntime?.objectUrls ?? createObjectUrlRegistry(),
-  );
-  const [controller] = useState(() =>
-    (() => {
-      const next = new LocalCanvasShellController({
-        repository,
-        workspaceId: shellWorkspaceId,
-        userId: shellUserId,
-      });
-      if (initialRuntime) next.restoreRuntimeState(initialRuntime.shellState);
-      return next;
-    })(),
-  );
-  const reactFlow = useReactFlow<CanvasFlowNode>();
-
-  const centerReaderNodeAfterLayout = useCallback(
-    (nodeId: string | null) => {
-      if (!nodeId) return;
-      if (readerCenterFrameRef.current !== null)
-        cancelAnimationFrame(readerCenterFrameRef.current);
-      readerCenterFrameRef.current = requestAnimationFrame(() => {
-        readerCenterFrameRef.current = requestAnimationFrame(() => {
-          readerCenterFrameRef.current = null;
-          const node = nodesRef.current.find((item) => item.id === nodeId);
-          if (!node) return;
-          const width = node.width ?? (Number(node.style?.width) || 0);
-          const height = node.height ?? (Number(node.style?.height) || 0);
-          if (width <= 0 || height <= 0) return;
-          void reactFlow.setCenter(
-            node.position.x + width / 2,
-            node.position.y + height / 2,
-            { duration: 220, zoom: reactFlow.getZoom() },
-          );
-        });
-      });
-    },
-    [reactFlow],
-  );
-
-  const enterReaderLayout = useCallback(
-    (nodeId: string) => {
-      const canAutoCollapseSidebar =
-        embedded && window.matchMedia("(min-width: 768px)").matches;
-      if (canAutoCollapseSidebar && desktopSidebarOpen) {
-        readerSidebarWasAutoCollapsedRef.current = true;
-        setDesktopSidebarOpen(false);
-      }
-      centerReaderNodeAfterLayout(nodeId);
-    },
-    [centerReaderNodeAfterLayout, desktopSidebarOpen, embedded],
-  );
-
-  const leaveReaderLayout = useCallback(
-    (nodeId: string | null) => {
-      const restoreSidebar = readerSidebarWasAutoCollapsedRef.current;
-      readerSidebarWasAutoCollapsedRef.current = false;
-      if (restoreSidebar) setDesktopSidebarOpen(true);
-      centerReaderNodeAfterLayout(nodeId);
-    },
-    [centerReaderNodeAfterLayout],
-  );
-
-  useEffect(() => {
-    const activeTaskId = activeTaskDetailsTaskId;
-    if (
-      !activeTaskId ||
-      !taskBridge ||
-      !shouldCloseCanvasTaskDetails(activeTaskId, nodes)
-    )
-      return;
-    taskBridge.closeTaskDetails(activeTaskId);
-  }, [activeTaskDetailsTaskId, nodes, taskBridge]);
-  const adapterDependencies = useMemo<CanvasImageAdapterDependencies>(() => {
-    const reportVariantError = (label: string, error: unknown): void => {
-      if (process.env.NODE_ENV === "production") return;
-      if (error instanceof Error && "code" in error) {
-        const diagnostic = error as Error & {
-          code?: unknown;
-          details?: unknown;
-        };
-        console.warn(
-          label,
-          JSON.stringify({
-            code: diagnostic.code,
-            details: diagnostic.details,
-            message: diagnostic.message,
-          }),
-        );
-        return;
-      }
-      console.warn(label, error);
-    };
-    const variantRepository =
-      "loadVariant" in imageRepository
-        ? (imageRepository as unknown as CanvasAssetVariantRepository)
-        : undefined;
-    return {
-      assetRepository: imageRepository,
-      ...(variantRepository === undefined ? {} : { variantRepository }),
-      objectUrls,
-      userId: shellUserId,
-      workspaceId: shellWorkspaceId,
-      canvasId: shellState.canvasId ?? undefined,
-      loadCache: imageLoadCacheRef.current,
-      pyramidScheduler: pyramidSchedulerRef.current,
-      onPyramidComplete: ({ result }) => {
-        if (result.stored.length === 0) return;
-        refreshImageVariantsRef.current(
-          shellStateRef.current.viewport.zoom,
-          false,
-        );
-      },
-      onVariantError: (error: unknown) => {
-        reportVariantError("Canvas image variant generation failed.", error);
-      },
-    };
-  }, [
-    imageRepository,
-    objectUrls,
-    shellState.canvasId,
-    shellUserId,
-    shellWorkspaceId,
-  ]);
-
-  useEffect(() => {
-    nodesRef.current = nodes;
-  }, [nodes]);
-
-  useEffect(() => {
-    edgesRef.current = edges;
-  }, [edges]);
-
-  useEffect(() => {
-    summariesRef.current = summaries;
-  }, [summaries]);
-
-  useEffect(() => {
-    shellStateRef.current = shellState;
-  }, [shellState]);
-
-  useEffect(() => {
-    if (imageLoadCacheUserIdRef.current === shellUserId) return;
-    imageLoadCacheUserIdRef.current = shellUserId;
-    imageLoadCacheRef.current.clear();
-    imageLoadCacheCanvasIdRef.current = shellStateRef.current.canvasId;
-  }, [shellUserId]);
-
-  useEffect(() => {
-    screenToFlowRef.current = reactFlow.screenToFlowPosition;
-  }, [reactFlow.screenToFlowPosition]);
-
-  useEffect(() => {
-    setNodes((current) =>
-      current.map((node) =>
-        node.type === CANVAS_TASK_NODE_TYPE
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                taskBridge,
-                taskWorkspaceId,
-              },
-            }
-          : node,
-      ),
-    );
-  }, [setNodes, taskBridge, taskWorkspaceId]);
-
-  useEffect(() => {
-    if (!taskPickerOpen || !taskBridge || !taskWorkspaceId) {
-      setTaskResults([]);
-      setTaskSearchStatus("idle");
-      return;
-    }
-    let active = true;
-    setTaskSearchStatus("loading");
-    void Promise.resolve(
-      taskBridge.searchTasks(taskWorkspaceId, taskQuery),
-    ).then(
-      (results) => {
-        if (!active) return;
-        setTaskResults(results);
-        setTaskSearchStatus("ready");
-      },
-      () => {
-        if (!active) return;
-        setTaskResults([]);
-        setTaskSearchStatus("error");
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [taskBridge, taskPickerOpen, taskQuery, taskWorkspaceId]);
-
-  useEffect(() => {
-    if (!taskPickerOpen) return;
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      setTaskPickerOpen(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [taskPickerOpen]);
-
-  useEffect(() => {
-    if (!filePickerOpen || !projectFileRepository || !projectId) {
-      setFileCatalog([]);
-      setFileSearchStatus("idle");
-      return;
-    }
-    let active = true;
-    setFileSearchStatus("loading");
-    void projectFileRepository
-      .listFiles({ workspaceId: shellWorkspaceId, projectId })
-      .then(
-        (files) => {
-          if (!active) return;
-          setFileCatalog(
-            files.filter(
-              (file) =>
-                file.readyAt !== null &&
-                file.deletedAt === null &&
-                (file.mimeType === "application/pdf" ||
-                  (file.width !== null &&
-                    file.height !== null &&
-                    isProjectFileImageMimeType(file.mimeType))),
-            ),
-          );
-          setFileSearchStatus("ready");
-        },
-        () => {
-          if (!active) return;
-          setFileCatalog([]);
-          setFileSearchStatus("error");
-        },
-      );
-    return () => {
-      active = false;
-    };
-  }, [filePickerOpen, projectFileRepository, projectId, shellWorkspaceId]);
-
-  useEffect(() => {
-    if (!filePickerOpen) return;
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      setFilePickerOpen(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [filePickerOpen]);
-
-  const fileResults = useMemo(() => {
-    const query = fileQuery.trim().toLocaleLowerCase("ru");
-    if (!query) return fileCatalog;
-    return fileCatalog.filter((file) =>
-      file.name.toLocaleLowerCase("ru").includes(query),
-    );
-  }, [fileCatalog, fileQuery]);
-
-  const projectFileImageDependenciesForCanvas = useCallback(
-    (canvasId: string) =>
-      projectFileRepository && projectFileVariantRepository && projectId
-        ? {
-            fileRepository: projectFileRepository,
-            variantRepository: projectFileVariantRepository,
-            objectUrls,
-            workspaceId: shellWorkspaceId,
-            projectId,
-            canvasId,
-          }
-        : null,
-    [
-      objectUrls,
-      projectFileRepository,
-      projectFileVariantRepository,
-      projectId,
-      shellWorkspaceId,
-    ],
-  );
-
-  const syncState = useCallback(
-    () => setShellState(controller.state),
-    [controller],
-  );
-
-  const saveOpenArticleId = useCallback(
-    (openArticleId: string | null) => {
-      const save = controller.saveOpenArticleId(openArticleId);
-      syncState();
-      void save.catch(syncState);
-    },
-    [controller, syncState],
-  );
-
-  const saveConflictDraft = useCallback(
-    (state: LocalCanvasShellState): void => {
-      if (!state.canvasId || typeof window === "undefined") return;
-      const draft: LocalCanvasConflictDraft = {
-        canvasId: state.canvasId,
-        title: state.title,
-        document: state.document,
-        viewport: state.viewport,
-      };
-      try {
-        window.localStorage.setItem(
-          conflictDraftStorageKey,
-          JSON.stringify(draft),
-        );
-        setConflictDraftAvailable(true);
-      } catch {
-        // The controller still holds the draft if browser storage is unavailable.
-      }
-    },
-    [conflictDraftStorageKey],
-  );
-
-  const readConflictDraft = useCallback((): LocalCanvasConflictDraft | null => {
-    if (typeof window === "undefined") return null;
-    try {
-      const raw = window.localStorage.getItem(conflictDraftStorageKey);
-      if (!raw) return null;
-      const draft = JSON.parse(raw) as LocalCanvasConflictDraft;
-      return draft && typeof draft.canvasId === "string" ? draft : null;
-    } catch {
-      return null;
-    }
-  }, [conflictDraftStorageKey]);
-
-  const clearConflictDraft = useCallback((): void => {
-    if (typeof window === "undefined") return;
-    try {
-      window.localStorage.removeItem(conflictDraftStorageKey);
-    } finally {
-      setConflictDraftAvailable(false);
-    }
-  }, [conflictDraftStorageKey]);
-
-  useEffect(() => {
-    setConflictDraftAvailable(readConflictDraft() !== null);
-  }, [readConflictDraft]);
-
-  useEffect(() => {
-    // A rejected save is just as recoverable as a CAS conflict.  Persist the
-    // canonical draft before the user can navigate or reload the page.
-    if (
-      (shellState.status === "conflict" || shellState.status === "error") &&
-      controller.hasPendingSave
-    ) {
-      saveConflictDraft(shellState);
-    }
-  }, [controller, saveConflictDraft, shellState]);
-
-  const refreshCatalog = useCallback(async (): Promise<{
-    summaries: CanvasSummary[];
-    groups: CanvasGroup[];
-  }> => {
-    const [nextSummaries, nextGroups] = await Promise.all([
-      controller.listCanvases(),
-      groupsRepository?.listCanvasGroups(shellWorkspaceId) ??
-        Promise.resolve([] as CanvasGroup[]),
-    ]);
-    setSummaries(nextSummaries);
-    setGroups(nextGroups);
-    setGroupsError(null);
-    return { summaries: nextSummaries, groups: nextGroups };
-  }, [controller, groupsRepository, shellWorkspaceId]);
-
-  const scheduleSave = useCallback(() => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      saveTimerRef.current = null;
-      if (hydratingRef.current) return;
-      void controller.save().then(syncState).catch(syncState);
-    }, 260);
-  }, [controller, syncState]);
-
-  useEffect(() => {
-    const persistBranchCollapse = (event: Event): void => {
-      if (!(event instanceof CustomEvent)) return;
-      const detail = event.detail as CanvasBranchCollapseEventDetail;
-      if (
-        !detail ||
-        typeof detail.nodeId !== "string" ||
-        typeof detail.collapsed !== "boolean"
-      )
-        return;
-      controller.setCanvasBranchCollapsed(detail.nodeId, detail.collapsed);
-      syncState();
-      scheduleSave();
-    };
-    window.addEventListener(
-      CANVAS_BRANCH_COLLAPSE_EVENT,
-      persistBranchCollapse,
-    );
-    return () =>
-      window.removeEventListener(
-        CANVAS_BRANCH_COLLAPSE_EVENT,
-        persistBranchCollapse,
-      );
-  }, [controller, scheduleSave, syncState]);
-
-  useEffect(() => {
-    const bounds = canvasFlowNodeBoundsRecords(nodes);
-    const signature = bounds
-      .map(
-        (node) => `${node.id}:${node.x}:${node.y}:${node.width}:${node.height}`,
-      )
-      .join("|");
-    if (signature === nodeGeometrySignatureRef.current) return;
-    nodeGeometrySignatureRef.current = signature;
-
-    const nextEdges = recomputeCanvasRuntimeEdgeHandles(
-      edgesRef.current,
-      bounds,
-    );
-    const handlesChanged = nextEdges.some(
-      (edge, index) =>
-        edge.sourceHandle !== edgesRef.current[index]?.sourceHandle ||
-        edge.targetHandle !== edgesRef.current[index]?.targetHandle,
-    );
-    if (!handlesChanged) return;
-    setEdges((current) => recomputeCanvasRuntimeEdgeHandles(current, bounds));
-  }, [nodes, setEdges]);
-
-  const handleEdgeUpdate = useCallback(
-    (
-      edgeId: string,
-      update: Pick<CanvasEdgeFlowData, "routing" | "arrows">,
-    ) => {
-      const nextState = controller.updateCanvasEdge(edgeId, update);
-      setEdges((current) =>
-        current.map((edge) =>
-          edge.id === edgeId ? updateCanvasEdgeFlowRuntime(edge, update) : edge,
-        ),
-      );
-      setShellState(nextState);
-      scheduleSave();
-    },
-    [controller, scheduleSave, setEdges],
-  );
-
-  const handleConnect = useCallback(
-    (connection: Connection) => {
-      if (touchViewportGestureActiveRef.current) return;
-      const edge = createCanvasEdgeFromConnection(connection);
-      if (!edge) return;
-      const source = controller.state.document.nodes.find(
-        (node) => node.id === edge.sourceNodeId,
-      );
-      const target = controller.state.document.nodes.find(
-        (node) => node.id === edge.targetNodeId,
-      );
-      if (source?.kind === "summary") return;
-      const orderedEdge =
-        target?.kind === "summary"
-          ? isCanvasSummarySourceNode(source)
-            ? {
-                ...edge,
-                summaryOrder: nextCanvasSummaryOrder(
-                  controller.state.document,
-                  target.id,
-                ),
-              }
-            : null
-          : edge;
-      if (!orderedEdge) return;
-      const attachedEdge = autoAttachCanvasEdge(
-        orderedEdge,
-        canvasFlowNodeBoundsRecords(nodesRef.current),
-      );
-      const previousEdgeCount = controller.state.document.edges.length;
-      const nextState = controller.insertCanvasEdge(attachedEdge);
-      if (nextState.document.edges.length > previousEdgeCount) {
-        setEdges(canvasDocumentToEdges(nextState.document, handleEdgeUpdate));
-        setShellState(nextState);
-        scheduleSave();
-      }
-    },
-    [controller, handleEdgeUpdate, scheduleSave, setEdges],
-  );
-
-  const handleEdgesChange = useCallback(
-    (changes: EdgeChange<CanvasEdgeFlow>[]) => {
-      const suppressRemoval =
-        nodeDragActiveRef.current ||
-        edgeRemovalSuppressionUntilRef.current > Date.now();
-      const safeChanges = suppressRemoval
-        ? changes.filter((change) => change.type !== "remove")
-        : changes;
-      const removed = changes.filter(
-        (
-          change,
-        ): change is Extract<EdgeChange<CanvasEdgeFlow>, { type: "remove" }> =>
-          change.type === "remove",
-      );
-      if (removed.length > 0 && !suppressRemoval) {
-        const nextState = controller.removeCanvasEdges(
-          removed.map((change) => change.id),
-        );
-        setShellState(nextState);
-        scheduleSave();
-      }
-      setEdges((current) => {
-        const next = applyEdgeChanges(safeChanges, current);
-        if (!suppressRemoval) return next;
-        const canonical = canvasDocumentToEdges(
-          controller.state.document,
-          handleEdgeUpdate,
-        );
-        const known = new Set(next.map((edge) => edge.id));
-        return [...next, ...canonical.filter((edge) => !known.has(edge.id))];
-      });
-    },
-    [controller, handleEdgeUpdate, scheduleSave, setEdges],
-  );
-
-  const handleNodeDragStart = useCallback(
-    (event: MouseEvent | TouchEvent, node: CanvasFlowNode): void => {
-      if (touchViewportGestureActiveRef.current) return;
-      nodeDragActiveRef.current = true;
-      edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
-      altDragDuplicateRef.current = null;
-      collapsedBranchDragRef.current = null;
-      if (!event.altKey) {
-        if (!canvasBranchRuntimeState(node.data)?.collapsed) return;
-        const descendantNodeIds = canvasBranchDescendantNodeIds(
-          node.id,
-          edgesRef.current,
-        );
-        if (descendantNodeIds.size === 0) return;
-        collapsedBranchDragRef.current = {
-          descendantNodeIds,
-          nodeId: node.id,
-          startPosition: { ...node.position },
-        };
-        return;
-      }
-      if (
-        nodesRef.current.some(
-          (candidate) => candidate.selected && candidate.id !== node.id,
-        )
-      )
-        return;
-
-      const document = controller.state.document;
-      if (document.nodes.length >= CANVAS_DOCUMENT_LIMITS.maxNodes) return;
-      const canonical = document.nodes.find(
-        (candidate) => candidate.id === node.id,
-      );
-      if (!canonical) return;
-      const highestZIndex = document.nodes.reduce(
-        (maximum, candidate) => Math.max(maximum, candidate.zIndex),
-        0,
-      );
-      const duplicate = createCanvasAltDragDuplicate(canonical, {
-        zIndex: highestZIndex + 1,
-      });
-      if (!duplicate) return;
-
-      const runtimeDuplicate = createCanvasAltDragRuntimeNode(node, duplicate);
-      altDragDuplicateRef.current = {
-        sourceNodeId: node.id,
-        duplicateNodeId: duplicate.id,
-        duplicate,
-        finalPosition: { ...duplicate.position },
-      };
-      const nextNodes = [...nodesRef.current, runtimeDuplicate];
-      nodesRef.current = nextNodes;
-      setNodes(nextNodes);
-    },
-    [controller, setNodes],
-  );
-
-  const handleNodeDragStop = useCallback(
-    (_event: MouseEvent | TouchEvent, node: CanvasFlowNode): void => {
-      nodeDragActiveRef.current = false;
-      edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
-      if (touchViewportGestureActiveRef.current) return;
-
-      const duplicateSession = altDragDuplicateRef.current;
-      altDragDuplicateRef.current = null;
-      if (duplicateSession) {
-        const duplicate = finalizeCanvasAltDragDuplicate(duplicateSession);
-        const nextNodes = nodesRef.current.map((candidate) => {
-          if (candidate.id === duplicateSession.sourceNodeId)
-            return { ...candidate, selected: false };
-          if (candidate.id === duplicateSession.duplicateNodeId)
-            return {
-              ...candidate,
-              position: { ...duplicate.position },
-              selected: true,
-            };
-          return candidate;
-        });
-        nodesRef.current = nextNodes;
-        setNodes(nextNodes);
-        controller.insertCanvasNodes([duplicate]);
-        controller.setRuntimeEdges(edgesRef.current);
-        syncState();
-        scheduleSave();
-        return;
-      }
-
-      const collapsedBranchDrag = collapsedBranchDragRef.current;
-      collapsedBranchDragRef.current = null;
-      if (collapsedBranchDrag?.nodeId === node.id) {
-        const delta = {
-          x: node.position.x - collapsedBranchDrag.startPosition.x,
-          y: node.position.y - collapsedBranchDrag.startPosition.y,
-        };
-        const translated = translateCanvasBranchDescendants(
-          nodesRef.current,
-          collapsedBranchDrag.descendantNodeIds,
-          delta,
-        ).map((candidate) =>
-          candidate.id === node.id
-            ? { ...candidate, position: { ...node.position } }
-            : candidate,
-        );
-        nodesRef.current = translated;
-        setNodes(translated);
-        controller.setRuntimeNodes(translated);
-        controller.setRuntimeEdges(edgesRef.current);
-        syncState();
-        scheduleSave();
-        return;
-      }
-
-      window.setTimeout(() => {
-        if (!shellStateRef.current.canvasId) return;
-        controller.setRuntimeEdges(edgesRef.current);
-        syncState();
-        scheduleSave();
-      }, 0);
-    },
-    [controller, scheduleSave, setNodes, syncState],
-  );
-
-  const handleTaskNodeContentHeightChange = useCallback((): void => {
-    // Task projection is runtime-only; it must never resize canonical bounds.
-  }, []);
-
-  const restoreForCanvas = useCallback(
-    async (nextState: LocalCanvasShellState) => {
-      restoreControllerRef.current?.abort();
-      variantRefreshControllerRef.current?.abort();
-      pendingContentHeightSaveRef.current = false;
-      if (variantRefreshFrameRef.current !== null) {
-        window.cancelAnimationFrame(variantRefreshFrameRef.current);
-        variantRefreshFrameRef.current = null;
-      }
-      if (variantDowngradeTimerRef.current !== null) {
-        clearTimeout(variantDowngradeTimerRef.current);
-        variantDowngradeTimerRef.current = null;
-      }
-      if (imageLoadCacheCanvasIdRef.current !== nextState.canvasId) {
-        if (imageLoadCacheCanvasIdRef.current) {
-          pyramidSchedulerRef.current.cancelScope(
-            {
-              userId: shellUserId,
-              workspaceId: shellWorkspaceId,
-              canvasId: imageLoadCacheCanvasIdRef.current,
-            },
-            true,
-          );
-        }
-        imageLoadCacheRef.current.clear();
-        imageLoadCacheCanvasIdRef.current = nextState.canvasId;
-      }
-      restoreControllerRef.current = new AbortController();
-      variantPayloadsRef.current.clear();
-      objectUrls.revokeAll();
-      const signal = restoreControllerRef.current.signal;
-      const placeholders: CanvasFlowNode[] = [
-        ...canvasDocumentToImageNodes(nextState.document),
-        ...canvasDocumentToPdfNodes(nextState.document),
-        ...canvasDocumentToArticleNodes(nextState.document),
-        ...canvasDocumentToTaskNodes(nextState.document, {
-          onContentHeightChange: handleTaskNodeContentHeightChange,
-          taskBridge: taskBridgeRef.current,
-          taskWorkspaceId: taskWorkspaceIdRef.current,
-        }),
-        ...canvasDocumentToTextNodes(nextState.document),
-        ...canvasDocumentToShapeNodes(nextState.document),
-        ...canvasDocumentToSummaryNodes(nextState.document),
-      ];
-      const restoredEdges = canvasDocumentToEdges(
-        nextState.document,
-        handleEdgeUpdate,
-      );
-      const projected = projectCanvasBranchCollapse(
-        placeholders,
-        restoredEdges,
-        undefined,
-        canvasBranchCollapsedNodeIds(nextState.document.nodes),
-      );
-      setNodes(projected.nodes);
-      setEdges(projected.edges);
-      hydratingRef.current = true;
-      setRestoreStats(EMPTY_RESTORE_STATS);
-      setLoadingLifecycle("skeleton-ready");
-      setLoadingLifecycle("content-hydrating");
-      const restoreDependencies = canvasImageAdapterDependenciesForCanvas(
-        adapterDependencies,
-        nextState.canvasId,
-      );
-      const applyRestoredNode = (node: CanvasImageFlowNode): void => {
-        if (signal.aborted) return;
-        setNodes((current) => {
-          const index = current.findIndex((item) => item.id === node.id);
-          if (index < 0) return [...current, node];
-          const copy = [...current];
-          const existing = copy[index];
-          if (existing?.type !== CANVAS_IMAGE_NODE_TYPE) return current;
-          rememberImageRuntimePayload(variantPayloadsRef.current, node, {
-            workspaceId: shellWorkspaceId,
-            canvasId: nextState.canvasId ?? "",
-          });
-          copy[index] = {
-            ...existing,
-            data: { ...existing.data, ...node.data },
-          };
-          return copy;
-        });
-      };
-      const result = await restoreCanvasImageNodes(
-        nextState.document,
-        restoreDependencies,
-        {
-          signal,
-          concurrency: 4,
-          viewportZoom: nextState.viewport.zoom,
-          onNode: applyRestoredNode,
-        },
-      );
-      const projectFileDependencies = nextState.canvasId
-        ? projectFileImageDependenciesForCanvas(nextState.canvasId)
-        : null;
-      const projectFileResult = projectFileDependencies
-        ? await restoreProjectFileCanvasImageNodes(
-            nextState.document,
-            projectFileDependencies,
-            {
-              signal,
-              concurrency: 4,
-              viewportZoom: nextState.viewport.zoom,
-              cachedAssetPayloads: variantPayloadsRef.current,
-              onNode: applyRestoredNode,
-            },
-          )
-        : {
-            nodes: [],
-            missingFileIds: [],
-            fileReadCount: 0,
-            maxConcurrentFileReads: 0,
-          };
-      if (signal.aborted) return;
-      setRestoreStats({
-        reads: result.assetReadCount + projectFileResult.fileReadCount,
-        maxConcurrency: Math.max(
-          result.maxConcurrentAssetReads,
-          projectFileResult.maxConcurrentFileReads,
-        ),
-        missing:
-          result.missingAssetIds.length +
-          projectFileResult.missingFileIds.length,
-      });
-      hydratingRef.current = false;
-      if (pendingContentHeightSaveRef.current) {
-        pendingContentHeightSaveRef.current = false;
-      }
-      setLoadingLifecycle("ready");
-    },
-    [
-      adapterDependencies,
-      handleEdgeUpdate,
-      handleTaskNodeContentHeightChange,
-      objectUrls,
-      projectFileImageDependenciesForCanvas,
-      setEdges,
-      setNodes,
-      shellUserId,
-      shellWorkspaceId,
-    ],
-  );
-
-  const restoreForCanvasRef = useRef(restoreForCanvas);
-  restoreForCanvasRef.current = restoreForCanvas;
-
-  const applyCanvasHistory = useCallback(
-    (direction: "undo" | "redo") => {
-      const nextState =
-        direction === "undo"
-          ? controller.undoDocument()
-          : controller.redoDocument();
-      if (!nextState) return;
-      setShellState(nextState);
-      void restoreForCanvas(nextState)
-        .then(() => {
-          syncState();
-          scheduleSave();
-        })
-        .catch((error: unknown) => {
-          hydratingRef.current = false;
-          setLoadingLifecycle("error");
-          setShellState({
-            ...controller.state,
-            status: "error",
-            error:
-              error instanceof Error
-                ? error.message
-                : "Canvas history restore failed.",
-          });
-        });
-    },
-    [controller, restoreForCanvas, scheduleSave, syncState],
-  );
-
-  useEffect(() => {
-    const onHistoryKeyDown = (event: KeyboardEvent): void => {
-      if (
-        eventTouchesEditingSurface(event) ||
-        !(event.ctrlKey || event.metaKey)
-      )
-        return;
-      const key = event.key.toLowerCase();
-      const direction =
-        key === "y" || (key === "z" && event.shiftKey)
-          ? "redo"
-          : key === "z"
-            ? "undo"
-            : null;
-      if (!direction) return;
-      if (direction === "undo" ? !controller.canUndo : !controller.canRedo)
-        return;
-      event.preventDefault();
-      applyCanvasHistory(direction);
-    };
-    window.addEventListener("keydown", onHistoryKeyDown, true);
-    return () => window.removeEventListener("keydown", onHistoryKeyDown, true);
-  }, [applyCanvasHistory, controller]);
-
-  const openCanvas = useCallback(
-    async (canvasId: string) => {
-      const generation = ++canvasGenerationRef.current;
-      hydratingRef.current = true;
-      setLoadingLifecycle("canvas-selected");
-      programmaticViewportRef.current = null;
-      setViewportInitialization(null);
-      setViewportVisible(false);
-      setShellState((current) => ({
-        ...current,
-        status: "loading",
-        error: null,
-      }));
-      setLoadingLifecycle("document-loading");
-      const nextState = await controller.openCanvas(canvasId);
-      if (generation !== canvasGenerationRef.current) return;
-      repository.setActiveCanvas?.(canvasId);
-      setShellState(nextState);
-      setRenameTitle(nextState.title);
-      setViewportInitialization({
-        canvasId,
-        generation,
-        viewport: { ...nextState.viewport },
-      });
-      void restoreForCanvas(nextState).catch((error: unknown) => {
-        if (generation !== canvasGenerationRef.current) return;
-        setLoadingLifecycle("error");
-        setShellState((current) => ({
-          ...current,
-          status: "error",
-          error:
-            error instanceof Error
-              ? error.message
-              : "Canvas content loading failed.",
-        }));
-      });
-    },
-    [controller, repository, restoreForCanvas],
-  );
-
-  const openCanvasRef = useRef(openCanvas);
-  openCanvasRef.current = openCanvas;
-
-  const refreshImageVariants = useCallback(
-    (viewportZoom: number, allowDowngrade: boolean): void => {
-      if (
-        hydratingRef.current ||
-        !adapterDependencies.variantRepository ||
-        !adapterDependencies.canvasId
-      )
-        return;
-      variantRefreshControllerRef.current?.abort();
-      const controller = new AbortController();
-      const sequence = ++variantRefreshSequenceRef.current;
-      variantRefreshControllerRef.current = controller;
-      const projectFileDependencies = adapterDependencies.canvasId
-        ? projectFileImageDependenciesForCanvas(adapterDependencies.canvasId)
-        : null;
-      if (projectFileDependencies) {
-        void restoreProjectFileCanvasImageNodes(
-          shellStateRef.current.document,
-          projectFileDependencies,
-          {
-            signal: controller.signal,
-            viewportZoom,
-            devicePixelRatio: window.devicePixelRatio,
-            renderedCssSizes: renderedImageCssSizes(),
-            currentResolutionSources: new Map(
-              nodesRef.current.flatMap((node) =>
-                node.type === CANVAS_IMAGE_NODE_TYPE && node.data.fileId
-                  ? [
-                      [
-                        node.id,
-                        node.data.resolutionSource ??
-                          canvasImageResolutionSourceFromLegacyKind(
-                            node.data.variantKind ?? "original",
-                          ),
-                      ] as const,
-                    ]
-                  : [],
-              ),
-            ),
-            cachedAssetPayloads: variantPayloadsRef.current,
-            allowDowngrade,
-            concurrency: 4,
-            onNode: (node) => {
-              if (
-                controller.signal.aborted ||
-                sequence !== variantRefreshSequenceRef.current
-              )
-                return;
-              setNodes((current) => {
-                const index = current.findIndex((item) => item.id === node.id);
-                const existing = current[index];
-                if (index < 0 || existing?.type !== CANVAS_IMAGE_NODE_TYPE)
-                  return current;
-                rememberImageRuntimePayload(variantPayloadsRef.current, node, {
-                  workspaceId: shellWorkspaceId,
-                  canvasId: adapterDependencies.canvasId ?? "",
-                });
-                const next = [...current];
-                next[index] = {
-                  ...existing,
-                  data: { ...existing.data, ...node.data },
-                };
-                return next;
-              });
-            },
-          },
-        ).catch(() => undefined);
-      }
-      void restoreCanvasImageNodes(
-        shellStateRef.current.document,
-        adapterDependencies,
-        {
-          signal: controller.signal,
-          viewportZoom,
-          devicePixelRatio: window.devicePixelRatio,
-          renderedCssSizes: renderedImageCssSizes(),
-          currentResolutionSources: new Map(
-            nodesRef.current.flatMap((node) =>
-              node.type === CANVAS_IMAGE_NODE_TYPE
-                ? [
-                    [
-                      node.id,
-                      node.data.resolutionSource ??
-                        canvasImageResolutionSourceFromLegacyKind(
-                          node.data.variantKind ?? "original",
-                        ),
-                    ] as const,
-                  ]
-                : [],
-            ),
-          ),
-          cachedAssetPayloads: variantPayloadsRef.current,
-          allowDowngrade,
-          concurrency: 4,
-          onNode: (node) => {
-            if (
-              controller.signal.aborted ||
-              sequence !== variantRefreshSequenceRef.current
-            )
-              return;
-            setNodes((current) => {
-              const index = current.findIndex((item) => item.id === node.id);
-              const existing = current[index];
-              if (index < 0 || existing?.type !== CANVAS_IMAGE_NODE_TYPE)
-                return current;
-              rememberImageRuntimePayload(variantPayloadsRef.current, node, {
-                workspaceId: shellWorkspaceId,
-                canvasId: adapterDependencies.canvasId ?? "",
-              });
-              const next = [...current];
-              next[index] = {
-                ...existing,
-                data: { ...existing.data, ...node.data },
-              };
-              return next;
-            });
-          },
-        },
-      )
-        .catch(() => undefined)
-        .finally(() => {
-          if (variantRefreshControllerRef.current === controller)
-            variantRefreshControllerRef.current = null;
-        });
-    },
-    [
-      adapterDependencies,
-      projectFileImageDependenciesForCanvas,
-      setNodes,
-      shellWorkspaceId,
-    ],
-  );
-  refreshImageVariantsRef.current = refreshImageVariants;
-
-  const scheduleImageVariantRefresh = useCallback(
-    (viewportZoom: number, allowDowngrade: boolean): void => {
-      if (variantRefreshFrameRef.current !== null)
-        window.cancelAnimationFrame(variantRefreshFrameRef.current);
-      variantRefreshFrameRef.current = window.requestAnimationFrame(() => {
-        variantRefreshFrameRef.current = null;
-        refreshImageVariants(viewportZoom, allowDowngrade);
-      });
-    },
-    [refreshImageVariants],
-  );
-
-  const restoreCachedScene = useCallback(
-    (snapshot: CloudCanvasRuntimeSnapshot): void => {
-      const cachedState = controller.restoreRuntimeState(snapshot.shellState);
-      if (!cachedState.canvasId) return;
-      const generation = ++canvasGenerationRef.current;
-      variantPayloadsRef.current = new Map(snapshot.assetPayloads);
-      const skeleton = canvasDocumentToRuntimeSkeleton(cachedState.document, {
-        onContentHeightChange: handleTaskNodeContentHeightChange,
-        taskBridge: taskBridgeRef.current,
-        taskWorkspaceId: taskWorkspaceIdRef.current,
-      });
-      // Keep the runtime-cache composition contract explicit for desktop-shell checks:
-      // setNodes(withCachedAssetPayloads(skeleton, snapshot.assetPayloads))
-      const cachedEdges = canvasDocumentToEdges(
-        cachedState.document,
-        handleEdgeUpdate,
-      );
-      const projected = projectCanvasBranchCollapse(
-        withCachedAssetPayloads(skeleton, snapshot.assetPayloads, {
-          workspaceId: shellWorkspaceId,
-          canvasId: cachedState.canvasId,
-        }),
-        cachedEdges,
-        undefined,
-        canvasBranchCollapsedNodeIds(cachedState.document.nodes),
-      );
-      setNodes(projected.nodes);
-      setEdges(projected.edges);
-      setShellState(cachedState);
-      setRenameTitle(cachedState.title);
-      hydratingRef.current = false;
-      setLoadingLifecycle("ready");
-      setViewportInitialization({
-        canvasId: cachedState.canvasId,
-        generation,
-        viewport: { ...cachedState.viewport },
-      });
-    },
-    [
-      controller,
-      handleEdgeUpdate,
-      handleTaskNodeContentHeightChange,
-      shellWorkspaceId,
-      setEdges,
-      setNodes,
-    ],
-  );
-
-  useEffect(
-    () => () => {
-      setOpenPdf((current) => {
-        if (current) URL.revokeObjectURL(current.objectUrl);
-        return null;
-      });
-    },
-    [],
-  );
-
-  useEffect(() => {
-    let active = true;
-    const pyramidScheduler = pyramidSchedulerRef.current;
-    if (initialRuntime) restoreCachedScene(initialRuntime);
-    const groupLoad = groupsRepository
-      ? groupsRepository
-          .listCanvasGroups(shellWorkspaceId)
-          .catch((error: unknown) => {
-            if (active) {
-              setGroupsError(
-                error instanceof Error
-                  ? error.message
-                  : "Canvas groups failed to load.",
-              );
-            }
-            return [] as CanvasGroup[];
-          })
-      : Promise.resolve([] as CanvasGroup[]);
-    void Promise.all([controller.listCanvases(), groupLoad])
-      .then(async ([items, nextGroups]) => {
-        if (!active) return;
-        setSummaries(items);
-        setGroups(nextGroups);
-        const cachedCanvasId = initialRuntime?.shellState.canvasId;
-        const cachedSummary = cachedCanvasId
-          ? items.find((item) => item.id === cachedCanvasId)
-          : undefined;
-        if (cachedSummary && initialRuntime) {
-          const unchanged =
-            cachedSummary.revision === initialRuntime.shellState.revision;
-
-          if (initialRuntime.shellState.status !== "saved" && unchanged) {
-            const saveResult = await controller.save();
-            if (
-              saveResult?.status !== "conflict" &&
-              controller.state.status === "saved"
-            ) {
-              const savedState = controller.state;
-              setShellState(savedState);
-              setRenameTitle(savedState.title);
-              await restoreForCanvasRef.current(savedState);
-              return;
-            }
-          }
-
-          if (initialRuntime.shellState.status !== "saved") {
-            const latest = await repository.loadCanvas({
-              workspaceId: shellWorkspaceId,
-              canvasId: cachedSummary.id,
-            });
-            if (
-              serverCanvasMatchesCachedRuntime(
-                latest,
-                initialRuntime.shellState,
-              )
-            ) {
-              const reconciled = controller.restoreRuntimeState(
-                reconcileCachedRuntimeWithServer(
-                  latest,
-                  initialRuntime.shellState,
-                ),
-              );
-              setShellState(reconciled);
-              setRenameTitle(reconciled.title);
-              await restoreForCanvasRef.current(reconciled);
-              return;
-            }
-            setLoadingLifecycle("error");
-            setShellState((current) => ({
-              ...current,
-              status: "conflict",
-              autosaveBlocked: true,
-              conflictRevision: cachedSummary.revision,
-              error: "Canvas changed elsewhere. Reload to continue.",
-            }));
-            return;
-          }
-
-          if (unchanged) {
-            await restoreForCanvasRef.current(controller.state);
-            return;
-          }
-          await openCanvasRef.current(cachedSummary.id);
-          return;
-        }
-        if (items[0]) await openCanvasRef.current(items[0].id);
-        else {
-          hydratingRef.current = false;
-          setShellState(emptyShellState());
-          setLoadingLifecycle("empty-confirmed");
-        }
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          setLoadingLifecycle("error");
-          setShellState((current) => ({
-            ...current,
-            status: "error",
-            error:
-              error instanceof Error ? error.message : "Canvas loading failed.",
-          }));
-        }
-      });
-    return () => {
-      active = false;
-      restoreControllerRef.current?.abort();
-      variantRefreshControllerRef.current?.abort();
-      if (variantRefreshFrameRef.current !== null) {
-        window.cancelAnimationFrame(variantRefreshFrameRef.current);
-        variantRefreshFrameRef.current = null;
-      }
-      if (variantDowngradeTimerRef.current !== null) {
-        clearTimeout(variantDowngradeTimerRef.current);
-        variantDowngradeTimerRef.current = null;
-      }
-      let latestState = controller.state;
-      if (saveTimerRef.current) {
-        controller.setRuntimeNodes(nodesRef.current);
-        latestState = controller.setRuntimeEdges(edgesRef.current);
-      }
-      if (latestState.canvasId) {
-        pyramidScheduler.cancelScope(
-          {
-            userId: shellUserId,
-            workspaceId: shellWorkspaceId,
-            canvasId: latestState.canvasId,
-          },
-          true,
-        );
-      }
-      // Keep in-flight work alive across a StrictMode-style cleanup/setup pair.
-      // The cache is component-owned and becomes unreachable on a real unmount;
-      // clearing it here would allow an aborted original request to be started
-      // again while the first browser request is still downloading.
-      if (runtimeCache && latestState.canvasId) {
-        runtimeCache.set({
-          workspaceId: shellWorkspaceId,
-          userId: shellUserId,
-          canvasId: latestState.canvasId,
-          summaries: summariesRef.current,
-          shellState: latestState,
-          assetPayloads: new Map(variantPayloadsRef.current),
-          objectUrls,
-        });
-      } else {
-        objectUrls.revokeAll();
-      }
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
-      }
-      if (viewportTimerRef.current) clearTimeout(viewportTimerRef.current);
-      repository.close?.();
-    };
-  }, [
-    controller,
-    groupsRepository,
-    shellWorkspaceId,
-    initialRuntime,
-    objectUrls,
-    repository,
-    restoreCachedScene,
-    runtimeCache,
-    shellUserId,
-  ]);
-
-  useEffect(() => {
-    if (!viewportInitialization) return;
-    let active = true;
-    let cancelReveal: () => void = () => undefined;
-    programmaticViewportRef.current = viewportInitialization;
-    void (async () => {
-      const applied = await reactFlow.setViewport(
-        viewportInitialization.viewport,
-        { duration: 0 },
-      );
-      if (
-        !active ||
-        !applied ||
-        !isCurrentViewportInitialization(
-          viewportInitialization,
-          canvasGenerationRef.current,
-        )
-      )
-        return;
-      cancelReveal = scheduleViewportReveal(() => {
-        if (
-          !active ||
-          !isCurrentViewportInitialization(
-            viewportInitialization,
-            canvasGenerationRef.current,
-          )
-        )
-          return;
-        setViewportVisible(true);
-      });
-    })();
-    return () => {
-      active = false;
-      cancelReveal();
-    };
-  }, [flowInstanceEpoch, reactFlow, viewportInitialization]);
-
-  useEffect(() => {
-    const root = wrapperRef.current;
-    const viewport = root?.querySelector<HTMLElement>(".react-flow__viewport");
-    if (!root || !viewport) return;
-    let settleTimer: ReturnType<typeof setTimeout> | null = null;
-    let previousTransition = viewport.style.transition;
-    const clearSmoothing = (): void => {
-      if (settleTimer) {
-        clearTimeout(settleTimer);
-        settleTimer = null;
-      }
-      viewport.style.transition = previousTransition;
-    };
-    const onWheel = (): void => {
-      if (settleTimer === null) previousTransition = viewport.style.transition;
-      viewport.style.transition = "transform 55ms linear";
-      if (settleTimer) clearTimeout(settleTimer);
-      settleTimer = setTimeout(clearSmoothing, 75);
-    };
-    const onPointerDown = (): void => clearSmoothing();
-    root.addEventListener("wheel", onWheel, { capture: true, passive: true });
-    root.addEventListener("pointerdown", onPointerDown, true);
-    return () => {
-      clearSmoothing();
-      root.removeEventListener("wheel", onWheel, true);
-      root.removeEventListener("pointerdown", onPointerDown, true);
-    };
-  }, [flowInstanceEpoch]);
-
-  const centerPosition = useCallback(() => {
-    const rect = wrapperRef.current?.getBoundingClientRect();
-    return screenToFlowRef.current({
-      x: (rect?.left ?? 0) + (rect?.width ?? 800) / 2,
-      y: (rect?.top ?? 0) + (rect?.height ?? 600) / 2,
-    });
-  }, []);
-
-  const setTextEditing = useCallback(
-    (id: string, isEditing: boolean) => {
-      setNodes((current) =>
-        current.map((node) =>
-          node.id === id && node.type === CANVAS_TEXT_NODE_TYPE
-            ? { ...node, data: { ...node.data, isEditing } }
-            : node,
-        ),
-      );
-    },
-    [setNodes],
-  );
-
-  const commitTextNode = useCallback(
-    (id: string, markdown: string) => {
-      setNodes((current) =>
-        current.map((node) =>
-          node.id === id && node.type === CANVAS_TEXT_NODE_TYPE
-            ? {
-                ...node,
-                data: {
-                  ...node.data,
-                  markdown: commitTextMarkdown(markdown),
-                  isEditing: false,
-                },
-              }
-            : node,
-        ),
-      );
-      const node = nodesRef.current.find(
-        (candidate): candidate is CanvasTextFlowNode =>
-          candidate.id === id && candidate.type === CANVAS_TEXT_NODE_TYPE,
-      );
-      if (node) {
-        controller.setRuntimeNodes(
-          nodesRef.current.map((candidate) =>
-            candidate.id === id && candidate.type === CANVAS_TEXT_NODE_TYPE
-              ? {
-                  ...candidate,
-                  data: {
-                    ...candidate.data,
-                    markdown: commitTextMarkdown(markdown),
-                    isEditing: false,
-                  },
-                }
-              : candidate,
-          ),
-        );
-        syncState();
-        scheduleSave();
-      }
-    },
-    [controller, scheduleSave, setNodes, syncState],
-  );
-
-  const updateTextStyle = useCallback(
-    (id: string, patch: Partial<CanvasTextStyle>) => {
-      let found = false;
-      const nextNodes = nodesRef.current.map((node) => {
-        if (node.id !== id || node.type !== CANVAS_TEXT_NODE_TYPE) return node;
-        found = true;
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            style: { ...node.data.style, ...patch },
-          },
-        };
-      });
-      if (!found) return;
-      nodesRef.current = nextNodes;
-      setNodes(nextNodes);
-      controller.setRuntimeNodes(nextNodes);
-      syncState();
-      scheduleSave();
-    },
-    [controller, scheduleSave, setNodes, syncState],
-  );
-
-  const updateArticleStyle = useCallback(
-    (id: string, patch: Partial<CanvasArticleStyle>) => {
-      let found = false;
-      const nextNodes = nodesRef.current.map((node) => {
-        if (node.id !== id || node.type !== CANVAS_ARTICLE_NODE_TYPE)
-          return node;
-        found = true;
-        return {
-          ...node,
-          data: { ...node.data, style: { ...node.data.style, ...patch } },
-        };
-      });
-      if (!found) return;
-      nodesRef.current = nextNodes;
-      setNodes(nextNodes);
-      controller.setRuntimeNodes(nextNodes);
-      syncState();
-      scheduleSave();
-    },
-    [controller, scheduleSave, setNodes, syncState],
-  );
-
-  const createTextNode = useCallback(
-    (client: FlowPosition | null, markdown: string, editing = true) => {
-      if (!shellState.canvasId) return;
-      const position = client
-        ? screenToFlowRef.current(client)
-        : centerPosition();
-      const node = createCanvasTextFlowNode({
-        id: createCanvasTextId(),
-        markdown: commitTextMarkdown(markdown),
-        position,
-        isEditing: editing,
-      });
-      setNodes((current) => [
-        ...current.map((item) =>
-          item.selected ? { ...item, selected: false } : item,
-        ),
-        { ...node, selected: true },
-      ]);
-      controller.insertTextNode(node);
-      syncState();
-      if (!editing) scheduleSave();
-    },
-    [
-      centerPosition,
-      controller,
-      scheduleSave,
-      setNodes,
-      shellState.canvasId,
-      syncState,
-    ],
-  );
-
-  const setShapeEditing = useCallback(
-    (id: string, isEditing: boolean) => {
-      setNodes((current) =>
-        current.map((node) =>
-          node.id === id && node.type === CANVAS_SHAPE_NODE_TYPE
-            ? { ...node, data: { ...node.data, isEditing } }
-            : node,
-        ),
-      );
-    },
-    [setNodes],
-  );
-
-  const commitShapeNode = useCallback(
-    (id: string, markdown: string) => {
-      const committedMarkdown = commitTextMarkdown(markdown);
-      const nextNodes = nodesRef.current.map((node) =>
-        node.id === id && node.type === CANVAS_SHAPE_NODE_TYPE
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                markdown: committedMarkdown,
-                isEditing: false,
-              },
-            }
-          : node,
-      );
-      if (
-        !nextNodes.some(
-          (node) => node.id === id && node.type === CANVAS_SHAPE_NODE_TYPE,
-        )
-      )
-        return;
-      nodesRef.current = nextNodes;
-      setNodes(nextNodes);
-      controller.setRuntimeNodes(nextNodes);
-      syncState();
-      scheduleSave();
-    },
-    [controller, scheduleSave, setNodes, syncState],
-  );
-
-  const updateShapeStyle = useCallback(
-    (id: string, patch: Partial<CanvasShapeStyle>) => {
-      let found = false;
-      const nextNodes = nodesRef.current.map((node) => {
-        if (node.id !== id || node.type !== CANVAS_SHAPE_NODE_TYPE) return node;
-        found = true;
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            style: { ...node.data.style, ...patch },
-          },
-        };
-      });
-      if (!found) return;
-      nodesRef.current = nextNodes;
-      setNodes(nextNodes);
-      controller.setRuntimeNodes(nextNodes);
-      syncState();
-      scheduleSave();
-    },
-    [controller, scheduleSave, setNodes, syncState],
-  );
-
-  const createShapeNode = useCallback(
-    (shape: CanvasShapeVariant) => {
-      if (!shellState.canvasId) return;
-      const size =
-        shape === "circle"
-          ? { width: 160, height: 160 }
-          : { width: 220, height: 120 };
-      const center = centerPosition();
-      const position = {
-        x: center.x - size.width / 2,
-        y: center.y - size.height / 2,
-      };
-      const zIndex =
-        shellState.document.nodes.reduce(
-          (maximum, current) => Math.max(maximum, current.zIndex),
-          0,
-        ) + 1;
-      const canonical: CanvasShapeNode = {
-        id: createCanvasShapeId(),
-        kind: "shape",
-        shape,
-        markdown: "",
-        position,
-        size,
-        zIndex,
-        style: { ...DEFAULT_CANVAS_SHAPE_STYLE },
-      };
-      const runtime = createCanvasShapeFlowNode({
-        id: canonical.id,
-        shape: canonical.shape,
-        markdown: canonical.markdown,
-        position: canonical.position,
-        size: canonical.size,
-        zIndex: canonical.zIndex,
-        style: canonical.style,
-        isEditing: true,
-      });
-      setNodes((current) => [
-        ...current.map((item) =>
-          item.selected ? { ...item, selected: false } : item,
-        ),
-        { ...runtime, selected: true },
-      ]);
-      controller.insertCanvasNodes([canonical]);
-      syncState();
-    },
-    [
-      centerPosition,
-      controller,
-      setNodes,
-      shellState.canvasId,
-      shellState.document.nodes,
-      syncState,
-    ],
-  );
-
-  const createSummaryNode = useCallback(() => {
-    if (!shellState.canvasId) return;
-    const size = { width: 156, height: 96 };
-    const center = centerPosition();
-    const canonical: CanvasSummaryNode = {
-      id: createCanvasSummaryId(),
-      kind: "summary",
-      title: "Ğ¡ÑƒĞ¼Ğ¼Ğ°",
-      position: {
-        x: center.x - size.width / 2,
-        y: center.y - size.height / 2,
-      },
-      size,
-      zIndex:
-        shellState.document.nodes.reduce(
-          (maximum, current) => Math.max(maximum, current.zIndex),
-          0,
-        ) + 1,
-    };
-    const runtime = createCanvasSummaryFlowNode(canonical);
-    setNodes((current) => [
-      ...current.map((item) => ({ ...item, selected: false })),
-      { ...runtime, selected: true },
-    ]);
-    controller.insertCanvasNodes([canonical]);
-    syncState();
-    scheduleSave();
-  }, [
-    centerPosition,
-    controller,
-    scheduleSave,
-    setNodes,
-    shellState.canvasId,
-    shellState.document.nodes,
-    syncState,
-  ]);
-
-  const createTaskNode = useCallback(
-    (task: CanvasTaskProjection) => {
-      if (!shellState.canvasId || !taskBridge || !taskWorkspaceId) return;
-      const position = centerPosition();
-      const nextZIndex =
-        shellState.document.nodes.reduce(
-          (maximum, current) => Math.max(maximum, current.zIndex),
-          0,
-        ) + 1;
-      const node = createCanvasTaskFlowNode({
-        id: createCanvasTaskId(),
-        taskId: task.id,
-        lastKnownTitle: task.title,
-        position,
-        taskBridge,
-        taskWorkspaceId,
-        onContentHeightChange: handleTaskNodeContentHeightChange,
-        zIndex: nextZIndex,
-      });
-      setNodes((current) => [
-        ...current.map((item) => ({ ...item, selected: false })),
-        { ...node, selected: true },
-      ]);
-      controller.insertTaskNode(node);
-      syncState();
-      scheduleSave();
-      setTaskPickerOpen(false);
-      setTaskQuery("");
-    },
-    [
-      centerPosition,
-      controller,
-      handleTaskNodeContentHeightChange,
-      scheduleSave,
-      setNodes,
-      shellState.canvasId,
-      shellState.document.nodes,
-      syncState,
-      taskBridge,
-      taskWorkspaceId,
-    ],
-  );
-
-  useEffect(() => {
-    const onEdit = (event: Event) => {
-      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
-      if (id) setTextEditing(id, true);
-    };
-    const onCommit = (event: Event) => {
-      const detail = (event as CustomEvent<{ id?: string; markdown?: string }>)
-        .detail;
-      if (detail.id && typeof detail.markdown === "string")
-        commitTextNode(detail.id, detail.markdown);
-    };
-    const onCancel = (event: Event) => {
-      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
-      if (id) setTextEditing(id, false);
-    };
-    const onStyle = (event: Event) => {
-      const detail = (
-        event as CustomEvent<{
-          id?: string;
-          patch?: Partial<CanvasTextStyle>;
-        }>
-      ).detail;
-      if (detail.id && detail.patch) updateTextStyle(detail.id, detail.patch);
-    };
-    const onShapeEdit = (event: Event) => {
-      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
-      if (id) setShapeEditing(id, true);
-    };
-    const onShapeCommit = (event: Event) => {
-      const detail = (event as CustomEvent<{ id?: string; markdown?: string }>)
-        .detail;
-      if (detail.id && typeof detail.markdown === "string")
-        commitShapeNode(detail.id, detail.markdown);
-    };
-    const onShapeCancel = (event: Event) => {
-      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
-      if (id) setShapeEditing(id, false);
-    };
-    const onShapeStyle = (event: Event) => {
-      const detail = (
-        event as CustomEvent<{
-          id?: string;
-          patch?: Partial<CanvasShapeStyle>;
-        }>
-      ).detail;
-      if (detail.id && detail.patch) updateShapeStyle(detail.id, detail.patch);
-    };
-    const onArticleStyle = (event: Event) => {
-      const detail = (
-        event as CustomEvent<{
-          id?: string;
-          patch?: Partial<CanvasArticleStyle>;
-        }>
-      ).detail;
-      if (detail.id && detail.patch)
-        updateArticleStyle(detail.id, detail.patch);
-    };
-    const onEyedropperStart = (event: Event) => {
-      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
-      if (id) setStyleEyedropperSourceId(id);
-    };
-    window.addEventListener("mozg:canvas-text-edit", onEdit);
-    window.addEventListener("mozg:canvas-text-commit", onCommit);
-    window.addEventListener("mozg:canvas-text-cancel", onCancel);
-    window.addEventListener("mozg:canvas-text-style", onStyle);
-    window.addEventListener("mozg:canvas-shape-edit", onShapeEdit);
-    window.addEventListener("mozg:canvas-shape-commit", onShapeCommit);
-    window.addEventListener("mozg:canvas-shape-cancel", onShapeCancel);
-    window.addEventListener("mozg:canvas-shape-style", onShapeStyle);
-    window.addEventListener("mozg:canvas-article-style", onArticleStyle);
-    window.addEventListener(
-      "mozg:canvas-style-eyedropper-start",
-      onEyedropperStart,
-    );
-    return () => {
-      window.removeEventListener("mozg:canvas-text-edit", onEdit);
-      window.removeEventListener("mozg:canvas-text-commit", onCommit);
-      window.removeEventListener("mozg:canvas-text-cancel", onCancel);
-      window.removeEventListener("mozg:canvas-text-style", onStyle);
-      window.removeEventListener("mozg:canvas-shape-edit", onShapeEdit);
-      window.removeEventListener("mozg:canvas-shape-commit", onShapeCommit);
-      window.removeEventListener("mozg:canvas-shape-cancel", onShapeCancel);
-      window.removeEventListener("mozg:canvas-shape-style", onShapeStyle);
-      window.removeEventListener("mozg:canvas-article-style", onArticleStyle);
-      window.removeEventListener(
-        "mozg:canvas-style-eyedropper-start",
-        onEyedropperStart,
-      );
-    };
-  }, [
-    commitShapeNode,
-    commitTextNode,
-    setShapeEditing,
-    setTextEditing,
-    updateShapeStyle,
-    updateArticleStyle,
-    updateTextStyle,
-  ]);
-
-  const ingest = useCallback(
-    async (
-      payload: CanvasImageTransferPayload,
-      source: "clipboard" | "drop" | "file-picker",
-      client: FlowPosition | null,
-    ) => {
-      if (!shellState.canvasId) return;
-      const position = client
-        ? screenToFlowRef.current(client)
-        : centerPosition();
-      try {
-        const result = await ingestCanvasImageTransferToNodes(
-          payload,
-          source,
-          position,
-          adapterDependencies,
-        );
-        if (result.nodes.length === 0) return;
-        setNodes((current) => [...current, ...result.nodes]);
-        controller.insertImageNodes(result.nodes);
-        syncState();
-        scheduleSave();
-      } catch (error: unknown) {
-        setShellState((current) => ({
-          ...current,
-          status: "error",
-          error:
-            error instanceof Error ? error.message : "Image ingestion failed.",
-        }));
-      }
-    },
-    [
-      adapterDependencies,
-      centerPosition,
-      controller,
-      scheduleSave,
-      setNodes,
-      shellState.canvasId,
-      syncState,
-    ],
-  );
-
-  const ingestRef = useRef(ingest);
-  useEffect(() => {
-    ingestRef.current = ingest;
-  }, [ingest]);
-
-  const pasteCanvasNodes = useCallback(
-    async (payload: CanvasNodeClipboardPayload) => {
-      const canvasId = shellStateRef.current.canvasId;
-      if (!canvasId) return;
-      const highestZIndex = shellStateRef.current.document.nodes.reduce(
-        (maximum, node) => Math.max(maximum, node.zIndex),
-        0,
-      );
-      const target = pointerRef.current
-        ? screenToFlowRef.current(pointerRef.current)
-        : centerPosition();
-      const canonicalNodes = materializeCanvasNodeClipboardPaste(payload, {
-        target,
-        zIndexStart: highestZIndex + 1,
-      });
-
-      try {
-        const runtimeNodes: CanvasFlowNode[] = [];
-        for (const node of canonicalNodes) {
-          if (node.kind === "text") {
-            runtimeNodes.push(
-              createCanvasTextFlowNode({
-                id: node.id,
-                markdown: node.markdown,
-                position: node.position,
-                size: node.size,
-                style: node.style,
-                zIndex: node.zIndex,
-              }),
-            );
-          } else if (node.kind === "pdf") {
-            runtimeNodes.push(
-              createCanvasPdfFlowNode({
-                id: node.id,
-                fileId: node.fileId,
-                lastKnownName: node.lastKnownName,
-                position: node.position,
-                size: node.size,
-                zIndex: node.zIndex,
-              }),
-            );
-          } else if (node.kind === "shape") {
-            runtimeNodes.push(
-              createCanvasShapeFlowNode({
-                id: node.id,
-                shape: node.shape,
-                markdown: node.markdown,
-                position: node.position,
-                size: node.size,
-                style: node.style,
-                zIndex: node.zIndex,
-              }),
-            );
-          } else if (node.kind === "task") {
-            runtimeNodes.push(
-              createCanvasTaskFlowNode({
-                id: node.id,
-                taskId: node.taskId,
-                lastKnownTitle: node.lastKnownTitle,
-                position: node.position,
-                size: node.size,
-                zIndex: node.zIndex,
-                taskBridge,
-                taskWorkspaceId,
-                onContentHeightChange: handleTaskNodeContentHeightChange,
-              }),
-            );
-          }
-        }
-
-        const imageNodes = canonicalNodes.filter(
-          (node) => node.kind === "image",
-        );
-        const restoredImages =
-          imageNodes.length === 0
-            ? { nodes: [] }
-            : await restoreCanvasImageNodes(
-                { schemaVersion: 2 as const, nodes: imageNodes, edges: [] },
-                canvasImageAdapterDependenciesForCanvas(
-                  adapterDependencies,
-                  canvasId,
-                ),
-                {
-                  cachedAssetPayloads: variantPayloadsRef.current,
-                  viewportZoom: shellStateRef.current.viewport.zoom,
-                  allowDowngrade: false,
-                },
-              );
-        const projectFileDependencies =
-          projectFileImageDependenciesForCanvas(canvasId);
-        const restoredProjectFileImages = projectFileDependencies
-          ? await restoreProjectFileCanvasImageNodes(
-              { schemaVersion: 2 as const, nodes: imageNodes, edges: [] },
-              projectFileDependencies,
-              {
-                cachedAssetPayloads: variantPayloadsRef.current,
-                viewportZoom: shellStateRef.current.viewport.zoom,
-                allowDowngrade: false,
-              },
-            )
-          : { nodes: [] };
-        const canonicalImagesById = new Map(
-          imageNodes.map((node) => [node.id, node]),
-        );
-        for (const image of [
-          ...restoredImages.nodes,
-          ...restoredProjectFileImages.nodes,
-        ]) {
-          const canonical = canonicalImagesById.get(image.id);
-          const runtimeImage = canonical
-            ? { ...image, zIndex: canonical.zIndex }
-            : image;
-          runtimeNodes.push(runtimeImage);
-          rememberImageRuntimePayload(
-            variantPayloadsRef.current,
-            runtimeImage,
-            { workspaceId: shellWorkspaceId, canvasId },
-          );
-        }
-
-        const runtimeIds = new Set(runtimeNodes.map((node) => node.id));
-        const persistedNodes = canonicalNodes.filter((node) =>
-          runtimeIds.has(node.id),
-        );
-        if (persistedNodes.length === 0) return;
-        setNodes((current) => [
-          ...current.map((node) =>
-            node.selected ? { ...node, selected: false } : node,
-          ),
-          ...runtimeNodes.map((node) => ({ ...node, selected: true })),
-        ]);
-        controller.insertCanvasNodes(persistedNodes);
-        syncState();
-        scheduleSave();
-      } catch (error: unknown) {
-        setShellState((current) => ({
-          ...current,
-          status: "error",
-          error:
-            error instanceof Error ? error.message : "Canvas paste failed.",
-        }));
-      }
-    },
-    [
-      adapterDependencies,
-      centerPosition,
-      controller,
-      handleTaskNodeContentHeightChange,
-      projectFileImageDependenciesForCanvas,
-      scheduleSave,
-      setNodes,
-      shellWorkspaceId,
-      syncState,
-      taskBridge,
-      taskWorkspaceId,
-    ],
-  );
-
-  const createPdfNodeFromProjectFile = useCallback(
-    async (file: ProjectFileRecord, position?: FlowPosition) => {
-      if (
-        file.mimeType !== "application/pdf" ||
-        !shellStateRef.current.canvasId
-      )
-        return;
-      const confirmAttachmentSaved = async (): Promise<void> => {
-        if (!controller.hasPendingSave) return;
-        try {
-          const result = await controller.flushPendingSave();
-          const saved = controller.state;
-          syncState();
-          if (result?.status !== "saved" || saved.status !== "saved") {
-            throw new Error(
-              saved.error ?? "ĞĞµ ÑƒĞ´Ğ°Ğ»Ğ¾ÑÑŒ ÑĞ¾Ñ…Ñ€Ğ°Ğ½Ğ¸Ñ‚ÑŒ PDF-ÑƒĞ·ĞµĞ» Ğ½Ğ° Ñ…Ğ¾Ğ»ÑÑ‚Ğµ.",
-            );
-          }
-        } catch (error) {
-          // File upload and Canvas attachment are separate network operations.
-          // Keep a recoverable canonical draft if the second one fails.
-          saveConflictDraft(controller.state);
-          syncState();
-          throw error;
-        }
-      };
-      // Retrying the direct "Add PDF" action should focus on the already
-      // attached document, not make a second node for the same file. If its
-      // first Canvas save failed, this also retries the pending attachment.
-      if (
-        controller.state.document.nodes.some(
-          (node) => node.kind === "pdf" && node.fileId === file.id,
-        )
-      ) {
-        setNodes((current) =>
-          current.map((node) => ({
-            ...node,
-            selected:
-              node.type === CANVAS_PDF_NODE_TYPE &&
-              node.data.fileId === file.id,
-          })),
-        );
-        await confirmAttachmentSaved();
-        return;
-      }
-      const zIndex =
-        Math.max(
-          0,
-          ...controller.state.document.nodes.map((node) => node.zIndex),
-        ) + 1;
-      const canonical = {
-        id: createCanvasPdfId(),
-        kind: "pdf" as const,
-        fileId: file.id,
-        lastKnownName: file.name,
-        position: position ?? centerPosition(),
-        size: { width: 300, height: 180 },
-        zIndex,
-      };
-      const runtime = createCanvasPdfFlowNode(canonical);
-      setNodes((current) => [
-        ...current.map((node) =>
-          node.selected ? { ...node, selected: false } : node,
-        ),
-        { ...runtime, selected: true },
-      ]);
-      controller.insertCanvasNodes([canonical]);
-      syncState();
-      await confirmAttachmentSaved();
-      setFilePickerOpen(false);
-    },
-    [centerPosition, controller, saveConflictDraft, setNodes, syncState],
-  );
-
-  const createProjectFileNode = useCallback(
-    async (file: ProjectFileRecord) => {
-      if (file.mimeType === "application/pdf") {
-        await createPdfNodeFromProjectFile(file);
-        return;
-      }
-      const canvasId = shellStateRef.current.canvasId;
-      if (!canvasId) return;
-      const dependencies = projectFileImageDependenciesForCanvas(canvasId);
-      if (!dependencies) return;
-      try {
-        const zIndex =
-          Math.max(
-            0,
-            ...controller.state.document.nodes.map((node) => node.zIndex),
-          ) + 1;
-        const canonical = createCanvasProjectFileImageNode({
-          file,
-          position: centerPosition(),
-          zIndex,
-        });
-        const restored = await restoreProjectFileCanvasImageNodes(
-          { schemaVersion: 2, nodes: [canonical], edges: [] },
-          dependencies,
-          {
-            cachedAssetPayloads: variantPayloadsRef.current,
-            viewportZoom: shellStateRef.current.viewport.zoom,
-            allowDowngrade: false,
-          },
-        );
-        const runtime = restored.nodes[0];
-        if (!runtime) throw new Error("Project File image is unavailable.");
-        rememberImageRuntimePayload(variantPayloadsRef.current, runtime, {
-          workspaceId: shellWorkspaceId,
-          canvasId,
-        });
-        setNodes((current) => [
-          ...current.map((node) =>
-            node.selected ? { ...node, selected: false } : node,
-          ),
-          { ...runtime, selected: true },
-        ]);
-        controller.insertCanvasNodes([canonical]);
-        syncState();
-        scheduleSave();
-        setFilePickerOpen(false);
-      } catch (error: unknown) {
-        setShellState((current) => ({
-          ...current,
-          status: "error",
-          error:
-            error instanceof Error
-              ? error.message
-              : "ĞĞµ ÑƒĞ´Ğ°Ğ»Ğ¾ÑÑŒ Ğ´Ğ¾Ğ±Ğ°Ğ²Ğ¸Ñ‚ÑŒ Ñ„Ğ°Ğ¹Ğ» Ğ½Ğ° Ñ…Ğ¾Ğ»ÑÑ‚.",
-        }));
-      }
-    },
-    [
-      centerPosition,
-      controller,
-      createPdfNodeFromProjectFile,
-      projectFileImageDependenciesForCanvas,
-      scheduleSave,
-      setNodes,
-      shellWorkspaceId,
-      syncState,
-    ],
-  );
-
-  useEffect(() => {
-    const onCopy = (event: ClipboardEvent) => {
-      if (eventTouchesEditingSurface(event) || !event.clipboardData) return;
-      const selectedNodeIds = new Set(
-        nodesRef.current.filter((node) => node.selected).map((node) => node.id),
-      );
-      const payload = createCanvasNodeClipboardPayload(
-        controller.state.document,
-        selectedNodeIds,
-      );
-      if (!payload) return;
-      event.preventDefault();
-      event.clipboardData.setData(
-        CANVAS_NODE_CLIPBOARD_MIME,
-        serializeCanvasNodeClipboardPayload(payload),
-      );
-    };
-    window.addEventListener("copy", onCopy);
-    return () => window.removeEventListener("copy", onCopy);
-  }, [controller]);
-
-  useEffect(() => {
-    const onPaste = (event: ClipboardEvent) => {
-      if (eventTouchesEditingSurface(event)) return;
-      const canvasPayload = parseCanvasNodeClipboardPayload(
-        event.clipboardData?.getData(CANVAS_NODE_CLIPBOARD_MIME) ?? "",
-      );
-      if (canvasPayload) {
-        event.preventDefault();
-        void pasteCanvasNodes(canvasPayload);
-        return;
-      }
-      const payload = transferPayload(event);
-      if (shouldPreventCanvasImagePaste(event)) {
-        event.preventDefault();
-        void ingestRef.current(payload, "clipboard", pointerRef.current);
-        return;
-      }
-      if (transferHasSupportedImage(payload)) return;
-      const text = plainTextFromClipboard(event);
-      if (!hasMeaningfulPlainText(text)) return;
-      event.preventDefault();
-      createTextNode(pointerRef.current, text, false);
-    };
-    return attachCanvasImagePasteListener(onPaste);
-  }, [createTextNode, pasteCanvasNodes]);
-
-  useEffect(() => {
-    const guard = (event: DragEvent) => {
-      const payload = transferPayload(event);
-      if (!transferHasFiles(payload)) return;
-      const inside = wrapperRef.current
-        ? event.composedPath().includes(wrapperRef.current)
-        : false;
-      if (inside) return;
-      event.preventDefault();
-      if (event.type === "drop") event.stopPropagation();
-    };
-    window.addEventListener("dragover", guard, true);
-    window.addEventListener("drop", guard, true);
-    return () => {
-      window.removeEventListener("dragover", guard, true);
-      window.removeEventListener("drop", guard, true);
-    };
-  }, []);
-
-  const handleNodesChange = useCallback(
-    (changes: NodeChange<CanvasFlowNode>[]) => {
-      const touchGuardedChanges = touchViewportGestureActiveRef.current
-        ? changes.filter(
-            (change) =>
-              change.type !== "position" && change.type !== "dimensions",
-          )
-        : changes;
-      const guardedChanges = redirectCanvasAltDragNodeChanges(
-        touchGuardedChanges,
-        altDragDuplicateRef.current,
-      );
-      if (guardedChanges.length === 0) return;
-      const requestedRemovals = guardedChanges.filter(
-        (
-          change,
-        ): change is Extract<NodeChange<CanvasFlowNode>, { type: "remove" }> =>
-          change.type === "remove",
-      );
-      // The open reader is a visual state, not a selection. This guard also
-      // protects an already-open PDF from a stale React Flow selection when
-      // deleting a group of other nodes.
-      const safeChanges =
-        openPdf?.nodeId &&
-        requestedRemovals.length > 1 &&
-        requestedRemovals.some((change) => change.id === openPdf.nodeId)
-          ? guardedChanges.filter(
-              (change) =>
-                change.type !== "remove" || change.id !== openPdf.nodeId,
-            )
-          : guardedChanges;
-      if (safeChanges.length === 0) return;
-      if (
-        safeChanges.some(
-          (change) => change.type === "position" && change.dragging === true,
-        )
-      ) {
-        nodeDragActiveRef.current = true;
-        edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
-      }
-      if (
-        safeChanges.some(
-          (change) => change.type === "position" && change.dragging === false,
-        )
-      ) {
-        nodeDragActiveRef.current = false;
-        edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
-      }
-      const removed = safeChanges.filter(
-        (
-          change,
-        ): change is Extract<NodeChange<CanvasFlowNode>, { type: "remove" }> =>
-          change.type === "remove",
-      );
-      for (const change of removed) {
-        const node = nodesRef.current.find((item) => item.id === change.id);
-        if (node?.type !== CANVAS_IMAGE_NODE_TYPE) continue;
-        const canvasId = shellStateRef.current.canvasId;
-        const prefix = canvasId
-          ? `${shellWorkspaceId}/${canvasId}/${node.data.assetId}/`
-          : null;
-        for (const [key, payload] of variantPayloadsRef.current) {
-          if (!prefix || !key.startsWith(prefix)) continue;
-          objectUrls.revoke(payload.objectUrl);
-          variantPayloadsRef.current.delete(key);
-        }
-        objectUrls.revoke(node.data.objectUrl);
-      }
-      if (removed.length > 0) {
-        controller.removeCanvasNodes(removed.map((change) => change.id));
-        const removedIds = new Set(removed.map((change) => change.id));
-        setEdges((current) =>
-          current.filter(
-            (edge) =>
-              !removedIds.has(edge.source) && !removedIds.has(edge.target),
-          ),
-        );
-        syncState();
-      }
-      const renderChanges = safeChanges.filter(
-        (change) =>
-          change.type !== "dimensions" || change.setAttributes === true,
-      );
-      if (safeChanges.some((change) => change.type === "position")) {
-        const transientNodes = applyNodeChanges(
-          renderChanges,
-          nodesRef.current,
-        );
-        const transientBounds = canvasFlowNodeBoundsRecords(transientNodes);
-        setEdges((current) => {
-          const canonical = canvasDocumentToEdges(
-            controller.state.document,
-            handleEdgeUpdate,
-          );
-          const source = current.length > 0 ? current : canonical;
-          const known = new Set(source.map((edge) => edge.id));
-          return recomputeCanvasRuntimeEdgeHandles(
-            [...source, ...canonical.filter((edge) => !known.has(edge.id))],
-            transientBounds,
-          );
-        });
-      }
-      // React Flow must receive dimensions changes as well as positions. Filtering
-      // them here leaves nodes uninitialized during a drag and causes connected
-      // edges to be removed by the library's connection lifecycle.
-      onNodesChange(safeChanges);
-      const shouldPersist = safeChanges.some(
-        (change) =>
-          change.type === "remove" ||
-          (change.type === "position" && change.dragging === false) ||
-          isExplicitCanvasResize(change),
-      );
-      if (shouldPersist) {
-        controller.setRuntimeNodes(
-          projectExplicitCanvasResizes(
-            applyNodeChanges(renderChanges, nodesRef.current),
-            safeChanges,
-          ),
-        );
-        if (
-          safeChanges.some(
-            (change) => change.type === "position" && change.dragging === false,
-          )
-        ) {
-          controller.setRuntimeEdges(edgesRef.current);
-        }
-        syncState();
-        scheduleSave();
-      }
-    },
-    [
-      controller,
-      handleEdgeUpdate,
-      objectUrls,
-      openPdf?.nodeId,
-      onNodesChange,
-      scheduleSave,
-      setEdges,
-      shellWorkspaceId,
-      syncState,
-    ],
-  );
-
-  const openPdfNode = useCallback(
-    async (node: CanvasFlowNode) => {
-      if (
-        node.type !== CANVAS_PDF_NODE_TYPE ||
-        !projectFileRepository ||
-        !projectId
-      )
-        return;
-      try {
-        const downloaded = await projectFileRepository.downloadFile({
-          workspaceId: shellWorkspaceId,
-          projectId,
-          fileId: node.data.fileId,
-        });
-        saveOpenArticleId(null);
-        setOpenSummaryNodeId(null);
-        setPdfFullscreen(false);
-        setOpenPdf((current) => {
-          if (current) URL.revokeObjectURL(current.objectUrl);
-          return {
-            fileId: node.data.fileId,
-            name: downloaded.name || node.data.lastKnownName || "PDF",
-            nodeId: node.id,
-            objectUrl: URL.createObjectURL(downloaded.blob),
-          };
-        });
-        enterReaderLayout(node.id);
-      } catch (error: unknown) {
-        setShellState((current) => ({
-          ...current,
-          status: "error",
-          error: error instanceof Error ? error.message : "PDF failed to open.",
-        }));
-      }
-    },
-    [
-      enterReaderLayout,
-      projectFileRepository,
-      projectId,
-      saveOpenArticleId,
-      shellWorkspaceId,
-    ],
-  );
-
-  const closePdfReader = useCallback(
-    (restoreLayout = true) => {
-      const openNodeId = openPdf?.nodeId ?? null;
-      setPdfFullscreen(false);
-      setOpenPdf((current) => {
-        if (current) URL.revokeObjectURL(current.objectUrl);
-        return null;
-      });
-      if (restoreLayout) leaveReaderLayout(openNodeId);
-    },
-    [leaveReaderLayout, openPdf?.nodeId],
-  );
-
-  const closeSummaryReader = useCallback(() => {
-    const nodeId = openSummaryNodeId;
-    setOpenSummaryNodeId(null);
-    leaveReaderLayout(nodeId);
-  }, [leaveReaderLayout, openSummaryNodeId]);
-
-  const closeArticleReader = useCallback(() => {
-    const nodeId = nodesRef.current.find(
-      (node) =>
-        node.type === CANVAS_ARTICLE_NODE_TYPE &&
-        node.data.articleId === shellStateRef.current.openArticleId,
-    )?.id;
-    saveOpenArticleId(null);
-    leaveReaderLayout(nodeId ?? null);
-  }, [leaveReaderLayout, saveOpenArticleId]);
-
-  const openArticleNode = useCallback(
-    (node: CanvasFlowNode) => {
-      if (node.type !== CANVAS_ARTICLE_NODE_TYPE) return;
-      closePdfReader(false);
-      setOpenSummaryNodeId(null);
-      saveOpenArticleId(node.data.articleId);
-      enterReaderLayout(node.id);
-    },
-    [closePdfReader, enterReaderLayout, saveOpenArticleId],
-  );
-
-  const openSummaryNode = useCallback(
-    (node: CanvasFlowNode) => {
-      if (node.type !== CANVAS_SUMMARY_NODE_TYPE) return;
-      closePdfReader(false);
-      saveOpenArticleId(null);
-      setOpenSummaryNodeId(node.id);
-      enterReaderLayout(node.id);
-    },
-    [closePdfReader, enterReaderLayout, saveOpenArticleId],
-  );
-
-  const openArticleFromReader = useCallback(
-    (articleId: string) => {
-      const matchingNode = nodesRef.current.find(
-        (node) =>
-          node.type === CANVAS_ARTICLE_NODE_TYPE &&
-          node.data.articleId === articleId,
-      );
-      saveOpenArticleId(articleId);
-      if (matchingNode) enterReaderLayout(matchingNode.id);
-    },
-    [enterReaderLayout, saveOpenArticleId],
-  );
-
-  const createArticleNode = useCallback(
-    (article: PrototypeDocument) => {
-      if (!shellStateRef.current.canvasId) return;
-      const existing = nodesRef.current.find(
-        (node) =>
-          node.type === CANVAS_ARTICLE_NODE_TYPE &&
-          node.data.articleId === article.id,
-      );
-      if (existing) {
-        setNodes((current) =>
-          current.map((node) => ({
-            ...node,
-            selected: node.id === existing.id,
-          })),
-        );
-        openArticleNode(existing);
-        setArticlePickerOpen(false);
-        setArticleQuery("");
-        return;
-      }
-      const zIndex =
-        Math.max(
-          0,
-          ...controller.state.document.nodes.map((node) => node.zIndex),
-        ) + 1;
-      const canonical = {
-        id: createCanvasArticleId(),
-        kind: "article" as const,
-        articleId: article.id,
-        lastKnownTitle: article.title,
-        position: centerPosition(),
-        size: { width: 300, height: 120 },
-        zIndex,
-      };
-      const runtime = createCanvasArticleFlowNode(canonical);
-      setNodes((current) => [
-        ...current.map((node) => ({ ...node, selected: false })),
-        { ...runtime, selected: true },
-      ]);
-      controller.insertCanvasNodes([canonical]);
-      syncState();
-      scheduleSave();
-      openArticleNode(runtime);
-      setArticlePickerOpen(false);
-      setArticleQuery("");
-    },
-    [
-      centerPosition,
-      controller,
-      openArticleNode,
-      scheduleSave,
-      setNodes,
-      syncState,
-    ],
-  );
-
-  const uploadPdfFiles = useCallback(
-    async (files: File[], position?: FlowPosition) => {
-      if (!projectFileRepository || !projectId || files.length === 0) return;
-      for (const file of files) {
-        if (
-          file.type !== "application/pdf" &&
-          !file.name.toLowerCase().endsWith(".pdf")
-        )
-          continue;
-        try {
-          const prepared = await prepareProjectFileBrowserUpload(file);
-          if (prepared.mimeType !== "application/pdf") continue;
-          const canvasId = shellStateRef.current.canvasId;
-          if (!canvasId) return;
-          const key = `${canvasId}:${prepared.checksum}`;
-          const existing = pdfUploadInFlightRef.current.get(key);
-          if (existing) {
-            await existing;
-            continue;
-          }
-          const pending = (async () => {
-            const uploaded = await projectFileRepository.uploadFile({
-              workspaceId: shellWorkspaceId,
-              projectId,
-              ...prepared,
-            });
-            await createPdfNodeFromProjectFile(uploaded, position);
-          })();
-          pdfUploadInFlightRef.current.set(key, pending);
-          try {
-            await pending;
-          } finally {
-            if (pdfUploadInFlightRef.current.get(key) === pending) {
-              pdfUploadInFlightRef.current.delete(key);
-            }
-          }
-        } catch (error: unknown) {
-          setShellState((current) => ({
-            ...current,
-            status: "error",
-            error:
-              error instanceof Error ? error.message : "PDF upload failed.",
-          }));
-        }
-      }
-    },
-    [
-      createPdfNodeFromProjectFile,
-      projectFileRepository,
-      projectId,
-      shellWorkspaceId,
-    ],
-  );
-
-  const onDrop = useCallback(
-    (event: ReactDragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      setDropActive(false);
-      const payload = transferPayload(event.nativeEvent);
-      if (!shouldPreventFileNavigation(payload)) return;
-      const client = { x: event.clientX, y: event.clientY };
-      const { imageFiles, pdfFiles } = partitionCanvasDropFiles(payload.files);
-      if (pdfFiles.length === 0) {
-        void ingest(payload, "drop", client);
-        return;
-      }
-      const pdfPosition = resolveCanvasDropFlowPosition(
-        client,
-        screenToFlowRef.current,
-      );
-      void runCanvasMixedDrop(
-        { imageFiles, pdfFiles },
-        {
-          ingestImages: async (files) => {
-            await ingest(
-              {
-                files: Array.from(files),
-                items: [],
-                types: files.map((file) => file.type),
-              },
-              "drop",
-              client,
-            );
-          },
-          uploadPdfs: async (files) => {
-            await uploadPdfFiles(Array.from(files), pdfPosition);
-          },
-        },
-      );
-    },
-    [ingest, uploadPdfFiles],
-  );
-
-  const onPicker = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      const files = Array.from(event.target.files ?? []);
-      event.target.value = "";
-      if (files.length > 0)
-        void ingest(
-          { files, items: [], types: files.map((file) => file.type) },
-          "file-picker",
-          null,
-        );
-    },
-    [ingest],
-  );
-
-  const createCanvas = useCallback(
-    async (requestedTitle?: string, groupId: string | null = null) => {
-      const title = (requestedTitle ?? newTitle).trim();
-      if (!title) return;
-      const generation = ++canvasGenerationRef.current;
-      const created = await controller.createCanvas(title, groupId);
-      if (!created.canvasId) return;
-      restoreControllerRef.current?.abort();
-      variantRefreshControllerRef.current?.abort();
-      if (variantRefreshFrameRef.current !== null) {
-        window.cancelAnimationFrame(variantRefreshFrameRef.current);
-        variantRefreshFrameRef.current = null;
-      }
-      if (variantDowngradeTimerRef.current !== null) {
-        clearTimeout(variantDowngradeTimerRef.current);
-        variantDowngradeTimerRef.current = null;
-      }
-      repository.setActiveCanvas?.(created.canvasId);
-      programmaticViewportRef.current = null;
-      setViewportVisible(false);
-      await refreshCatalog();
-      setShellState(created);
-      setRenameTitle(created.title);
-      setNodes([]);
-      setEdges([]);
-      hydratingRef.current = false;
-      setLoadingLifecycle("ready");
-      setViewportInitialization({
-        canvasId: created.canvasId,
-        generation,
-        viewport: { ...created.viewport },
-      });
-    },
-    [controller, newTitle, refreshCatalog, repository, setEdges, setNodes],
-  );
-
-  const renameCanvas = useCallback(() => {
-    if (!renameTitle.trim() || !shellState.canvasId) return;
-    controller.setTitle(renameTitle.trim());
-    syncState();
-    scheduleSave();
-  }, [controller, renameTitle, scheduleSave, shellState.canvasId, syncState]);
-
-  const createCanvasGroup = useCallback(
-    async (title: string, parentGroupId: string | null = null) => {
-      if (!groupsRepository) return;
-      await groupsRepository.createCanvasGroup({
-        workspaceId: shellWorkspaceId,
-        title,
-        parentGroupId,
-      });
-      await refreshCatalog();
-    },
-    [groupsRepository, refreshCatalog, shellWorkspaceId],
-  );
-
-  const renameCanvasGroup = useCallback(
-    async (groupId: string, title: string) => {
-      if (!groupsRepository) return;
-      const previousTitle = groups.find((group) => group.id === groupId)?.title;
-      setGroups((current) =>
-        current.map((group) =>
-          group.id === groupId ? { ...group, title } : group,
-        ),
-      );
-      try {
-        await groupsRepository.renameCanvasGroup({
-          workspaceId: shellWorkspaceId,
-          groupId,
-          title,
-        });
-        await refreshCatalog();
-      } catch (error: unknown) {
-        if (previousTitle !== undefined) {
-          setGroups((current) =>
-            current.map((group) =>
-              group.id === groupId ? { ...group, title: previousTitle } : group,
-            ),
-          );
-        }
-        setGroupsError(
-          error instanceof Error
-            ? error.message
-            : "ĞĞµ ÑƒĞ´Ğ°Ğ»Ğ¾ÑÑŒ Ğ¿ĞµÑ€ĞµĞ¸Ğ¼ĞµĞ½Ğ¾Ğ²Ğ°Ñ‚ÑŒ Ğ³Ñ€ÑƒĞ¿Ğ¿Ñƒ.",
-        );
-      }
-    },
-    [groups, groupsRepository, refreshCatalog, shellWorkspaceId],
-  );
-
-  const deleteCanvasGroup = useCallback(
-    async (groupId: string) => {
-      if (!groupsRepository) return;
-      await groupsRepository.softDeleteCanvasGroup({
-        workspaceId: shellWorkspaceId,
-        groupId,
-      });
-      await refreshCatalog();
-    },
-    [groupsRepository, refreshCatalog, shellWorkspaceId],
-  );
-
-  const moveCanvasGroup = useCallback(
-    async (groupId: string, parentGroupId: string | null) => {
-      if (!groupsRepository) return;
-      await groupsRepository.moveCanvasGroup({
-        workspaceId: shellWorkspaceId,
-        groupId,
-        parentGroupId,
-      });
-      await refreshCatalog();
-    },
-    [groupsRepository, refreshCatalog, shellWorkspaceId],
-  );
-
-  const moveCanvasToGroup = useCallback(
-    async (canvasId: string, groupId: string | null) => {
-      if (!groupsRepository) return;
-      await groupsRepository.moveCanvasToGroup({
-        workspaceId: shellWorkspaceId,
-        canvasId,
-        groupId,
-      });
-      await refreshCatalog();
-    },
-    [groupsRepository, refreshCatalog, shellWorkspaceId],
-  );
-
-  const deleteCanvasById = useCallback(
-    async (canvasId: string) => {
-      const summary = summariesRef.current.find((item) => item.id === canvasId);
-      if (!summary || !window.confirm(`Ğ£Ğ´Ğ°Ğ»Ğ¸Ñ‚ÑŒ Â«${summary.title}Â»?`)) return;
-      const wasActive = shellStateRef.current.canvasId === canvasId;
-      if (wasActive) {
-        restoreControllerRef.current?.abort();
-        variantRefreshControllerRef.current?.abort();
-        objectUrls.revokeAll();
-      }
-      await repository.softDeleteCanvas({
-        workspaceId: shellWorkspaceId,
-        canvasId,
-      });
-      const next = await refreshCatalog();
-      if (!wasActive) return;
-      repository.setActiveCanvas?.(null);
-      setNodes([]);
-      setEdges([]);
-      if (next.summaries[0]) await openCanvas(next.summaries[0].id);
-      else {
-        hydratingRef.current = false;
-        setShellState(emptyShellState());
-      }
-    },
-    [
-      objectUrls,
-      openCanvas,
-      refreshCatalog,
-      repository,
-      setEdges,
-      setNodes,
-      shellWorkspaceId,
-      variantRefreshControllerRef,
-    ],
-  );
-
-  const deleteCanvas = useCallback(async () => {
-    if (!shellState.canvasId) return;
-    await deleteCanvasById(shellState.canvasId);
-  }, [deleteCanvasById, shellState.canvasId]);
-
-  const renameCanvasById = useCallback(
-    (canvasId: string, title: string): void => {
-      const nextTitle = title.trim();
-      if (!nextTitle || renameInFlightRef.current.has(canvasId)) return;
-      const previousTitle =
-        summariesRef.current.find((item) => item.id === canvasId)?.title ??
-        shellStateRef.current.title;
-      renameInFlightRef.current.add(canvasId);
-      setSummaries((current) =>
-        current.map((summary) =>
-          summary.id === canvasId ? { ...summary, title: nextTitle } : summary,
-        ),
-      );
-      void (async () => {
-        try {
-          if (canvasId !== shellStateRef.current.canvasId)
-            await openCanvas(canvasId);
-          controller.setTitle(nextTitle);
-          if (saveTimerRef.current) {
-            clearTimeout(saveTimerRef.current);
-            saveTimerRef.current = null;
-          }
-          const result = await controller.save();
-          if (result?.status === "conflict")
-            throw new Error("Canvas changed elsewhere. Reload to continue.");
-          const saved = controller.state;
-          setSummaries((current) =>
-            current.map((summary) =>
-              summary.id === canvasId
-                ? { ...summary, title: nextTitle, revision: saved.revision }
-                : summary,
-            ),
-          );
-          syncState();
-        } catch (error: unknown) {
-          controller.setTitle(previousTitle);
-          setSummaries((current) =>
-            current.map((summary) =>
-              summary.id === canvasId
-                ? { ...summary, title: previousTitle }
-                : summary,
-            ),
-          );
-          setShellState({
-            ...controller.state,
-            status: "error",
-            error:
-              error instanceof Error
-                ? error.message
-                : "Failed to rename Canvas.",
-          });
-        } finally {
-          renameInFlightRef.current.delete(canvasId);
-        }
-      })().catch(syncState);
-    },
-    [controller, openCanvas, syncState],
-  );
-
-  const commitViewportMove = useCallback(
-    (viewport: CanvasPanViewport) => {
-      if (!shellState.canvasId || !viewportVisible) return;
-      if (
-        isProgrammaticViewportMove({
-          canvasId: shellState.canvasId,
-          initialization: programmaticViewportRef.current,
-          viewport,
-        })
-      ) {
-        programmaticViewportRef.current = null;
-        return;
-      }
-      programmaticViewportRef.current = null;
-      setShellState((current) => ({ ...current, viewport: { ...viewport } }));
-      // Upgrades must begin immediately. A lower-resolution source is only
-      // considered after the zoom has remained still for one debounce window.
-      scheduleImageVariantRefresh(viewport.zoom, false);
-      if (variantDowngradeTimerRef.current !== null)
-        clearTimeout(variantDowngradeTimerRef.current);
-      variantDowngradeTimerRef.current = window.setTimeout(() => {
-        variantDowngradeTimerRef.current = null;
-        scheduleImageVariantRefresh(viewport.zoom, true);
-      }, 900);
-      if (viewportTimerRef.current) clearTimeout(viewportTimerRef.current);
-      viewportTimerRef.current = setTimeout(() => {
-        viewportTimerRef.current = null;
-        void controller.saveViewport(viewport).catch((error: unknown) =>
-          setShellState((current) => ({
-            ...current,
-            status: "error",
-            error:
-              error instanceof Error ? error.message : "Viewport save failed.",
-          })),
-        );
-      }, 240);
-    },
-    [
-      controller,
-      scheduleImageVariantRefresh,
-      shellState.canvasId,
-      viewportVisible,
-    ],
-  );
-
-  const cancelPanInertia = useCallback(
-    (commitCurrentViewport: boolean) => {
-      const wasActive = panInertiaActiveRef.current;
-      if (panInertiaFrameRef.current !== null) {
-        cancelAnimationFrame(panInertiaFrameRef.current);
-        panInertiaFrameRef.current = null;
-      }
-      panInertiaActiveRef.current = false;
-      panInertiaVelocityRef.current = null;
-      panInertiaViewportRef.current = null;
-      panInertiaLastFrameRef.current = null;
-      if (wasActive && commitCurrentViewport)
-        commitViewportMove(reactFlow.getViewport());
-    },
-    [commitViewportMove, reactFlow],
-  );
-
-  const startPanInertia = useCallback(
-    (initialVelocity: CanvasPanVelocity) => {
-      cancelPanInertia(false);
-      panInertiaActiveRef.current = true;
-      panInertiaVelocityRef.current = initialVelocity;
-      panInertiaViewportRef.current = reactFlow.getViewport();
-      panInertiaLastFrameRef.current = performance.now();
-
-      const tick = (now: number): void => {
-        const velocity = panInertiaVelocityRef.current;
-        const viewport = panInertiaViewportRef.current;
-        const lastFrameAt = panInertiaLastFrameRef.current;
-        if (
-          !panInertiaActiveRef.current ||
-          !velocity ||
-          !viewport ||
-          lastFrameAt === null
-        )
-          return;
-        const step = advanceCanvasPanInertia({
-          viewport,
-          velocity,
-          elapsedMs: now - lastFrameAt,
-        });
-        panInertiaVelocityRef.current = step.velocity;
-        panInertiaViewportRef.current = step.viewport;
-        panInertiaLastFrameRef.current = now;
-        void reactFlow.setViewport(step.viewport, { duration: 0 });
-
-        if (step.done) {
-          panInertiaFrameRef.current = requestAnimationFrame(() => {
-            panInertiaFrameRef.current = null;
-            panInertiaActiveRef.current = false;
-            panInertiaVelocityRef.current = null;
-            panInertiaViewportRef.current = null;
-            panInertiaLastFrameRef.current = null;
-            commitViewportMove(reactFlow.getViewport());
-          });
-          return;
-        }
-        panInertiaFrameRef.current = requestAnimationFrame(tick);
-      };
-
-      panInertiaFrameRef.current = requestAnimationFrame(tick);
-    },
-    [cancelPanInertia, commitViewportMove, reactFlow],
-  );
-
-  const handleViewportMove = useCallback(
-    (_: unknown, viewport: CanvasPanViewport) => {
-      if (!middlePanActiveRef.current || panInertiaActiveRef.current) return;
-      const now = performance.now();
-      panSamplesRef.current = [
-        ...panSamplesRef.current.filter((sample) => now - sample.at <= 120),
-        { x: viewport.x, y: viewport.y, at: now },
-      ].slice(-8);
-    },
-    [],
-  );
-
-  const beginTouchViewportGesture = useCallback((): void => {
-    if (touchViewportGestureActiveRef.current) return;
-    touchViewportGestureActiveRef.current = true;
-    nodeDragActiveRef.current = false;
-    edgeRemovalSuppressionUntilRef.current = Date.now() + 5000;
-    setTouchViewportGestureActive(true);
-
-    const snapshot = touchGestureNodesRef.current;
-    if (snapshot) {
-      nodesRef.current = snapshot;
-      setNodes(snapshot);
-    }
-    const canonicalEdges = canvasDocumentToEdges(
-      controller.state.document,
-      handleEdgeUpdate,
-    );
-    edgesRef.current = canonicalEdges;
-    setEdges(canonicalEdges);
-  }, [controller, handleEdgeUpdate, setEdges, setNodes]);
-
-  const handleCanvasPointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (styleEyedropperSourceId && event.button === 0) {
-        const targetElement =
-          event.target instanceof Element
-            ? event.target.closest<HTMLElement>(".react-flow__node")
-            : null;
-        if (!targetElement) {
-          setStyleEyedropperSourceId(null);
-        } else {
-          event.preventDefault();
-          event.stopPropagation();
-          const sourceId = styleEyedropperSourceId;
-          const targetId = targetElement.dataset.id;
-          if (!targetId || targetId === sourceId) return;
-          const runtimeNodes = reactFlow.getNodes();
-          const sourceNode = runtimeNodes.find((node) => node.id === sourceId);
-          const targetNode = runtimeNodes.find((node) => node.id === targetId);
-          if (
-            sourceNode?.type === CANVAS_TEXT_NODE_TYPE &&
-            targetNode?.type === CANVAS_TEXT_NODE_TYPE
-          ) {
-            updateTextStyle(sourceId, {
-              color: targetNode.data.style.color,
-              backgroundColor: targetNode.data.style.backgroundColor,
-            });
-            setStyleEyedropperSourceId(null);
-            return;
-          }
-          if (
-            sourceNode?.type === CANVAS_SHAPE_NODE_TYPE &&
-            targetNode?.type === CANVAS_SHAPE_NODE_TYPE
-          ) {
-            updateShapeStyle(sourceId, {
-              color: targetNode.data.style.color,
-              fillColor: targetNode.data.style.fillColor,
-            });
-            setStyleEyedropperSourceId(null);
-            return;
-          }
-          if (
-            sourceNode?.type === CANVAS_ARTICLE_NODE_TYPE &&
-            targetNode?.type === CANVAS_ARTICLE_NODE_TYPE
-          ) {
-            updateArticleStyle(sourceId, targetNode.data.style);
-            setStyleEyedropperSourceId(null);
-            return;
-          }
-          return;
-        }
-      }
-      if (event.pointerType === "touch") {
-        const activeTouchPointers = activeTouchPointersRef.current;
-        if (activeTouchPointers.size === 0) {
-          touchGestureNodesRef.current = snapshotCanvasTouchGestureNodes(
-            nodesRef.current,
-          );
-        }
-        activeTouchPointers.add(event.pointerId);
-        if (activeTouchPointers.size >= 2) beginTouchViewportGesture();
-      }
-      cancelPanInertia(true);
-      if (event.button !== 1) return;
-      middlePanActiveRef.current = true;
-      const viewport = reactFlow.getViewport();
-      panSamplesRef.current = [
-        { x: viewport.x, y: viewport.y, at: performance.now() },
-      ];
-    },
-    [
-      beginTouchViewportGesture,
-      cancelPanInertia,
-      reactFlow,
-      styleEyedropperSourceId,
-      updateShapeStyle,
-      updateArticleStyle,
-      updateTextStyle,
-    ],
-  );
-
-  const handleCanvasPointerMove = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      pointerRef.current = { x: event.clientX, y: event.clientY };
-    },
-    [],
-  );
-
-  const handleCanvasWheel = useCallback(() => {
-    cancelPanInertia(true);
-  }, [cancelPanInertia]);
-
-  useEffect(() => {
-    const releaseTouchPointer = (event: PointerEvent): void => {
-      if (event.pointerType !== "touch") return;
-      activeTouchPointersRef.current.delete(event.pointerId);
-      if (activeTouchPointersRef.current.size > 0) return;
-      window.requestAnimationFrame(() => {
-        if (activeTouchPointersRef.current.size > 0) return;
-        touchGestureNodesRef.current = null;
-        if (!touchViewportGestureActiveRef.current) return;
-        touchViewportGestureActiveRef.current = false;
-        setTouchViewportGestureActive(false);
-      });
-    };
-    const onPointerUp = (event: PointerEvent): void => {
-      releaseTouchPointer(event);
-      if (event.button !== 1 || !middlePanActiveRef.current) return;
-      middlePanActiveRef.current = false;
-      const velocity = canvasPanReleaseVelocity(panSamplesRef.current);
-      panSamplesRef.current = [];
-      if (velocity) startPanInertia(velocity);
-      else commitViewportMove(reactFlow.getViewport());
-    };
-    const onPointerCancel = (event: PointerEvent): void => {
-      releaseTouchPointer(event);
-      if (!middlePanActiveRef.current) return;
-      middlePanActiveRef.current = false;
-      panSamplesRef.current = [];
-      commitViewportMove(reactFlow.getViewport());
-    };
-    window.addEventListener("pointerup", onPointerUp, true);
-    window.addEventListener("pointercancel", onPointerCancel, true);
-    return () => {
-      window.removeEventListener("pointerup", onPointerUp, true);
-      window.removeEventListener("pointercancel", onPointerCancel, true);
-    };
-  }, [commitViewportMove, reactFlow, startPanInertia]);
-
-  useEffect(
-    () => () => {
-      if (panInertiaFrameRef.current !== null)
-        cancelAnimationFrame(panInertiaFrameRef.current);
-    },
-    [],
-  );
-
-  const onMoveEnd = useCallback(
-    (_: unknown, viewport: CanvasPanViewport) => {
-      if (middlePanActiveRef.current || panInertiaActiveRef.current) return;
-      commitViewportMove(viewport);
-    },
-    [commitViewportMove],
-  );
-
-  const keepLocalChanges = useCallback(() => {
-    void controller
-      .keepLocalChanges()
-      .then(async (result) => {
-        syncState();
-        if (result?.status !== "saved") return;
-        clearConflictDraft();
-        await refreshCatalog();
-      })
-      .catch(syncState);
-  }, [clearConflictDraft, controller, refreshCatalog, syncState]);
-
-  const reloadLatestVersion = useCallback(() => {
-    const current = controller.state;
-    saveConflictDraft(current);
-    if (current.canvasId) void openCanvas(current.canvasId);
-  }, [controller, openCanvas, saveConflictDraft]);
-
-  const restoreLocalConflictDraft = useCallback(() => {
-    const draft = readConflictDraft();
-    if (!draft) return;
-    const restored = controller.restoreConflictDraft(draft);
-    if (!restored) return;
-    setShellState(restored);
-    setRenameTitle(restored.title);
-    void restoreForCanvas(restored).catch(syncState);
-  }, [controller, readConflictDraft, restoreForCanvas, syncState]);
-
-  const desktopListState =
-    loadingLifecycle === "list-loading"
-      ? "loading"
-      : loadingLifecycle === "empty-confirmed"
-        ? "empty"
-        : loadingLifecycle === "error" && summaries.length === 0
-          ? "error"
-          : "ready";
-  const canvasBreadcrumb = useMemo(
-    () =>
-      getCanvasBreadcrumb(
-        groups,
-        summaries.find((summary) => summary.id === shellState.canvasId),
-      ),
-    [groups, shellState.canvasId, summaries],
-  );
-  const desktopSidebar = embedded ? (
-    <CanvasDesktopSidebar
-      activeCanvasId={shellState.canvasId}
-      copy={copy}
-      error={shellState.error}
-      groups={groups}
-      groupsError={groupsError}
-      highlightedGroupId={highlightedCanvasGroupId}
-      listState={desktopListState}
-      onCreateCanvas={(title, groupId) => void createCanvas(title, groupId)}
-      onCreateGroup={(title, parentGroupId) =>
-        void createCanvasGroup(title, parentGroupId)
-      }
-      onDeleteCanvas={(canvasId) => void deleteCanvasById(canvasId)}
-      onDeleteGroup={(groupId) => void deleteCanvasGroup(groupId)}
-      onMoveCanvas={(canvasId, groupId) =>
-        void moveCanvasToGroup(canvasId, groupId)
-      }
-      onMoveGroup={(groupId, parentGroupId) =>
-        void moveCanvasGroup(groupId, parentGroupId)
-      }
-      onRenameCanvas={renameCanvasById}
-      onRenameGroup={(groupId, title) => void renameCanvasGroup(groupId, title)}
-      onRetry={() => window.location.reload()}
-      onSelectCanvas={(canvasId) => {
-        setHighlightedCanvasGroupId(null);
-        void openCanvas(canvasId);
-      }}
-      summaries={summaries}
-    />
-  ) : null;
-
-  const desktopToolbar = embedded ? (
-    <CanvasDesktopToolbar
-      breadcrumb={{
-        highlightedGroupId: highlightedCanvasGroupId,
-        onSelectCanvas: (canvasId) => {
-          setHighlightedCanvasGroupId(null);
-          void openCanvas(canvasId);
-        },
-        onSelectGroup: setHighlightedCanvasGroupId,
-        segments: canvasBreadcrumb,
-      }}
-      canRedo={controller.canRedo}
-      canUndo={controller.canUndo}
-      interactive={Boolean(shellState.canvasId) && loadingLifecycle === "ready"}
-      copy={copy}
-      error={shellState.error}
-      conflictDraftAvailable={conflictDraftAvailable}
-      articlePickerOpen={articlePickerOpen}
-      articleQuery={articleQuery}
-      articleResults={articleResults}
-      articleToolsReady={knowledgeArticles.length > 0}
-      onAddPdf={(files) => void uploadPdfFiles(files)}
-      onAddImage={(files) =>
-        void ingest(
-          { files, items: [], types: files.map((file) => file.type) },
-          "file-picker",
-          null,
-        )
-      }
-      onAddText={() => createTextNode(null, "", true)}
-      onAddRectangle={() => createShapeNode("rectangle")}
-      onAddCircle={() => createShapeNode("circle")}
-      onAddSummary={createSummaryNode}
-      onCloseArticlePicker={() => setArticlePickerOpen(false)}
-      onCloseFilePicker={() => setFilePickerOpen(false)}
-      onCloseTaskPicker={() => setTaskPickerOpen(false)}
-      onFileQueryChange={setFileQuery}
-      onKeepLocalChanges={keepLocalChanges}
-      onRedo={() => applyCanvasHistory("redo")}
-      onReloadWinner={reloadLatestVersion}
-      onRestoreLocalDraft={restoreLocalConflictDraft}
-      onRetry={() => {
-        if (shellState.canvasId) void openCanvas(shellState.canvasId);
-        else window.location.reload();
-      }}
-      onSelectFile={(file) => void createProjectFileNode(file)}
-      onSelectArticle={createArticleNode}
-      onSelectTask={createTaskNode}
-      onArticleQueryChange={setArticleQuery}
-      onTaskQueryChange={setTaskQuery}
-      onToggleFilePicker={() => {
-        setArticlePickerOpen(false);
-        setTaskPickerOpen(false);
-        setFilePickerOpen((current) => !current);
-      }}
-      onToggleArticlePicker={() => {
-        setFilePickerOpen(false);
-        setTaskPickerOpen(false);
-        setArticlePickerOpen((current) => !current);
-      }}
-      onToggleSidebar={() => {
-        readerSidebarWasAutoCollapsedRef.current = false;
-        setDesktopSidebarOpen((current) => !current);
-      }}
-      onToggleTaskPicker={() => {
-        setArticlePickerOpen(false);
-        setFilePickerOpen(false);
-        setTaskPickerOpen((current) => !current);
-      }}
-      onUndo={() => applyCanvasHistory("undo")}
-      filePickerOpen={filePickerOpen}
-      fileQuery={fileQuery}
-      fileResults={fileResults}
-      fileSearchStatus={fileSearchStatus}
-      fileToolsReady={Boolean(
-        projectFileRepository && projectFileVariantRepository && projectId,
-      )}
-      sidebarOpen={desktopSidebarOpen}
-      status={shellState.status}
-      taskPickerOpen={taskPickerOpen}
-      taskQuery={taskQuery}
-      taskResults={taskResults}
-      taskSearchStatus={taskSearchStatus}
-      taskToolsReady={Boolean(taskBridge && taskWorkspaceId)}
-    />
-  ) : null;
-
-  const desktopLayout = (content: React.ReactNode): React.JSX.Element => (
-    <main
-      className={`${styles.page} ${styles.pageEmbedded} ${styles.desktopCanvasPage} ${desktopSidebarOpen ? "" : styles.desktopCanvasPageSidebarCollapsed}`}
-    >
-      {desktopSidebar}
-      <section className={styles.desktopCanvasMain} aria-label="Ğ¥Ğ¾Ğ»ÑÑ‚">
-        {desktopToolbar}
-        {content}
-      </section>
-    </main>
-  );
-
-  if (!shellState.canvasId && loadingLifecycle !== "empty-confirmed") {
-    const isError = loadingLifecycle === "error";
-    if (embedded) {
-      return desktopLayout(
-        <div className={styles.canvasWrap}>
-          <div className={styles.canvas}>
-            <section className={styles.canvasLoading} aria-busy={!isError}>
-              {isError ? (
-                <button
-                  className={styles.button}
-                  onClick={() => window.location.reload()}
-                  type="button"
-                >
-                  ĞŸĞ¾Ğ²Ñ‚Ğ¾Ñ€Ğ¸Ñ‚ÑŒ
-                </button>
-              ) : (
-                <div aria-label="Loading Canvas" role="status" />
-              )}
-            </section>
-          </div>
-        </div>,
-      );
-    }
-    return (
-      <main className={styles.page}>
-        <header className={styles.header}>
-          <div className={styles.titleGroup}>
-            <p className={styles.eyebrow}>{copy.eyebrow}</p>
-            <h1 className={styles.title}>Canvas</h1>
-            <p className={isError ? styles.statusError : styles.status}>
-              {isError ? (shellState.error ?? copy.error) : copy.loading}
-            </p>
-          </div>
-        </header>
-        <section className={styles.loadingShell} aria-busy={!isError}>
-          {isError ? (
-            <button
-              className={styles.button}
-              onClick={() => window.location.reload()}
-              type="button"
-            >
-              ĞŸĞ¾Ğ²Ñ‚Ğ¾Ñ€Ğ¸Ñ‚ÑŒ
-            </button>
-          ) : (
-            <div
-              className={styles.loadingGeometry}
-              aria-label="Loading Canvas"
-              role="status"
-            >
-              <span />
-              <span />
-              <span />
-            </div>
-          )}
-        </section>
-      </main>
-    );
-  }
-
-  if (!shellState.canvasId) {
-    if (embedded) {
-      return desktopLayout(
-        <section className={styles.empty}>
-          <div className={styles.emptyCard}>
-            <h2>{copy.emptyTitle}</h2>
-            <p>{copy.emptyDescription}</p>
-            {shellState.error ? (
-              <p className={styles.statusError}>{shellState.error}</p>
-            ) : null}
-          </div>
-        </section>,
-      );
-    }
-    return (
-      <main className={styles.page}>
-        <header className={styles.header}>
-          <div className={styles.titleGroup}>
-            <p className={styles.eyebrow}>{copy.eyebrow}</p>
-            <h1 className={styles.title}>Infinite Canvas</h1>
-            <p className={styles.status}>{copy.status}</p>
-          </div>
-        </header>
-        <section className={styles.empty}>
-          <div className={styles.emptyCard}>
-            <h2>{copy.emptyTitle}</h2>
-            <p>{copy.emptyDescription}</p>
-            <div className={styles.createRow}>
-              <input
-                className={styles.input}
-                value={newTitle}
-                onChange={(event) => setNewTitle(event.target.value)}
-                aria-label="Canvas title"
-              />
-              <button
-                className={`${styles.button} ${styles.primary}`}
-                type="button"
-                onClick={() => void createCanvas()}
-              >
-                {copy.create}
-              </button>
-            </div>
-            {shellState.error ? (
-              <p className={styles.statusError}>{shellState.error}</p>
-            ) : null}
-          </div>
-        </section>
-      </main>
-    );
-  }
-
-  const statusLabel =
-    shellState.status === "saved"
-      ? copy.saved
-      : shellState.status === "saving"
-        ? copy.saving
-        : shellState.status === "conflict"
-          ? copy.conflict
-          : shellState.status === "loading"
-            ? copy.loading
-            : copy.error;
-  if (embedded) {
-    return desktopLayout(
-      <div className={styles.canvasWorkspace}>
-        <div className={styles.canvasWrap}>
-          <div
-            ref={wrapperRef}
-            className={`${styles.canvas} ${dropActive ? styles.dropActive : ""} ${styleEyedropperSourceId ? styles.canvasStyleEyedropperActive : ""}`}
-            onDragEnter={() => setDropActive(true)}
-            onDragLeave={() => setDropActive(false)}
-            onDragOver={(event) => {
-              if (transferHasFiles(transferPayload(event.nativeEvent)))
-                event.preventDefault();
-            }}
-            onDrop={onDrop}
-            onPointerDownCapture={handleCanvasPointerDown}
-            onPointerMoveCapture={handleCanvasPointerMove}
-            onWheelCapture={handleCanvasWheel}
-          >
-            <ReactFlow
-              className={`${styles.canvasViewport} ${viewportVisible ? "" : styles.canvasViewportHidden}`}
-              nodes={renderedNodes}
-              edges={edges}
-              nodeTypes={nodeTypes}
-              edgeTypes={edgeTypes}
-              onNodesChange={handleNodesChange}
-              onEdgesChange={handleEdgesChange}
-              onNodeDragStart={handleNodeDragStart}
-              onNodeDragStop={handleNodeDragStop}
-              onNodeDoubleClick={(event, node) => {
-                if (node.type === CANVAS_ARTICLE_NODE_TYPE) {
-                  event.preventDefault();
-                  openArticleNode(node);
-                  return;
-                }
-                if (node.type !== CANVAS_PDF_NODE_TYPE) return;
-                event.preventDefault();
-                void openPdfNode(node);
-              }}
-              onNodeClick={(event, node) => {
-                if (node.type !== CANVAS_SUMMARY_NODE_TYPE) return;
-                event.preventDefault();
-                openSummaryNode(node);
-              }}
-              onConnect={handleConnect}
-              connectionMode={ConnectionMode.Loose}
-              connectionLineComponent={CanvasConnectionLine}
-              minZoom={CANVAS_VIEWPORT_LIMITS.minZoom}
-              maxZoom={CANVAS_VIEWPORT_LIMITS.maxZoom}
-              panOnDrag={touchPrimaryInput ? [0, 1] : [1]}
-              selectionOnDrag={!touchPrimaryInput}
-              selectionMode={SelectionMode.Partial}
-              nodesDraggable={!touchViewportGestureActive}
-              nodesConnectable={!touchViewportGestureActive}
-              elementsSelectable={!touchViewportGestureActive}
-              nodeDragThreshold={touchPrimaryInput ? 8 : 1}
-              zoomOnPinch
-              onMove={handleViewportMove}
-              onMoveEnd={onMoveEnd}
-              onInit={() => setFlowInstanceEpoch((current) => current + 1)}
-              onPaneClick={(event) => {
-                if (touchViewportGestureActiveRef.current || event.detail !== 2)
-                  return;
-                createTextNode(
-                  { x: event.clientX, y: event.clientY },
-                  "",
-                  true,
-                );
-              }}
-              deleteKeyCode={["Backspace", "Delete"]}
-            >
-              <Background gap={24} color="#d6d3d1" />
-              <Controls showInteractive={false} />
-              <MiniMap
-                className={styles.minimap}
-                position="bottom-right"
-                maskColor="rgba(28, 25, 23, 0.08)"
-                nodeColor={canvasMiniMapNodeColor}
-                nodeStrokeColor="#78716c"
-                nodeStrokeWidth={1}
-                pannable
-                zoomable
-              />
-              <CanvasEdgeMarkerDefinitions />
-            </ReactFlow>
-            {!viewportVisible ? (
-              <div className={styles.canvasLoading} role="status">
-                Preparing canvasâ€¦
-              </div>
-            ) : null}
-            <div className={styles.canvasHint}>
-              {dropActive
-                ? "Drop PNG, JPEG, WebP or PDF here"
-                : "Paste, drop or choose a file Â· drag and resize are saved"}
-            </div>
-          </div>
-        </div>
-        {openPdf ? (
-          <aside
-            className={`${styles.pdfReader} canvas-pdf-reader ${pdfFullscreen ? `${styles.pdfReaderFullscreen} canvas-pdf-reader-fullscreen` : ""}`}
-            aria-label="ĞŸÑ€Ğ¾ÑĞ¼Ğ¾Ñ‚Ñ€ PDF"
-          >
-            <header className={styles.pdfReaderHeader}>
-              <strong title={openPdf.name}>{openPdf.name}</strong>
-              <div className={styles.pdfReaderHeaderActions}>
-                <button
-                  type="button"
-                  onClick={() => setPdfFullscreen((current) => !current)}
-                  aria-label={
-                    pdfFullscreen
-                      ? "Ğ’ĞµÑ€Ğ½ÑƒÑ‚ÑŒ PDF Ğ² Ğ±Ğ¾ĞºĞ¾Ğ²ÑƒÑ Ğ¿Ğ°Ğ½ĞµĞ»ÑŒ"
-                      : "Ğ Ğ°Ğ·Ğ²ĞµÑ€Ğ½ÑƒÑ‚ÑŒ PDF Ğ½Ğ° Ğ²ĞµÑÑŒ ÑĞºÑ€Ğ°Ğ½"
-                  }
-                  aria-pressed={pdfFullscreen}
-                  title={pdfFullscreen ? "Ğ’ĞµÑ€Ğ½ÑƒÑ‚ÑŒ Ğ² Ğ¿Ğ°Ğ½ĞµĞ»ÑŒ" : "ĞĞ° Ğ²ĞµÑÑŒ ÑĞºÑ€Ğ°Ğ½"}
-                >
-                  <UiIcon
-                    name={pdfFullscreen ? "fullscreen-exit" : "fullscreen"}
-                  />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => closePdfReader()}
-                  aria-label="Ğ—Ğ°ĞºÑ€Ñ‹Ñ‚ÑŒ PDF"
-                  title="Ğ—Ğ°ĞºÑ€Ñ‹Ñ‚ÑŒ PDF"
-                >
-                  <UiIcon name="close" />
-                </button>
-              </div>
-            </header>
-            <iframe
-              src={openPdf.objectUrl}
-              title={openPdf.name}
-              className={styles.pdfReaderFrame}
-            />
-          </aside>
-        ) : null}
-        {shellState.openArticleId ? (
-          <aside
-            aria-label="ĞŸÑ€Ğ¾ÑĞ¼Ğ¾Ñ‚Ñ€ ÑÑ‚Ğ°Ñ‚ÑŒĞ¸"
-            className={`${styles.articleReader} canvas-article-reader`}
-          >
-            <header className={styles.pdfReaderHeader}>
-              <strong title={openArticle?.title ?? "Ğ¡Ñ‚Ğ°Ñ‚ÑŒÑ Ğ½ĞµĞ´Ğ¾ÑÑ‚ÑƒĞ¿Ğ½Ğ°"}>
-                {openArticle?.title ?? "Ğ¡Ñ‚Ğ°Ñ‚ÑŒÑ Ğ½ĞµĞ´Ğ¾ÑÑ‚ÑƒĞ¿Ğ½Ğ°"}
-              </strong>
-              <div className={styles.pdfReaderHeaderActions}>
-                <button
-                  aria-label="Ğ—Ğ°ĞºÑ€Ñ‹Ñ‚ÑŒ ÑÑ‚Ğ°Ñ‚ÑŒÑ"
-                  onClick={closeArticleReader}
-                  title="Ğ—Ğ°ĞºÑ€Ñ‹Ñ‚ÑŒ ÑÑ‚Ğ°Ñ‚ÑŒÑ"
-                  type="button"
-                >
-                  <UiIcon name="close" />
-                </button>
-              </div>
-            </header>
-            {openArticle ? (
-              <article
-                aria-label={openArticle.title}
-                className={`document-page ${styles.articleReaderDocument}`}
-              >
-                <div className="document-page-inner">
-                  <MarkdownDocumentPreview
-                    document={openArticle}
-                    onInternalLink={(documentId) => {
-                      if (
-                        knowledgeArticles.some(
-                          (article) => article.id === documentId,
-                        )
-                      )
-                        openArticleFromReader(documentId);
-                    }}
-                  />
-                </div>
-              </article>
-            ) : (
-              <div className={styles.articleReaderMissing} role="status">
-                Ğ¡Ñ‚Ğ°Ñ‚ÑŒÑ Ğ±Ğ¾Ğ»ÑŒÑˆĞµ Ğ½ĞµĞ´Ğ¾ÑÑ‚ÑƒĞ¿Ğ½Ğ°. Ğ’Ñ‹Ğ±ĞµÑ€Ğ¸Ñ‚Ğµ Ğ´Ñ€ÑƒĞ³ÑƒÑ Ñ‡ĞµÑ€ĞµĞ· ĞºĞ½Ğ¾Ğ¿ĞºÑƒ Â«ĞÑ‚ĞºÑ€Ñ‹Ñ‚ÑŒ
-                ÑÑ‚Ğ°Ñ‚ÑŒÑÂ» Ğ² Ğ²ĞµÑ€Ñ…Ğ½ĞµĞ¹ Ğ¿Ğ°Ğ½ĞµĞ»Ğ¸.
-              </div>
-            )}
-          </aside>
-        ) : null}
-        {openSummary ? (
-          <aside
-            aria-label="ĞŸÑ€Ğ¾ÑĞ¼Ğ¾Ñ‚Ñ€ ÑÑƒĞ¼Ğ¼Ñ‹"
-            className={`${styles.pdfReader} ${styles.summaryReader} canvas-summary-reader`}
-          >
-            <header className={styles.pdfReaderHeader}>
-              <strong title={openSummary.title}>{openSummary.title}</strong>
-              <div className={styles.pdfReaderHeaderActions}>
-                <button
-                  aria-label="Ğ—Ğ°ĞºÑ€Ñ‹Ñ‚ÑŒ ÑÑƒĞ¼Ğ¼Ñƒ"
-                  onClick={closeSummaryReader}
-                  title="Ğ—Ğ°ĞºÑ€Ñ‹Ñ‚ÑŒ ÑÑƒĞ¼Ğ¼Ñƒ"
-                  type="button"
-                >
-                  <UiIcon name="close" />
-                </button>
-              </div>
-            </header>
-            <article
-              aria-label={openSummary.title}
-              className={styles.summaryReaderDocument}
-            >
-              {openSummaryEntries.length > 0 ? (
-                <ol className={styles.summaryReaderList}>
-                  {openSummaryEntries.map((entry) => (
-                    <li key={entry.nodeId}>
-                      <MarkdownStringPreview
-                        contentId={`summary:${openSummary.id}:${entry.nodeId}`}
-                        markdown={entry.markdown}
-                      />
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className={styles.summaryReaderEmpty}>
-                  ĞŸĞ¾Ğ´ĞºĞ»ÑÑ‡Ğ¸Ñ‚Ğµ Ğº Â«Ğ¡ÑƒĞ¼Ğ¼ĞµÂ» Ñ‚ĞµĞºÑÑ‚Ğ¾Ğ²Ñ‹Ğµ Ğ¸Ğ»Ğ¸ Ğ³ĞµĞ¾Ğ¼ĞµÑ‚Ñ€Ğ¸Ñ‡ĞµÑĞºĞ¸Ğµ Ğ½Ğ¾Ğ´Ñ‹.
-                </p>
-              )}
-            </article>
-          </aside>
-        ) : null}
-      </div>,
-    );
-  }
-  return (
-    <main className={`${styles.page} ${embedded ? styles.pageEmbedded : ""}`}>
-      <header className={styles.header}>
-        <div className={styles.titleGroup}>
-          <p className={styles.eyebrow}>{copy.eyebrow}</p>
-          <h1 className={styles.title}>{shellState.title}</h1>
-          <p
-            className={`${styles.status} ${shellState.status === "conflict" ? styles.statusConflict : shellState.status === "error" ? styles.statusError : ""}`}
-          >
-            {statusLabel}
-            {shellState.error ? ` Â· ${shellState.error}` : ""}
-          </p>
-        </div>
-        <div className={styles.headerActions}>
-          <select
-            className={styles.select}
-            value={shellState.canvasId}
-            onChange={(event) => void openCanvas(event.target.value)}
-            aria-label="Canvas selector"
-          >
-            {summaries.map((summary) => (
-              <option key={summary.id} value={summary.id}>
-                {summary.title}
-              </option>
-            ))}
-          </select>
-          <input
-            className={styles.input}
-            value={renameTitle}
-            onChange={(event) => setRenameTitle(event.target.value)}
-            aria-label="Rename Canvas"
-          />
-          <button
-            className={styles.button}
-            type="button"
-            onClick={renameCanvas}
-          >
-            {copy.rename}
-          </button>
-          <button
-            className={styles.button}
-            type="button"
-            onClick={() => void createCanvas()}
-          >
-            {copy.newCanvas}
-          </button>
-          <button
-            className={`${styles.button} ${styles.danger}`}
-            type="button"
-            onClick={() => void deleteCanvas()}
-          >
-            {copy.delete}
-          </button>
-          {shellState.status === "conflict" ? (
-            <>
-              <button
-                className={`${styles.button} ${styles.primary}`}
-                type="button"
-                onClick={keepLocalChanges}
-              >
-                {copy.keepLocalChanges}
-              </button>
-              <button
-                className={styles.button}
-                type="button"
-                onClick={reloadLatestVersion}
-              >
-                {copy.reloadWinner}
-              </button>
-            </>
-          ) : conflictDraftAvailable ? (
-            <button
-              className={styles.button}
-              type="button"
-              onClick={restoreLocalConflictDraft}
-            >
-              {copy.restoreLocalDraft}
-            </button>
-          ) : null}
-          {shellState.status === "error" ? (
-            <button
-              className={styles.button}
-              type="button"
-              onClick={() => void openCanvas(shellState.canvasId!)}
-            >
-              ĞŸĞ¾Ğ²Ñ‚Ğ¾Ñ€Ğ¸Ñ‚ÑŒ
-            </button>
-          ) : null}
-          <label className={`${styles.button} ${styles.primary}`}>
-            {copy.addImage}
-            <input
-              hidden
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              multiple
-              onChange={onPicker}
-            />
-          </label>
-          <button
-            className={styles.button}
-            type="button"
-            onClick={() => createTextNode(null, "", true)}
-          >
-            {copy.text}
-          </button>
-          <button
-            className={styles.button}
-            type="button"
-            onClick={() => createShapeNode("rectangle")}
-          >
-            ĞŸÑ€ÑĞ¼Ğ¾ÑƒĞ³Ğ¾Ğ»ÑŒĞ½Ğ¸Ğº
-          </button>
-          <button
-            className={styles.button}
-            type="button"
-            onClick={() => createShapeNode("circle")}
-          >
-            ĞšÑ€ÑƒĞ³
-          </button>
-          <div className={styles.taskPicker}>
-            <button
-              className={`${styles.button} ${styles.primary}`}
-              type="button"
-              disabled={!taskBridge || !taskWorkspaceId}
-              aria-expanded={taskPickerOpen}
-              onClick={() => setTaskPickerOpen((current) => !current)}
-            >
-              Ğ—Ğ°Ğ´Ğ°Ñ‡Ğ°
-            </button>
-            {taskPickerOpen ? (
-              <div
-                className={styles.taskPickerPanel}
-                role="dialog"
-                aria-label="Ğ”Ğ¾Ğ±Ğ°Ğ²Ğ¸Ñ‚ÑŒ Ğ·Ğ°Ğ´Ğ°Ñ‡Ñƒ"
-              >
-                <div className={styles.taskPickerHeader}>
-                  <strong>Ğ”Ğ¾Ğ±Ğ°Ğ²Ğ¸Ñ‚ÑŒ Ğ·Ğ°Ğ´Ğ°Ñ‡Ñƒ</strong>
-                  <button
-                    type="button"
-                    className={styles.taskPickerClose}
-                    aria-label="Ğ—Ğ°ĞºÑ€Ñ‹Ñ‚ÑŒ Ğ²Ñ‹Ğ±Ğ¾Ñ€ Ğ·Ğ°Ğ´Ğ°Ñ‡Ğ¸"
-                    onClick={() => setTaskPickerOpen(false)}
-                  >
-                    Ã—
-                  </button>
-                </div>
-                <input
-                  className={styles.input}
-                  type="search"
-                  value={taskQuery}
-                  autoFocus
-                  placeholder="ĞŸĞ¾Ğ¸ÑĞº Ğ¿Ğ¾ Ğ½Ğ°Ğ·Ğ²Ğ°Ğ½Ğ¸Ñ"
-                  aria-label="ĞŸĞ¾Ğ¸ÑĞº Ğ·Ğ°Ğ´Ğ°Ñ‡"
-                  onChange={(event) => setTaskQuery(event.target.value)}
-                />
-                <div className={styles.taskPickerResults}>
-                  {taskSearchStatus === "loading" ? (
-                    <p className={styles.taskPickerEmpty}>Ğ—Ğ°Ğ³Ñ€ÑƒĞ·ĞºĞ° Ğ·Ğ°Ğ´Ğ°Ñ‡â€¦</p>
-                  ) : taskSearchStatus === "error" ? (
-                    <p className={styles.taskPickerError} role="alert">
-                      ĞĞµ ÑƒĞ´Ğ°Ğ»Ğ¾ÑÑŒ Ğ·Ğ°Ğ³Ñ€ÑƒĞ·Ğ¸Ñ‚ÑŒ Ğ·Ğ°Ğ´Ğ°Ñ‡Ğ¸
-                    </p>
-                  ) : taskResults.length === 0 ? (
-                    <p className={styles.taskPickerEmpty}>
-                      {taskQuery.trim()
-                        ? "Ğ¡Ğ¾Ğ²Ğ¿Ğ°Ğ´ĞµĞ½Ğ¸Ğ¹ Ğ½ĞµÑ‚"
-                        : "Ğ’ ÑÑ‚Ğ¾Ğ¼ Ğ¿Ñ€Ğ¾ĞµĞºÑ‚Ğµ Ğ½ĞµÑ‚ Ğ·Ğ°Ğ´Ğ°Ñ‡"}
-                    </p>
-                  ) : (
-                    taskResults.map((task) => (
-                      <button
-                        type="button"
-                        className={styles.taskPickerResult}
-                        key={task.id}
-                        onClick={() => createTaskNode(task)}
-                      >
-                        <strong>{task.title}</strong>
-                        <span>{task.completed ? "Ğ’Ñ‹Ğ¿Ğ¾Ğ»Ğ½ĞµĞ½Ğ¾" : "Ğ’ Ñ€Ğ°Ğ±Ğ¾Ñ‚Ğµ"}</span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </header>
-      <div className={styles.canvasWrap}>
-        <div
-          ref={wrapperRef}
-          className={`${styles.canvas} ${dropActive ? styles.dropActive : ""} ${styleEyedropperSourceId ? styles.canvasStyleEyedropperActive : ""}`}
-          onDragEnter={() => setDropActive(true)}
-          onDragLeave={() => setDropActive(false)}
-          onDragOver={(event) => {
-            if (transferHasFiles(transferPayload(event.nativeEvent)))
-              event.preventDefault();
-          }}
-          onDrop={onDrop}
-          onPointerDownCapture={handleCanvasPointerDown}
-          onPointerMoveCapture={handleCanvasPointerMove}
-          onWheelCapture={handleCanvasWheel}
-        >
-          <ReactFlow
-            className={`${styles.canvasViewport} ${viewportVisible ? "" : styles.canvasViewportHidden}`}
-            nodes={renderedNodes}
-            edges={edges}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            onNodesChange={handleNodesChange}
-            onEdgesChange={handleEdgesChange}
-            onNodeDragStart={handleNodeDragStart}
-            onNodeDragStop={handleNodeDragStop}
-            onNodeDoubleClick={(event, node) => {
-              if (node.type === CANVAS_ARTICLE_NODE_TYPE) {
-                event.preventDefault();
-                openArticleNode(node);
-                return;
-              }
-              if (node.type !== CANVAS_PDF_NODE_TYPE) return;
-              event.preventDefault();
-              void openPdfNode(node);
-            }}
-            onNodeClick={(event, node) => {
-              if (node.type !== CANVAS_SUMMARY_NODE_TYPE) return;
-              event.preventDefault();
-              openSummaryNode(node);
-            }}
-            onConnect={handleConnect}
-            connectionMode={ConnectionMode.Loose}
-            connectionLineComponent={CanvasConnectionLine}
-            minZoom={CANVAS_VIEWPORT_LIMITS.minZoom}
-            maxZoom={CANVAS_VIEWPORT_LIMITS.maxZoom}
-            panOnDrag={touchPrimaryInput ? [0, 1] : [1]}
-            selectionOnDrag={!touchPrimaryInput}
-            selectionMode={SelectionMode.Partial}
-            nodesDraggable={!touchViewportGestureActive}
-            nodesConnectable={!touchViewportGestureActive}
-            elementsSelectable={!touchViewportGestureActive}
-            nodeDragThreshold={touchPrimaryInput ? 8 : 1}
-            zoomOnPinch
-            onMove={handleViewportMove}
-            onMoveEnd={onMoveEnd}
-            onInit={() => setFlowInstanceEpoch((current) => current + 1)}
-            onPaneClick={(event) => {
-              if (touchViewportGestureActiveRef.current || event.detail !== 2)
-                return;
-              createTextNode({ x: event.clientX, y: event.clientY }, "", true);
-            }}
-            deleteKeyCode={["Backspace", "Delete"]}
-          >
-            <Background gap={24} color="#d6d3d1" />
-            <Controls showInteractive={false} />
-            <MiniMap
-              className={styles.minimap}
-              position="bottom-right"
-              maskColor="rgba(28, 25, 23, 0.08)"
-              nodeColor={canvasMiniMapNodeColor}
-              nodeStrokeColor="#78716c"
-              nodeStrokeWidth={1}
-              pannable
-              zoomable
-            />
-            <CanvasEdgeMarkerDefinitions />
-          </ReactFlow>
-          {!viewportVisible ? (
-            <div className={styles.canvasLoading} role="status">
-              Preparing canvasâ€¦
-            </div>
-          ) : null}
-          <div className={styles.canvasHint}>
-            {dropActive
-              ? "Drop PNG, JPEG or WebP here"
-              : "Paste, drop or choose an image Â· drag and resize are saved"}
-          </div>
-          {showDiagnostics ? (
-            <details className={styles.details}>
-              <summary>Details</summary>
-              <div className={styles.diagnostics}>
-                <span>
-                  nodes <strong>{nodes.length}</strong>
-                </span>
-                <span>
-                  revision <strong>{shellState.revision}</strong>
-                </span>
-                <span>
-                  reads <strong>{restoreStats.reads}</strong>
-                </span>
-                <span>
-                  max <strong>{restoreStats.maxConcurrency}</strong>
-                </span>
-                <span>
-                  missing <strong>{restoreStats.missing}</strong>
-                </span>
-                <span>
-                  URLs <strong>{objectUrls.count()}</strong>
-                </span>
-                <span>
-                  canonical <strong>{shellState.document.nodes.length}</strong>
-                </span>
-                <span>
-                  viewport{" "}
-                  <strong>{shellState.viewport.zoom.toFixed(2)}Ã—</strong>
-                </span>
-              </div>
-            </details>
-          ) : null}
-        </div>
-      </div>
-      {showDiagnostics ? (
-        <footer className={styles.footer}>
-          <span>{copy.isolated}</span>
-          <span>{shellWorkspaceId}</span>
-          <span>Canvas revision {shellState.revision}</span>
-        </footer>
-      ) : null}
-    </main>
-  );
-}
-
-export function InfiniteCanvasLocalShell({
-  activeTaskDetailsTaskId,
-  assetRepository,
-  copy,
-  embedded,
-  groupRepository,
-  knowledgeArticles,
-  projectFileRepository,
-  projectFileVariantRepository,
-  projectId,
-  repository,
-  runtimeCache,
-  showDiagnostics,
-  taskBridge,
-  taskWorkspaceId,
-  userId,
-  workspaceId,
-}: {
-  activeTaskDetailsTaskId?: string;
-  assetRepository: CanvasAssetRepository;
-  copy: CanvasShellCopy;
-  embedded?: boolean;
-  groupRepository?: CanvasGroupRepository;
-  knowledgeArticles?: readonly PrototypeDocument[];
-  projectFileRepository?: ProjectFileRepository;
-  projectFileVariantRepository?: ProjectFileImageVariantRepository;
-  projectId?: string;
-  repository: CanvasShellRepository;
-  runtimeCache?: CloudCanvasRuntimeCache;
-  showDiagnostics: boolean;
-  taskBridge?: CanvasTaskBridge;
-  taskWorkspaceId?: string;
-  userId: string;
-  workspaceId: string;
-}): React.JSX.Element {
-  return (
-    <ReactFlowProvider>
-      <InfiniteCanvasLocalShellSurface
-        activeTaskDetailsTaskId={activeTaskDetailsTaskId}
-        assetRepository={assetRepository}
-        copy={copy}
-        embedded={embedded}
-        groupRepository={groupRepository}
-        knowledgeArticles={knowledgeArticles}
-        projectFileRepository={projectFileRepository}
-        projectFileVariantRepository={projectFileVariantRepository}
-        projectId={projectId}
-        repository={repository}
-        runtimeCache={runtimeCache}
-        showDiagnostics={showDiagnostics}
-        taskBridge={taskBridge}
-        taskWorkspaceId={taskWorkspaceId}
-        userId={userId}
-        workspaceId={workspaceId}
-      />
-    </ReactFlowProvider>
-  );
-}
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíë­ùİ:-jZ.¶›­–)Ş³R'W6R6Æ–VçB#° ¦–×÷'B°¢&6¶w&÷VæBÀ¢6öææV7F–öäÖöFRÀ¢6öçG&öÇ2À¢6VÆV7F–öäÖöFRÀ¢VFvUFööÆ&"À¢Ö–æ”ÖÀ¢&V7DfÆ÷rÀ¢&V7DfÆ÷u&÷f–FW"À¢Ç”VFvT6†ævW2À¢Ç”æöFT6†ævW2À¢vWD&W¦–W%F‚À¢vWE6Öö÷F…7FWF‚À¢vWE7G&–v‡EF‚À¢W6TVFvW57FFRÀ¢W6TæöFW57FFRÀ¢W6T–çFW&æÄæöFRÀ¢W6U&V7DfÆ÷rÀ¢W6U7F÷&RÀ¢G—R6öææV7F–öâÀ¢G—R6öææV7F–öäÆ–æT6ö×öæVçE&÷2À¢G—RVFvT6†ævRÀ¢G—RVFvU&÷2À¢G—R–çFW&æÄæöFRÀ¢G—RæöFT6†ævRÀ¢G—RæöFU&÷2À§Òg&öÒ$‡–fÆ÷r÷&V7B#°¦–×÷'B°¢6çf4FW6·F÷6–FV&"À¢6çf4FW6·F÷FööÆ&"À§Òg&öÒ$÷&÷F÷G—Rö6çf6W2ö6çf2ÖFW6·F÷Ö6ö×÷6—F–öâ#°¦–×÷'B²vWD6çf4'&VF7'VÖ"Òg&öÒ$÷&÷F÷G—Rö6çf6W2ö6çf2Ö'&VF7'VÖ"#°¦–×÷'B²7&VFT6çf5÷'F&ÆT&6·WÒg&öÒ$÷&÷F÷G—Rö6çf6W2ö6çf2×÷'F&ÆRÖW‡÷'B#°¦–×÷'B²V”–6öâÒg&öÒ$÷&÷F÷G—RöFW6·F÷Ö–6öç2#°¦–×÷'B°¢W6T6ÆÆ&6²À¢W6TVffV7BÀ¢W6TÖVÖòÀ¢W6U&VbÀ¢W6U7FFRÀ¢G—R6†ævTWfVçBÀ¢G—R555&÷W'F–W2À¢G—RG&tWfVçB2&V7DG&tWfVçBÀ¢G—Rö–çFW$WfVçB2&V7Eö–çFW$WfVçBÀ§Òg&öÒ'&V7B#°¦–×÷'B°¢GF6„6çf4–ÖvU7FTÆ—7FVæW"À¢7&VFTö&¦V7EW&Å&Vv—7G'’À¢WfVçEF÷V6†W4VF—F–æu7W&f6RÀ¢6†÷VÆE&WfVçD6çf4–ÖvU7FRÀ¢6†÷VÆE&WfVçDf–ÆTæf–vF–öâÀ¢G&ç6fW$†57W÷'FVD–ÖvRÀ¢G&ç6fW$†4f–ÆW2À¢G—R6çf4–ÖvUG&ç6fW%–ÆöBÀ§Òg&öÒ$öÆ–"ö6çf2ö6çf2Ö–ÖvRÖ–ævW7F–öâ#°¦–×÷'B°¢—47W'&VçEf–Ww÷'D–æ—F–Æ—¦F–öâÀ¢—5&öw&ÖÖF–5f–Ww÷'DÖ÷fRÀ¢66†VGVÆUf–Ww÷'E&WfVÂÀ¢G—R6çf5f–Ww÷'D–æ—F–Æ—¦F–öâÀ§Òg&öÒ$öÆ–"ö6çf2ö6çf2×f–Ww÷'BÖ–æ—F–Æ—¦F–öâ#°¦–×÷'B°¢—4W‡Æ–6—D6çf5&W6—¦RÀ¢&ö¦V7DW‡Æ–6—D6çf5&W6—¦W2À§Òg&öÒ$öÆ–"ö6çf2ö6çf2×'VçF–ÖR×&ö¦V7F–öâ#°¦–×÷'B°¢Gfæ6T6çf5ä–æW'F–À¢6çf5å&VÆV6UfVÆö6—G’À¢G—R6çf5å6×ÆRÀ¢G—R6çf5åfVÆö6—G’À¢G—R6çf5åf–Ww÷'BÀ§Òg&öÒ$öÆ–"ö6çf2ö6çf2×âÖ–æW'F–#°¦–×÷'B²6çf4Ö–æ”ÖæöFT6öÆ÷"Òg&öÒ$öÆ–"ö6çf2ö6çf2ÖÖ–æ–Ö#°¦–×÷'B°¢4åd5õDU…EôdôåEôdÔ”Ä”U2À¢4åd5õDU…EôdôåEõ4•¤U2À¢6çf5FW‡DföçDfÖ–Ç”772À¢æW‡D6çf5FW‡DföçE6—¦RÀ¢&Wf–÷W46çf5FW‡DföçE6—¦RÀ¢G—R6çf5FW‡DföçDfÖ–Ç’À¢G—R6çf5FW‡DföçE6—¦RÀ¢G—R6çf5FW‡E7G–ÆRÀ§Òg&öÒ$öÆ–"ö6çf2ö6çf2×FW‡B×7G–ÆR#°¦–×÷'B°¢DTdTÅEô4åd5õ4„Uõ5E”ÄRÀ¢6çf56†U7G–ÆT5FW‡E7G–ÆRÀ¢6çf5FW‡E7G–ÆUF6…Fõ6†U7G–ÆRÀ¢G—R6çf56†U7G–ÆRÀ§Òg&öÒ$öÆ–"ö6çf2ö6çf2×6†R×7G–ÆR#°¦–×÷'BG—R²6çf4'F–6ÆU7G–ÆRÒg&öÒ$öÆ–"ö6çf2ö6çf2Ö'F–6ÆR×7G–ÆR#°¦–×÷'B°¢4åd5ôäôDUô4Ä•$ô$EôÔ”ÔRÀ¢7&VFT6çf4æöFT6Æ—&ö&E–ÆöBÀ¢ÖFW&–Æ—¦T6çf4æöFT6Æ—&ö&E7FRÀ¢'6T6çf4æöFT6Æ—&ö&E–ÆöBÀ¢6W&–Æ—¦T6çf4æöFT6Æ—&ö&E–ÆöBÀ¢G—R6çf4æöFT6Æ—&ö&E–ÆöBÀ§Òg&öÒ$öÆ–"ö6çf2ö6çf2ÖæöFRÖ6Æ—&ö&B#°¦–×÷'B°¢7&VFT6çf4ÇDG&tGWÆ–6FRÀ¢7&VFT6çf4ÇDG&u'VçF–ÖTæöFRÀ¢f–æÆ—¦T6çf4ÇDG&tGWÆ–6FRÀ¢&VF—&V7D6çf4ÇDG&tæöFT6†ævW2À¢G—R6çf4ÇDG&tGWÆ–6FU6W76–öâÀ§Òg&öÒ$öÆ–"ö6çf2ö6çf2ÖÇBÖG&rÖGWÆ–6FR#°¦–×÷'B°¢4åd5ô%$ä4…ô4ôÄÄ4UôUdTåBÀ¢6çf4'&æ6„FW66VæFçDæöFT–G2À¢6çf4'&æ6„6öÆÆ6VDæöFT–G2À¢6çf4'&æ6…'VçF–ÖU7FFRÀ¢&ö¦V7D6çf4'&æ6„6öÆÆ6RÀ¢G&ç6ÆFT6çf4'&æ6„FW66VæFçG2À¢G—R6çf4'&æ6„6öÆÆ6TWfVçDFWF–ÂÀ§Òg&öÒ$öÆ–"ö6çf2ö6çf2Ö'&æ6‚Ö6öÆÆ6R#°¦–×÷'B°¢4åd5ô%D”4ÄUôäôDUõE•RÀ¢4åd5ô”ÔtUôäôDUõE•RÀ¢4åd5õDeôäôDUõE•RÀ¢4åd5õ4„UôäôDUõE•RÀ¢4åd5õ5TÔÔ%•ôäôDUõE•RÀ¢4åd5õD4µôäôDUõE•RÀ¢4åd5õDU…EôäôDUõE•RÀ¢4åd5ôTDtUõE•RÀ¢6çf4Fö7VÖVçEFôVFvW2À¢6çf4Fö7VÖVçEFô'F–6ÆTæöFW2À¢6çf4Fö7VÖVçEFô–ÖvTæöFW2À¢6çf4Fö7VÖVçEFõFdæöFW2À¢6çf4Fö7VÖVçEFõ6†TæöFW2À¢6çf4Fö7VÖVçEFõ7VÖÖ'”æöFW2À¢6çf4Fö7VÖVçEFõF6´æöFW2À¢6çf4Fö7VÖVçEFõFW‡DæöFW2À¢6çf4–ÖvTFFW$FWVæFVæ6–W4f÷$6çf2À¢7&VFT6çf5FdfÆ÷tæöFRÀ¢7&VFT6çf5Fd–BÀ¢7&VFT6çf4'F–6ÆTfÆ÷tæöFRÀ¢7&VFT6çf4'F–6ÆT–BÀ¢7&VFT6çf5F6´fÆ÷tæöFRÀ¢7&VFT6çf5F6´–BÀ¢7&VFT6çf4VFvTg&öÔ6öææV7F–öâÀ¢7&VFT6çf56†TfÆ÷tæöFRÀ¢7&VFT6çf56†T–BÀ¢7&VFT6çf57VÖÖ'”fÆ÷tæöFRÀ¢7&VFT6çf57VÖÖ'”–BÀ¢7&VFT6çf5FW‡DfÆ÷tæöFRÀ¢f–æD66†VD6çf4–ÖvU–ÆöBÀ¢–ævW7D6çf4–ÖvUG&ç6fW%FôæöFW2À¢&W7F÷&T6çf4–ÖvTæöFW2À¢WFFT6çf4VFvTfÆ÷u'VçF–ÖRÀ¢G—R6çf4–ÖvTFFW$FWVæFVæ6–W2À¢G—R6çf4fÆ÷tæöFRÀ¢G—R6çf4VFvTfÆ÷rÀ¢G—R6çf4VFvTfÆ÷tFFÀ¢G—R6çf4–ÖvTfÆ÷tæöFRÀ¢G—R6çf4'F–6ÆTfÆ÷tæöFRÀ¢G—R6çf56†TfÆ÷tæöFRÀ¢G—R6çf57VÖÖ'”fÆ÷tæöFRÀ¢G—R6çf5F6´fÆ÷tæöFRÀ¢G—R6çf5FdfÆ÷tæöFRÀ¢G—R6çf5FW‡DfÆ÷tæöFRÀ¢G—RfÆ÷u÷6—F–öâÀ§Òg&öÒ$öÆ–"ö6çf2÷&V7BÖfÆ÷rÖ6çf2ÖFFW"#°¦–×÷'B²6çf4–ÖvTÆöD66†RÒg&öÒ$öÆ–"ö6çf2ö6çf2Ö–ÖvRÖÆöBÖ66†R#°¦–×÷'B°¢4åd5ôDô5TÔTåEôÄ”Ô•E2À¢4åd5õd”Uuõ%EôÄ”Ô•E2À¢G—R6çf4VFvT'&÷w2À¢G—R6çf4VFvUc"À¢G—R6çf4VFvU&÷WF–ærÀ¢G—R6çf4†æFÆU6–FRÀ¢G—R6çf56†TæöFRÀ¢G—R6çf56†Uf&–çBÀ¢G—R6çf57VÖÖ'”æöFRÀ§Òg&öÒ$öÆ–"ö6çf2ö6çf2ÖFö7VÖVçB#°¦–×÷'B°¢6çf57VÖÖ'”VçG&–W2À¢—46çf57VÖÖ'•6÷W&6TæöFRÀ¢æW‡D6çf57VÖÖ'”÷&FW"À§Òg&öÒ$öÆ–"ö6çf2ö6çf2×7VÖÖ'’#°¦–×÷'BG—R²6çf476WEf&–çE&W÷6—F÷'’Òg&öÒ$öÆ–"ö6çf2ö6çf2Ö–ÖvR×f&–çG2#°¦–×÷'B°¢6çf4'&÷w5FôVæGö–çD'&÷w2À¢VæGö–çD'&÷w5Fô6çf4'&÷w2À¢7v6çf4VFvT'&÷w2À§Òg&öÒ$öÆ–"ö6çf2ö6çf2ÖVFvRÖ6öçG&öÇ2#°¦–×÷'B°¢6çf4†æFÆT6VçFW%FõW&–ÖWFW"À¢6çf4æöFUW&–ÖWFW$æ6†÷"À¢G—R6çf4æöFT&÷VæG2À§Òg&öÒ$öÆ–"ö6çf2ö6çf2ÖVFvRÖvVöÖWG'’#°¦–×÷'B°¢f–æE6†÷'FW7D6çf4†æFÆU—"À¢&V6ö×WFT6çf5'VçF–ÖTVFvT†æFÆW2À¢G—R6çf4æöFT&÷VæG5&V6÷&BÀ§Òg&öÒ$öÆ–"ö6çf2ö6çf2×6†÷'FW7BÖ†æFÆR×—"#°¦–×÷'B°¢7&VFT6çf5FW‡D–BÀ¢†4ÖVæ–ævgVÅÆ–åFW‡BÀ¢Æ–åFW‡Dg&öÔ6Æ—&ö&BÀ¢6öÖÖ—EFW‡DÖ&¶F÷vâÀ§Òg&öÒ$öÆ–"ö6çf2÷FW‡BÖ6çf2Ö–çFW&7F–öç2#°¦–×÷'BG—R²&÷F÷G—TFö7VÖVçBÒg&öÒ$÷&÷F÷G—RöFW6·F÷ÖÖö6²ÖFF#°¦–×÷'B°¢Ö&¶F÷väFö7VÖVçE&Wf–WrÀ¢Ö&¶F÷vå7G&–æu&Wf–WrÀ§Òg&öÒ$÷&÷F÷G—Rö¶æ÷vÆVFvRöÖ&¶F÷vâÖFö7VÖVçB×&Wf–Wr#°¦–×÷'BG—R°¢6çf5F6´'&–FvRÀ¢6çf5F6µ&ö¦V7F–öâÀ§Òg&öÒ$öÆ–"ö6çf2ö6çf2×F6²Ö'&–FvR#°¦–×÷'BG—R°¢6çf4w&÷WÀ¢6çf4w&÷W&W÷6—F÷'’À§Òg&öÒ$öÆ–"ö6çf2ö6çf2Öw&÷W×&W÷6—F÷'’#°¦–×÷'B°¢G—R6çf476WE&W÷6—F÷'’À¢G—R6çf5&W÷6—F÷'’À¢G—R6çf57VÖÖ'’À¢G—R6çf5f–Wu7FFU&W÷6—F÷'’À§Òg&öÒ$öÆ–"ö6çf2öÆö6ÂÖ6çf2×&W÷6—F÷'’#°¦–×÷'B°¢V×G•6†VÆÅ7FFRÀ¢Æö6Ä6çf56†VÆÄ6öçG&öÆÆW"À¢G—RÆö6Ä6çf46öæfÆ–7DG&gBÀ¢G—RÆö6Ä6çf56†VÆÅ7FFRÀ§Òg&öÒ$öÆ–"ö6çf2öÆö6ÂÖ6çf2×6†VÆÂÖ6öçG&öÆÆW"#°¦–×÷'BG—R°¢6Æ÷VD6çf5'VçF–ÖT66†RÀ¢6çf4–ÖvU'VçF–ÖU–ÆöBÀ¢6Æ÷VD6çf5'VçF–ÖU6æ6†÷BÀ§Òg&öÒ$öÆ–"ö6çf2ö6Æ÷VBÖ6çf2×'VçF–ÖRÖ66†R#°¦–×÷'B°¢6çf4–ÖvU&W6öÇWF–öå6÷W&6T66†T¶W’À¢6çf4–ÖvU&W6öÇWF–öå6÷W&6Tg&öÔÆVv7”¶–æBÀ§Òg&öÒ$öÆ–"ö6çf2ö6çf2Ö–ÖvR×f&–çG2#°¦–×÷'B²6çf4–ÖvU—&Ö–E66†VGVÆW"Òg&öÒ$öÆ–"ö6çf2ö6çf2Ö–ÖvR×—&Ö–B#°¦–×÷'B°¢7&VFT6çf5&ö¦V7Df–ÆT–ÖvTæöFRÀ¢&W7F÷&U&ö¦V7Df–ÆT6çf4–ÖvTæöFW2À§Òg&öÒ$öÆ–"ö6çf2÷&ö¦V7BÖf–ÆRÖ6çf2Ö–ÖvRÖFFW"#°¦–×÷'BG—R²&ö¦V7Df–ÆT–ÖvUf&–çE&W÷6—F÷'’Òg&öÒ$öÆ–"öf–ÆW2÷&ö¦V7BÖf–ÆRÖ–ÖvR×f&–çG2#°¦–×÷'B°¢—5&ö¦V7Df–ÆT–ÖvTÖ–ÖUG—RÀ¢G—R&ö¦V7Df–ÆU&V6÷&BÀ¢G—R&ö¦V7Df–ÆU&W÷6—F÷'’À§Òg&öÒ$öÆ–"öf–ÆW2÷&ö¦V7BÖf–ÆR×&W÷6—F÷'’#°¦–×÷'B²&W&U&ö¦V7Df–ÆT'&÷w6W%WÆöBÒg&öÒ$öÆ–"öf–ÆW2÷&ö¦V7BÖf–ÆRÖ'&÷w6W"×WÆöB#°¦–×÷'B²6†÷VÆD6Æ÷6T6çf5F6´FWF–Ç2Òg&öÒ$öÆ–"ö6çf2ö6çf2×F6²×6VÆV7F–öâ#°¦–×÷'B°¢&V6öæ6–ÆT66†VE'VçF–ÖUv—F…6W'fW"À¢6W'fW$6çf4ÖF6†W466†VE'VçF–ÖRÀ§Òg&öÒ$öÆ–"ö6çf2ö6çf2×'VçF–ÖRÖ66†R×&V6öæ6–Æ–F–öâ#°¦–×÷'B°¢'F—F–öä6çf4G&÷f–ÆW2À¢&W6öÇfT6çf4G&÷fÆ÷u÷6—F–öâÀ¢'Vä6çf4Ö—†VDG&÷À§Òg&öÒ$öÆ–"ö6çf2ö6çf2Öf–ÆRÖG&÷×&÷WF–ær#°¦–×÷'B²6çf4Fö7VÖVçEFõ'VçF–ÖU6¶VÆWFöâÒg&öÒ$öÆ–"ö6çf2ö6çf2×'VçF–ÖR×6¶VÆWFöâ#°¦–×÷'B°¢6çf4VFvTÖ&¶W$FVf–æ—F–öç2À¢6çf5f—6–&ÆTVFvRÀ§Òg&öÒ$öÆ–"ö6çf2ö6çf2×f—6–&ÆRÖVFvR#°¦–×÷'B°¢6çf4æöFTg&ÖRÀ¢6öææV7F–öä†æFÆTÆ–W"À¢FW‡DÆ–væÖVçD6öçG&öÇ2À§Òg&öÒ"âö6çf2ÖæöFRÖg&ÖR#°¦–×÷'B²6çf46öÆ÷%–6¶W"Òg&öÒ"âö6çf2Ö6öÆ÷"×–6¶W"#°¦–×÷'B7G–ÆW2g&öÒ"âö–æf–æ—FRÖ6çf2ÖÆö6Â×6†VÆÂæÖöGVÆRæ772#° §G—R&W7F÷&U7FG2Ò°¢&VG3¢çVÖ&W#°¢Ö„6öæ7W'&Væ7“¢çVÖ&W#°¢Ö—76–æs¢çVÖ&W#°§Ó° ¦6öç7BTÕE•õ$U5Dõ$Uõ5DE3¢&W7F÷&U7FG2Ò°¢&VG3¢À¢Ö„6öæ7W'&Væ7“¢À¢Ö—76–æs¢À§Ó° ¦gVæ7F–öâ&VÖVÖ&W$–ÖvU'VçF–ÖU–ÆöB€¢–ÆöG3¢ÖÇ7G&–ærÂ6çf4–ÖvU'VçF–ÖU–ÆöCâÀ¢æöFS¢6çf4–ÖvTfÆ÷tæöFRÀ¢66÷S¢²v÷&·76T–C¢7G&–æs²6çf4–C¢7G&–ærÒÀ¢“¢fö–B°¢–b‚æöFRæFFæö&¦V7EW&Â’&WGW&ã°¢–ÆöG2ç6WB€¢6çf4–ÖvU&W6öÇWF–öå6÷W&6T66†T¶W’‡°¢v÷&·76T–C¢66÷Rçv÷&·76T–BÀ¢6çf4–C¢66÷Ræ6çf4–BÀ¢76WD–C¢æöFRæFFæ76WD–BÀ¢6÷W&6S ¢æöFRæFFç&W6öÇWF–öå6÷W&6Róğ¢6çf4–ÖvU&W6öÇWF–öå6÷W&6Tg&öÔÆVv7”¶–æB€¢æöFRæFFçf&–çD¶–æBóò&÷&–v–æÂ"À¢’À¢Ò’À¢°¢ö&¦V7EW&Ã¢æöFRæFFæö&¦V7EW&ÂÀ¢Ö–ÖUG—S¢æöFRæFFæÖ–ÖUG—RÀ¢–çG&–ç6–5v–GFƒ¢æöFRæFFæ–çG&–ç6–5v–GF‚À¢–çG&–ç6–4†V–v‡C¢æöFRæFFæ–çG&–ç6–4†V–v‡BÀ¢6÷W&6S¢æöFRæFFç6÷W&6RÀ¢f&–çD¶–æC¢æöFRæFFçf&–çD¶–æBÀ¢&W6öÇWF–öå6÷W&6S¢æöFRæFFç&W6öÇWF–öå6÷W&6RÀ¢ÒÀ¢“°§Ğ ¦gVæ7F–öâ&VæFW&VD–ÖvT7756—¦W2‚“¢ÖÀ¢7G&–ærÀ¢²v–GFƒ¢çVÖ&W#²†V–v‡C¢çVÖ&W"Ğ£â°¢–b‡G—VöbFö7VÖVçBÓÓÒ'VæFVf–æVB"’&WGW&âæWrÖ‚“°¢6öç7B6—¦W2ÒæWrÖÇ7G&–ærÂ²v–GFƒ¢çVÖ&W#²†V–v‡C¢çVÖ&W"Óâ‚“°¢f÷"†6öç7B–ÖvRöbFö7VÖVçBçVW'•6VÆV7F÷$ÆÃÄ…DÔÄ–ÖvTVÆVÖVçCâ€¢&–Öu¶FFÖ6çf2Ö–ÖvRÖæöFRÖ–EÒ"À¢’’°¢6öç7BæöFT–BÒ–ÖvRæFF6WBæ6çf4–ÖvTæöFT–C°¢6öç7B&V7BÒ–ÖvRævWD&÷VæF–æt6Æ–VçE&V7B‚“°¢–b‚æöFT–BÇÂ&V7Bçv–GF‚ÃÒÇÂ&V7Bæ†V–v‡BÃÒ’6öçF–çVS°¢6—¦W2ç6WB†æöFT–BÂ²v–GFƒ¢&V7Bçv–GF‚Â†V–v‡C¢&V7Bæ†V–v‡BÒ“°¢Ğ¢&WGW&â6—¦W3°§Ğ ¦gVæ7F–öâv—F„66†VD76WE–ÆöG2€¢æöFW3¢&VFöæÇ’6çf4fÆ÷tæöFUµÒÀ¢76WE–ÆöG3¢&VFöæÇ”ÖÇ7G&–ærÂ6çf4–ÖvU'VçF–ÖU–ÆöCâÀ¢66÷S¢²v÷&·76T–C¢7G&–æs²6çf4–C¢7G&–ærÒÀ¢“¢6çf4fÆ÷tæöFUµÒ°¢&WGW&âæöFW2æÖ‚†æöFR’Óâ°¢–b†æöFRçG—RÓÒ4åd5ô”ÔtUôäôDUõE•R’&WGW&âæöFS°¢6öç7B&WVW7FVE6÷W&6RĞ¢æöFRæFFç&W6öÇWF–öå6÷W&6Róğ¢6çf4–ÖvU&W6öÇWF–öå6÷W&6Tg&öÔÆVv7”¶–æB€¢æöFRæFFçf&–çD¶–æBóò&÷&–v–æÂ"À¢“°¢6öç7B66†VBÒf–æD66†VD6çf4–ÖvU–ÆöB‡°¢–ÆöG3¢76WE–ÆöG2À¢v÷&·76T–C¢66÷Rçv÷&·76T–BÀ¢6çf4–C¢66÷Ræ6çf4–BÀ¢76WD–C¢æöFRæFFæ76WD–BÀ¢&WVW7FVE6÷W&6RÀ¢Ò“°¢&WGW&â66†V@¢ò²ââææöFRÂFF¢²ââææöFRæFFÂââæ66†VBç–ÆöBÒĞ¢¢æöFS°¢Ò“°§Ğ ¦gVæ7F–öâ6çf4fÆ÷tæöFT&÷VæG2€¢æöFS¢6çf4fÆ÷tæöFRÀ¢“¢6çf4æöFT&÷VæG5&V6÷&BÂçVÆÂ°¢6öç7Bv–GF‚ÒæöFRæÖV7W&VCòçv–GF‚óòæöFRçv–GF‚óòæöFRç7G–ÆSòçv–GFƒ°¢6öç7B†V–v‡BÒæöFRæÖV7W&VCòæ†V–v‡BóòæöFRæ†V–v‡BóòæöFRç7G–ÆSòæ†V–v‡C°¢–b‡G—Vöbv–GF‚ÓÒ&çVÖ&W""ÇÂG—Vöb†V–v‡BÓÒ&çVÖ&W""’&WGW&âçVÆÃ°¢&WGW&â°¢–C¢æöFRæ–BÀ¢ƒ¢æöFRç÷6—F–öâç‚À¢“¢æöFRç÷6—F–öâç’À¢v–GF‚À¢†V–v‡BÀ¢Ó°§Ğ ¦gVæ7F–öâ6çf4–çFW&æÄæöFT&÷VæG2€¢æöFS¢–çFW&æÄæöFSÄ6çf4fÆ÷tæöFSâÂVæFVf–æVBÀ¢“¢6çf4æöFT&÷VæG2ÂçVÆÂ°¢–b‚æöFR’&WGW&âçVÆÃ°¢6öç7Bv–GF‚ÒæöFRæÖV7W&VBçv–GF‚óòæöFRçv–GF‚óòæöFRç7G–ÆSòçv–GFƒ°¢6öç7B†V–v‡BÒæöFRæÖV7W&VBæ†V–v‡BóòæöFRæ†V–v‡BóòæöFRç7G–ÆSòæ†V–v‡C°¢–b‡G—Vöbv–GF‚ÓÒ&çVÖ&W""ÇÂG—Vöb†V–v‡BÓÒ&çVÖ&W""’&WGW&âçVÆÃ°¢&WGW&â°¢ƒ¢æöFRæ–çFW&æÇ2ç÷6—F–öä'6öÇWFRç‚À¢“¢æöFRæ–çFW&æÇ2ç÷6—F–öä'6öÇWFRç’À¢v–GF‚À¢†V–v‡BÀ¢Ó°§Ğ ¦gVæ7F–öâ6çf4fÆ÷tæöFT&÷VæG5&V6÷&G2€¢æöFW3¢&VFöæÇ’6çf4fÆ÷tæöFUµÒÀ¢“¢6çf4æöFT&÷VæG5&V6÷&EµÒ°¢&WGW&âæöFW2æfÆDÖ‚†æöFR’Óâ°¢6öç7B&÷VæG2Ò6çf4fÆ÷tæöFT&÷VæG2†æöFR“°¢&WGW&â&÷VæG2ò¶&÷VæG5Ò¢µÓ°¢Ò“°§Ğ ¦gVæ7F–öâ6æ6†÷D6çf5F÷V6„vW7GW&TæöFW2€¢æöFW3¢&VFöæÇ’6çf4fÆ÷tæöFUµÒÀ¢“¢6çf4fÆ÷tæöFUµÒ°¢&WGW&âæöFW2æÖ‚†æöFR’Óâ‡°¢ââææöFRÀ¢÷6—F–öã¢²ââææöFRç÷6—F–öâÒÀ¢âââ†æöFRæÖV7W&VBò²ÖV7W&VC¢²ââææöFRæÖV7W&VBÒÒ¢·Ò’À¢âââ†æöFRç7G–ÆRò²7G–ÆS¢²ââææöFRç7G–ÆRÒÒ¢·Ò’À¢Ò’“°§Ğ ¦gVæ7F–öâWFôGF6„6çf4VFvR€¢VFvS¢6çf4VFvUc"À¢&÷VæG3¢&VFöæÇ’6çf4æöFT&÷VæG5&V6÷&EµÒÀ¢“¢6çf4VFvUc"°¢6öç7B&÷VæG4'”–BÒæWrÖ†&÷VæG2æÖ‚†æöFR’Óâ¶æöFRæ–BÂæöFUÒ’“°¢6öç7B6÷W&6T&÷VæG2Ò&÷VæG4'”–BævWB†VFvRç6÷W&6TæöFT–B“°¢6öç7BF&vWD&÷VæG2Ò&÷VæG4'”–BævWB†VFvRçF&vWDæöFT–B“°¢–b‚6÷W&6T&÷VæG2ÇÂF&vWD&÷VæG2’&WGW&âVFvS°¢6öç7B—"Òf–æE6†÷'FW7D6çf4†æFÆU—"‡6÷W&6T&÷VæG2ÂF&vWD&÷VæG2“°¢&WGW&â°¢ââæVFvRÀ¢6÷W&6T†æFÆS¢—"ç6÷W&6T†æFÆRÀ¢F&vWD†æFÆS¢—"çF&vWD†æFÆRÀ¢Ó°§Ğ ¦gVæ7F–öâG&ç6fW%–ÆöB€¢WfVçC¢6Æ—&ö&DWfVçBÂG&tWfVçBÀ¢“¢6çf4–ÖvUG&ç6fW%–ÆöB°¢6öç7BG&ç6fW"Ğ¢&6Æ—&ö&DFF"–âWfVçBòWfVçBæ6Æ—&ö&DFF¢WfVçBæFFG&ç6fW#°¢&WGW&â°¢—FV×3¢G&ç6fW"ò'&’æg&öÒ‡G&ç6fW"æ—FV×2’¢µÒÀ¢f–ÆW3¢G&ç6fW"ò'&’æg&öÒ‡G&ç6fW"æf–ÆW2’¢µÒÀ¢G—W3¢G&ç6fW"ò'&’æg&öÒ‡G&ç6fW"çG—W2’¢µÒÀ¢Ó°§Ğ ¦gVæ7F–öâFV6öFVD6çf4–ÖvR‡°¢æöFT–BÀ¢76WD–BÀ¢6÷W&6UW&ÂÀ§Ó¢°¢æöFT–C¢7G&–æs°¢76WD–C¢7G&–æs°¢6÷W&6UW&Ã¢7G&–æs°§Ò“¢&V7Bä¥5‚äVÆVÖVçB°¢6öç7B¶7F—fUW&ÂÂ6WD7F—fUW&ÅÒÒW6U7FFR‡6÷W&6UW&Â“° ¢W6TVffV7B‚‚’Óâ°¢–b‡6÷W&6UW&ÂÓÓÒ7F—fUW&Â’&WGW&ã°¢ÆWB6æ6VÆÆVBÒfÇ6S°¢6öç7B–ÖvRÒæWr–ÖvR‚“°¢6öç7B6öÖÖ—BÒ‚’Óâ°¢–b‚6æ6VÆÆVB’6WD7F—fUW&Â‡6÷W&6UW&Â“°¢Ó°¢–ÖvRæöæÆöBÒ‚’Óâ°¢–b‡G—Vöb–ÖvRæFV6öFRÓÒ&gVæ7F–öâ"’°¢6öÖÖ—B‚“°¢&WGW&ã°¢Ğ¢fö–B–ÖvRæFV6öFR‚’çF†Vâ†6öÖÖ—BÂ‚’ÓâVæFVf–æVB“°¢Ó°¢–ÖvRæöæW'&÷"Ò‚’ÓâVæFVf–æVC°¢–ÖvRç7&2Ò6÷W&6UW&Ã°¢&WGW&â‚’Óâ°¢6æ6VÆÆVBÒG'VS°¢Ó°¢ÒÂ¶7F—fUW&ÂÂ6÷W&6UW&ÅÒ“° ¢&WGW&â€¢òòW6Æ–çBÖF—6&ÆRÖæW‡BÖÆ–æRæW‡BöæW‡BöæòÖ–ÖrÖVÆVÖVç@¢Æ–Öp¢6Æ74æÖS×·7G–ÆW2æ–ÖvWĞ¢7&3×¶7F—fUW&ÇĞ¢ÇC×¶6çf276WBG¶76WD–GÖĞ¢FFÖ6çf2Ö–ÖvRÖæöFRÖ–C×¶æöFT–GĞ¢G&vv&ÆS×¶fÇ6WĞ¢óà¢“°§Ğ ¦gVæ7F–öâ–ÖvTæöFT&öG’‡°¢–BÀ¢FFÀ¢6VÆV7FVBÀ§Ó¢æöFU&÷3Ä6çf4–ÖvTfÆ÷tæöFSâ“¢&V7Bä¥5‚äVÆVÖVçB°¢&WGW&â€¢Ä6çf4æöFTg&ÖP¢6VÆV7FVC×·6VÆV7FVGĞ¢Ö–åv–GFƒ×³#Ğ¢Ö–ä†V–v‡C×³ƒĞ¢¶VW7V7E&F–ğ¢6Æ74æÖS×·7G–ÆW2æ–ÖvTæöFTg&ÖWĞ¢6öææV7F–öä†æFÆTÆ–W#×³Ä6öææV7F–öä†æFÆTÆ–W"6VÆV7FVC×·6VÆV7FVGÒóçĞ¢à¢¶FFæö&¦V7EW&Âò€¢ÄFV6öFVD6çf4–ÖvP¢æöFT–C×¶–GĞ¢76WD–C×¶FFæ76WD–GĞ¢6÷W&6UW&Ã×¶FFæö&¦V7EW&ÇĞ¢óà¢’¢€¢ÆF—b6Æ74æÖS×·7G–ÆW2æ–ÖvWÒ&–ÖÆ&VÃÒ$ÆöF–ær6çf2–ÖvR"óà¢—Ğ¢Âô6çf4æöFTg&ÖSà¢“°§Ğ ¦6öç7B4åd5õDU…EôdôåEôÄ$TÅ3¢&V6÷&CÄ6çf5FW‡DföçDfÖ–Ç’Â7G&–æsâÒ°¢7—7FVÓ¢%7—7FVÒ"À¢&–Ã¢$&–Â"À¢vV÷&v–¢$vV÷&v–"À¢'F–ÖW2ÖæWr×&öÖâ#¢%F–ÖW2æWr&öÖâ"À¢&6÷W&–W"ÖæWr#¢$6÷W&–W"æWr"À¢fW&Fæ¢%fW&Fæ"À§Ó° ¦gVæ7F–öâF—7F6„6çf5FW‡E7G–ÆUF6‚€¢–C¢7G&–ærÀ¢F6ƒ¢'F–ÃÄ6çf5FW‡E7G–ÆSâÀ¢“¢fö–B°¢v–æF÷ræF—7F6„WfVçB€¢æWr7W7FöÔWfVçB‚&Ö÷¦s¦6çf2×FW‡B×7G–ÆR"Â²FWF–Ã¢²–BÂF6‚ÒÒ’À¢“°§Ğ ¦gVæ7F–öâF—7F6„6çf57G–ÆTW–VG&÷W%7F'B†–C¢7G&–ær“¢fö–B°¢v–æF÷ræF—7F6„WfVçB€¢æWr7W7FöÔWfVçB‚&Ö÷¦s¦6çf2×7G–ÆRÖW–VG&÷W"×7F'B"Â°¢FWF–Ã¢²–BÒÀ¢Ò’À¢“°§Ğ ¦gVæ7F–öâF—7F6„6çf4'F–6ÆU7G–ÆUF6‚€¢–C¢7G&–ærÀ¢F6ƒ¢'F–ÃÄ6çf4'F–6ÆU7G–ÆSâÀ¢“¢fö–B°¢v–æF÷ræF—7F6„WfVçB€¢æWr7W7FöÔWfVçB‚&Ö÷¦s¦6çf2Ö'F–6ÆR×7G–ÆR"Â²FWF–Ã¢²–BÂF6‚ÒÒ’À¢“°§Ğ ¦gVæ7F–öâF—7F6„6çf4'F–6ÆU7G–ÆTW–VG&÷W%7F'B†–C¢7G&–ær“¢fö–B°¢v–æF÷ræF—7F6„WfVçB€¢æWr7W7FöÔWfVçB‚&Ö÷¦s¦6çf2×7G–ÆRÖW–VG&÷W"×7F'B"Â²FWF–Ã¢²–BÒÒ’À¢“°§Ğ ¦gVæ7F–öâ'F–6ÆU6VÆV7F–öåFööÆ&"‡°¢–BÀ¢7G–ÆRÀ§Ó¢°¢–C¢7G&–æs°¢7G–ÆS¢6çf4'F–6ÆU7G–ÆS°§Ò“¢&V7Bä¥5‚äVÆVÖVçBÂçVÆÂ°¢6öç7B6VÆV7FVDæöFT6÷VçBÒW6U7F÷&R‚‡7FFR’Óà¢'&’æg&öÒ‡7FFRææöFTÆöö·WçfÇVW2‚’’ç&VGV6R€¢†6÷VçBÂæöFR’Óâ6÷VçB²†æöFRç6VÆV7FVBò¢’À¢À¢’À¢“°¢–b‡6VÆV7FVDæöFT6÷VçBÓÒ’&WGW&âçVÆÃ°¢6öç7BF6…7G–ÆRÒ‡F6ƒ¢'F–ÃÄ6çf4'F–6ÆU7G–ÆSâ“¢fö–BÓà¢F—7F6„6çf4'F–6ÆU7G–ÆUF6‚†–BÂF6‚“°¢&WGW&â€¢ÆF—`¢6Æ74æÖS×¶G·7G–ÆW2çFW‡E6VÆV7F–öåFööÆ&'ÒæöG&ræ÷âæ÷v†VVÆĞ¢&–ÖÆ&VÃÒ-	ıİ]½ÂíMíÍ½]İò--Í‚ ¢öåö–çFW$F÷vã×²†WfVçB’ÓâWfVçBç7F÷&÷vF–öâ‚—Ğ¢à¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢6Æ74æÖS×·7G–ÆW2çFW‡EFööÆ&$'WGFöçĞ¢&–ÖÆ&VÃÒ-
+=Í]İÍ-Â}Í]İ}-İò--Í‚ ¢F—FÆSÒ-
+=Í]İÍ-Â}Í]İ}-İò ¢öä6Æ–6³×²‚’Óà¢F6…7G–ÆR‡°¢F—FÆTföçE6—¦S¢&Wf–÷W46çf5FW‡DföçE6—¦R‡7G–ÆRçF—FÆTföçE6—¦R’À¢Ò¢Ğ¢à¢(‰ ¢Âö'WGFöãà¢Ç7â6Æ74æÖS×·7G–ÆW2æ'F–6ÆUFööÆ&%6—¦WÒ&–ÖÆ&VÃÒ-
+}Í]İ}-İò#à¢·7G–ÆRçF—FÆTföçE6—¦WĞ¢Â÷7ãà¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢6Æ74æÖS×·7G–ÆW2çFW‡EFööÆ&$'WGFöçĞ¢&–ÖÆ&VÃÒ-
+=-]½}-Â}Í]İ}-İò--Í‚ ¢F—FÆSÒ-
+=-]½}-Â}Í]İ}-İò ¢öä6Æ–6³×²‚’Óà¢F6…7G–ÆR‡°¢F—FÆTföçE6—¦S¢æW‡D6çf5FW‡DföçE6—¦R‡7G–ÆRçF—FÆTföçE6—¦R’À¢Ò¢Ğ¢à¢°¢Âö'WGFöãà¢Ç7â6Æ74æÖS×·7G–ÆW2çFW‡EFööÆ&$F—f–FW'Ò&–Ö†–FFVãÒ'G'VR"óà¢Ä6çf46öÆ÷%–6¶W ¢Æ&VÃÒ-
+m-]"İMı‚*½
+
+-	
+-
+Í
+ü+² ¢fÇVS×·7G–ÆRæ&FvT6öÆ÷'Ğ¢öä6öÖÖ—C×²†&FvT6öÆ÷"’ÓâF6…7G–ÆR‡²&FvT6öÆ÷"Ò—Ğ¢óà¢Ä6çf46öÆ÷%–6¶W ¢Æ&VÃÒ-
+m-]"İ}-İò--Í‚ ¢fÇVS×·7G–ÆRçF—FÆT6öÆ÷'Ğ¢öä6öÖÖ—C×²‡F—FÆT6öÆ÷"’ÓâF6…7G–ÆR‡²F—FÆT6öÆ÷"Ò—Ğ¢óà¢Ä6çf46öÆ÷%–6¶W ¢Æ&VÃÒ-
+m-]"}½-­‚--Í‚ ¢fÇVS×·7G–ÆRæ&6¶w&÷VæD6öÆ÷'Ğ¢öä6öÖÖ—C×²†&6¶w&÷VæD6öÆ÷"’ÓâF6…7G–ÆR‡²&6¶w&÷VæD6öÆ÷"Ò—Ğ¢óà¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢6Æ74æÖS×¶G·7G–ÆW2çFW‡EFööÆ&$'WGFöçÒG·7G–ÆW2ç7G–ÆTW–VG&÷W$'WGFöçÖĞ¢&–ÖÆ&VÃÒ-	ıı]-­--Í‚ ¢F—FÆSÒ-
+­íıí--ÂíMíÍ½]İRM==í’--Í‚ ¢öä6Æ–6³×²‚’ÓâF—7F6„6çf4'F–6ÆU7G–ÆTW–VG&÷W%7F'B†–B—Ğ¢à¢Ç7fp¢6Æ74æÖS×·7G–ÆW2ç7G–ÆTW–VG&÷W$–6öçĞ¢&–Ö†–FFVãÒ'G'VR ¢f–Wt&÷ƒÒ##B#B ¢f–ÆÃÒ&æöæR ¢à¢ÇF€¢CÒ&ÓBãRRãRBÓF"ã""ã"26ÂÓBFÒÓ2Ó2BFÒÓBÓBÓ’ã‚’ã†""ÒãRã„Ã2#ÃBã’Óã&""ã‚ÒãVÃ’ã‚Ó’ã‚ ¢7G&ö¶SÒ&7W'&VçD6öÆ÷" ¢7G&ö¶Uv–GFƒÒ#ãr ¢7G&ö¶TÆ–æV6Ò'&÷VæB ¢7G&ö¶TÆ–æV¦ö–ãÒ'&÷VæB ¢óà¢Â÷7fsà¢Âö'WGFöãà¢ÂöF—cà¢“°§Ğ ¦gVæ7F–öâFW‡E6VÆV7F–öåFööÆ&"‡°¢–BÀ¢7G–ÆRÀ¢öåF6…7G–ÆRÀ¢FööÆ&$Æ&VÂÒ-	ıİ]½ÂMíÍ-í-İò-]­-"À¢G—TÆ&VÂÒ-
+-]­""À¢G—TvÇ—‚Ò%B"À¢f–ÆÄÆ&VÂÒ-
+m-]"Míİ"À¢W–VG&÷W%F—FÆRÒ-
+­íıí--Âm-]"-]­-‚Míİ"À¢&W6WDÆ&VÂÒ-
+=-Âm-]"Míİ"À¢&W6WEF—FÆRÒ-
+=-ÂMíÒ"À§Ó¢°¢–C¢7G&–æs°¢7G–ÆS¢6çf5FW‡E7G–ÆS°¢öåF6…7G–ÆSó¢‡F6ƒ¢'F–ÃÄ6çf5FW‡E7G–ÆSâ’Óâfö–C°¢FööÆ&$Æ&VÃó¢7G&–æs°¢G—TÆ&VÃó¢7G&–æs°¢G—TvÇ—ƒó¢7G&–æs°¢f–ÆÄÆ&VÃó¢7G&–æs°¢W–VG&÷W%F—FÆSó¢7G&–æs°¢&W6WDÆ&VÃó¢7G&–æs°¢&W6WEF—FÆSó¢7G&–æs°§Ò“¢&V7Bä¥5‚äVÆVÖVçB°¢6öç7BF6…7G–ÆRĞ¢öåF6…7G–ÆRóğ¢‚‡F6ƒ¢'F–ÃÄ6çf5FW‡E7G–ÆSâ’Óà¢F—7F6„6çf5FW‡E7G–ÆUF6‚†–BÂF6‚’“°¢&WGW&â€¢ÆF—`¢6Æ74æÖS×¶G·7G–ÆW2çFW‡E6VÆV7F–öåFööÆ&'ÒæöG&ræ÷âæ÷v†VVÆĞ¢&–ÖÆ&VÃ×·FööÆ&$Æ&VÇĞ¢öåö–çFW$F÷vã×²†WfVçB’ÓâWfVçBç7F÷&÷vF–öâ‚—Ğ¢à¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢6Æ74æÖS×·7G–ÆW2çFW‡EFööÆ&$'WGFöçĞ¢&–ÖÆ&VÃ×·G—TÆ&VÇĞ¢F—FÆS×·G—TÆ&VÇĞ¢F—6&ÆV@¢à¢·G—TvÇ—‡Ğ¢Âö'WGFöãà¢Ç7â6Æ74æÖS×·7G–ÆW2çFW‡EFööÆ&$F—f–FW'Ò&–Ö†–FFVãÒ'G'VR"óà¢Ç6VÆV7@¢6Æ74æÖS×¶G·7G–ÆW2çFW‡EFööÆ&%6VÆV7GÒG·7G–ÆW2çFW‡EFööÆ&$föçE6VÆV7GÖĞ¢&–ÖÆ&VÃÒ-
+M" ¢fÇVS×·7G–ÆRæföçDfÖ–Ç—Ğ¢öä6†ævS×²†WfVçB’Óà¢F6…7G–ÆR‡²föçDfÖ–Ç“¢WfVçBçF&vWBçfÇVR26çf5FW‡DföçDfÖ–Ç’Ò¢Ğ¢à¢´4åd5õDU…EôdôåEôdÔ”Ä”U2æÖ‚†föçDfÖ–Ç’’Óâ€¢Æ÷F–öâ¶W“×¶föçDfÖ–Ç—ÒfÇVS×¶föçDfÖ–Ç—Óà¢´4åd5õDU…EôdôåEôÄ$TÅ5¶föçDfÖ–Ç•×Ğ¢Âö÷F–öãà¢’—Ğ¢Â÷6VÆV7Cà¢Ç7â6Æ74æÖS×·7G–ÆW2çFW‡EFööÆ&$F—f–FW'Ò&–Ö†–FFVãÒ'G'VR"óà¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢6Æ74æÖS×·7G–ÆW2çFW‡EFööÆ&$'WGFöçĞ¢&–ÖÆ&VÃÒ-
+=Í]İÍ-Â}Í]M- ¢F—FÆSÒ-
+=Í]İÍ-Â}Í] ¢öä6Æ–6³×²‚’Óà¢F6…7G–ÆR‡²föçE6—¦S¢&Wf–÷W46çf5FW‡DföçE6—¦R‡7G–ÆRæföçE6—¦R’Ò¢Ğ¢à¢(‰ ¢Âö'WGFöãà¢Ç6VÆV7@¢6Æ74æÖS×¶G·7G–ÆW2çFW‡EFööÆ&%6VÆV7GÒG·7G–ÆW2çFW‡EFööÆ&%6—¦U6VÆV7GÖĞ¢&–ÖÆ&VÃÒ-
+}Í]M- ¢fÇVS×·7G–ÆRæföçE6—¦WĞ¢öä6†ævS×²†WfVçB’Óà¢F6…7G–ÆR‡°¢föçE6—¦S¢çVÖ&W"†WfVçBçF&vWBçfÇVR’26çf5FW‡DföçE6—¦RÀ¢Ò¢Ğ¢à¢´4åd5õDU…EôdôåEõ4•¤U2æÖ‚†föçE6—¦R’Óâ€¢Æ÷F–öâ¶W“×¶föçE6—¦WÒfÇVS×¶föçE6—¦WÓà¢¶föçE6—¦WĞ¢Âö÷F–öãà¢’—Ğ¢Â÷6VÆV7Cà¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢6Æ74æÖS×·7G–ÆW2çFW‡EFööÆ&$'WGFöçĞ¢&–ÖÆ&VÃÒ-
+=-]½}-Â}Í]M- ¢F—FÆSÒ-
+=-]½}-Â}Í] ¢öä6Æ–6³×²‚’Óà¢F6…7G–ÆR‡²föçE6—¦S¢æW‡D6çf5FW‡DföçE6—¦R‡7G–ÆRæföçE6—¦R’Ò¢Ğ¢à¢°¢Âö'WGFöãà¢Ç7â6Æ74æÖS×·7G–ÆW2çFW‡EFööÆ&$F—f–FW'Ò&–Ö†–FFVãÒ'G'VR"óà¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢6Æ74æÖS×·7G–ÆW2çFW‡EFööÆ&$'WGFöçĞ¢&–ÖÆ&VÃÒ-	ıí½=mİ½’ ¢&–×&W76VC×·7G–ÆRæ&öÆGĞ¢F—FÆSÒ-	ıí½=mİ½’ ¢öä6Æ–6³×²‚’ÓâF6…7G–ÆR‡²&öÆC¢7G–ÆRæ&öÆBÒ—Ğ¢à¢Ç7G&öæsä#Â÷7G&öæsà¢Âö'WGFöãà¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢6Æ74æÖS×·7G–ÆW2çFW‡EFööÆ&$'WGFöçĞ¢&–ÖÆ&VÃÒ-	­=" ¢&–×&W76VC×·7G–ÆRæ—FÆ–7Ğ¢F—FÆSÒ-	­=" ¢öä6Æ–6³×²‚’ÓâF6…7G–ÆR‡²—FÆ–3¢7G–ÆRæ—FÆ–2Ò—Ğ¢à¢ÆVÓä“ÂöVÓà¢Âö'WGFöãà¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢6Æ74æÖS×·7G–ÆW2çFW‡EFööÆ&$'WGFöçĞ¢&–ÖÆ&VÃÒ-	ıíM}]­İ=-½’ ¢&–×&W76VC×·7G–ÆRçVæFW&Æ–æWĞ¢F—FÆSÒ-	ıíM}]­İ=-½’ ¢öä6Æ–6³×²‚’ÓâF6…7G–ÆR‡²VæFW&Æ–æS¢7G–ÆRçVæFW&Æ–æRÒ—Ğ¢à¢ÇSåSÂ÷Sà¢Âö'WGFöãà¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢6Æ74æÖS×·7G–ÆW2çFW‡EFööÆ&$'WGFöçĞ¢&–ÖÆ&VÃÒ-	ı]]}]­İ=-½’ ¢&–×&W76VC×·7G–ÆRç7G&–¶WF‡&÷Vv‡Ğ¢F—FÆSÒ-	ı]]}]­İ=-½’ ¢öä6Æ–6³×²‚’ÓâF6…7G–ÆR‡²7G&–¶WF‡&÷Vvƒ¢7G–ÆRç7G&–¶WF‡&÷Vv‚Ò—Ğ¢à¢Ç3å3Â÷3à¢Âö'WGFöãà¢Ç7â6Æ74æÖS×·7G–ÆW2çFW‡EFööÆ&$F—f–FW'Ò&–Ö†–FFVãÒ'G'VR"óà¢Ä6çf46öÆ÷%–6¶W ¢Æ&VÃÒ-
+m-]"-]­- ¢fÇVS×·7G–ÆRæ6öÆ÷'Ğ¢öä6öÖÖ—C×²†6öÆ÷"’ÓâF6…7G–ÆR‡²6öÆ÷"Ò—Ğ¢óà¢Ä6çf46öÆ÷%–6¶W ¢Æ&VÃ×¶f–ÆÄÆ&VÇĞ¢fÇVS×°¢7G–ÆRæ&6¶w&÷VæD6öÆ÷"ÓÓÒ'G&ç7&VçB ¢ò"6fffffb ¢¢7G–ÆRæ&6¶w&÷VæD6öÆ÷ ¢Ğ¢öä6öÖÖ—C×²†&6¶w&÷VæD6öÆ÷"’ÓâF6…7G–ÆR‡²&6¶w&÷VæD6öÆ÷"Ò—Ğ¢óà¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢6Æ74æÖS×¶G·7G–ÆW2çFW‡EFööÆ&$'WGFöçÒG·7G–ÆW2ç7G–ÆTW–VG&÷W$'WGFöçÖĞ¢&–ÖÆ&VÃÒ-	ıı]-­ ¢F—FÆS×¶W–VG&÷W%F—FÆWĞ¢öä6Æ–6³×²‚’ÓâF—7F6„6çf57G–ÆTW–VG&÷W%7F'B†–B—Ğ¢à¢Ç7fp¢6Æ74æÖS×·7G–ÆW2ç7G–ÆTW–VG&÷W$–6öçĞ¢&–Ö†–FFVãÒ'G'VR ¢f–Wt&÷ƒÒ##B#B ¢f–ÆÃÒ&æöæR ¢à¢ÇF€¢CÒ&ÓBãRRãRBÓF"ã""ã"26ÂÓBFÒÓ2Ó2BFÒÓBÓBÓ’ã‚’ã†""ÒãRã„Ã2#ÃBã’Óã&""ã‚ÒãVÃ’ã‚Ó’ã‚ ¢7G&ö¶SÒ&7W'&VçD6öÆ÷" ¢7G&ö¶Uv–GFƒÒ#ãr ¢7G&ö¶TÆ–æV6Ò'&÷VæB ¢7G&ö¶TÆ–æV¦ö–ãÒ'&÷VæB ¢óà¢Â÷7fsà¢Âö'WGFöãà¢Ç7â6Æ74æÖS×·7G–ÆW2çFW‡EFööÆ&$F—f–FW'Ò&–Ö†–FFVãÒ'G'VR"óà¢ÅFW‡DÆ–væÖVçD6öçG&öÇ0¢–C×¶–GĞ¢fÇVS×·7G–ÆRçFW‡DÆ–vçĞ¢öä6†ævS×²‡FW‡DÆ–vâ’ÓâF6…7G–ÆR‡²FW‡DÆ–vâÒ—Ğ¢óà¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢6Æ74æÖS×·7G–ÆW2çFW‡EFööÆ&$'WGFöçĞ¢&–ÖÆ&VÃ×·&W6WDÆ&VÇĞ¢F—FÆS×·&W6WEF—FÆWĞ¢F—6&ÆVC×·7G–ÆRæ&6¶w&÷VæD6öÆ÷"ÓÓÒ'G&ç7&VçB'Ğ¢öä6Æ–6³×²‚’ÓâF6…7G–ÆR‡²&6¶w&÷VæD6öÆ÷#¢'G&ç7&VçB"Ò—Ğ¢à¢9p¢Âö'WGFöãà¢ÂöF—cà¢“°§Ğ ¦gVæ7F–öâF—7F6„6çf56†U7G–ÆUF6‚€¢–C¢7G&–ærÀ¢F6ƒ¢'F–ÃÄ6çf56†U7G–ÆSâÀ¢“¢fö–B°¢v–æF÷ræF—7F6„WfVçB€¢æWr7W7FöÔWfVçB‚&Ö÷¦s¦6çf2×6†R×7G–ÆR"Â²FWF–Ã¢²–BÂF6‚ÒÒ’À¢“°§Ğ ¦gVæ7F–öâ6†U6VÆV7F–öåFööÆ&"‡°¢–BÀ¢7G–ÆRÀ§Ó¢°¢–C¢7G&–æs°¢7G–ÆS¢6çf56†U7G–ÆS°§Ò“¢&V7Bä¥5‚äVÆVÖVçB°¢&WGW&â€¢ÅFW‡E6VÆV7F–öåFööÆ& ¢–C×¶–GĞ¢7G–ÆS×¶6çf56†U7G–ÆT5FW‡E7G–ÆR‡7G–ÆR—Ğ¢öåF6…7G–ÆS×²‡F6‚’Óà¢F—7F6„6çf56†U7G–ÆUF6‚€¢–BÀ¢6çf5FW‡E7G–ÆUF6…Fõ6†U7G–ÆR‡F6‚’À¢¢Ğ¢FööÆ&$Æ&VÃÒ-	ıİ]½ÂMíÍ-í-İòM==² ¢G—TÆ&VÃÒ-
+M== ¢G—TvÇ—ƒÒ.)xr ¢f–ÆÄÆ&VÃÒ-
+m-]"}½-­‚ ¢W–VG&÷W%F—FÆSÒ-
+­íıí--Âm-]"-]­-‚}½-­‚ ¢&W6WDÆ&VÃÒ-
+=-Â}½-­2 ¢&W6WEF—FÆSÒ-
+=-Â}½-­2 ¢óà¢“°§Ğ ¦gVæ7F–öâ6çf5FW‡D772‡7G–ÆS¢6çf5FW‡E7G–ÆR“¢555&÷W'F–W2°¢6öç7BFV6÷&F–öç2Ò°¢7G–ÆRçVæFW&Æ–æRò'VæFW&Æ–æR"¢""À¢7G–ÆRç7G&–¶WF‡&÷Vv‚ò&Æ–æR×F‡&÷Vv‚"¢""À¢Òæf–ÇFW"„&ööÆVâ“°¢&WGW&â°¢föçDfÖ–Ç“¢6çf5FW‡DföçDfÖ–Ç”772‡7G–ÆRæföçDfÖ–Ç’’À¢föçE6—¦S¢G·7G–ÆRæföçE6—¦W×†À¢föçEvV–v‡C¢7G–ÆRæ&öÆBòs¢CÀ¢föçE7G–ÆS¢7G–ÆRæ—FÆ–2ò&—FÆ–2"¢&æ÷&ÖÂ"À¢FW‡DFV6÷&F–öã¢FV6÷&F–öç2æÆVæwF‚âòFV6÷&F–öç2æ¦ö–â‚""’¢&æöæR"À¢6öÆ÷#¢7G–ÆRæ6öÆ÷"À¢&6¶w&÷VæD6öÆ÷#¢7G–ÆRæ&6¶w&÷VæD6öÆ÷"À¢FW‡DÆ–vã¢7G–ÆRçFW‡DÆ–vâÀ¢Ó°§Ğ ¦gVæ7F–öâ6çf5FW‡DVF—F÷"‡°¢–BÀ¢Ö&¶F÷vâÀ¢WfVçD¶–æBÒ'FW‡B"À§Ó¢°¢–C¢7G&–æs°¢Ö&¶F÷vã¢7G&–æs°¢WfVçD¶–æCó¢'FW‡B"Â'6†R#°§Ò“¢&V7Bä¥5‚äVÆVÖVçB°¢6öç7B¶G&gBÂ6WDG&gEÒÒW6U7FFR†Ö&¶F÷vâ“°¢6öç7B6¶—æW‡D&ÇW$6öÖÖ—E&VbÒW6U&Vb†fÇ6R“°¢6öç7BWFFRÒ‡fÇVS¢7G&–ær’Óâ°¢6WDG&gB‡fÇVR“°¢v–æF÷ræF—7F6„WfVçB€¢æWr7W7FöÔWfVçB†Ö÷¦s¦6çf2ÒG¶WfVçD¶–æGÒÖG&gFÂ°¢FWF–Ã¢²–BÂÖ&¶F÷vã¢fÇVRÒÀ¢Ò’À¢“°¢Ó°¢6öç7B6öÖÖ—BÒ‚’Óâ°¢v–æF÷ræF—7F6„WfVçB€¢æWr7W7FöÔWfVçB†Ö÷¦s¦6çf2ÒG¶WfVçD¶–æGÒÖ6öÖÖ—FÂ°¢FWF–Ã¢²–BÂÖ&¶F÷vã¢6öÖÖ—EFW‡DÖ&¶F÷vâ†G&gB’ÒÀ¢Ò’À¢“°¢Ó°¢6öç7B6æ6VÂÒ‚’Óâ°¢6¶—æW‡D&ÇW$6öÖÖ—E&Vbæ7W'&VçBÒG'VS°¢v–æF÷ræF—7F6„WfVçB€¢æWr7W7FöÔWfVçB†Ö÷¦s¦6çf2ÒG¶WfVçD¶–æGÒÖ6æ6VÆÂ²FWF–Ã¢²–BÒÒ’À¢“°¢Ó°¢&WGW&â€¢ÇFW‡F&V¢WFôfö7W0¢fÇVS×¶G&gGĞ¢Æ6V†öÆFW#Ò%G—R6öÖWF†–ær ¢&–ÖÆ&VÃÒ$6çf2FW‡B ¢6Æ74æÖS×¶G·7G–ÆW2çFW‡DVF—F÷$–çWGÒæöG&ræ÷âæ÷v†VVÆĞ¢öä&ÇW#×²‚’Óâ°¢–b‡6¶—æW‡D&ÇW$6öÖÖ—E&Vbæ7W'&VçB’°¢6¶—æW‡D&ÇW$6öÖÖ—E&Vbæ7W'&VçBÒfÇ6S°¢&WGW&ã°¢Ğ¢6öÖÖ—B‚“°¢×Ğ¢öä6†ævS×²†WfVçB’ÓâWFFR†WfVçBçF&vWBçfÇVR—Ğ¢öä¶W”F÷vã×²†WfVçB’Óâ°¢WfVçBç7F÷&÷vF–öâ‚“°¢–b†WfVçBæ¶W’ÓÓÒ$W66R"’°¢WfVçBç&WfVçDFVfVÇB‚“°¢6æ6VÂ‚“°¢ÒVÇ6R–b†WfVçBæ¶W’ÓÓÒ$VçFW""bb†WfVçBæ7G&Ä¶W’ÇÂWfVçBæÖWF¶W’’’°¢WfVçBç&WfVçDFVfVÇB‚“°¢WfVçBæ7W'&VçEF&vWBæ&ÇW"‚“°¢Ğ¢×Ğ¢öå7FS×²†WfVçB’ÓâWfVçBç7F÷&÷vF–öâ‚—Ğ¢óà¢“°§Ğ ¦gVæ7F–öâFdæöFT&öG’‡°¢FFÀ¢6VÆV7FVBÀ§Ó¢æöFU&÷3Ä6çf5FdfÆ÷tæöFSâ“¢&V7Bä¥5‚äVÆVÖVçB°¢&WGW&â€¢Ä6çf4æöFTg&ÖP¢6VÆV7FVC×·6VÆV7FVGĞ¢Ö–åv–GFƒ×³cĞ¢Ö–ä†V–v‡C×³Ğ¢6Æ74æÖS×¶G·7G–ÆW2çFdæöFTg&ÖWÒG°¢FFç&VFW$÷Vâò7G–ÆW2çFdæöFTg&ÖU&VFW$÷Vâ¢" ¢ÖçG&–Ò‚—Ğ¢6öææV7F–öä†æFÆTÆ–W#×³Ä6öææV7F–öä†æFÆTÆ–W"6VÆV7FVC×·6VÆV7FVGÒóçĞ¢à¢ÆF—b6Æ74æÖS×·7G–ÆW2çFdæöFT6öçFVçGÓà¢Ç7â6Æ74æÖS×·7G–ÆW2çFdæöFT&FvWÓåDcÂ÷7ãà¢Ç7à¢6Æ74æÖS×·7G–ÆW2çFdæöFTæÖWĞ¢F—FÆS×¶FFæÆ7D¶æ÷väæÖRóò%Db'Ğ¢à¢¶FFæÆ7D¶æ÷väæÖRóò%Db'Ğ¢Â÷7ãà¢ÂöF—cà¢Âô6çf4æöFTg&ÖSà¢“°§Ğ ¦gVæ7F–öâ'F–6ÆTæöFT&öG’‡°¢–BÀ¢FFÀ¢6VÆV7FVBÀ§Ó¢æöFU&÷3Ä6çf4'F–6ÆTfÆ÷tæöFSâ“¢&V7Bä¥5‚äVÆVÖVçB°¢&WGW&â€¢Ä6çf4æöFTg&ÖP¢6VÆV7FVC×·6VÆV7FVGĞ¢Ö–åv–GFƒ×³ƒĞ¢Ö–ä†V–v‡C×³ƒ‡Ğ¢6Æ74æÖS×¶G·7G–ÆW2æ'F–6ÆTæöFTg&ÖWÒG°¢FFç&VFW$÷Vâò7G–ÆW2æ'F–6ÆTæöFTg&ÖU&VFW$÷Vâ¢" ¢ÖçG&–Ò‚—Ğ¢FööÆ&#×³Ä'F–6ÆU6VÆV7F–öåFööÆ&"–C×¶–GÒ7G–ÆS×¶FFç7G–ÆWÒóçĞ¢FööÆ&%v†Vå&VFW$÷Và¢6öææV7F–öä†æFÆTÆ–W#×³Ä6öææV7F–öä†æFÆTÆ–W"6VÆV7FVC×·6VÆV7FVGÒóçĞ¢à¢ÆF—`¢6Æ74æÖS×·7G–ÆW2æ'F–6ÆTæöFT6öçFVçGĞ¢7G–ÆS×·²&6¶w&÷VæD6öÆ÷#¢FFç7G–ÆRæ&6¶w&÷VæD6öÆ÷"×Ğ¢à¢Ç7à¢6Æ74æÖS×·7G–ÆW2æ'F–6ÆTæöFT&FvWĞ¢7G–ÆS×·²6öÆ÷#¢FFç7G–ÆRæ&FvT6öÆ÷"×Ğ¢à¢
+
+-	
+-
+Í
+ğ¢Â÷7ãà¢Ç7à¢6Æ74æÖS×·7G–ÆW2æ'F–6ÆTæöFTæÖWĞ¢F—FÆS×¶FFæÆ7D¶æ÷våF—FÆRóò-
+--Íò'Ğ¢7G–ÆS×·°¢6öÆ÷#¢FFç7G–ÆRçF—FÆT6öÆ÷"À¢föçE6—¦S¢FFç7G–ÆRçF—FÆTföçE6—¦RÀ¢×Ğ¢à¢¶FFæÆ7D¶æ÷våF—FÆRóò-
+--Íò'Ğ¢Â÷7ãà¢ÂöF—cà¢Âô6çf4æöFTg&ÖSà¢“°§Ğ ¦gVæ7F–öâ7VÖÖ'”æöFT&öG’‡°¢FFÀ¢6VÆV7FVBÀ§Ó¢æöFU&÷3Ä6çf57VÖÖ'”fÆ÷tæöFSâ“¢&V7Bä¥5‚äVÆVÖVçB°¢&WGW&â€¢Ä6çf4æöFTg&ÖP¢6VÆV7FVC×·6VÆV7FVGĞ¢Ö–åv–GFƒ×³3'Ğ¢Ö–ä†V–v‡C×³ƒĞ¢6Æ74æÖS×¶G·7G–ÆW2ç7VÖÖ'”æöFTg&ÖWÒG°¢FFç&VFW$÷Vâò7G–ÆW2ç7VÖÖ'”æöFTg&ÖU&VFW$÷Vâ¢" ¢ÖçG&–Ò‚—Ğ¢6öææV7F–öä†æFÆTÆ–W#×³Ä6öææV7F–öä†æFÆTÆ–W"6VÆV7FVC×·6VÆV7FVGÒóçĞ¢à¢ÆF—b6Æ74æÖS×·7G–ÆW2ç7VÖÖ'”æöFT6öçFVçGÓà¢Ç7â&–Ö†–FFVãÒ'G'VR"6Æ74æÖS×·7G–ÆW2ç7VÖÖ'”æöFU7–Ö&öÇÓà¢ê0¢Â÷7ãà¢Ç7â6Æ74æÖS×·7G–ÆW2ç7VÖÖ'”æöFUF—FÆWÒF—FÆS×¶FFçF—FÆWÓà¢¶FFçF—FÆWĞ¢Â÷7ãà¢ÂöF—cà¢Âô6çf4æöFTg&ÖSà¢“°§Ğ ¦gVæ7F–öâFW‡DæöFT&öG’‡°¢FFÀ¢6VÆV7FVBÀ¢–BÀ§Ó¢æöFU&÷3Ä6çf5FW‡DfÆ÷tæöFSâ“¢&V7Bä¥5‚äVÆVÖVçB°¢6öç7BFW‡E7G–ÆRÒ6çf5FW‡D772†FFç7G–ÆR“°¢&WGW&â€¢Ä6çf4æöFTg&ÖP¢6VÆV7FVC×·6VÆV7FVGĞ¢Ö–åv–GFƒ×³#Ğ¢Ö–ä†V–v‡C×³3'Ğ¢6Æ74æÖS×·7G–ÆW2çFW‡DæöFTg&ÖWĞ¢FööÆ&#×³ÅFW‡E6VÆV7F–öåFööÆ&"–C×¶–GÒ7G–ÆS×¶FFç7G–ÆWÒóçĞ¢6öææV7F–öä†æFÆTÆ–W#×³Ä6öææV7F–öä†æFÆTÆ–W"6VÆV7FVC×·6VÆV7FVGÒóçĞ¢à¢ÆF—`¢6Æ74æÖS×·7G–ÆW2çFW‡DæöFT6öçFVçGĞ¢7G–ÆS×·FW‡E7G–ÆWĞ¢öäF÷V&ÆT6Æ–6³×²†WfVçB’Óâ°¢WfVçBç7F÷&÷vF–öâ‚“°¢v–æF÷ræF—7F6„WfVçB€¢æWr7W7FöÔWfVçB‚&Ö÷¦s¦6çf2×FW‡BÖVF—B"Â²FWF–Ã¢²–BÒÒ’À¢“°¢×Ğ¢à¢¶FFæ—4VF—F–ærò€¢Ä6çf5FW‡DVF—F÷"–C×¶–GÒÖ&¶F÷vã×¶FFæÖ&¶F÷vçÒóà¢’¢FFæÖ&¶F÷vâçG&–Ò‚’ò€¢ÆF—b6Æ74æÖS×·7G–ÆW2çFW‡E&Wf–WwÓà¢ÄÖ&¶F÷vå7G&–æu&Wf–Wr6öçFVçD–C×¶–GÒÖ&¶F÷vã×¶FFæÖ&¶F÷vçÒóà¢ÂöF—cà¢’¢€¢Ç7â6Æ74æÖS×·7G–ÆW2çFW‡EÆ6V†öÆFW'ÓåG—R6öÖWF†–æsÂ÷7ãà¢—Ğ¢ÂöF—cà¢Âô6çf4æöFTg&ÖSà¢“°§Ğ ¦gVæ7F–öâ6†TæöFT&öG’‡°¢FFÀ¢6VÆV7FVBÀ¢–BÀ§Ó¢æöFU&÷3Ä6çf56†TfÆ÷tæöFSâ“¢&V7Bä¥5‚äVÆVÖVçB°¢6öç7Bf—7VÅ7G–ÆRÒ6çf5FW‡D772†6çf56†U7G–ÆT5FW‡E7G–ÆR†FFç7G–ÆR’“°¢&WGW&â€¢Ä6çf4æöFTg&ÖP¢6VÆV7FVC×·6VÆV7FVGĞ¢Ö–åv–GFƒ×¶FFç6†RÓÓÒ&6—&6ÆR"òƒ¢Ğ¢Ö–ä†V–v‡C×¶FFç6†RÓÓÒ&6—&6ÆR"òƒ¢cĞ¢¶VW7V7E&F–ó×¶FFç6†RÓÓÒ&6—&6ÆR'Ğ¢6VçFW%FW‡D6öçFVç@¢6Æ74æÖS×·7G–ÆW2ç6†TæöFTg&ÖWĞ¢FööÆ&#×³Å6†U6VÆV7F–öåFööÆ&"–C×¶–GÒ7G–ÆS×¶FFç7G–ÆWÒóçĞ¢6öææV7F–öä†æFÆTÆ–W#×³Ä6öææV7F–öä†æFÆTÆ–W"6VÆV7FVC×·6VÆV7FVGÒóçĞ¢à¢ÆF—`¢6Æ74æÖS×¶G·7G–ÆW2ç6†TæöFT6öçFVçGÒG°¢FFç6†RÓÓÒ&6—&6ÆR ¢ò7G–ÆW2ç6†TæöFT6—&6ÆP¢¢7G–ÆW2ç6†TæöFU&V7FævÆP¢ÖĞ¢7G–ÆS×·f—7VÅ7G–ÆWĞ¢FFÖ6çf2×6†S×¶FFç6†WĞ¢öäF÷V&ÆT6Æ–6³×²†WfVçB’Óâ°¢WfVçBç7F÷&÷vF–öâ‚“°¢v–æF÷ræF—7F6„WfVçB€¢æWr7W7FöÔWfVçB‚&Ö÷¦s¦6çf2×6†RÖVF—B"Â²FWF–Ã¢²–BÒÒ’À¢“°¢×Ğ¢à¢¶FFæ—4VF—F–ærò€¢Ä6çf5FW‡DVF—F÷ ¢–C×¶–GĞ¢Ö&¶F÷vã×¶FFæÖ&¶F÷vçĞ¢WfVçD¶–æCÒ'6†R ¢óà¢’¢FFæÖ&¶F÷vâçG&–Ò‚’ò€¢ÆF—b6Æ74æÖS×·7G–ÆW2çFW‡E&Wf–WwÓà¢ÄÖ&¶F÷vå7G&–æu&Wf–Wr6öçFVçD–C×¶–GÒÖ&¶F÷vã×¶FFæÖ&¶F÷vçÒóà¢ÂöF—cà¢’¢€¢Ç7â6Æ74æÖS×·7G–ÆW2çFW‡EÆ6V†öÆFW'Óí	--]M-R-]­#Â÷7ãà¢—Ğ¢ÂöF—cà¢Âô6çf4æöFTg&ÖSà¢“°§Ğ ¦gVæ7F–öâF6´æöFT&öG’‡°¢FFÀ¢–BÀ¢6VÆV7FVBÀ§Ó¢æöFU&÷3Ä6çf5F6´fÆ÷tæöFSâ“¢&V7Bä¥5‚äVÆVÖVçB°¢6öç7B'VçF–ÖT¶W’ÒG¶FFçF6µv÷&·76T–Bóò&æöæR'Ó¢G¶FFçF6´–GÓ¢G¶FFçF6´'&–FvRò'&VG’"¢'v—F–ær'Ö°¢6öç7B·&ö¦V7F–öå7FFRÂ6WE&ö¦V7F–öå7FFUÒÒW6U7FFSÇ°¢¶W“¢7G&–æs°¢&ö¦V7F–öã¢6çf5F6µ&ö¦V7F–öâÂçVÆÃ°¢Óâ‡²¶W“¢""Â&ö¦V7F–öã¢çVÆÂÒ“°¢6öç7B¶×WFF–öå7FFRÂ6WD×WFF–öå7FFUÒÒW6U7FFR‡°¢¶W“¢""À¢†4W'&÷#¢fÇ6RÀ¢Ò“°¢6öç7B¶6öçFVçDÖ–ä†V–v‡BÂ6WD6öçFVçDÖ–ä†V–v‡EÒÒW6U7FFRƒ#“°¢6öç7BF6´6öçFVçE&VbÒW6U&VcÄ…DÔÄF—dVÆVÖVçBÂçVÆÃâ†çVÆÂ“°¢6öç7B&V7DfÆ÷rÒW6U&V7DfÆ÷sÄ6çf4fÆ÷tæöFSâ‚“°¢6öç7B&ö¦V7F–öâĞ¢&ö¦V7F–öå7FFRæ¶W’ÓÓÒ'VçF–ÖT¶W’ò&ö¦V7F–öå7FFRç&ö¦V7F–öâ¢VæFVf–æVC°¢6öç7B×WFF–öäW'&÷"Ğ¢×WFF–öå7FFRæ¶W’ÓÓÒ'VçF–ÖT¶W’bb×WFF–öå7FFRæ†4W'&÷#° ¢W6TVffV7B‚‚’Óâ°¢–b‚FFçF6´'&–FvRÇÂFFçF6µv÷&·76T–B’°¢&WGW&ã°¢Ğ¢ÆWB7F—fRÒG'VS°¢6öç7BVç7V'67&–&RÒFFçF6´'&–FvRç7V'67&–&UFõF6²€¢FFçF6µv÷&·76T–BÀ¢FFçF6´–BÀ¢†æW‡E&ö¦V7F–öâ’Óâ°¢–b†7F—fR¢6WE&ö¦V7F–öå7FFR‡²¶W“¢'VçF–ÖT¶W’Â&ö¦V7F–öã¢æW‡E&ö¦V7F–öâÒ“°¢ÒÀ¢“°¢&WGW&â‚’Óâ°¢7F—fRÒfÇ6S°¢Vç7V'67&–&R‚“°¢Ó°¢ÒÂ¶FFçF6´'&–FvRÂFFçF6´–BÂFFçF6µv÷&·76T–BÂ'VçF–ÖT¶W•Ò“° ¢6öç7B&W6öÇfVBÒ&ö¦V7F–öâÓÒVæFVf–æVBbb&ö¦V7F–öâÓÒçVÆÃ°¢6öç7BF—FÆRÒ&ö¦V7F–öãòçF—FÆRóòFFæÆ7D¶æ÷våF—FÆRóò-	}M}#°¢6öç7BÖ—76–ætÆ&VÂÒFFçF6´'&–FvP¢ò-	}M}İ]Mí-=ıİ ¢¢-	ıíM­½í}]İR}M~(
+b#° ¢6öç7BFövvÆT6ö×ÆWFVBÒ‚“¢fö–BÓâ°¢–b‚FFçF6´'&–FvRÇÂFFçF6µv÷&·76T–BÇÂ&W6öÇfVB’&WGW&ã°¢6WD×WFF–öå7FFR‡²¶W“¢'VçF–ÖT¶W’Â†4W'&÷#¢fÇ6RÒ“°¢fö–B&öÖ—6Rç&W6öÇfR€¢FFçF6´'&–FvRçFövvÆUF6´6ö×ÆWFVB†FFçF6µv÷&·76T–BÂFFçF6´–B’À¢’æ6F6‚‚‚’Óâ6WD×WFF–öå7FFR‡²¶W“¢'VçF–ÖT¶W’Â†4W'&÷#¢G'VRÒ’“°¢Ó° ¢6öç7BFövvÆU7V'F6´6ö×ÆWFVBÒ‡7V'F6´–C¢7G&–ær“¢fö–BÓâ°¢–b‚FFçF6´'&–FvRÇÂFFçF6µv÷&·76T–BÇÂ&W6öÇfVB’&WGW&ã°¢fö–B&öÖ—6Rç&W6öÇfR€¢FFçF6´'&–FvRçFövvÆU7V'F6´6ö×ÆWFVB€¢FFçF6µv÷&·76T–BÀ¢FFçF6´–BÀ¢7V'F6´–BÀ¢’À¢’æ6F6‚‚‚’ÓâVæFVf–æVB“°¢Ó° ¢6öç7B7F—fFTæöFRÒ‚“¢fö–BÓâ°¢&V7DfÆ÷rç6WDæöFW2‚†7W'&VçB’Óà¢7W'&VçBæÖ‚†æöFR’Óâ°¢6öç7BæW‡E6VÆV7FVBÒæöFRæ–BÓÓÒ–C°¢&WGW&âæöFRç6VÆV7FVBÓÓÒæW‡E6VÆV7FV@¢òæöFP¢¢²ââææöFRÂ6VÆV7FVC¢æW‡E6VÆV7FVBÓ°¢Ò’À¢“°¢Ó° ¢6öç7B÷VäFWF–Ç2Ò‚“¢fö–BÓâ°¢–b‚FFçF6´'&–FvR’&WGW&ã°¢7F—fFTæöFR‚“°¢FFçF6´'&–FvRæ÷VåF6²†FFçF6´–B“°¢Ó° ¢6öç7BFövvÆTFWF–Ç2Ò‚“¢fö–BÓâ°¢–b‚FFçF6´'&–FvRÇÂ&W6öÇfVB’&WGW&ã°¢–b‡&ö¦V7F–öãòæFWF–Ç4÷Vâ’FFçF6´'&–FvRæ6Æ÷6UF6´FWF–Ç2†FFçF6´–B“°¢VÇ6R÷VäFWF–Ç2‚“°¢Ó° ¢6öç7B7V'F6·2Ò&ö¦V7F–öãòç7V'F6·2óòµÓ°¢6öç7Böä6öçFVçD†V–v‡D6†ævRÒFFæöä6öçFVçD†V–v‡D6†ævS° ¢6öç7BÖV7W&T6öçFVçD†V–v‡BÒW6T6ÆÆ&6²‚‚“¢fö–BÓâ°¢6öç7B6öçFVçBÒF6´6öçFVçE&Vbæ7W'&VçC°¢–b‚6öçFVçBÇÂöä6öçFVçD†V–v‡D6†ævR’&WGW&ã°¢6öç7B&WV—&VD†V–v‡BÒÖF‚æÖ‚ƒ#ÂÖF‚æ6V–Â†6öçFVçBç67&öÆÄ†V–v‡B²‚’“°¢6WD6öçFVçDÖ–ä†V–v‡B‚†7W'&VçB’Óà¢7W'&VçBÓÓÒ&WV—&VD†V–v‡Bò7W'&VçB¢&WV—&VD†V–v‡BÀ¢“°¢öä6öçFVçD†V–v‡D6†ævR†–BÂ&WV—&VD†V–v‡B“°¢ÒÂ¶–BÂöä6öçFVçD†V–v‡D6†ævUÒ“° ¢W6TVffV7B‚‚’Óâ°¢ÖV7W&T6öçFVçD†V–v‡B‚“°¢6öç7B6öçFVçBÒF6´6öçFVçE&Vbæ7W'&VçC°¢–b‚6öçFVçBÇÂöä6öçFVçD†V–v‡D6†ævR’&WGW&ã°¢–b‡G—Vöb&W6—¦Tö'6W'fW"ÓÓÒ'VæFVf–æVB"’&WGW&ã°¢6öç7Bö'6W'fW"ÒæWr&W6—¦Tö'6W'fW"†ÖV7W&T6öçFVçD†V–v‡B“°¢ö'6W'fW"æö'6W'fR†6öçFVçB“°¢&WGW&â‚’Óâö'6W'fW"æF—66öææV7B‚“°¢ÒÂ°¢ÖV7W&T6öçFVçD†V–v‡BÀ¢×WFF–öäW'&÷"À¢öä6öçFVçD†V–v‡D6†ævRÀ¢&ö¦V7F–öâÀ¢F—FÆRÀ¢Ò“° ¢&WGW&â€¢Ä6çf4æöFTg&ÖP¢6VÆV7FVC×·6VÆV7FVGĞ¢Ö–åv–GFƒ×³##Ğ¢Ö–ä†V–v‡C×¶6öçFVçDÖ–ä†V–v‡GĞ¢6Æ74æÖS×·7G–ÆW2çF6´æöFTg&ÖWĞ¢6öææV7F–öä†æFÆTÆ–W#×³Ä6öææV7F–öä†æFÆTÆ–W"6VÆV7FVC×·6VÆV7FVGÒóçĞ¢à¢ÆF—`¢&Vc×·F6´6öçFVçE&VgĞ¢6Æ74æÖS×·7G–ÆW2çF6´æöFT6öçFVçGĞ¢öäF÷V&ÆT6Æ–6³×²†WfVçB’Óâ°¢WfVçBç7F÷&÷vF–öâ‚“°¢÷VäFWF–Ç2‚“°¢×Ğ¢à¢ÆF—b6Æ74æÖS×·7G–ÆW2çF6´æöFT†VFW'Óà¢Ç7â6Æ74æÖS×·7G–ÆW2çF6´æöFUG—WÓí	}M}Â÷7ãà¢Ç7â6Æ74æÖS×·7G–ÆW2çF6´æöFU&VfW&Væ6WÒF—FÆS×¶FFçF6´–GÓà¢¶FFçF6´–GĞ¢Â÷7ãà¢ÂöF—cà¢ÆF—b6Æ74æÖS×·7G–ÆW2çF6´æöFT&öG—Óà¢Æ–çW@¢G—SÒ&6†V6¶&÷‚ ¢6Æ74æÖSÒ&æöG&ræ÷â ¢6†V6¶VC×·&ö¦V7F–öãòæ6ö×ÆWFVBóòfÇ6WĞ¢F—6&ÆVC×²&W6öÇfVGĞ¢&–ÖÆ&VÃ×¶	}-]-Â}M}2*²G·F—FÆWÜ+¶Ğ¢öåö–çFW$F÷vã×²†WfVçB’ÓâWfVçBç7F÷&÷vF–öâ‚—Ğ¢öä6†ævS×²†WfVçB’Óâ°¢WfVçBç7F÷&÷vF–öâ‚“°¢FövvÆT6ö×ÆWFVB‚“°¢×Ğ¢óà¢Ç7G&öæp¢6Æ74æÖS×·&W6öÇfVBòVæFVf–æVB¢7G–ÆW2çF6´æöFTÖ—76–æuF—FÆWĞ¢à¢·F—FÆWĞ¢Â÷7G&öæsà¢ÂöF—cà¢·&W6öÇfVBò€¢Ç7â6Æ74æÖS×·7G–ÆW2çF6´æöFU7FGW7Óà¢·&ö¦V7F–öâæ6ö×ÆWFVBò-	-½ıí½İ]İâ"¢-	"í-R'Ğ¢Â÷7ãà¢’¢€¢Ç7â6Æ74æÖS×·7G–ÆW2çF6´æöFTÖ—76–æwÒ&öÆSÒ'7FGW2#à¢¶Ö—76–ætÆ&VÇĞ¢Â÷7ãà¢—Ğ¢·7V'F6·2æÆVæwF‚âò€¢ÇVÂ6Æ74æÖS×·7G–ÆW2çF6´æöFU7V'F6·7Ò&–ÖÆ&VÃÒ-	ıíM}M}‚#à¢·7V'F6·2æÖ‚‡7V'F6²’Óâ€¢ÆÆ¢6Æ74æÖS×¶G·7G–ÆW2çF6´æöFU7V'F6·ÒG·7V'F6²æ6ö×ÆWFVBò7G–ÆW2çF6´æöFU7V'F6´6ö×ÆWFR¢"'ÖĞ¢¶W“×·7V'F6²æ–GĞ¢à¢Æ–çW@¢&–ÖÆ&VÃ×¶G·7V'F6²æ6ö×ÆWFVBò-	í-Í]--Âİ]-½ıí½İ]İİí’"¢-	í-Í]--Â-½ıí½İ]İİí’'Ó¢G·7V'F6²çF—FÆWÖĞ¢6†V6¶VC×·7V'F6²æ6ö×ÆWFVGĞ¢6Æ74æÖSÒ&æöG&ræ÷â ¢F—6&ÆVC×²&W6öÇfVGĞ¢öä6Æ–6³×²†WfVçB’ÓâWfVçBç7F÷&÷vF–öâ‚—Ğ¢öåö–çFW$F÷vã×²†WfVçB’ÓâWfVçBç7F÷&÷vF–öâ‚—Ğ¢öä6†ævS×²†WfVçB’Óâ°¢WfVçBç7F÷&÷vF–öâ‚“°¢FövvÆU7V'F6´6ö×ÆWFVB‡7V'F6²æ–B“°¢×Ğ¢G—SÒ&6†V6¶&÷‚ ¢óà¢Ç7âF—FÆS×·7V'F6²çF—FÆWÓç·7V'F6²çF—FÆWÓÂ÷7ãà¢ÂöÆ“à¢’—Ğ¢Â÷VÃà¢’¢çVÆÇĞ¢¶×WFF–öäW'&÷"ò€¢Ç7â6Æ74æÖS×·7G–ÆW2çF6´æöFTW'&÷'Ò&öÆSÒ&ÆW'B#à¢	İR=M½íÂ}Í]İ-Â}M}0¢Â÷7ãà¢’¢çVÆÇĞ¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢6Æ74æÖS×¶G·7G–ÆW2çF6´æöFTFWF–Ç7ÒæöG&ræ÷æĞ¢F—6&ÆVC×²FFçF6´'&–FvRÇÂ&W6öÇfVGĞ¢öåö–çFW$F÷vã×²†WfVçB’ÓâWfVçBç7F÷&÷vF–öâ‚—Ğ¢öä6Æ–6³×²†WfVçB’Óâ°¢WfVçBç7F÷&÷vF–öâ‚“°¢FövvÆTFWF–Ç2‚“°¢×Ğ¢à¢·&ö¦V7F–öãòæFWF–Ç4÷Vâò-	}­½-ÂM]-½‚"¢-	í-­½-ÂM]-½‚'Ğ¢Âö'WGFöãà¢ÂöF—cà¢Âô6çf4æöFTg&ÖSà¢“°§Ğ ¦W‡÷'BgVæ7F–öâ6çf4VFvT&öG’‡°¢–BÀ¢6÷W&6RÀ¢6÷W&6U÷6—F–öâÀ¢F&vWE÷6—F–öâÀ¢F&vWBÀ¢6VÆV7FVBÀ¢FFÀ¢Ö&¶W%7F'BÀ¢Ö&¶W$VæBÀ§Ó¢VFvU&÷3Ä6çf4VFvTfÆ÷sâ“¢&V7Bä¥5‚äVÆVÖVçBÂçVÆÂ°¢6öç7B¶Æ–æUG—T÷VâÂ6WDÆ–æUG—T÷VåÒÒW6U7FFR†fÇ6R“°¢6öç7B¶Æ7EF‚Â6WDÆ7EF…ÒÒW6U7FFR‚$ÓÃÃÃ"“°¢6öç7B6VÆV7FVDVÆVÖVçD6÷VçBÒW6U7F÷&R€¢‡7FFR’Óà¢7FFRææöFW2æf–ÇFW"‚†æöFR’ÓâæöFRç6VÆV7FVB’æÆVæwF‚°¢7FFRæVFvW2æf–ÇFW"‚†VFvR’ÓâVFvRç6VÆV7FVB’æÆVæwF‚À¢“°¢6öç7B6÷W&6TæöFRÒW6T–çFW&æÄæöFSÄ6çf4fÆ÷tæöFSâ‡6÷W&6R“°¢6öç7BF&vWDæöFRÒW6T–çFW&æÄæöFSÄ6çf4fÆ÷tæöFSâ‡F&vWB“°¢6öç7B6÷W&6U÷6—F–öå6–FRÒ6÷W&6U÷6—F–öâ26çf4†æFÆU6–FS°¢6öç7BF&vWE÷6—F–öå6–FRÒF&vWE÷6—F–öâ26çf4†æFÆU6–FS°¢6öç7B6÷W&6T&÷VæG2Ò6çf4–çFW&æÄæöFT&÷VæG2‡6÷W&6TæöFR“°¢6öç7BF&vWD&÷VæG2Ò6çf4–çFW&æÄæöFT&÷VæG2‡F&vWDæöFR“°¢6öç7BvVöÖWG'’Ğ¢6÷W&6T&÷VæG2bbF&vWD&÷VæG0¢ò°¢6÷W&6Tæ6†÷#¢6çf4æöFUW&–ÖWFW$æ6†÷"€¢6÷W&6T&÷VæG2À¢6÷W&6U÷6—F–öå6–FRÀ¢’À¢F&vWDæ6†÷#¢6çf4æöFUW&–ÖWFW$æ6†÷"€¢F&vWD&÷VæG2À¢F&vWE÷6—F–öå6–FRÀ¢’À¢Ğ¢¢çVÆÃ°¢6öç7B6ö×WFVEF‚ÒvVöÖWG'¢òFFòç&÷WF–ærÓÓÒ&÷'F†övöæÂ ¢òvWE6Öö÷F…7FWF‚‡°¢6÷W&6Uƒ¢vVöÖWG'’ç6÷W&6Tæ6†÷"ç‚À¢6÷W&6U“¢vVöÖWG'’ç6÷W&6Tæ6†÷"ç’À¢6÷W&6U÷6—F–öâÀ¢F&vWEƒ¢vVöÖWG'’çF&vWDæ6†÷"ç‚À¢F&vWE“¢vVöÖWG'’çF&vWDæ6†÷"ç’À¢F&vWE÷6—F–öâÀ¢Ò¢¢FFòç&÷WF–ærÓÓÒ'7G&–v‡B ¢òvWE7G&–v‡EF‚‡°¢6÷W&6Uƒ¢vVöÖWG'’ç6÷W&6Tæ6†÷"ç‚À¢6÷W&6U“¢vVöÖWG'’ç6÷W&6Tæ6†÷"ç’À¢F&vWEƒ¢vVöÖWG'’çF&vWDæ6†÷"ç‚À¢F&vWE“¢vVöÖWG'’çF&vWDæ6†÷"ç’À¢Ò¢¢vWD&W¦–W%F‚‡°¢6÷W&6Uƒ¢vVöÖWG'’ç6÷W&6Tæ6†÷"ç‚À¢6÷W&6U“¢vVöÖWG'’ç6÷W&6Tæ6†÷"ç’À¢6÷W&6U÷6—F–öâÀ¢F&vWEƒ¢vVöÖWG'’çF&vWDæ6†÷"ç‚À¢F&vWE“¢vVöÖWG'’çF&vWDæ6†÷"ç’À¢F&vWE÷6—F–öâÀ¢Ò¢¢çVÆÃ°¢6öç7B6ö×WFVEF…fÇVRÒ6ö×WFVEFƒòå³ÒóòçVÆÃ°¢W6TVffV7B‚‚’Óâ°¢–b‚6ö×WFVEF…fÇVRÇÂ6ö×WFVEF…fÇVRÓÓÒÆ7EF‚’&WGW&ã°¢6öç7BF–ÖW"Òv–æF÷rç6WEF–ÖV÷WB‚‚’Óâ6WDÆ7EF‚†6ö×WFVEF…fÇVR’Â“°¢&WGW&â‚’Óâv–æF÷ræ6ÆV%F–ÖV÷WB‡F–ÖW"“°¢ÒÂ¶6ö×WFVEF…fÇVRÂÆ7EF…Ò“°¢–b‚6ö×WFVEF‚’°¢&WGW&â€¢Æp¢FFÖ6çf2ÖVFvRÖ–C×¶–GĞ¢FF×6÷W&6RÖæöFRÖ–C×·6÷W&6WĞ¢FF×F&vWBÖæöFRÖ–C×·F&vWGĞ¢à¢Ä6çf5f—6–&ÆTVFvP¢–C×¶–GĞ¢Fƒ×¶Æ7EF‡Ğ¢6Æ74æÖS×·6VÆV7FVBò7G–ÆW2ç6VÆV7FVDVFvR¢7G–ÆW2æ6çf4VFvWĞ¢Ö&¶W%7F'C×¶Ö&¶W%7F'GĞ¢Ö&¶W$VæC×¶Ö&¶W$VæGĞ¢–çFW&7F–öåv–GFƒ×³#GĞ¢óà¢Âösà¢“°¢Ğ¢6öç7B·F‚ÂÆ&VÅ‚ÂÆ&VÅ•ÒÒ6ö×WFVEFƒ°¢6öç7B'&÷w2ÒFFòæ'&÷w2óò&æöæR#°¢6öç7BVæGö–çD'&÷w2Ò6çf4'&÷w5FôVæGö–çD'&÷w2†'&÷w2“°¢6öç7B&÷WF–ærÒFFòç&÷WF–æróò&7W'fVB#°¢6öç7B7F÷FööÆ&$WfVçBÒ†WfVçC¢&V7Bå7–çF†WF–4WfVçB“¢fö–BÓâ°¢WfVçBç7F÷&÷vF–öâ‚“°¢Ó°¢6öç7BFööÆ&%f—6–&ÆRÒ6VÆV7FVBbb6VÆV7FVDVÆVÖVçD6÷VçBÓÓÒ°¢&WGW&â€¢Ãà¢Æp¢FFÖ6çf2ÖVFvRÖ–C×¶–GĞ¢FF×6÷W&6RÖæöFRÖ–C×·6÷W&6WĞ¢FF×F&vWBÖæöFRÖ–C×·F&vWGĞ¢à¢Ä6çf5f—6–&ÆTVFvP¢–C×¶–GĞ¢Fƒ×·F‡Ğ¢6Æ74æÖS×·6VÆV7FVBò7G–ÆW2ç6VÆV7FVDVFvR¢7G–ÆW2æ6çf4VFvWĞ¢Ö&¶W%7F'C×¶Ö&¶W%7F'GĞ¢Ö&¶W$VæC×¶Ö&¶W$VæGĞ¢–çFW&7F–öåv–GFƒ×³#GĞ¢óà¢Âösà¢·FööÆ&%f—6–&ÆRò€¢ÄVFvUFööÆ& ¢VFvT–C×¶–GĞ¢ƒ×¶Æ&VÅ‡Ğ¢“×¶Æ&VÅ—Ğ¢—5f—6–&ÆS×·FööÆ&%f—6–&ÆWĞ¢Æ–vå“Ò'F÷ ¢6Æ74æÖS×¶G·7G–ÆW2æVFvUFööÆ&'ÒæöG&ræ÷âæ÷v†VVÆĞ¢öåö–çFW$F÷vã×·7F÷FööÆ&$WfVçGĞ¢öåö–çFW%W×·7F÷FööÆ&$WfVçGĞ¢öä6Æ–6³×·7F÷FööÆ&$WfVçGĞ¢öåv†VVÃ×·7F÷FööÆ&$WfVçGĞ¢à¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢6Æ74æÖS×¶G·7G–ÆW2æVFvUFööÄ'WGFöçÒæöG&ræ÷âæ÷v†VVÆĞ¢&–ÖÆ&VÃÒ-	ı]]­½í}-Â-]½­2"İ}½R½İ‚ ¢&–×&W76VC×¶VæGö–çD'&÷w2ç6÷W&6WĞ¢F—FÆSÒ-
+-]½­"İ}½R ¢öä6Æ–6³×²‚’Óà¢FFòæöåWFFSòâ†–BÂ°¢&÷WF–ærÀ¢'&÷w3¢VæGö–çD'&÷w5Fô6çf4'&÷w2‡°¢6÷W&6S¢VæGö–çD'&÷w2ç6÷W&6RÀ¢F&vWC¢VæGö–çD'&÷w2çF&vWBÀ¢Ò’À¢Ò¢Ğ¢à¢¶VæGö–çD'&÷w2ç6÷W&6Rò.)x"¢.)x²'Ğ¢Âö'WGFöãà¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢6Æ74æÖS×¶G·7G–ÆW2æVFvUFööÄ'WGFöçÒæöG&ræ÷âæ÷v†VVÆĞ¢&–ÖÆ&VÃÒ-	ıíÍ]İı-Â-]½­‚Í]-Í‚ ¢F—FÆSÒ-	ıíÍ]İı-Â-]½­‚Í]-Í‚ ¢öä6Æ–6³×²‚’Óà¢FFòæöåWFFSòâ†–BÂ°¢&÷WF–ærÀ¢'&÷w3¢7v6çf4VFvT'&÷w2†'&÷w2’À¢Ò¢Ğ¢à¢(i@¢Âö'WGFöãà¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢6Æ74æÖS×¶G·7G–ÆW2æVFvUFööÄ'WGFöçÒæöG&ræ÷âæ÷v†VVÆĞ¢&–ÖÆ&VÃÒ-	ı]]­½í}-Â-]½­2"­íİmR½İ‚ ¢&–×&W76VC×¶VæGö–çD'&÷w2çF&vWGĞ¢F—FÆSÒ-
+-]½­"­íİmR ¢öä6Æ–6³×²‚’Óà¢FFòæöåWFFSòâ†–BÂ°¢&÷WF–ærÀ¢'&÷w3¢VæGö–çD'&÷w5Fô6çf4'&÷w2‡°¢6÷W&6S¢VæGö–çD'&÷w2ç6÷W&6RÀ¢F&vWC¢VæGö–çD'&÷w2çF&vWBÀ¢Ò’À¢Ò¢Ğ¢à¢¶VæGö–çD'&÷w2çF&vWBò.)kb"¢.)x²'Ğ¢Âö'WGFöãà¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢6Æ74æÖS×¶G·7G–ÆW2æVFvUFööÄ'WGFöçÒæöG&ræ÷âæ÷v†VVÆĞ¢&–ÖÆ&VÃÒ-
+-ò½İƒ¢í-­½-Â-½í ¢&–ÖW‡æFVC×¶Æ–æUG—T÷VçĞ¢F—FÆSÒ-
+-ò½İ‚ ¢öä6Æ–6³×²†WfVçB’Óâ°¢7F÷FööÆ&$WfVçB†WfVçB“°¢6WDÆ–æUG—T÷Vâ‚†÷Vâ’Óâ÷Vâ“°¢×Ğ¢à¢·&÷WF–ærÓÓÒ&÷'F†övöæÂ ¢ò.)I ¢¢&÷WF–ærÓÓÒ'7G&–v‡B ¢ò.ûÈò ¢¢.(É"'Ğ¢Âö'WGFöãà¢¶Æ–æUG—T÷Vâò€¢ÆF—b6Æ74æÖS×·7G–ÆW2æVFvTÆ–æU÷÷fW'Ò&öÆSÒ&ÖVçR#à¢²€¢°¢²&÷'F†övöæÂ"Â.)I"Â-	ııÍí==í½Íİò%ÒÀ¢²&7W'fVB"Â.(É""Â-	M==íí}İò%ÒÀ¢²'7G&–v‡B"Â.ûÈò"Â-	ııÍò%ÒÀ¢Ò26öç7@¢’æÖ‚…·fÇVRÂvÇ—‚ÂÆ&VÅÒ’Óâ€¢Æ'WGFöà¢¶W“×·fÇVWĞ¢G—SÒ&'WGFöâ ¢6Æ74æÖS×¶G·7G–ÆW2æVFvTÆ–æT÷F–öçÒæöG&ræ÷âæ÷v†VVÆĞ¢&öÆSÒ&ÖVçV—FV×&F–ò ¢&–Ö6†V6¶VC×·&÷WF–ærÓÓÒfÇVWĞ¢öä6Æ–6³×²†WfVçB’Óâ°¢7F÷FööÆ&$WfVçB†WfVçB“°¢6WDÆ–æUG—T÷Vâ†fÇ6R“°¢FFòæöåWFFSòâ†–BÂ°¢&÷WF–æs¢fÇVRÀ¢'&÷w2À¢Ò“°¢×Ğ¢à¢Ç7â&–Ö†–FFVãÒ'G'VR#ç¶vÇ—‡ÓÂ÷7ãà¢¶Æ&VÇĞ¢Âö'WGFöãà¢’—Ğ¢ÂöF—cà¢’¢çVÆÇĞ¢ÆÆ&VÃà¢	½İğ¢Ç6VÆV7@¢6Æ74æÖSÒ&æöG&ræ÷â ¢fÇVS×¶FFòç&÷WF–æróò&7W'fVB'Ğ¢öä6†ævS×²†WfVçB’Óà¢FFòæöåWFFSòâ†–BÂ°¢&÷WF–æs¢WfVçBçF&vWBçfÇVR26çf4VFvU&÷WF–ærÀ¢'&÷w2À¢Ò¢Ğ¢à¢Æ÷F–öâfÇVSÒ&÷'F†övöæÂ#í	ııÍí==í½ÍİóÂö÷F–öãà¢Æ÷F–öâfÇVSÒ&7W'fVB#í	M==íí}İóÂö÷F–öãà¢Æ÷F–öâfÇVSÒ'7G&–v‡B#í	ııÍóÂö÷F–öãà¢Â÷6VÆV7Cà¢ÂöÆ&VÃà¢ÆÆ&VÃà¢
+-]½­€¢Ç6VÆV7@¢6Æ74æÖSÒ&æöG&ræ÷â ¢fÇVS×¶'&÷w7Ğ¢öä6†ævS×²†WfVçB’Óà¢FFòæöåWFFSòâ†–BÂ°¢&÷WF–æs¢FFòç&÷WF–æróò&7W'fVB"À¢'&÷w3¢WfVçBçF&vWBçfÇVR26çf4VFvT'&÷w2À¢Ò¢Ğ¢à¢Æ÷F–öâfÇVSÒ&æöæR#í	İ]#Âö÷F–öãà¢Æ÷F–öâfÇVSÒ'7F'B#í	"İ}½SÂö÷F–öãà¢Æ÷F–öâfÇVSÒ&VæB#í	"­íİmSÂö÷F–öãà¢Æ÷F–öâfÇVSÒ&&÷F‚#í
+í]R-ííÓÂö÷F–öãà¢Â÷6VÆV7Cà¢ÂöÆ&VÃà¢ÂôVFvUFööÆ&#à¢’¢çVÆÇĞ¢Âóà¢“°§Ğ ¦gVæ7F–öâ6çf46öææV7F–öäÆ–æR‡°¢g&öÕ‚À¢g&öÕ’À¢g&öÕ÷6—F–öâÀ¢Fõ‚À¢Fõ’À¢Fõ÷6—F–öâÀ¢Fô†æFÆRÀ¢6öææV7F–öå7FGW2À§Ó¢6öææV7F–öäÆ–æT6ö×öæVçE&÷3Ä6çf4fÆ÷tæöFSâ“¢&V7Bä¥5‚äVÆVÖVçB°¢6öç7B6÷W&6RÒ6çf4†æFÆT6VçFW%FõW&–ÖWFW"€¢²ƒ¢g&öÕ‚Â“¢g&öÕ’ÒÀ¢g&öÕ÷6—F–öâ26çf4†æFÆU6–FRÀ¢“°¢6öç7BF&vWBÒFô†æFÆP¢ò6çf4†æFÆT6VçFW%FõW&–ÖWFW"€¢²ƒ¢Fõ‚Â“¢Fõ’ÒÀ¢Fõ÷6—F–öâ26çf4†æFÆU6–FRÀ¢¢¢²ƒ¢Fõ‚Â“¢Fõ’Ó°¢6öç7B·F…ÒÒvWD&W¦–W%F‚‡°¢6÷W&6Uƒ¢6÷W&6Rç‚À¢6÷W&6U“¢6÷W&6Rç’À¢6÷W&6U÷6—F–öã¢g&öÕ÷6—F–öâÀ¢F&vWEƒ¢F&vWBç‚À¢F&vWE“¢F&vWBç’À¢F&vWE÷6—F–öã¢Fõ÷6—F–öâÀ¢Ò“°¢&WGW&â€¢ÇF€¢C×·F‡Ğ¢f–ÆÃÒ&æöæR ¢6Æ74æÖS×·7G–ÆW2æ6öææV7F–öå&Wf–WwĞ¢FF×7FGW3×¶6öææV7F–öå7FGW2óò'VæF–ær'Ğ¢óà¢“°§Ğ ¦6öç7BæöFUG—W2Ò°¢´4åd5ô”ÔtUôäôDUõE•UÓ¢–ÖvTæöFT&öG’À¢´4åd5õDeôäôDUõE•UÓ¢FdæöFT&öG’À¢´4åd5ô%D”4ÄUôäôDUõE•UÓ¢'F–6ÆTæöFT&öG’À¢´4åd5õ5TÔÔ%•ôäôDUõE•UÓ¢7VÖÖ'”æöFT&öG’À¢´4åd5õD4µôäôDUõE•UÓ¢F6´æöFT&öG’À¢´4åd5õDU…EôäôDUõE•UÓ¢FW‡DæöFT&öG’À¢´4åd5õ4„UôäôDUõE•UÓ¢6†TæöFT&öG’À§Ó° ¦6öç7BVFvUG—W2Ò°¢´4åd5ôTDtUõE•UÓ¢6çf4VFvT&öG’À§Ó° ¦W‡÷'BG—R6çf56†VÆÄ6÷’Ò°¢W–V'&÷s¢7G&–æs°¢FVfVÇEF—FÆS¢7G&–æs°¢V×G•F—FÆS¢7G&–æs°¢V×G”FW67&—F–öã¢7G&–æs°¢7&VFS¢7G&–æs°¢&VæÖS¢7G&–æs°¢æWt6çf3¢7G&–æs°¢FVÆWFS¢7G&–æs°¢FD–ÖvS¢7G&–æs°¢FW‡C¢7G&–æs°¢6fVC¢7G&–æs°¢6f–æs¢7G&–æs°¢6öæfÆ–7C¢7G&–æs°¢ÆöF–æs¢7G&–æs°¢W'&÷#¢7G&–æs°¢&VÆöEv–ææW#¢7G&–æs°¢¶VWÆö6Ä6†ævW3¢7G&–æs°¢&W7F÷&TÆö6ÄG&gC¢7G&–æs°¢—6öÆFVC¢7G&–æs°¢7FGW3¢7G&–æs°§Ó° §G—R6çf56†VÆÅ&W÷6—F÷'’Ò6çf5&W÷6—F÷'’`¢6çf5f–Wu7FFU&W÷6—F÷'’b°¢6Æ÷6Só¢‚’Óâfö–C°¢6WD7F—fT6çf3ó¢†6çf4–C¢7G&–ærÂçVÆÂ’Óâfö–C°¢Ó° §G—R6çf4ÆöF–ætÆ–fV7–6ÆRĞ¢Â&Æ—7BÖÆöF–ær ¢Â&V×G’Ö6öæf—&ÖVB ¢Â&6çf2×6VÆV7FVB ¢Â&Fö7VÖVçBÖÆöF–ær ¢Â'6¶VÆWFöâ×&VG’ ¢Â&6öçFVçBÖ‡–G&F–ær ¢Â'&VG’ ¢Â&W'&÷"#° ¦gVæ7F–öâ–æf–æ—FT6çf4Æö6Å6†VÆÅ7W&f6R‡°¢7F—fUF6´FWF–Ç5F6´–BÀ¢76WE&W÷6—F÷'’À¢VÖ&VFFVBÒfÇ6RÀ¢6÷’À¢w&÷W&W÷6—F÷'’À¢¶æ÷vÆVFvT'F–6ÆW2ÒµÒÀ¢&ö¦V7Df–ÆU&W÷6—F÷'’À¢&ö¦V7Df–ÆUf&–çE&W÷6—F÷'’À¢&ö¦V7D–BÀ¢&W÷6—F÷'“¢&÷f–FVE&W÷6—F÷'’À¢'VçF–ÖT66†RÀ¢6†÷tF–væ÷7F–72À¢F6´'&–FvRÀ¢F6µv÷&·76T–BÀ¢W6W$–BÀ¢v÷&·76T–BÀ§Ó¢°¢7F—fUF6´FWF–Ç5F6´–Có¢7G&–æs°¢76WE&W÷6—F÷'“¢6çf476WE&W÷6—F÷'“°¢VÖ&VFFVCó¢&ööÆVã°¢6÷“¢6çf56†VÆÄ6÷“°¢w&÷W&W÷6—F÷'“ó¢6çf4w&÷W&W÷6—F÷'“°¢¶æ÷vÆVFvT'F–6ÆW3ó¢&VFöæÇ’&÷F÷G—TFö7VÖVçEµÓ°¢&ö¦V7Df–ÆU&W÷6—F÷'“ó¢&ö¦V7Df–ÆU&W÷6—F÷'“°¢&ö¦V7Df–ÆUf&–çE&W÷6—F÷'“ó¢&ö¦V7Df–ÆT–ÖvUf&–çE&W÷6—F÷'“°¢&ö¦V7D–Có¢7G&–æs°¢&W÷6—F÷'“¢6çf56†VÆÅ&W÷6—F÷'“°¢'VçF–ÖT66†Só¢6Æ÷VD6çf5'VçF–ÖT66†S°¢6†÷tF–væ÷7F–73¢&ööÆVã°¢F6´'&–FvSó¢6çf5F6´'&–FvS°¢F6µv÷&·76T–Có¢7G&–æs°¢W6W$–C¢7G&–æs°¢v÷&·76T–C¢7G&–æs°§Ò“¢&V7Bä¥5‚äVÆVÖVçB°¢6öç7B–æ—F–Å'VçF–ÖU&VbÒW6U&VcÄ6Æ÷VD6çf5'VçF–ÖU6æ6†÷BÂçVÆÃâ€¢'VçF–ÖT66†SòævWD7F—fR‡²v÷&·76T–BÂW6W$–BÒ’óòçVÆÂÀ¢“°¢6öç7B–æ—F–Å'VçF–ÖRÒ–æ—F–Å'VçF–ÖU&Vbæ7W'&VçC°¢6öç7Bw&W%&VbÒW6U&VcÄ…DÔÄF—dVÆVÖVçBÂçVÆÃâ†çVÆÂ“°¢6öç7BF6´'&–FvU&VbÒW6U&VcÄ6çf5F6´'&–FvRÂVæFVf–æVCâ‡F6´'&–FvR“°¢6öç7BF6µv÷&·76T–E&VbÒW6U&VcÇ7G&–ærÂVæFVf–æVCâ‡F6µv÷&·76T–B“°¢F6´'&–FvU&Vbæ7W'&VçBÒF6´'&–FvS°¢F6µv÷&·76T–E&Vbæ7W'&VçBÒF6µv÷&·76T–C°¢6öç7Bö–çFW%&VbÒW6U&VcÄfÆ÷u÷6—F–öâÂçVÆÃâ†çVÆÂ“°¢6öç7BæöFW5&VbÒW6U&VcÄ6çf4fÆ÷tæöFUµÓâ…µÒ“°¢6öç7BVFvW5&VbÒW6U&VcÄ6çf4VFvTfÆ÷uµÓâ…µÒ“°¢6öç7B7VÖÖ&–W5&VbÒW6U&VcÄ6çf57VÖÖ'•µÓâ…µÒ“°¢6öç7B6†VÆÅ7FFU&VbÒW6U&VcÄÆö6Ä6çf56†VÆÅ7FFSâ€¢–æ—F–Å'VçF–ÖSòç6†VÆÅ7FFRóòV×G•6†VÆÅ7FFR‚’À¢“°¢6öç7B6fUF–ÖW%&VbÒW6U&VcÅ&WGW&åG—SÇG—Vöb6WEF–ÖV÷WCâÂçVÆÃâ†çVÆÂ“°¢6öç7BFeWÆöD–äfÆ–v‡E&VbÒW6U&Vb†æWrÖÇ7G&–ærÂ&öÖ—6SÇfö–Cãâ‚’“°¢6öç7Bf–Ww÷'EF–ÖW%&VbÒW6U&VcÅ&WGW&åG—SÇG—Vöb6WEF–ÖV÷WCâÂçVÆÃâ†çVÆÂ“°¢6öç7B&W7F÷&T6öçG&öÆÆW%&VbÒW6U&VcÄ&÷'D6öçG&öÆÆW"ÂçVÆÃâ†çVÆÂ“°¢6öç7Bf&–çE&Vg&W6„6öçG&öÆÆW%&VbÒW6U&VcÄ&÷'D6öçG&öÆÆW"ÂçVÆÃâ†çVÆÂ“°¢6öç7Bf&–çE&Vg&W6…6WVVæ6U&VbÒW6U&Vbƒ“°¢6öç7Bf&–çE&Vg&W6„g&ÖU&VbÒW6U&VcÆçVÖ&W"ÂçVÆÃâ†çVÆÂ“°¢6öç7Bf&–çDF÷væw&FUF–ÖW%&VbÒW6U&VcÆçVÖ&W"ÂçVÆÃâ†çVÆÂ“°¢6öç7B–ÖvTÆöD66†U&VbÒW6U&Vb†æWr6çf4–ÖvTÆöD66†R‚’“°¢6öç7B—&Ö–E66†VGVÆW%&VbÒW6U&Vb†æWr6çf4–ÖvU—&Ö–E66†VGVÆW"‚’“°¢6öç7B–ÖvTÆöD66†T6çf4–E&VbÒW6U&VcÇ7G&–ærÂçVÆÃâ€¢–æ—F–Å'VçF–ÖSòç6†VÆÅ7FFRæ6çf4–BóòçVÆÂÀ¢“°¢6öç7B&Vg&W6„–ÖvUf&–çG5&VbÒW6U&VcÀ¢‡f–Ww÷'E¦ööÓ¢çVÖ&W"ÂÆÆ÷tF÷væw&FS¢&ööÆVâ’Óâfö–@¢â‚‚’ÓâVæFVf–æVB“°¢6öç7Bf&–çE–ÆöG5&VbÒW6U&VcÄÖÇ7G&–ærÂ6çf4–ÖvU'VçF–ÖU–ÆöCãâ€¢æWrÖ†–æ—F–Å'VçF–ÖSòæ76WE–ÆöG2’À¢“°¢6öç7BVæF–æt6öçFVçD†V–v‡E6fU&VbÒW6U&Vb†fÇ6R“°¢6öç7BæöFTvVöÖWG'•6–væGW&U&VbÒW6U&Vb‚""“°¢6öç7BæöFTG&t7F—fU&VbÒW6U&Vb†fÇ6R“°¢6öç7B6öÆÆ6VD'&æ6„G&u&VbÒW6U&VcÇ°¢FW66VæFçDæöFT–G3¢6WCÇ7G&–æsã°¢æöFT–C¢7G&–æs°¢7F'E÷6—F–öã¢fÆ÷u÷6—F–öã°¢ÒÂçVÆÃâ†çVÆÂ“°¢6öç7BÇDG&tGWÆ–6FU&VbÒW6U&VcÄ6çf4ÇDG&tGWÆ–6FU6W76–öâÂçVÆÃâ€¢çVÆÂÀ¢“°¢6öç7BÖ–FFÆUä7F—fU&VbÒW6U&Vb†fÇ6R“°¢6öç7B7F—fUF÷V6…ö–çFW'5&VbÒW6U&Vb†æWr6WCÆçVÖ&W#â‚’“°¢6öç7BF÷V6„vW7GW&TæöFW5&VbÒW6U&VcÄ6çf4fÆ÷tæöFUµÒÂçVÆÃâ†çVÆÂ“°¢6öç7BF÷V6…f–Ww÷'DvW7GW&T7F—fU&VbÒW6U&Vb†fÇ6R“°¢6öç7Bå6×ÆW5&VbÒW6U&VcÄ6çf5å6×ÆUµÓâ…µÒ“°¢6öç7Bä–æW'F–g&ÖU&VbÒW6U&VcÆçVÖ&W"ÂçVÆÃâ†çVÆÂ“°¢6öç7Bä–æW'F–7F—fU&VbÒW6U&Vb†fÇ6R“°¢6öç7Bä–æW'F–fVÆö6—G•&VbÒW6U&VcÄ6çf5åfVÆö6—G’ÂçVÆÃâ†çVÆÂ“°¢6öç7Bä–æW'F–f–Ww÷'E&VbÒW6U&VcÄ6çf5åf–Ww÷'BÂçVÆÃâ†çVÆÂ“°¢6öç7Bä–æW'F–Æ7Dg&ÖU&VbÒW6U&VcÆçVÖ&W"ÂçVÆÃâ†çVÆÂ“°¢6öç7B&VFW%6–FV&%v4WFô6öÆÆ6VE&VbÒW6U&Vb†fÇ6R“°¢6öç7B&VFW$6VçFW$g&ÖU&VbÒW6U&VcÆçVÖ&W"ÂçVÆÃâ†çVÆÂ“°¢6öç7BVFvU&VÖ÷fÅ7W&W76–öåVçF–Å&VbÒW6U&Vbƒ“°¢6öç7B‡–G&F–æu&VbÒW6U&Vb‡G'VR“°¢6öç7B6çf4vVæW&F–öå&VbÒW6U&Vbƒ“°¢6öç7B&öw&ÖÖF–5f–Ww÷'E&VbÒW6U&VcÄ6çf5f–Ww÷'D–æ—F–Æ—¦F–öâÂçVÆÃâ€¢çVÆÂÀ¢“°¢6öç7B67&VVåFôfÆ÷u&VbÒW6U&VcÀ¢‡ö–çC¢²ƒ¢çVÖ&W#²“¢çVÖ&W"Ò’ÓâfÆ÷u÷6—F–öà¢â‚‚’Óâ‡²ƒ¢Â“¢Ò’“°¢6öç7B¶æöFW2Â6WDæöFW2ÂöäæöFW46†ævUÒÒW6TæöFW57FFSÄ6çf4fÆ÷tæöFSâ…µÒ“°¢6öç7B¶VFvW2Â6WDVFvW5ÒÒW6TVFvW57FFSÄ6çf4VFvTfÆ÷sâ…µÒ“°¢6öç7B·7VÖÖ&–W2Â6WE7VÖÖ&–W5ÒÒW6U7FFSÄ6çf57VÖÖ'•µÓâ€¢–æ—F–Å'VçF–ÖSòç7VÖÖ&–W2óòµÒÀ¢“°¢6öç7B¶w&÷W2Â6WDw&÷W5ÒÒW6U7FFSÄ6çf4w&÷WµÓâ…µÒ“°¢6öç7B¶w&÷W4W'&÷"Â6WDw&÷W4W'&÷%ÒÒW6U7FFSÇ7G&–ærÂçVÆÃâ†çVÆÂ“°¢6öç7B¶†–v†Æ–v‡FVD6çf4w&÷W–BÂ6WD†–v†Æ–v‡FVD6çf4w&÷W–EÒÒW6U7FFSÀ¢7G&–ærÂçVÆÀ¢â†çVÆÂ“°¢6öç7B·6†VÆÅ7FFRÂ6WE6†VÆÅ7FFUÒÒW6U7FFSÄÆö6Ä6çf56†VÆÅ7FFSâ€¢–æ—F–Å'VçF–ÖSòç6†VÆÅ7FFRóòV×G•6†VÆÅ7FFRÀ¢“°¢6öç7B¶6öæfÆ–7DG&gDf–Æ&ÆRÂ6WD6öæfÆ–7DG&gDf–Æ&ÆUÒÒW6U7FFR†fÇ6R“°¢6öç7B¶ÆöF–ætÆ–fV7–6ÆRÂ6WDÆöF–ætÆ–fV7–6ÆUÒĞ¢W6U7FFSÄ6çf4ÆöF–ætÆ–fV7–6ÆSâ€¢–æ—F–Å'VçF–ÖSòç6†VÆÅ7FFRæ6çf4–Bò'&VG’"¢&Æ—7BÖÆöF–ær"À¢“°¢6öç7B·&W7F÷&U7FG2Â6WE&W7F÷&U7FG5ÒĞ¢W6U7FFSÅ&W7F÷&U7FG3â„TÕE•õ$U5Dõ$Uõ5DE2“°¢6öç7B¶G&÷7F—fRÂ6WDG&÷7F—fUÒÒW6U7FFR†fÇ6R“°¢6öç7B¶æWuF—FÆRÂ6WDæWuF—FÆUÒÒW6U7FFR†6÷’æFVfVÇEF—FÆR“°¢6öç7B·&VæÖUF—FÆRÂ6WE&VæÖUF—FÆUÒÒW6U7FFR‚""“°¢6öç7B&VæÖT–äfÆ–v‡E&VbÒW6U&Vb†æWr6WCÇ7G&–æsâ‚’“°¢6öç7B·F6µ–6¶W$÷VâÂ6WEF6µ–6¶W$÷VåÒÒW6U7FFR†fÇ6R“°¢6öç7B·F6µVW'’Â6WEF6µVW'•ÒÒW6U7FFR‚""“°¢6öç7B·F6µ&W7VÇG2Â6WEF6µ&W7VÇG5ÒÒW6U7FFSÄ6çf5F6µ&ö¦V7F–öåµÓâ…µÒ“°¢6öç7B¶'F–6ÆU–6¶W$÷VâÂ6WD'F–6ÆU–6¶W$÷VåÒÒW6U7FFR†fÇ6R“°¢6öç7B¶'F–6ÆUVW'’Â6WD'F–6ÆUVW'•ÒÒW6U7FFR‚""“°¢6öç7B¶f–ÆU–6¶W$÷VâÂ6WDf–ÆU–6¶W$÷VåÒÒW6U7FFR†fÇ6R“°¢6öç7B¶÷VåFbÂ6WD÷VåFeÒÒW6U7FFSÇ°¢f–ÆT–C¢7G&–æs°¢æÖS¢7G&–æs°¢æöFT–C¢7G&–æs°¢ö&¦V7EW&Ã¢7G&–æs°¢ÒÂçVÆÃâ†çVÆÂ“°¢6öç7B·FdgVÆÇ67&VVâÂ6WEFdgVÆÇ67&VVåÒÒW6U7FFR†fÇ6R“°¢6öç7B'F–6ÆU&W7VÇG2ÒW6TÖVÖò‚‚’Óâ°¢6öç7Bæ÷&ÖÆ—¦VEVW'’Ò'F–6ÆUVW'’çG&–Ò‚’çFôÆö6ÆTÆ÷vW$66R‚''R"“°¢–b‚æ÷&ÖÆ—¦VEVW'’’&WGW&â¶æ÷vÆVFvT'F–6ÆW3°¢&WGW&â¶æ÷vÆVFvT'F–6ÆW2æf–ÇFW"‚†'F–6ÆR’Óà¢'F–6ÆRçF—FÆRçFôÆö6ÆTÆ÷vW$66R‚''R"’æ–æ6ÇVFW2†æ÷&ÖÆ—¦VEVW'’’À¢“°¢ÒÂ¶'F–6ÆUVW'’Â¶æ÷vÆVFvT'F–6ÆW5Ò“°¢6öç7B÷Vä'F–6ÆRÒW6TÖVÖò€¢‚’Óà¢6†VÆÅ7FFRæ÷Vä'F–6ÆT–@¢ò†¶æ÷vÆVFvT'F–6ÆW2æf–æB€¢†'F–6ÆR’Óâ'F–6ÆRæ–BÓÓÒ6†VÆÅ7FFRæ÷Vä'F–6ÆT–BÀ¢’óòçVÆÂ¢¢çVÆÂÀ¢¶¶æ÷vÆVFvT'F–6ÆW2Â6†VÆÅ7FFRæ÷Vä'F–6ÆT–EÒÀ¢“°¢6öç7B¶÷Vå7VÖÖ'”æöFT–BÂ6WD÷Vå7VÖÖ'”æöFT–EÒÒW6U7FFSÇ7G&–ærÂçVÆÃâ€¢çVÆÂÀ¢“°¢6öç7B÷Vå7VÖÖ'’ÒW6TÖVÖò€¢‚’Óà¢÷Vå7VÖÖ'”æöFT–@¢ò‡6†VÆÅ7FFRæFö7VÖVçBææöFW2æf–æB€¢†æöFR“¢æöFR—26çf57VÖÖ'”æöFRÓà¢æöFRæ–BÓÓÒ÷Vå7VÖÖ'”æöFT–BbbæöFRæ¶–æBÓÓÒ'7VÖÖ'’"À¢’óòçVÆÂ¢¢çVÆÂÀ¢¶÷Vå7VÖÖ'”æöFT–BÂ6†VÆÅ7FFRæFö7VÖVçBææöFW5ÒÀ¢“°¢6öç7B÷Vå7VÖÖ'”VçG&–W2ÒW6TÖVÖò€¢‚’Óà¢÷Vå7VÖÖ'¢ò6çf57VÖÖ'”VçG&–W2‡6†VÆÅ7FFRæFö7VÖVçBÂ÷Vå7VÖÖ'’æ–B¢¢µÒÀ¢¶÷Vå7VÖÖ'’Â6†VÆÅ7FFRæFö7VÖVçEÒÀ¢“°¢6öç7B&VæFW&VDæöFW2ÒW6TÖVÖóÄ6çf4fÆ÷tæöFUµÓâ‚‚’Óâ°¢6öç7B÷VåFdæöFT–BÒ÷VåFcòææöFT–C°¢6öç7B÷Vä'F–6ÆT–BÒ6†VÆÅ7FFRæ÷Vä'F–6ÆT–C°¢–b‚÷VåFdæöFT–Bbb÷Vä'F–6ÆT–Bbb÷Vå7VÖÖ'”æöFT–B’&WGW&âæöFW3°¢&WGW&âæöFW2æÖ‚†æöFR’Óà¢æöFRçG—RÓÓÒ4åd5õDeôäôDUõE•RbbæöFRæ–BÓÓÒ÷VåFdæöFT–@¢ò²ââææöFRÂFF¢²ââææöFRæFFÂ&VFW$÷Vã¢G'VRÒĞ¢¢æöFRçG—RÓÓÒ4åd5ô%D”4ÄUôäôDUõE•Rb`¢æöFRæFFæ'F–6ÆT–BÓÓÒ÷Vä'F–6ÆT–@¢ò²ââææöFRÂFF¢²ââææöFRæFFÂ&VFW$÷Vã¢G'VRÒĞ¢¢æöFRçG—RÓÓÒ4åd5õ5TÔÔ%•ôäôDUõE•Rb`¢æöFRæ–BÓÓÒ÷Vå7VÖÖ'”æöFT–@¢ò²ââææöFRÂFF¢²ââææöFRæFFÂ&VFW$÷Vã¢G'VRÒĞ¢¢æöFRÀ¢“°¢ÒÂ¶æöFW2Â÷VåFcòææöFT–BÂ÷Vå7VÖÖ'”æöFT–BÂ6†VÆÅ7FFRæ÷Vä'F–6ÆT–EÒ“°¢6öç7B¶f–ÆUVW'’Â6WDf–ÆUVW'•ÒÒW6U7FFR‚""“°¢6öç7B¶f–ÆT6FÆörÂ6WDf–ÆT6FÆöuÒÒW6U7FFSÅ&ö¦V7Df–ÆU&V6÷&EµÓâ…µÒ“°¢6öç7B¶f–ÆU6V&6…7FGW2Â6WDf–ÆU6V&6…7FGW5ÒÒW6U7FFSÀ¢&–FÆR"Â&ÆöF–ær"Â'&VG’"Â&W'&÷" ¢â‚&–FÆR"“°¢6öç7B·F6µ6V&6…7FGW2Â6WEF6µ6V&6…7FGW5ÒÒW6U7FFSÀ¢&–FÆR"Â&ÆöF–ær"Â'&VG’"Â&W'&÷" ¢â‚&–FÆR"“°¢6öç7B¶FW6·F÷6–FV&$÷VâÂ6WDFW6·F÷6–FV&$÷VåÒÒW6U7FFR‡G'VR“°¢6öç7B·F÷V6…&–Ö'”–çWBÂ6WEF÷V6…&–Ö'”–çWEÒÒW6U7FFR†fÇ6R“°¢6öç7B·F÷V6…f–Ww÷'DvW7GW&T7F—fRÂ6WEF÷V6…f–Ww÷'DvW7GW&T7F—fUÒĞ¢W6U7FFR†fÇ6R“°¢6öç7B·7G–ÆTW–VG&÷W%6÷W&6T–BÂ6WE7G–ÆTW–VG&÷W%6÷W&6T–EÒÒW6U7FFSÀ¢7G&–ærÂçVÆÀ¢â†çVÆÂ“°¢W6TVffV7B‚‚’Óâ°¢–b‚v–æF÷ræÖF6„ÖVF–‚"†Ö‚×v–GFƒ¢scw‚’"’æÖF6†W2’&WGW&ã°¢6öç7Bg&ÖRÒv–æF÷rç&WVW7Dæ–ÖF–öäg&ÖR‚‚’Óâ°¢6WDFW6·F÷6–FV&$÷Vâ†fÇ6R“°¢Ò“°¢&WGW&â‚’Óâv–æF÷ræ6æ6VÄæ–ÖF–öäg&ÖR†g&ÖR“°¢ÒÂµÒ“°¢W6TVffV7B‚‚’Óâ°¢6öç7BÖVF–Òv–æF÷ræÖF6„ÖVF–‚"‡ö–çFW#¢6ö'6R’"“°¢6öç7B7–æ5&–Ö'•F÷V6„–çWBÒ‚“¢fö–BÓâ°¢6WEF÷V6…&–Ö'”–çWB†ÖVF–æÖF6†W2“°¢Ó°¢7–æ5&–Ö'•F÷V6„–çWB‚“°¢ÖVF–æFDWfVçDÆ—7FVæW"‚&6†ævR"Â7–æ5&–Ö'•F÷V6„–çWB“°¢&WGW&â‚’ÓâÖVF–ç&VÖ÷fTWfVçDÆ—7FVæW"‚&6†ævR"Â7–æ5&–Ö'•F÷V6„–çWB“°¢ÒÂµÒ“°¢6öç7B¶fÆ÷t–ç7Fæ6TWö6‚Â6WDfÆ÷t–ç7Fæ6TWö6…ÒÒW6U7FFRƒ“°¢6öç7B·f–Ww÷'D–æ—F–Æ—¦F–öâÂ6WEf–Ww÷'D–æ—F–Æ—¦F–öåÒĞ¢W6U7FFSÄ6çf5f–Ww÷'D–æ—F–Æ—¦F–öâÂçVÆÃâ†çVÆÂ“°¢6öç7B·f–Ww÷'Ef—6–&ÆRÂ6WEf–Ww÷'Ef—6–&ÆUÒÒW6U7FFR€¢&ööÆVâ†–æ—F–Å'VçF–ÖSòç6†VÆÅ7FFRæ6çf4–B’À¢“°¢6öç7B&W÷6—F÷'’Ò&÷f–FVE&W÷6—F÷'“°¢6öç7Bw&÷W5&W÷6—F÷'’Òw&÷W&W÷6—F÷'“°¢6öç7B–ÖvU&W÷6—F÷'’Ò76WE&W÷6—F÷'“°¢6öç7B6†VÆÅv÷&·76T–BÒv÷&·76T–C°¢6öç7B6†VÆÅW6W$–BÒW6W$–C°¢6öç7B6öæfÆ–7DG&gE7F÷&vT¶W’ÒW6TÖVÖò€¢‚’Óà¢Ö÷¦s¦6çf2Ö6öæfÆ–7BÖG&gC§c¢G·6†VÆÅW6W$–GÓ¢G·6†VÆÅv÷&·76T–GÓ¢G·&ö¦V7D–Bóò&FVfVÇB'Ó¢G·6†VÆÅ7FFRæ6çf4–Bóò&æöæR'ÖÀ¢·&ö¦V7D–BÂ6†VÆÅ7FFRæ6çf4–BÂ6†VÆÅW6W$–BÂ6†VÆÅv÷&·76T–EÒÀ¢“°¢6öç7B–ÖvTÆöD66†UW6W$–E&VbÒW6U&Vb‡6†VÆÅW6W$–B“°¢6öç7B¶ö&¦V7EW&Ç5ÒÒW6U7FFR€¢‚’Óâ–æ—F–Å'VçF–ÖSòæö&¦V7EW&Ç2óò7&VFTö&¦V7EW&Å&Vv—7G'’‚’À¢“°¢6öç7B¶6öçG&öÆÆW%ÒÒW6U7FFR‚‚’Óà¢‚‚’Óâ°¢6öç7BæW‡BÒæWrÆö6Ä6çf56†VÆÄ6öçG&öÆÆW"‡°¢&W÷6—F÷'’À¢v÷&·76T–C¢6†VÆÅv÷&·76T–BÀ¢W6W$–C¢6†VÆÅW6W$–BÀ¢Ò“°¢–b†–æ—F–Å'VçF–ÖR’æW‡Bç&W7F÷&U'VçF–ÖU7FFR†–æ—F–Å'VçF–ÖRç6†VÆÅ7FFR“°¢&WGW&âæW‡C°¢Ò’‚’À¢“°¢6öç7B&V7DfÆ÷rÒW6U&V7DfÆ÷sÄ6çf4fÆ÷tæöFSâ‚“° ¢6öç7B6VçFW%&VFW$æöFTgFW$Æ–÷WBÒW6T6ÆÆ&6²€¢†æöFT–C¢7G&–ærÂçVÆÂ’Óâ°¢–b‚æöFT–B’&WGW&ã°¢–b‡&VFW$6VçFW$g&ÖU&Vbæ7W'&VçBÓÒçVÆÂ¢6æ6VÄæ–ÖF–öäg&ÖR‡&VFW$6VçFW$g&ÖU&Vbæ7W'&VçB“°¢&VFW$6VçFW$g&ÖU&Vbæ7W'&VçBÒ&WVW7Dæ–ÖF–öäg&ÖR‚‚’Óâ°¢&VFW$6VçFW$g&ÖU&Vbæ7W'&VçBÒ&WVW7Dæ–ÖF–öäg&ÖR‚‚’Óâ°¢&VFW$6VçFW$g&ÖU&Vbæ7W'&VçBÒçVÆÃ°¢6öç7BæöFRÒæöFW5&Vbæ7W'&VçBæf–æB‚†—FVÒ’Óâ—FVÒæ–BÓÓÒæöFT–B“°¢–b‚æöFR’&WGW&ã°¢6öç7Bv–GF‚ÒæöFRçv–GF‚óò„çVÖ&W"†æöFRç7G–ÆSòçv–GF‚’ÇÂ“°¢6öç7B†V–v‡BÒæöFRæ†V–v‡Bóò„çVÖ&W"†æöFRç7G–ÆSòæ†V–v‡B’ÇÂ“°¢–b‡v–GF‚ÃÒÇÂ†V–v‡BÃÒ’&WGW&ã°¢fö–B&V7DfÆ÷rç6WD6VçFW"€¢æöFRç÷6—F–öâç‚²v–GF‚ò"À¢æöFRç÷6—F–öâç’²†V–v‡Bò"À¢²GW&F–öã¢##Â¦ööÓ¢&V7DfÆ÷rævWE¦ööÒ‚’ÒÀ¢“°¢Ò“°¢Ò“°¢ÒÀ¢·&V7DfÆ÷uÒÀ¢“° ¢6öç7BVçFW%&VFW$Æ–÷WBÒW6T6ÆÆ&6²€¢†æöFT–C¢7G&–ær’Óâ°¢6öç7B6äWFô6öÆÆ6U6–FV&"Ğ¢VÖ&VFFVBbbv–æF÷ræÖF6„ÖVF–‚"†Ö–â×v–GFƒ¢sc‡‚’"’æÖF6†W3°¢–b†6äWFô6öÆÆ6U6–FV&"bbFW6·F÷6–FV&$÷Vâ’°¢&VFW%6–FV&%v4WFô6öÆÆ6VE&Vbæ7W'&VçBÒG'VS°¢6WDFW6·F÷6–FV&$÷Vâ†fÇ6R“°¢Ğ¢6VçFW%&VFW$æöFTgFW$Æ–÷WB†æöFT–B“°¢ÒÀ¢¶6VçFW%&VFW$æöFTgFW$Æ–÷WBÂFW6·F÷6–FV&$÷VâÂVÖ&VFFVEÒÀ¢“° ¢6öç7BÆVfU&VFW$Æ–÷WBÒW6T6ÆÆ&6²€¢†æöFT–C¢7G&–ærÂçVÆÂ’Óâ°¢6öç7B&W7F÷&U6–FV&"Ò&VFW%6–FV&%v4WFô6öÆÆ6VE&Vbæ7W'&VçC°¢&VFW%6–FV&%v4WFô6öÆÆ6VE&Vbæ7W'&VçBÒfÇ6S°¢–b‡&W7F÷&U6–FV&"’6WDFW6·F÷6–FV&$÷Vâ‡G'VR“°¢6VçFW%&VFW$æöFTgFW$Æ–÷WB†æöFT–B“°¢ÒÀ¢¶6VçFW%&VFW$æöFTgFW$Æ–÷WEÒÀ¢“° ¢W6TVffV7B‚‚’Óâ°¢6öç7B7F—fUF6´–BÒ7F—fUF6´FWF–Ç5F6´–C°¢–b€¢7F—fUF6´–BÇÀ¢F6´'&–FvRÇÀ¢6†÷VÆD6Æ÷6T6çf5F6´FWF–Ç2†7F—fUF6´–BÂæöFW2¢¢&WGW&ã°¢F6´'&–FvRæ6Æ÷6UF6´FWF–Ç2†7F—fUF6´–B“°¢ÒÂ¶7F—fUF6´FWF–Ç5F6´–BÂæöFW2ÂF6´'&–FvUÒ“°¢6öç7BFFW$FWVæFVæ6–W2ÒW6TÖVÖóÄ6çf4–ÖvTFFW$FWVæFVæ6–W3â‚‚’Óâ°¢6öç7B&W÷'Ef&–çDW'&÷"Ò†Æ&VÃ¢7G&–ærÂW'&÷#¢Væ¶æ÷vâ“¢fö–BÓâ°¢–b‡&ö6W72æVçbääôDUôTåbÓÓÒ'&öGV7F–öâ"’&WGW&ã°¢–b†W'&÷"–ç7Fæ6VöbW'&÷"bb&6öFR"–âW'&÷"’°¢6öç7BF–væ÷7F–2ÒW'&÷"2W'&÷"b°¢6öFSó¢Væ¶æ÷vã°¢FWF–Ç3ó¢Væ¶æ÷vã°¢Ó°¢6öç6öÆRçv&â€¢Æ&VÂÀ¢¥4ôâç7G&–æv–g’‡°¢6öFS¢F–væ÷7F–2æ6öFRÀ¢FWF–Ç3¢F–væ÷7F–2æFWF–Ç2À¢ÖW76vS¢F–væ÷7F–2æÖW76vRÀ¢Ò’À¢“°¢&WGW&ã°¢Ğ¢6öç6öÆRçv&â†Æ&VÂÂW'&÷"“°¢Ó°¢6öç7Bf&–çE&W÷6—F÷'’Ğ¢&ÆöEf&–çB"–â–ÖvU&W÷6—F÷'¢ò†–ÖvU&W÷6—F÷'’2Væ¶æ÷vâ26çf476WEf&–çE&W÷6—F÷'’¢¢VæFVf–æVC°¢&WGW&â°¢76WE&W÷6—F÷'“¢–ÖvU&W÷6—F÷'’À¢âââ‡f&–çE&W÷6—F÷'’ÓÓÒVæFVf–æVBò·Ò¢²f&–çE&W÷6—F÷'’Ò’À¢ö&¦V7EW&Ç2À¢W6W$–C¢6†VÆÅW6W$–BÀ¢v÷&·76T–C¢6†VÆÅv÷&·76T–BÀ¢6çf4–C¢6†VÆÅ7FFRæ6çf4–BóòVæFVf–æVBÀ¢ÆöD66†S¢–ÖvTÆöD66†U&Vbæ7W'&VçBÀ¢—&Ö–E66†VGVÆW#¢—&Ö–E66†VGVÆW%&Vbæ7W'&VçBÀ¢öå—&Ö–D6ö×ÆWFS¢‡²&W7VÇBÒ’Óâ°¢–b‡&W7VÇBç7F÷&VBæÆVæwF‚ÓÓÒ’&WGW&ã°¢&Vg&W6„–ÖvUf&–çG5&Vbæ7W'&VçB€¢6†VÆÅ7FFU&Vbæ7W'&VçBçf–Ww÷'Bç¦ööÒÀ¢fÇ6RÀ¢“°¢ÒÀ¢öåf&–çDW'&÷#¢†W'&÷#¢Væ¶æ÷vâ’Óâ°¢&W÷'Ef&–çDW'&÷"‚$6çf2–ÖvRf&–çBvVæW&F–öâf–ÆVBâ"ÂW'&÷"“°¢ÒÀ¢Ó°¢ÒÂ°¢–ÖvU&W÷6—F÷'’À¢ö&¦V7EW&Ç2À¢6†VÆÅ7FFRæ6çf4–BÀ¢6†VÆÅW6W$–BÀ¢6†VÆÅv÷&·76T–BÀ¢Ò“° ¢W6TVffV7B‚‚’Óâ°¢æöFW5&Vbæ7W'&VçBÒæöFW3°¢ÒÂ¶æöFW5Ò“° ¢W6TVffV7B‚‚’Óâ°¢VFvW5&Vbæ7W'&VçBÒVFvW3°¢ÒÂ¶VFvW5Ò“° ¢W6TVffV7B‚‚’Óâ°¢7VÖÖ&–W5&Vbæ7W'&VçBÒ7VÖÖ&–W3°¢ÒÂ·7VÖÖ&–W5Ò“° ¢W6TVffV7B‚‚’Óâ°¢6†VÆÅ7FFU&Vbæ7W'&VçBÒ6†VÆÅ7FFS°¢ÒÂ·6†VÆÅ7FFUÒ“° ¢W6TVffV7B‚‚’Óâ°¢–b†–ÖvTÆöD66†UW6W$–E&Vbæ7W'&VçBÓÓÒ6†VÆÅW6W$–B’&WGW&ã°¢–ÖvTÆöD66†UW6W$–E&Vbæ7W'&VçBÒ6†VÆÅW6W$–C°¢–ÖvTÆöD66†U&Vbæ7W'&VçBæ6ÆV"‚“°¢–ÖvTÆöD66†T6çf4–E&Vbæ7W'&VçBÒ6†VÆÅ7FFU&Vbæ7W'&VçBæ6çf4–C°¢ÒÂ·6†VÆÅW6W$–EÒ“° ¢W6TVffV7B‚‚’Óâ°¢67&VVåFôfÆ÷u&Vbæ7W'&VçBÒ&V7DfÆ÷rç67&VVåFôfÆ÷u÷6—F–öã°¢ÒÂ·&V7DfÆ÷rç67&VVåFôfÆ÷u÷6—F–öåÒ“° ¢W6TVffV7B‚‚’Óâ°¢6WDæöFW2‚†7W'&VçB’Óà¢7W'&VçBæÖ‚†æöFR’Óà¢æöFRçG—RÓÓÒ4åd5õD4µôäôDUõE•P¢ò°¢ââææöFRÀ¢FF¢°¢ââææöFRæFFÀ¢F6´'&–FvRÀ¢F6µv÷&·76T–BÀ¢ÒÀ¢Ğ¢¢æöFRÀ¢’À¢“°¢ÒÂ·6WDæöFW2ÂF6´'&–FvRÂF6µv÷&·76T–EÒ“° ¢W6TVffV7B‚‚’Óâ°¢–b‚F6µ–6¶W$÷VâÇÂF6´'&–FvRÇÂF6µv÷&·76T–B’°¢6WEF6µ&W7VÇG2…µÒ“°¢6WEF6µ6V&6…7FGW2‚&–FÆR"“°¢&WGW&ã°¢Ğ¢ÆWB7F—fRÒG'VS°¢6WEF6µ6V&6…7FGW2‚&ÆöF–ær"“°¢fö–B&öÖ—6Rç&W6öÇfR€¢F6´'&–FvRç6V&6…F6·2‡F6µv÷&·76T–BÂF6µVW'’’À¢’çF†Vâ€¢‡&W7VÇG2’Óâ°¢–b‚7F—fR’&WGW&ã°¢6WEF6µ&W7VÇG2‡&W7VÇG2“°¢6WEF6µ6V&6…7FGW2‚'&VG’"“°¢ÒÀ¢‚’Óâ°¢–b‚7F—fR’&WGW&ã°¢6WEF6µ&W7VÇG2…µÒ“°¢6WEF6µ6V&6…7FGW2‚&W'&÷""“°¢ÒÀ¢“°¢&WGW&â‚’Óâ°¢7F—fRÒfÇ6S°¢Ó°¢ÒÂ·F6´'&–FvRÂF6µ–6¶W$÷VâÂF6µVW'’ÂF6µv÷&·76T–EÒ“° ¢W6TVffV7B‚‚’Óâ°¢–b‚F6µ–6¶W$÷Vâ’&WGW&ã°¢6öç7Böä¶W”F÷vâÒ†WfVçC¢¶W–&ö&DWfVçB“¢fö–BÓâ°¢–b†WfVçBæ¶W’ÓÒ$W66R"’&WGW&ã°¢WfVçBç&WfVçDFVfVÇB‚“°¢6WEF6µ–6¶W$÷Vâ†fÇ6R“°¢Ó°¢v–æF÷ræFDWfVçDÆ—7FVæW"‚&¶W–F÷vâ"Âöä¶W”F÷vâ“°¢&WGW&â‚’Óâv–æF÷rç&VÖ÷fTWfVçDÆ—7FVæW"‚&¶W–F÷vâ"Âöä¶W”F÷vâ“°¢ÒÂ·F6µ–6¶W$÷VåÒ“° ¢W6TVffV7B‚‚’Óâ°¢–b‚f–ÆU–6¶W$÷VâÇÂ&ö¦V7Df–ÆU&W÷6—F÷'’ÇÂ&ö¦V7D–B’°¢6WDf–ÆT6FÆör…µÒ“°¢6WDf–ÆU6V&6…7FGW2‚&–FÆR"“°¢&WGW&ã°¢Ğ¢ÆWB7F—fRÒG'VS°¢6WDf–ÆU6V&6…7FGW2‚&ÆöF–ær"“°¢fö–B&ö¦V7Df–ÆU&W÷6—F÷'¢æÆ—7Df–ÆW2‡²v÷&·76T–C¢6†VÆÅv÷&·76T–BÂ&ö¦V7D–BÒ¢çF†Vâ€¢†f–ÆW2’Óâ°¢–b‚7F—fR’&WGW&ã°¢6WDf–ÆT6FÆör€¢f–ÆW2æf–ÇFW"€¢†f–ÆR’Óà¢f–ÆRç&VG”BÓÒçVÆÂb`¢f–ÆRæFVÆWFVDBÓÓÒçVÆÂb`¢†f–ÆRæÖ–ÖUG—RÓÓÒ&Æ–6F–öâ÷Fb"ÇÀ¢†f–ÆRçv–GF‚ÓÒçVÆÂb`¢f–ÆRæ†V–v‡BÓÒçVÆÂb`¢—5&ö¦V7Df–ÆT–ÖvTÖ–ÖUG—R†f–ÆRæÖ–ÖUG—R’’’À¢’À¢“°¢6WDf–ÆU6V&6…7FGW2‚'&VG’"“°¢ÒÀ¢‚’Óâ°¢–b‚7F—fR’&WGW&ã°¢6WDf–ÆT6FÆör…µÒ“°¢6WDf–ÆU6V&6…7FGW2‚&W'&÷""“°¢ÒÀ¢“°¢&WGW&â‚’Óâ°¢7F—fRÒfÇ6S°¢Ó°¢ÒÂ¶f–ÆU–6¶W$÷VâÂ&ö¦V7Df–ÆU&W÷6—F÷'’Â&ö¦V7D–BÂ6†VÆÅv÷&·76T–EÒ“° ¢W6TVffV7B‚‚’Óâ°¢–b‚f–ÆU–6¶W$÷Vâ’&WGW&ã°¢6öç7Böä¶W”F÷vâÒ†WfVçC¢¶W–&ö&DWfVçB“¢fö–BÓâ°¢–b†WfVçBæ¶W’ÓÒ$W66R"’&WGW&ã°¢WfVçBç&WfVçDFVfVÇB‚“°¢6WDf–ÆU–6¶W$÷Vâ†fÇ6R“°¢Ó°¢v–æF÷ræFDWfVçDÆ—7FVæW"‚&¶W–F÷vâ"Âöä¶W”F÷vâ“°¢&WGW&â‚’Óâv–æF÷rç&VÖ÷fTWfVçDÆ—7FVæW"‚&¶W–F÷vâ"Âöä¶W”F÷vâ“°¢ÒÂ¶f–ÆU–6¶W$÷VåÒ“° ¢6öç7Bf–ÆU&W7VÇG2ÒW6TÖVÖò‚‚’Óâ°¢6öç7BVW'’Òf–ÆUVW'’çG&–Ò‚’çFôÆö6ÆTÆ÷vW$66R‚''R"“°¢–b‚VW'’’&WGW&âf–ÆT6FÆös°¢&WGW&âf–ÆT6FÆöræf–ÇFW"‚†f–ÆR’Óà¢f–ÆRææÖRçFôÆö6ÆTÆ÷vW$66R‚''R"’æ–æ6ÇVFW2‡VW'’’À¢“°¢ÒÂ¶f–ÆT6FÆörÂf–ÆUVW'•Ò“° ¢6öç7B&ö¦V7Df–ÆT–ÖvTFWVæFVæ6–W4f÷$6çf2ÒW6T6ÆÆ&6²€¢†6çf4–C¢7G&–ær’Óà¢&ö¦V7Df–ÆU&W÷6—F÷'’bb&ö¦V7Df–ÆUf&–çE&W÷6—F÷'’bb&ö¦V7D–@¢ò°¢f–ÆU&W÷6—F÷'“¢&ö¦V7Df–ÆU&W÷6—F÷'’À¢f&–çE&W÷6—F÷'“¢&ö¦V7Df–ÆUf&–çE&W÷6—F÷'’À¢ö&¦V7EW&Ç2À¢v÷&·76T–C¢6†VÆÅv÷&·76T–BÀ¢&ö¦V7D–BÀ¢6çf4–BÀ¢Ğ¢¢çVÆÂÀ¢°¢ö&¦V7EW&Ç2À¢&ö¦V7Df–ÆU&W÷6—F÷'’À¢&ö¦V7Df–ÆUf&–çE&W÷6—F÷'’À¢&ö¦V7D–BÀ¢6†VÆÅv÷&·76T–BÀ¢ÒÀ¢“° ¢6öç7B7–æ57FFRÒW6T6ÆÆ&6²€¢‚’Óâ6WE6†VÆÅ7FFR†6öçG&öÆÆW"ç7FFR’À¢¶6öçG&öÆÆW%ÒÀ¢“° ¢6öç7B6fT÷Vä'F–6ÆT–BÒW6T6ÆÆ&6²€¢†÷Vä'F–6ÆT–C¢7G&–ærÂçVÆÂ’Óâ°¢6öç7B6fRÒ6öçG&öÆÆW"ç6fT÷Vä'F–6ÆT–B†÷Vä'F–6ÆT–B“°¢7–æ57FFR‚“°¢fö–B6fRæ6F6‚‡7–æ57FFR“°¢ÒÀ¢¶6öçG&öÆÆW"Â7–æ57FFUÒÀ¢“° ¢6öç7B6fT6öæfÆ–7DG&gBÒW6T6ÆÆ&6²€¢‡7FFS¢Æö6Ä6çf56†VÆÅ7FFR“¢fö–BÓâ°¢–b‚7FFRæ6çf4–BÇÂG—Vöbv–æF÷rÓÓÒ'VæFVf–æVB"’&WGW&ã°¢6öç7BG&gC¢Æö6Ä6çf46öæfÆ–7DG&gBÒ°¢6çf4–C¢7FFRæ6çf4–BÀ¢F—FÆS¢7FFRçF—FÆRÀ¢Fö7VÖVçC¢7FFRæFö7VÖVçBÀ¢f–Ww÷'C¢7FFRçf–Ww÷'BÀ¢Ó°¢G'’°¢v–æF÷ræÆö6Å7F÷&vRç6WD—FVÒ€¢6öæfÆ–7DG&gE7F÷&vT¶W’À¢¥4ôâç7G&–æv–g’†G&gB’À¢“°¢6WD6öæfÆ–7DG&gDf–Æ&ÆR‡G'VR“°¢Ò6F6‚°¢òòF†R6öçG&öÆÆW"7F–ÆÂ†öÆG2F†RG&gB–b'&÷w6W"7F÷&vR—2Væf–Æ&ÆRà¢Ğ¢ÒÀ¢¶6öæfÆ–7DG&gE7F÷&vT¶W•ÒÀ¢“° ¢6öç7B&VD6öæfÆ–7DG&gBÒW6T6ÆÆ&6²‚‚“¢Æö6Ä6çf46öæfÆ–7DG&gBÂçVÆÂÓâ°¢–b‡G—Vöbv–æF÷rÓÓÒ'VæFVf–æVB"’&WGW&âçVÆÃ°¢G'’°¢6öç7B&rÒv–æF÷ræÆö6Å7F÷&vRævWD—FVÒ†6öæfÆ–7DG&gE7F÷&vT¶W’“°¢–b‚&r’&WGW&âçVÆÃ°¢6öç7BG&gBÒ¥4ôâç'6R‡&r’2Æö6Ä6çf46öæfÆ–7DG&gC°¢&WGW&âG&gBbbG—VöbG&gBæ6çf4–BÓÓÒ'7G&–ær"òG&gB¢çVÆÃ°¢Ò6F6‚°¢&WGW&âçVÆÃ°¢Ğ¢ÒÂ¶6öæfÆ–7DG&gE7F÷&vT¶W•Ò“° ¢6öç7B6ÆV$6öæfÆ–7DG&gBÒW6T6ÆÆ&6²‚‚“¢fö–BÓâ°¢–b‡G—Vöbv–æF÷rÓÓÒ'VæFVf–æVB"’&WGW&ã°¢G'’°¢v–æF÷ræÆö6Å7F÷&vRç&VÖ÷fT—FVÒ†6öæfÆ–7DG&gE7F÷&vT¶W’“°¢Òf–æÆÇ’°¢6WD6öæfÆ–7DG&gDf–Æ&ÆR†fÇ6R“°¢Ğ¢ÒÂ¶6öæfÆ–7DG&gE7F÷&vT¶W•Ò“° ¢W6TVffV7B‚‚’Óâ°¢6WD6öæfÆ–7DG&gDf–Æ&ÆR‡&VD6öæfÆ–7DG&gB‚’ÓÒçVÆÂ“°¢ÒÂ·&VD6öæfÆ–7DG&gEÒ“° ¢W6TVffV7B‚‚’Óâ°¢òò&V¦V7FVB6fR—2§W7B2&V6÷fW&&ÆR2426öæfÆ–7BâW'6—7BF†P¢òò6æöæ–6ÂG&gB&Vf÷&RF†RW6W"6âæf–vFR÷"&VÆöBF†RvRà¢–b€¢‡6†VÆÅ7FFRç7FGW2ÓÓÒ&6öæfÆ–7B"ÇÂ6†VÆÅ7FFRç7FGW2ÓÓÒ&W'&÷""’b`¢6öçG&öÆÆW"æ†5VæF–æu6fP¢’°¢6fT6öæfÆ–7DG&gB‡6†VÆÅ7FFR“°¢Ğ¢ÒÂ¶6öçG&öÆÆW"Â6fT6öæfÆ–7DG&gBÂ6†VÆÅ7FFUÒ“° ¢6öç7B&Vg&W6„6FÆörÒW6T6ÆÆ&6²†7–æ2‚“¢&öÖ—6SÇ°¢7VÖÖ&–W3¢6çf57VÖÖ'•µÓ°¢w&÷W3¢6çf4w&÷WµÓ°¢ÓâÓâ°¢6öç7B¶æW‡E7VÖÖ&–W2ÂæW‡Dw&÷W5ÒÒv—B&öÖ—6RæÆÂ…°¢6öçG&öÆÆW"æÆ—7D6çf6W2‚’À¢w&÷W5&W÷6—F÷'“òæÆ—7D6çf4w&÷W2‡6†VÆÅv÷&·76T–B’óğ¢&öÖ—6Rç&W6öÇfR…µÒ26çf4w&÷WµÒ’À¢Ò“°¢6WE7VÖÖ&–W2†æW‡E7VÖÖ&–W2“°¢6WDw&÷W2†æW‡Dw&÷W2“°¢6WDw&÷W4W'&÷"†çVÆÂ“°¢&WGW&â²7VÖÖ&–W3¢æW‡E7VÖÖ&–W2Âw&÷W3¢æW‡Dw&÷W2Ó°¢ÒÂ¶6öçG&öÆÆW"Âw&÷W5&W÷6—F÷'’Â6†VÆÅv÷&·76T–EÒ“° ¢6öç7B66†VGVÆU6fRÒW6T6ÆÆ&6²‚‚’Óâ°¢–b‡6fUF–ÖW%&Vbæ7W'&VçB’6ÆV%F–ÖV÷WB‡6fUF–ÖW%&Vbæ7W'&VçB“°¢6fUF–ÖW%&Vbæ7W'&VçBÒ6WEF–ÖV÷WB‚‚’Óâ°¢6fUF–ÖW%&Vbæ7W'&VçBÒçVÆÃ°¢–b†‡–G&F–æu&Vbæ7W'&VçB’&WGW&ã°¢fö–B6öçG&öÆÆW"ç6fR‚’çF†Vâ‡7–æ57FFR’æ6F6‚‡7–æ57FFR“°¢ÒÂ#c“°¢ÒÂ¶6öçG&öÆÆW"Â7–æ57FFUÒ“° ¢6öç7BW‡÷'E÷'F&ÆT6çf46÷’ÒW6T6ÆÆ&6²†7–æ2‚“¢&öÖ—6SÇfö–CâÓâ°¢–b‚6öçG&öÆÆW"ç7FFRæ6çf4–BÇÂ6öçG&öÆÆW"ç7FFRæWF÷6fT&Æö6¶VB’&WGW&ã°¢–b‡6fUF–ÖW%&Vbæ7W'&VçB’°¢6ÆV%F–ÖV÷WB‡6fUF–ÖW%&Vbæ7W'&VçB“°¢6fUF–ÖW%&Vbæ7W'&VçBÒçVÆÃ°¢Ğ¢G'’°¢6öç7B6fU&W7VÇBÒv—B6öçG&öÆÆW"æfÇW6…VæF–æu6fR‚“°¢7–æ57FFR‚“°¢–b‡6fU&W7VÇCòç7FGW2ÓÓÒ&6öæfÆ–7B"ÇÂ6öçG&öÆÆW"ç7FFRæWF÷6fT&Æö6¶VB¢&WGW&ã° ¢6öç7BFö7VÖVçBÒ6öçG&öÆÆW"ç7FFRæFö7VÖVçC°¢6öç7Bf–ÆT–G2ÒæWr6WB€¢Fö7VÖVçBææöFW2æfÆDÖ‚†æöFR’Óâ°¢–b†æöFRæ¶–æBÓÓÒ'Fb"’&WGW&â¶æöFRæf–ÆT–EÓ°¢–b†æöFRæ¶–æBÓÓÒ&–ÖvR"bb&f–ÆT–B"–âæöFR’&WGW&â¶æöFRæf–ÆT–EÓ°¢&WGW&âµÓ°¢Ò’À¢“°¢6öç7Bf–ÆW2Ğ¢&ö¦V7Df–ÆU&W÷6—F÷'’bb&ö¦V7D–@¢ò€¢v—B&öÖ—6RæÆÂ€¢²ââæf–ÆT–G5ÒæÖ†7–æ2†f–ÆT–B’Óâ°¢G'’°¢&WGW&âv—B&ö¦V7Df–ÆU&W÷6—F÷'’ævWDf–ÆR‡°¢f–ÆT–BÀ¢&ö¦V7D–BÀ¢v÷&·76T–C¢6†VÆÅv÷&·76T–BÀ¢Ò“°¢Ò6F6‚°¢&WGW&âçVÆÃ°¢Ğ¢Ò’À¢¢’æf–ÇFW"‚†f–ÆR“¢f–ÆR—2&ö¦V7Df–ÆU&V6÷&BÓâf–ÆRÓÒçVÆÂ¢¢µÓ°¢6öç7B&6†—fRÒ7&VFT6çf5÷'F&ÆT&6·W‡°¢6çf4–C¢6öçG&öÆÆW"ç7FFRæ6çf4–BÀ¢Fö7VÖVçBÀ¢f–ÆW2À¢&Wf—6–öã¢6öçG&öÆÆW"ç7FFRç&Wf—6–öâÀ¢F—FÆS¢6öçG&öÆÆW"ç7FFRçF—FÆRÀ¢Ò“°¢6öç7B¦—'—FW2ÒæWrV–çC„'&’†&6†—fRæ'—FW2“°¢6öç7BW&ÂÒU$Âæ7&VFTö&¦V7EU$Â€¢æWr&Æö"…·¦—'—FW2æ'VffW"2'&”'VffW%ÒÂ°¢G—S¢&Æ–6F–öâ÷¦—"À¢Ò’À¢“°¢6öç7BÆ–æ²Òv–æF÷ræFö7VÖVçBæ7&VFT]zßí¢G§²ÚîÆ­yÖöFRæ¶–æBÓÓÒ'6†R"’°¢'VçF–ÖTæöFW2çW6‚€¢7&VFT6çf56†TfÆ÷tæöFR‡°¢–C¢æöFRæ–BÀ¢6†S¢æöFRç6†RÀ¢Ö&¶F÷vã¢æöFRæÖ&¶F÷vâÀ¢÷6—F–öã¢æöFRç÷6—F–öâÀ¢6—¦S¢æöFRç6—¦RÀ¢7G–ÆS¢æöFRç7G–ÆRÀ¢¤–æFWƒ¢æöFRç¤–æFW‚À¢Ò’À¢“°¢ÒVÇ6R–b†æöFRæ¶–æBÓÓÒ'F6²"’°¢'VçF–ÖTæöFW2çW6‚€¢7&VFT6çf5F6´fÆ÷tæöFR‡°¢–C¢æöFRæ–BÀ¢F6´–C¢æöFRçF6´–BÀ¢Æ7D¶æ÷våF—FÆS¢æöFRæÆ7D¶æ÷våF—FÆRÀ¢÷6—F–öã¢æöFRç÷6—F–öâÀ¢6—¦S¢æöFRç6—¦RÀ¢¤–æFWƒ¢æöFRç¤–æFW‚À¢F6´'&–FvRÀ¢F6µv÷&·76T–BÀ¢öä6öçFVçD†V–v‡D6†ævS¢†æFÆUF6´æöFT6öçFVçD†V–v‡D6†ævRÀ¢Ò’À¢“°¢Ğ¢Ğ ¢6öç7B–ÖvTæöFW2Ò6æöæ–6ÄæöFW2æf–ÇFW"€¢†æöFR’ÓâæöFRæ¶–æBÓÓÒ&–ÖvR"À¢“°¢6öç7B&W7F÷&VD–ÖvW2Ğ¢–ÖvTæöFW2æÆVæwF‚ÓÓÒ ¢ò²æöFW3¢µÒĞ¢¢v—B&W7F÷&T6çf4–ÖvTæöFW2€¢²66†VÖfW'6–öã¢"26öç7BÂæöFW3¢–ÖvTæöFW2ÂVFvW3¢µÒÒÀ¢6çf4–ÖvTFFW$FWVæFVæ6–W4f÷$6çf2€¢FFW$FWVæFVæ6–W2À¢6çf4–BÀ¢’À¢°¢66†VD76WE–ÆöG3¢f&–çE–ÆöG5&Vbæ7W'&VçBÀ¢f–Ww÷'E¦ööÓ¢6†VÆÅ7FFU&Vbæ7W'&VçBçf–Ww÷'Bç¦ööÒÀ¢ÆÆ÷tF÷væw&FS¢fÇ6RÀ¢ÒÀ¢“°¢6öç7B&ö¦V7Df–ÆTFWVæFVæ6–W2Ğ¢&ö¦V7Df–ÆT–ÖvTFWVæFVæ6–W4f÷$6çf2†6çf4–B“°¢6öç7B&W7F÷&VE&ö¦V7Df–ÆT–ÖvW2Ò&ö¦V7Df–ÆTFWVæFVæ6–W0¢òv—B&W7F÷&U&ö¦V7Df–ÆT6çf4–ÖvTæöFW2€¢²66†VÖfW'6–öã¢"26öç7BÂæöFW3¢–ÖvTæöFW2ÂVFvW3¢µÒÒÀ¢&ö¦V7Df–ÆTFWVæFVæ6–W2À¢°¢66†VD76WE–ÆöG3¢f&–çE–ÆöG5&Vbæ7W'&VçBÀ¢f–Ww÷'E¦ööÓ¢6†VÆÅ7FFU&Vbæ7W'&VçBçf–Ww÷'Bç¦ööÒÀ¢ÆÆ÷tF÷væw&FS¢fÇ6RÀ¢ÒÀ¢¢¢²æöFW3¢µÒÓ°¢6öç7B6æöæ–6Ä–ÖvW4'”–BÒæWrÖ€¢–ÖvTæöFW2æÖ‚†æöFR’Óâ¶æöFRæ–BÂæöFUÒ’À¢“°¢f÷"†6öç7B–ÖvRöb°¢ââç&W7F÷&VD–ÖvW2ææöFW2À¢ââç&W7F÷&VE&ö¦V7Df–ÆT–ÖvW2ææöFW2À¢Ò’°¢6öç7B6æöæ–6ÂÒ6æöæ–6Ä–ÖvW4'”–BævWB†–ÖvRæ–B“°¢6öç7B'VçF–ÖT–ÖvRÒ6æöæ–6À¢ò²ââæ–ÖvRÂ¤–æFWƒ¢6æöæ–6Âç¤–æFW‚Ğ¢¢–ÖvS°¢'VçF–ÖTæöFW2çW6‚‡'VçF–ÖT–ÖvR“°¢&VÖVÖ&W$–ÖvU'VçF–ÖU–ÆöB€¢f&–çE–ÆöG5&Vbæ7W'&VçBÀ¢'VçF–ÖT–ÖvRÀ¢²v÷&·76T–C¢6†VÆÅv÷&·76T–BÂ6çf4–BÒÀ¢“°¢Ğ ¢6öç7B'VçF–ÖT–G2ÒæWr6WB‡'VçF–ÖTæöFW2æÖ‚†æöFR’ÓâæöFRæ–B’“°¢6öç7BW'6—7FVDæöFW2Ò6æöæ–6ÄæöFW2æf–ÇFW"‚†æöFR’Óà¢'VçF–ÖT–G2æ†2†æöFRæ–B’À¢“°¢–b‡W'6—7FVDæöFW2æÆVæwF‚ÓÓÒ’&WGW&ã°¢6WDæöFW2‚†7W'&VçB’Óâ°¢ââæ7W'&VçBæÖ‚†æöFR’Óà¢æöFRç6VÆV7FVBò²ââææöFRÂ6VÆV7FVC¢fÇ6RÒ¢æöFRÀ¢’À¢ââç'VçF–ÖTæöFW2æÖ‚†æöFR’Óâ‡²ââææöFRÂ6VÆV7FVC¢G'VRÒ’’À¢Ò“°¢6öçG&öÆÆW"æ–ç6W'D6çf4æöFW2‡W'6—7FVDæöFW2“°¢7–æ57FFR‚“°¢66†VGVÆU6fR‚“°¢Ò6F6‚†W'&÷#¢Væ¶æ÷vâ’°¢6WE6†VÆÅ7FFR‚†7W'&VçB’Óâ‡°¢ââæ7W'&VçBÀ¢7FGW3¢&W'&÷""À¢W'&÷# ¢W'&÷"–ç7Fæ6VöbW'&÷"òW'&÷"æÖW76vR¢$6çf27FRf–ÆVBâ"À¢Ò’“°¢Ğ¢ÒÀ¢°¢FFW$FWVæFVæ6–W2À¢6VçFW%÷6—F–öâÀ¢6öçG&öÆÆW"À¢†æFÆUF6´æöFT6öçFVçD†V–v‡D6†ævRÀ¢&ö¦V7Df–ÆT–ÖvTFWVæFVæ6–W4f÷$6çf2À¢66†VGVÆU6fRÀ¢6WDæöFW2À¢6†VÆÅv÷&·76T–BÀ¢7–æ57FFRÀ¢F6´'&–FvRÀ¢F6µv÷&·76T–BÀ¢ÒÀ¢“° ¢6öç7B7&VFUFdæöFTg&öÕ&ö¦V7Df–ÆRÒW6T6ÆÆ&6²€¢7–æ2†f–ÆS¢&ö¦V7Df–ÆU&V6÷&BÂ÷6—F–öãó¢fÆ÷u÷6—F–öâ’Óâ°¢–b€¢f–ÆRæÖ–ÖUG—RÓÒ&Æ–6F–öâ÷Fb"ÇÀ¢6†VÆÅ7FFU&Vbæ7W'&VçBæ6çf4–@¢¢&WGW&ã°¢6öç7B6öæf—&ÔGF6†ÖVçE6fVBÒ7–æ2‚“¢&öÖ—6SÇfö–CâÓâ°¢–b‚6öçG&öÆÆW"æ†5VæF–æu6fR’&WGW&ã°¢G'’°¢6öç7B&W7VÇBÒv—B6öçG&öÆÆW"æfÇW6…VæF–æu6fR‚“°¢6öç7B6fVBÒ6öçG&öÆÆW"ç7FFS°¢7–æ57FFR‚“°¢–b‡&W7VÇCòç7FGW2ÓÒ'6fVB"ÇÂ6fVBç7FGW2ÓÒ'6fVB"’°¢F‡&÷ræWrW'&÷"€¢6fVBæW'&÷"óò-	İR=M½íÂí]İ-ÂDbİ=}]²İ]í½-Râ"À¢“°¢Ğ¢Ò6F6‚†W'&÷"’°¢òòf–ÆRWÆöBæB6çf2GF6†ÖVçB&R6W&FRæWGv÷&²÷W&F–öç2à¢òò¶VW&V6÷fW&&ÆR6æöæ–6ÂG&gB–bF†R6V6öæBöæRf–Ç2à¢6fT6öæfÆ–7DG&gB†6öçG&öÆÆW"ç7FFR“°¢7–æ57FFR‚“°¢F‡&÷rW'&÷#°¢Ğ¢Ó°¢òò&WG'––ærF†RF—&V7B$FBDb"7F–öâ6†÷VÆBfö7W2öâF†RÇ&VG¢òòGF6†VBFö7VÖVçBÂæ÷BÖ¶R6V6öæBæöFRf÷"F†R6ÖRf–ÆRâ–b—G0¢òòf—'7B6çf26fRf–ÆVBÂF†—2Ç6ò&WG&–W2F†RVæF–ærGF6†ÖVçBà¢–b€¢6öçG&öÆÆW"ç7FFRæFö7VÖVçBææöFW2ç6öÖR€¢†æöFR’ÓâæöFRæ¶–æBÓÓÒ'Fb"bbæöFRæf–ÆT–BÓÓÒf–ÆRæ–BÀ¢¢’°¢6WDæöFW2‚†7W'&VçB’Óà¢7W'&VçBæÖ‚†æöFR’Óâ‡°¢ââææöFRÀ¢6VÆV7FVC ¢æöFRçG—RÓÓÒ4åd5õDeôäôDUõE•Rb`¢æöFRæFFæf–ÆT–BÓÓÒf–ÆRæ–BÀ¢Ò’’À¢“°¢v—B6öæf—&ÔGF6†ÖVçE6fVB‚“°¢&WGW&ã°¢Ğ¢6öç7B¤–æFW‚Ğ¢ÖF‚æÖ‚€¢À¢ââæ6öçG&öÆÆW"ç7FFRæFö7VÖVçBææöFW2æÖ‚†æöFR’ÓâæöFRç¤–æFW‚’À¢’²°¢6öç7B6æöæ–6ÂÒ°¢–C¢7&VFT6çf5Fd–B‚’À¢¶–æC¢'Fb"26öç7BÀ¢f–ÆT–C¢f–ÆRæ–BÀ¢Æ7D¶æ÷väæÖS¢f–ÆRææÖRÀ¢÷6—F–öã¢÷6—F–öâóò6VçFW%÷6—F–öâ‚’À¢6—¦S¢²v–GFƒ¢3Â†V–v‡C¢ƒÒÀ¢¤–æFW‚À¢Ó°¢6öç7B'VçF–ÖRÒ7&VFT6çf5FdfÆ÷tæöFR†6æöæ–6Â“°¢6WDæöFW2‚†7W'&VçB’Óâ°¢ââæ7W'&VçBæÖ‚†æöFR’Óà¢æöFRç6VÆV7FVBò²ââææöFRÂ6VÆV7FVC¢fÇ6RÒ¢æöFRÀ¢’À¢²ââç'VçF–ÖRÂ6VÆV7FVC¢G'VRÒÀ¢Ò“°¢6öçG&öÆÆW"æ–ç6W'D6çf4æöFW2…¶6æöæ–6ÅÒ“°¢7–æ57FFR‚“°¢v—B6öæf—&ÔGF6†ÖVçE6fVB‚“°¢6WDf–ÆU–6¶W$÷Vâ†fÇ6R“°¢ÒÀ¢¶6VçFW%÷6—F–öâÂ6öçG&öÆÆW"Â6fT6öæfÆ–7DG&gBÂ6WDæöFW2Â7–æ57FFUÒÀ¢“° ¢6öç7B7&VFU&ö¦V7Df–ÆTæöFRÒW6T6ÆÆ&6²€¢7–æ2†f–ÆS¢&ö¦V7Df–ÆU&V6÷&B’Óâ°¢–b†f–ÆRæÖ–ÖUG—RÓÓÒ&Æ–6F–öâ÷Fb"’°¢v—B7&VFUFdæöFTg&öÕ&ö¦V7Df–ÆR†f–ÆR“°¢&WGW&ã°¢Ğ¢6öç7B6çf4–BÒ6†VÆÅ7FFU&Vbæ7W'&VçBæ6çf4–C°¢–b‚6çf4–B’&WGW&ã°¢6öç7BFWVæFVæ6–W2Ò&ö¦V7Df–ÆT–ÖvTFWVæFVæ6–W4f÷$6çf2†6çf4–B“°¢–b‚FWVæFVæ6–W2’&WGW&ã°¢G'’°¢6öç7B¤–æFW‚Ğ¢ÖF‚æÖ‚€¢À¢ââæ6öçG&öÆÆW"ç7FFRæFö7VÖVçBææöFW2æÖ‚†æöFR’ÓâæöFRç¤–æFW‚’À¢’²°¢6öç7B6æöæ–6ÂÒ7&VFT6çf5&ö¦V7Df–ÆT–ÖvTæöFR‡°¢f–ÆRÀ¢÷6—F–öã¢6VçFW%÷6—F–öâ‚’À¢¤–æFW‚À¢Ò“°¢6öç7B&W7F÷&VBÒv—B&W7F÷&U&ö¦V7Df–ÆT6çf4–ÖvTæöFW2€¢²66†VÖfW'6–öã¢"ÂæöFW3¢¶6æöæ–6ÅÒÂVFvW3¢µÒÒÀ¢FWVæFVæ6–W2À¢°¢66†VD76WE–ÆöG3¢f&–çE–ÆöG5&Vbæ7W'&VçBÀ¢f–Ww÷'E¦ööÓ¢6†VÆÅ7FFU&Vbæ7W'&VçBçf–Ww÷'Bç¦ööÒÀ¢ÆÆ÷tF÷væw&FS¢fÇ6RÀ¢ÒÀ¢“°¢6öç7B'VçF–ÖRÒ&W7F÷&VBææöFW5³Ó°¢–b‚'VçF–ÖR’F‡&÷ræWrW'&÷"‚%&ö¦V7Bf–ÆR–ÖvR—2Væf–Æ&ÆRâ"“°¢&VÖVÖ&W$–ÖvU'VçF–ÖU–ÆöB‡f&–çE–ÆöG5&Vbæ7W'&VçBÂ'VçF–ÖRÂ°¢v÷&·76T–C¢6†VÆÅv÷&·76T–BÀ¢6çf4–BÀ¢Ò“°¢6WDæöFW2‚†7W'&VçB’Óâ°¢ââæ7W'&VçBæÖ‚†æöFR’Óà¢æöFRç6VÆV7FVBò²ââææöFRÂ6VÆV7FVC¢fÇ6RÒ¢æöFRÀ¢’À¢²ââç'VçF–ÖRÂ6VÆV7FVC¢G'VRÒÀ¢Ò“°¢6öçG&öÆÆW"æ–ç6W'D6çf4æöFW2…¶6æöæ–6ÅÒ“°¢7–æ57FFR‚“°¢66†VGVÆU6fR‚“°¢6WDf–ÆU–6¶W$÷Vâ†fÇ6R“°¢Ò6F6‚†W'&÷#¢Væ¶æ÷vâ’°¢6WE6†VÆÅ7FFR‚†7W'&VçB’Óâ‡°¢ââæ7W'&VçBÀ¢7FGW3¢&W'&÷""À¢W'&÷# ¢W'&÷"–ç7Fæ6VöbW'&÷ ¢òW'&÷"æÖW76vP¢¢-	İR=M½íÂMí--ÂM²İ]í½"â"À¢Ò’“°¢Ğ¢ÒÀ¢°¢6VçFW%÷6—F–öâÀ¢6öçG&öÆÆW"À¢7&VFUFdæöFTg&öÕ&ö¦V7Df–ÆRÀ¢&ö¦V7Df–ÆT–ÖvTFWVæFVæ6–W4f÷$6çf2À¢66†VGVÆU6fRÀ¢6WDæöFW2À¢6†VÆÅv÷&·76T–BÀ¢7–æ57FFRÀ¢ÒÀ¢“° ¢W6TVffV7B‚‚’Óâ°¢6öç7Böä6÷’Ò†WfVçC¢6Æ—&ö&DWfVçB’Óâ°¢–b†WfVçEF÷V6†W4VF—F–æu7W&f6R†WfVçB’ÇÂWfVçBæ6Æ—&ö&DFF’&WGW&ã°¢6öç7B6VÆV7FVDæöFT–G2ÒæWr6WB€¢æöFW5&Vbæ7W'&VçBæf–ÇFW"‚†æöFR’ÓâæöFRç6VÆV7FVB’æÖ‚†æöFR’ÓâæöFRæ–B’À¢“°¢6öç7B–ÆöBÒ7&VFT6çf4æöFT6Æ—&ö&E–ÆöB€¢6öçG&öÆÆW"ç7FFRæFö7VÖVçBÀ¢6VÆV7FVDæöFT–G2À¢“°¢–b‚–ÆöB’&WGW&ã°¢WfVçBç&WfVçDFVfVÇB‚“°¢WfVçBæ6Æ—&ö&DFFç6WDFF€¢4åd5ôäôDUô4Ä•$ô$EôÔ”ÔRÀ¢6W&–Æ—¦T6çf4æöFT6Æ—&ö&E–ÆöB‡–ÆöB’À¢“°¢Ó°¢v–æF÷ræFDWfVçDÆ—7FVæW"‚&6÷’"Âöä6÷’“°¢&WGW&â‚’Óâv–æF÷rç&VÖ÷fTWfVçDÆ—7FVæW"‚&6÷’"Âöä6÷’“°¢ÒÂ¶6öçG&öÆÆW%Ò“° ¢W6TVffV7B‚‚’Óâ°¢6öç7Böå7FRÒ†WfVçC¢6Æ—&ö&DWfVçB’Óâ°¢–b†WfVçEF÷V6†W4VF—F–æu7W&f6R†WfVçB’’&WGW&ã°¢6öç7B6çf5–ÆöBÒ'6T6çf4æöFT6Æ—&ö&E–ÆöB€¢WfVçBæ6Æ—&ö&DFFòævWDFF„4åd5ôäôDUô4Ä•$ô$EôÔ”ÔR’óò""À¢“°¢–b†6çf5–ÆöB’°¢WfVçBç&WfVçDFVfVÇB‚“°¢fö–B7FT6çf4æöFW2†6çf5–ÆöB“°¢&WGW&ã°¢Ğ¢6öç7B–ÆöBÒG&ç6fW%–ÆöB†WfVçB“°¢–b‡6†÷VÆE&WfVçD6çf4–ÖvU7FR†WfVçB’’°¢WfVçBç&WfVçDFVfVÇB‚“°¢fö–B–ævW7E&Vbæ7W'&VçB‡–ÆöBÂ&6Æ—&ö&B"Âö–çFW%&Vbæ7W'&VçB“°¢&WGW&ã°¢Ğ¢–b‡G&ç6fW$†57W÷'FVD–ÖvR‡–ÆöB’’&WGW&ã°¢6öç7BFW‡BÒÆ–åFW‡Dg&öÔ6Æ—&ö&B†WfVçB“°¢–b‚†4ÖVæ–ævgVÅÆ–åFW‡B‡FW‡B’’&WGW&ã°¢WfVçBç&WfVçDFVfVÇB‚“°¢7&VFUFW‡DæöFR‡ö–çFW%&Vbæ7W'&VçBÂFW‡BÂfÇ6R“°¢Ó°¢&WGW&âGF6„6çf4–ÖvU7FTÆ—7FVæW"†öå7FR“°¢ÒÂ¶7&VFUFW‡DæöFRÂ7FT6çf4æöFW5Ò“° ¢W6TVffV7B‚‚’Óâ°¢6öç7BwV&BÒ†WfVçC¢G&tWfVçB’Óâ°¢6öç7B–ÆöBÒG&ç6fW%–ÆöB†WfVçB“°¢–b‚G&ç6fW$†4f–ÆW2‡–ÆöB’’&WGW&ã°¢6öç7B–ç6–FRÒw&W%&Vbæ7W'&Vç@¢òWfVçBæ6ö×÷6VEF‚‚’æ–æ6ÇVFW2‡w&W%&Vbæ7W'&VçB¢¢fÇ6S°¢–b†–ç6–FR’&WGW&ã°¢WfVçBç&WfVçDFVfVÇB‚“°¢–b†WfVçBçG—RÓÓÒ&G&÷"’WfVçBç7F÷&÷vF–öâ‚“°¢Ó°¢v–æF÷ræFDWfVçDÆ—7FVæW"‚&G&v÷fW""ÂwV&BÂG'VR“°¢v–æF÷ræFDWfVçDÆ—7FVæW"‚&G&÷"ÂwV&BÂG'VR“°¢&WGW&â‚’Óâ°¢v–æF÷rç&VÖ÷fTWfVçDÆ—7FVæW"‚&G&v÷fW""ÂwV&BÂG'VR“°¢v–æF÷rç&VÖ÷fTWfVçDÆ—7FVæW"‚&G&÷"ÂwV&BÂG'VR“°¢Ó°¢ÒÂµÒ“° ¢6öç7B†æFÆTæöFW46†ævRÒW6T6ÆÆ&6²€¢†6†ævW3¢æöFT6†ævSÄ6çf4fÆ÷tæöFSåµÒ’Óâ°¢6öç7BF÷V6„wV&FVD6†ævW2ÒF÷V6…f–Ww÷'DvW7GW&T7F—fU&Vbæ7W'&Vç@¢ò6†ævW2æf–ÇFW"€¢†6†ævR’Óà¢6†ævRçG—RÓÒ'÷6—F–öâ"bb6†ævRçG—RÓÒ&F–ÖVç6–öç2"À¢¢¢6†ævW3°¢6öç7BwV&FVD6†ævW2Ò&VF—&V7D6çf4ÇDG&tæöFT6†ævW2€¢F÷V6„wV&FVD6†ævW2À¢ÇDG&tGWÆ–6FU&Vbæ7W'&VçBÀ¢“°¢–b†wV&FVD6†ævW2æÆVæwF‚ÓÓÒ’&WGW&ã°¢6öç7B&WVW7FVE&VÖ÷fÇ2ÒwV&FVD6†ævW2æf–ÇFW"€¢€¢6†ævRÀ¢“¢6†ævR—2W‡G&7CÄæöFT6†ævSÄ6çf4fÆ÷tæöFSâÂ²G—S¢'&VÖ÷fR"ÓâÓà¢6†ævRçG—RÓÓÒ'&VÖ÷fR"À¢“°¢òòF†R÷Vâ&VFW"—2f—7VÂ7FFRÂæ÷B6VÆV7F–öââF†—2wV&BÇ6ğ¢òò&÷FV7G2âÇ&VG’Ö÷VâDbg&öÒ7FÆR&V7BfÆ÷r6VÆV7F–öâv†Và¢òòFVÆWF–ærw&÷Wöb÷F†W"æöFW2à¢6öç7B6fT6†ævW2Ğ¢÷VåFcòææöFT–Bb`¢&WVW7FVE&VÖ÷fÇ2æÆVæwF‚âb`¢&WVW7FVE&VÖ÷fÇ2ç6öÖR‚†6†ævR’Óâ6†ævRæ–BÓÓÒ÷VåFbææöFT–B¢òwV&FVD6†ævW2æf–ÇFW"€¢†6†ævR’Óà¢6†ævRçG—RÓÒ'&VÖ÷fR"ÇÂ6†ævRæ–BÓÒ÷VåFbææöFT–BÀ¢¢¢wV&FVD6†ævW3°¢–b‡6fT6†ævW2æÆVæwF‚ÓÓÒ’&WGW&ã°¢–b€¢6fT6†ævW2ç6öÖR€¢†6†ævR’Óâ6†ævRçG—RÓÓÒ'÷6—F–öâ"bb6†ævRæG&vv–ærÓÓÒG'VRÀ¢¢’°¢æöFTG&t7F—fU&Vbæ7W'&VçBÒG'VS°¢VFvU&VÖ÷fÅ7W&W76–öåVçF–Å&Vbæ7W'&VçBÒFFRææ÷r‚’²S°¢Ğ¢–b€¢6fT6†ævW2ç6öÖR€¢†6†ævR’Óâ6†ævRçG—RÓÓÒ'÷6—F–öâ"bb6†ævRæG&vv–ærÓÓÒfÇ6RÀ¢¢’°¢æöFTG&t7F—fU&Vbæ7W'&VçBÒfÇ6S°¢VFvU&VÖ÷fÅ7W&W76–öåVçF–Å&Vbæ7W'&VçBÒFFRææ÷r‚’²S°¢Ğ¢6öç7B&VÖ÷fVBÒ6fT6†ævW2æf–ÇFW"€¢€¢6†ævRÀ¢“¢6†ævR—2W‡G&7CÄæöFT6†ævSÄ6çf4fÆ÷tæöFSâÂ²G—S¢'&VÖ÷fR"ÓâÓà¢6†ævRçG—RÓÓÒ'&VÖ÷fR"À¢“°¢f÷"†6öç7B6†ævRöb&VÖ÷fVB’°¢6öç7BæöFRÒæöFW5&Vbæ7W'&VçBæf–æB‚†—FVÒ’Óâ—FVÒæ–BÓÓÒ6†ævRæ–B“°¢–b†æöFSòçG—RÓÒ4åd5ô”ÔtUôäôDUõE•R’6öçF–çVS°¢6öç7B6çf4–BÒ6†VÆÅ7FFU&Vbæ7W'&VçBæ6çf4–C°¢6öç7B&Vf—‚Ò6çf4–@¢òG·6†VÆÅv÷&·76T–GÒòG¶6çf4–GÒòG¶æöFRæFFæ76WD–GÒö ¢¢çVÆÃ°¢f÷"†6öç7B¶¶W’Â–ÆöEÒöbf&–çE–ÆöG5&Vbæ7W'&VçB’°¢–b‚&Vf—‚ÇÂ¶W’ç7F'G5v—F‚‡&Vf—‚’’6öçF–çVS°¢ö&¦V7EW&Ç2ç&Wfö¶R‡–ÆöBæö&¦V7EW&Â“°¢f&–çE–ÆöG5&Vbæ7W'&VçBæFVÆWFR†¶W’“°¢Ğ¢ö&¦V7EW&Ç2ç&Wfö¶R†æöFRæFFæö&¦V7EW&Â“°¢Ğ¢–b‡&VÖ÷fVBæÆVæwF‚â’°¢6öçG&öÆÆW"ç&VÖ÷fT6çf4æöFW2‡&VÖ÷fVBæÖ‚†6†ævR’Óâ6†ævRæ–B’“°¢6öç7B&VÖ÷fVD–G2ÒæWr6WB‡&VÖ÷fVBæÖ‚†6†ævR’Óâ6†ævRæ–B’“°¢6WDVFvW2‚†7W'&VçB’Óà¢7W'&VçBæf–ÇFW"€¢†VFvR’Óà¢&VÖ÷fVD–G2æ†2†VFvRç6÷W&6R’bb&VÖ÷fVD–G2æ†2†VFvRçF&vWB’À¢’À¢“°¢7–æ57FFR‚“°¢Ğ¢6öç7B&VæFW$6†ævW2Ò6fT6†ævW2æf–ÇFW"€¢†6†ævR’Óà¢6†ævRçG—RÓÒ&F–ÖVç6–öç2"ÇÂ6†ævRç6WDGG&–'WFW2ÓÓÒG'VRÀ¢“°¢–b‡6fT6†ævW2ç6öÖR‚†6†ævR’Óâ6†ævRçG—RÓÓÒ'÷6—F–öâ"’’°¢6öç7BG&ç6–VçDæöFW2ÒÇ”æöFT6†ævW2€¢&VæFW$6†ævW2À¢æöFW5&Vbæ7W'&VçBÀ¢“°¢6öç7BG&ç6–VçD&÷VæG2Ò6çf4fÆ÷tæöFT&÷VæG5&V6÷&G2‡G&ç6–VçDæöFW2“°¢6WDVFvW2‚†7W'&VçB’Óâ°¢6öç7B6æöæ–6ÂÒ6çf4Fö7VÖVçEFôVFvW2€¢6öçG&öÆÆW"ç7FFRæFö7VÖVçBÀ¢†æFÆTVFvUWFFRÀ¢“°¢6öç7B6÷W&6RÒ7W'&VçBæÆVæwF‚âò7W'&VçB¢6æöæ–6Ã°¢6öç7B¶æ÷vâÒæWr6WB‡6÷W&6RæÖ‚†VFvR’ÓâVFvRæ–B’“°¢&WGW&â&V6ö×WFT6çf5'VçF–ÖTVFvT†æFÆW2€¢²ââç6÷W&6RÂââæ6æöæ–6Âæf–ÇFW"‚†VFvR’Óâ¶æ÷vâæ†2†VFvRæ–B’•ÒÀ¢G&ç6–VçD&÷VæG2À¢“°¢Ò“°¢Ğ¢òò&V7BfÆ÷r×W7B&V6V—fRF–ÖVç6–öç26†ævW22vVÆÂ2÷6—F–öç2âf–ÇFW&–æp¢òòF†VÒ†W&RÆVfW2æöFW2Væ–æ—F–Æ—¦VBGW&–ærG&ræB6W6W26öææV7FV@¢òòVFvW2Fò&R&VÖ÷fVB'’F†RÆ–'&'’w26öææV7F–öâÆ–fV7–6ÆRà¢öäæöFW46†ævR‡6fT6†ævW2“°¢6öç7B6†÷VÆEW'6—7BÒ6fT6†ævW2ç6öÖR€¢†6†ævR’Óà¢6†ævRçG—RÓÓÒ'&VÖ÷fR"ÇÀ¢†6†ævRçG—RÓÓÒ'÷6—F–öâ"bb6†ævRæG&vv–ærÓÓÒfÇ6R’ÇÀ¢—4W‡Æ–6—D6çf5&W6—¦R†6†ævR’À¢“°¢–b‡6†÷VÆEW'6—7B’°¢6öçG&öÆÆW"ç6WE'VçF–ÖTæöFW2€¢&ö¦V7DW‡Æ–6—D6çf5&W6—¦W2€¢Ç”æöFT6†ævW2‡&VæFW$6†ævW2ÂæöFW5&Vbæ7W'&VçB’À¢6fT6†ævW2À¢’À¢“°¢–b€¢6fT6†ævW2ç6öÖR€¢†6†ævR’Óâ6†ævRçG—RÓÓÒ'÷6—F–öâ"bb6†ævRæG&vv–ærÓÓÒfÇ6RÀ¢¢’°¢6öçG&öÆÆW"ç6WE'VçF–ÖTVFvW2†VFvW5&Vbæ7W'&VçB“°¢Ğ¢7–æ57FFR‚“°¢66†VGVÆU6fR‚“°¢Ğ¢ÒÀ¢°¢6öçG&öÆÆW"À¢†æFÆTVFvUWFFRÀ¢ö&¦V7EW&Ç2À¢÷VåFcòææöFT–BÀ¢öäæöFW46†ævRÀ¢66†VGVÆU6fRÀ¢6WDVFvW2À¢6†VÆÅv÷&·76T–BÀ¢7–æ57FFRÀ¢ÒÀ¢“° ¢6öç7B÷VåFdæöFRÒW6T6ÆÆ&6²€¢7–æ2†æöFS¢6çf4fÆ÷tæöFR’Óâ°¢–b€¢æöFRçG—RÓÒ4åd5õDeôäôDUõE•RÇÀ¢&ö¦V7Df–ÆU&W÷6—F÷'’ÇÀ¢&ö¦V7D–@¢¢&WGW&ã°¢G'’°¢6öç7BF÷væÆöFVBÒv—B&ö¦V7Df–ÆU&W÷6—F÷'’æF÷væÆöDf–ÆR‡°¢v÷&·76T–C¢6†VÆÅv÷&·76T–BÀ¢&ö¦V7D–BÀ¢f–ÆT–C¢æöFRæFFæf–ÆT–BÀ¢Ò“°¢6fT÷Vä'F–6ÆT–B†çVÆÂ“°¢6WD÷Vå7VÖÖ'”æöFT–B†çVÆÂ“°¢6WEFdgVÆÇ67&VVâ†fÇ6R“°¢6WD÷VåFb‚†7W'&VçB’Óâ°¢–b†7W'&VçB’U$Âç&Wfö¶Tö&¦V7EU$Â†7W'&VçBæö&¦V7EW&Â“°¢&WGW&â°¢f–ÆT–C¢æöFRæFFæf–ÆT–BÀ¢æÖS¢F÷væÆöFVBææÖRÇÂæöFRæFFæÆ7D¶æ÷väæÖRÇÂ%Db"À¢æöFT–C¢æöFRæ–BÀ¢ö&¦V7EW&Ã¢U$Âæ7&VFTö&¦V7EU$Â†F÷væÆöFVBæ&Æö"’À¢Ó°¢Ò“°¢VçFW%&VFW$Æ–÷WB†æöFRæ–B“°¢Ò6F6‚†W'&÷#¢Væ¶æ÷vâ’°¢6WE6†VÆÅ7FFR‚†7W'&VçB’Óâ‡°¢ââæ7W'&VçBÀ¢7FGW3¢&W'&÷""À¢W'&÷#¢W'&÷"–ç7Fæ6VöbW'&÷"òW'&÷"æÖW76vR¢%Dbf–ÆVBFò÷Vââ"À¢Ò’“°¢Ğ¢ÒÀ¢°¢VçFW%&VFW$Æ–÷WBÀ¢&ö¦V7Df–ÆU&W÷6—F÷'’À¢&ö¦V7D–BÀ¢6fT÷Vä'F–6ÆT–BÀ¢6†VÆÅv÷&·76T–BÀ¢ÒÀ¢“° ¢6öç7B6Æ÷6UFe&VFW"ÒW6T6ÆÆ&6²€¢‡&W7F÷&TÆ–÷WBÒG'VR’Óâ°¢6öç7B÷VäæöFT–BÒ÷VåFcòææöFT–BóòçVÆÃ°¢6WEFdgVÆÇ67&VVâ†fÇ6R“°¢6WD÷VåFb‚†7W'&VçB’Óâ°¢–b†7W'&VçB’U$Âç&Wfö¶Tö&¦V7EU$Â†7W'&VçBæö&¦V7EW&Â“°¢&WGW&âçVÆÃ°¢Ò“°¢–b‡&W7F÷&TÆ–÷WB’ÆVfU&VFW$Æ–÷WB†÷VäæöFT–B“°¢ÒÀ¢¶ÆVfU&VFW$Æ–÷WBÂ÷VåFcòææöFT–EÒÀ¢“° ¢6öç7B6Æ÷6U7VÖÖ'•&VFW"ÒW6T6ÆÆ&6²‚‚’Óâ°¢6öç7BæöFT–BÒ÷Vå7VÖÖ'”æöFT–C°¢6WD÷Vå7VÖÖ'”æöFT–B†çVÆÂ“°¢ÆVfU&VFW$Æ–÷WB†æöFT–B“°¢ÒÂ¶ÆVfU&VFW$Æ–÷WBÂ÷Vå7VÖÖ'”æöFT–EÒ“° ¢6öç7B6Æ÷6T'F–6ÆU&VFW"ÒW6T6ÆÆ&6²‚‚’Óâ°¢6öç7BæöFT–BÒæöFW5&Vbæ7W'&VçBæf–æB€¢†æöFR’Óà¢æöFRçG—RÓÓÒ4åd5ô%D”4ÄUôäôDUõE•Rb`¢æöFRæFFæ'F–6ÆT–BÓÓÒ6†VÆÅ7FFU&Vbæ7W'&VçBæ÷Vä'F–6ÆT–BÀ¢“òæ–C°¢6fT÷Vä'F–6ÆT–B†çVÆÂ“°¢ÆVfU&VFW$Æ–÷WB†æöFT–BóòçVÆÂ“°¢ÒÂ¶ÆVfU&VFW$Æ–÷WBÂ6fT÷Vä'F–6ÆT–EÒ“° ¢6öç7B÷Vä'F–6ÆTæöFRÒW6T6ÆÆ&6²€¢†æöFS¢6çf4fÆ÷tæöFR’Óâ°¢–b†æöFRçG—RÓÒ4åd5ô%D”4ÄUôäôDUõE•R’&WGW&ã°¢6Æ÷6UFe&VFW"†fÇ6R“°¢6WD÷Vå7VÖÖ'”æöFT–B†çVÆÂ“°¢6fT÷Vä'F–6ÆT–B†æöFRæFFæ'F–6ÆT–B“°¢VçFW%&VFW$Æ–÷WB†æöFRæ–B“°¢ÒÀ¢¶6Æ÷6UFe&VFW"ÂVçFW%&VFW$Æ–÷WBÂ6fT÷Vä'F–6ÆT–EÒÀ¢“° ¢6öç7B÷Vå7VÖÖ'”æöFRÒW6T6ÆÆ&6²€¢†æöFS¢6çf4fÆ÷tæöFR’Óâ°¢–b†æöFRçG—RÓÒ4åd5õ5TÔÔ%•ôäôDUõE•R’&WGW&ã°¢6Æ÷6UFe&VFW"†fÇ6R“°¢6fT÷Vä'F–6ÆT–B†çVÆÂ“°¢6WD÷Vå7VÖÖ'”æöFT–B†æöFRæ–B“°¢VçFW%&VFW$Æ–÷WB†æöFRæ–B“°¢ÒÀ¢¶6Æ÷6UFe&VFW"ÂVçFW%&VFW$Æ–÷WBÂ6fT÷Vä'F–6ÆT–EÒÀ¢“° ¢6öç7B÷Vä'F–6ÆTg&öÕ&VFW"ÒW6T6ÆÆ&6²€¢†'F–6ÆT–C¢7G&–ær’Óâ°¢6öç7BÖF6†–ætæöFRÒæöFW5&Vbæ7W'&VçBæf–æB€¢†æöFR’Óà¢æöFRçG—RÓÓÒ4åd5ô%D”4ÄUôäôDUõE•Rb`¢æöFRæFFæ'F–6ÆT–BÓÓÒ'F–6ÆT–BÀ¢“°¢6fT÷Vä'F–6ÆT–B†'F–6ÆT–B“°¢–b†ÖF6†–ætæöFR’VçFW%&VFW$Æ–÷WB†ÖF6†–ætæöFRæ–B“°¢ÒÀ¢¶VçFW%&VFW$Æ–÷WBÂ6fT÷Vä'F–6ÆT–EÒÀ¢“° ¢6öç7B7&VFT'F–6ÆTæöFRÒW6T6ÆÆ&6²€¢†'F–6ÆS¢&÷F÷G—TFö7VÖVçB’Óâ°¢–b‚6†VÆÅ7FFU&Vbæ7W'&VçBæ6çf4–B’&WGW&ã°¢6öç7BW†—7F–ærÒæöFW5&Vbæ7W'&VçBæf–æB€¢†æöFR’Óà¢æöFRçG—RÓÓÒ4åd5ô%D”4ÄUôäôDUõE•Rb`¢æöFRæFFæ'F–6ÆT–BÓÓÒ'F–6ÆRæ–BÀ¢“°¢–b†W†—7F–ær’°¢6WDæöFW2‚†7W'&VçB’Óà¢7W'&VçBæÖ‚†æöFR’Óâ‡°¢ââææöFRÀ¢6VÆV7FVC¢æöFRæ–BÓÓÒW†—7F–æræ–BÀ¢Ò’’À¢“°¢÷Vä'F–6ÆTæöFR†W†—7F–ær“°¢6WD'F–6ÆU–6¶W$÷Vâ†fÇ6R“°¢6WD'F–6ÆUVW'’‚""“°¢&WGW&ã°¢Ğ¢6öç7B¤–æFW‚Ğ¢ÖF‚æÖ‚€¢À¢ââæ6öçG&öÆÆW"ç7FFRæFö7VÖVçBææöFW2æÖ‚†æöFR’ÓâæöFRç¤–æFW‚’À¢’²°¢6öç7B6æöæ–6ÂÒ°¢–C¢7&VFT6çf4'F–6ÆT–B‚’À¢¶–æC¢&'F–6ÆR"26öç7BÀ¢'F–6ÆT–C¢'F–6ÆRæ–BÀ¢Æ7D¶æ÷våF—FÆS¢'F–6ÆRçF—FÆRÀ¢÷6—F–öã¢6VçFW%÷6—F–öâ‚’À¢6—¦S¢²v–GFƒ¢3Â†V–v‡C¢#ÒÀ¢¤–æFW‚À¢Ó°¢6öç7B'VçF–ÖRÒ7&VFT6çf4'F–6ÆTfÆ÷tæöFR†6æöæ–6Â“°¢6WDæöFW2‚†7W'&VçB’Óâ°¢ââæ7W'&VçBæÖ‚†æöFR’Óâ‡²ââææöFRÂ6VÆV7FVC¢fÇ6RÒ’’À¢²ââç'VçF–ÖRÂ6VÆV7FVC¢G'VRÒÀ¢Ò“°¢6öçG&öÆÆW"æ–ç6W'D6çf4æöFW2…¶6æöæ–6ÅÒ“°¢7–æ57FFR‚“°¢66†VGVÆU6fR‚“°¢÷Vä'F–6ÆTæöFR‡'VçF–ÖR“°¢6WD'F–6ÆU–6¶W$÷Vâ†fÇ6R“°¢6WD'F–6ÆUVW'’‚""“°¢ÒÀ¢°¢6VçFW%÷6—F–öâÀ¢6öçG&öÆÆW"À¢÷Vä'F–6ÆTæöFRÀ¢66†VGVÆU6fRÀ¢6WDæöFW2À¢7–æ57FFRÀ¢ÒÀ¢“° ¢6öç7BWÆöEFdf–ÆW2ÒW6T6ÆÆ&6²€¢7–æ2†f–ÆW3¢f–ÆUµÒÂ÷6—F–öãó¢fÆ÷u÷6—F–öâ’Óâ°¢–b‚&ö¦V7Df–ÆU&W÷6—F÷'’ÇÂ&ö¦V7D–BÇÂf–ÆW2æÆVæwF‚ÓÓÒ’&WGW&ã°¢f÷"†6öç7Bf–ÆRöbf–ÆW2’°¢–b€¢f–ÆRçG—RÓÒ&Æ–6F–öâ÷Fb"b`¢f–ÆRææÖRçFôÆ÷vW$66R‚’æVæG5v—F‚‚"çFb"¢¢6öçF–çVS°¢G'’°¢6öç7B&W&VBÒv—B&W&U&ö¦V7Df–ÆT'&÷w6W%WÆöB†f–ÆR“°¢–b‡&W&VBæÖ–ÖUG—RÓÒ&Æ–6F–öâ÷Fb"’6öçF–çVS°¢6öç7B6çf4–BÒ6†VÆÅ7FFU&Vbæ7W'&VçBæ6çf4–C°¢–b‚6çf4–B’&WGW&ã°¢6öç7B¶W’ÒG¶6çf4–GÓ¢G·&W&VBæ6†V6·7V×Ö°¢6öç7BW†—7F–ærÒFeWÆöD–äfÆ–v‡E&Vbæ7W'&VçBævWB†¶W’“°¢–b†W†—7F–ær’°¢v—BW†—7F–æs°¢6öçF–çVS°¢Ğ¢6öç7BVæF–ærÒ†7–æ2‚’Óâ°¢6öç7BWÆöFVBÒv—B&ö¦V7Df–ÆU&W÷6—F÷'’çWÆöDf–ÆR‡°¢v÷&·76T–C¢6†VÆÅv÷&·76T–BÀ¢&ö¦V7D–BÀ¢ââç&W&VBÀ¢Ò“°¢v—B7&VFUFdæöFTg&öÕ&ö¦V7Df–ÆR‡WÆöFVBÂ÷6—F–öâ“°¢Ò’‚“°¢FeWÆöD–äfÆ–v‡E&Vbæ7W'&VçBç6WB†¶W’ÂVæF–ær“°¢G'’°¢v—BVæF–æs°¢Òf–æÆÇ’°¢–b‡FeWÆöD–äfÆ–v‡E&Vbæ7W'&VçBævWB†¶W’’ÓÓÒVæF–ær’°¢FeWÆöD–äfÆ–v‡E&Vbæ7W'&VçBæFVÆWFR†¶W’“°¢Ğ¢Ğ¢Ò6F6‚†W'&÷#¢Væ¶æ÷vâ’°¢6WE6†VÆÅ7FFR‚†7W'&VçB’Óâ‡°¢ââæ7W'&VçBÀ¢7FGW3¢&W'&÷""À¢W'&÷# ¢W'&÷"–ç7Fæ6VöbW'&÷"òW'&÷"æÖW76vR¢%DbWÆöBf–ÆVBâ"À¢Ò’“°¢Ğ¢Ğ¢ÒÀ¢°¢7&VFUFdæöFTg&öÕ&ö¦V7Df–ÆRÀ¢&ö¦V7Df–ÆU&W÷6—F÷'’À¢&ö¦V7D–BÀ¢6†VÆÅv÷&·76T–BÀ¢ÒÀ¢“° ¢6öç7BöäG&÷ÒW6T6ÆÆ&6²€¢†WfVçC¢&V7DG&tWfVçCÄ…DÔÄF—dVÆVÖVçCâ’Óâ°¢WfVçBç&WfVçDFVfVÇB‚“°¢6WDG&÷7F—fR†fÇ6R“°¢6öç7B–ÆöBÒG&ç6fW%–ÆöB†WfVçBææF—fTWfVçB“°¢–b‚6†÷VÆE&WfVçDf–ÆTæf–vF–öâ‡–ÆöB’’&WGW&ã°¢6öç7B6Æ–VçBÒ²ƒ¢WfVçBæ6Æ–VçE‚Â“¢WfVçBæ6Æ–VçE’Ó°¢6öç7B²–ÖvTf–ÆW2ÂFdf–ÆW2ÒÒ'F—F–öä6çf4G&÷f–ÆW2‡–ÆöBæf–ÆW2“°¢–b‡Fdf–ÆW2æÆVæwF‚ÓÓÒ’°¢fö–B–ævW7B‡–ÆöBÂ&G&÷"Â6Æ–VçB“°¢&WGW&ã°¢Ğ¢6öç7BFe÷6—F–öâÒ&W6öÇfT6çf4G&÷fÆ÷u÷6—F–öâ€¢6Æ–VçBÀ¢67&VVåFôfÆ÷u&Vbæ7W'&VçBÀ¢“°¢fö–B'Vä6çf4Ö—†VDG&÷€¢²–ÖvTf–ÆW2ÂFdf–ÆW2ÒÀ¢°¢–ævW7D–ÖvW3¢7–æ2†f–ÆW2’Óâ°¢v—B–ævW7B€¢°¢f–ÆW3¢'&’æg&öÒ†f–ÆW2’À¢—FV×3¢µÒÀ¢G—W3¢f–ÆW2æÖ‚†f–ÆR’Óâf–ÆRçG—R’À¢ÒÀ¢&G&÷"À¢6Æ–VçBÀ¢“°¢ÒÀ¢WÆöEFg3¢7–æ2†f–ÆW2’Óâ°¢v—BWÆöEFdf–ÆW2„'&’æg&öÒ†f–ÆW2’ÂFe÷6—F–öâ“°¢ÒÀ¢ÒÀ¢“°¢ÒÀ¢¶–ævW7BÂWÆöEFdf–ÆW5ÒÀ¢“° ¢6öç7Böå–6¶W"ÒW6T6ÆÆ&6²€¢†WfVçC¢6†ævTWfVçCÄ…DÔÄ–çWDVÆVÖVçCâ’Óâ°¢6öç7Bf–ÆW2Ò'&’æg&öÒ†WfVçBçF&vWBæf–ÆW2óòµÒ“°¢WfVçBçF&vWBçfÇVRÒ"#°¢–b†f–ÆW2æÆVæwF‚â¢fö–B–ævW7B€¢²f–ÆW2Â—FV×3¢µÒÂG—W3¢f–ÆW2æÖ‚†f–ÆR’Óâf–ÆRçG—R’ÒÀ¢&f–ÆR×–6¶W""À¢çVÆÂÀ¢“°¢ÒÀ¢¶–ævW7EÒÀ¢“° ¢6öç7B7&VFT6çf2ÒW6T6ÆÆ&6²€¢7–æ2‡&WVW7FVEF—FÆSó¢7G&–ærÂw&÷W–C¢7G&–ærÂçVÆÂÒçVÆÂ’Óâ°¢6öç7BF—FÆRÒ‡&WVW7FVEF—FÆRóòæWuF—FÆR’çG&–Ò‚“°¢–b‚F—FÆR’&WGW&ã°¢6öç7BvVæW&F–öâÒ²¶6çf4vVæW&F–öå&Vbæ7W'&VçC°¢6öç7B7&VFVBÒv—B6öçG&öÆÆW"æ7&VFT6çf2‡F—FÆRÂw&÷W–B“°¢–b‚7&VFVBæ6çf4–B’&WGW&ã°¢&W7F÷&T6öçG&öÆÆW%&Vbæ7W'&VçCòæ&÷'B‚“°¢f&–çE&Vg&W6„6öçG&öÆÆW%&Vbæ7W'&VçCòæ&÷'B‚“°¢–b‡f&–çE&Vg&W6„g&ÖU&Vbæ7W'&VçBÓÒçVÆÂ’°¢v–æF÷ræ6æ6VÄæ–ÖF–öäg&ÖR‡f&–çE&Vg&W6„g&ÖU&Vbæ7W'&VçB“°¢f&–çE&Vg&W6„g&ÖU&Vbæ7W'&VçBÒçVÆÃ°¢Ğ¢–b‡f&–çDF÷væw&FUF–ÖW%&Vbæ7W'&VçBÓÒçVÆÂ’°¢6ÆV%F–ÖV÷WB‡f&–çDF÷væw&FUF–ÖW%&Vbæ7W'&VçB“°¢f&–çDF÷væw&FUF–ÖW%&Vbæ7W'&VçBÒçVÆÃ°¢Ğ¢&W÷6—F÷'’ç6WD7F—fT6çf3òâ†7&VFVBæ6çf4–B“°¢&öw&ÖÖF–5f–Ww÷'E&Vbæ7W'&VçBÒçVÆÃ°¢6WEf–Ww÷'Ef—6–&ÆR†fÇ6R“°¢v—B&Vg&W6„6FÆör‚“°¢6WE6†VÆÅ7FFR†7&VFVB“°¢6WE&VæÖUF—FÆR†7&VFVBçF—FÆR“°¢6WDæöFW2…µÒ“°¢6WDVFvW2…µÒ“°¢‡–G&F–æu&Vbæ7W'&VçBÒfÇ6S°¢6WDÆöF–ætÆ–fV7–6ÆR‚'&VG’"“°¢6WEf–Ww÷'D–æ—F–Æ—¦F–öâ‡°¢6çf4–C¢7&VFVBæ6çf4–BÀ¢vVæW&F–öâÀ¢f–Ww÷'C¢²ââæ7&VFVBçf–Ww÷'BÒÀ¢Ò“°¢ÒÀ¢¶6öçG&öÆÆW"ÂæWuF—FÆRÂ&Vg&W6„6FÆörÂ&W÷6—F÷'’Â6WDVFvW2Â6WDæöFW5ÒÀ¢“° ¢6öç7B&VæÖT6çf2ÒW6T6ÆÆ&6²‚‚’Óâ°¢–b‚&VæÖUF—FÆRçG&–Ò‚’ÇÂ6†VÆÅ7FFRæ6çf4–B’&WGW&ã°¢6öçG&öÆÆW"ç6WEF—FÆR‡&VæÖUF—FÆRçG&–Ò‚’“°¢7–æ57FFR‚“°¢66†VGVÆU6fR‚“°¢ÒÂ¶6öçG&öÆÆW"Â&VæÖUF—FÆRÂ66†VGVÆU6fRÂ6†VÆÅ7FFRæ6çf4–BÂ7–æ57FFUÒ“° ¢6öç7B7&VFT6çf4w&÷WÒW6T6ÆÆ&6²€¢7–æ2‡F—FÆS¢7G&–ærÂ&VçDw&÷W–C¢7G&–ærÂçVÆÂÒçVÆÂ’Óâ°¢–b‚w&÷W5&W÷6—F÷'’’&WGW&ã°¢v—Bw&÷W5&W÷6—F÷'’æ7&VFT6çf4w&÷W‡°¢v÷&·76T–C¢6†VÆÅv÷&·76T–BÀ¢F—FÆRÀ¢&VçDw&÷W–BÀ¢Ò“°¢v—B&Vg&W6„6FÆör‚“°¢ÒÀ¢¶w&÷W5&W÷6—F÷'’Â&Vg&W6„6FÆörÂ6†VÆÅv÷&·76T–EÒÀ¢“° ¢6öç7B&VæÖT6çf4w&÷WÒW6T6ÆÆ&6²€¢7–æ2†w&÷W–C¢7G&–ærÂF—FÆS¢7G&–ær’Óâ°¢–b‚w&÷W5&W÷6—F÷'’’&WGW&ã°¢6öç7B&Wf–÷W5F—FÆRÒw&÷W2æf–æB‚†w&÷W’Óâw&÷Wæ–BÓÓÒw&÷W–B“òçF—FÆS°¢6WDw&÷W2‚†7W'&VçB’Óà¢7W'&VçBæÖ‚†w&÷W’Óà¢w&÷Wæ–BÓÓÒw&÷W–Bò²ââæw&÷WÂF—FÆRÒ¢w&÷WÀ¢’À¢“°¢G'’°¢v—Bw&÷W5&W÷6—F÷'’ç&VæÖT6çf4w&÷W‡°¢v÷&·76T–C¢6†VÆÅv÷&·76T–BÀ¢w&÷W–BÀ¢F—FÆRÀ¢Ò“°¢v—B&Vg&W6„6FÆör‚“°¢Ò6F6‚†W'&÷#¢Væ¶æ÷vâ’°¢–b‡&Wf–÷W5F—FÆRÓÒVæFVf–æVB’°¢6WDw&÷W2‚†7W'&VçB’Óà¢7W'&VçBæÖ‚†w&÷W’Óà¢w&÷Wæ–BÓÓÒw&÷W–Bò²ââæw&÷WÂF—FÆS¢&Wf–÷W5F—FÆRÒ¢w&÷WÀ¢’À¢“°¢Ğ¢6WDw&÷W4W'&÷"€¢W'&÷"–ç7Fæ6VöbW'&÷ ¢òW'&÷"æÖW76vP¢¢-	İR=M½íÂı]]Í]İí--Â==ıı2â"À¢“°¢Ğ¢ÒÀ¢¶w&÷W2Âw&÷W5&W÷6—F÷'’Â&Vg&W6„6FÆörÂ6†VÆÅv÷&·76T–EÒÀ¢“° ¢6öç7BFVÆWFT6çf4w&÷WÒW6T6ÆÆ&6²€¢7–æ2†w&÷W–C¢7G&–ær’Óâ°¢–b‚w&÷W5&W÷6—F÷'’’&WGW&ã°¢v—Bw&÷W5&W÷6—F÷'’ç6ögDFVÆWFT6çf4w&÷W‡°¢v÷&·76T–C¢6†VÆÅv÷&·76T–BÀ¢w&÷W–BÀ¢Ò“°¢v—B&Vg&W6„6FÆör‚“°¢ÒÀ¢¶w&÷W5&W÷6—F÷'’Â&Vg&W6„6FÆörÂ6†VÆÅv÷&·76T–EÒÀ¢“° ¢6öç7BÖ÷fT6çf4w&÷WÒW6T6ÆÆ&6²€¢7–æ2†w&÷W–C¢7G&–ærÂ&VçDw&÷W–C¢7G&–ærÂçVÆÂ’Óâ°¢–b‚w&÷W5&W÷6—F÷'’’&WGW&ã°¢v—Bw&÷W5&W÷6—F÷'’æÖ÷fT6çf4w&÷W‡°¢v÷&·76T–C¢6†VÆÅv÷&·76T–BÀ¢w&÷W–BÀ¢&VçDw&÷W–BÀ¢Ò“°¢v—B&Vg&W6„6FÆör‚“°¢ÒÀ¢¶w&÷W5&W÷6—F÷'’Â&Vg&W6„6FÆörÂ6†VÆÅv÷&·76T–EÒÀ¢“° ¢6öç7BÖ÷fT6çf5Fôw&÷WÒW6T6ÆÆ&6²€¢7–æ2†6çf4–C¢7G&–ærÂw&÷W–C¢7G&–ærÂçVÆÂ’Óâ°¢–b‚w&÷W5&W÷6—F÷'’’&WGW&ã°¢v—Bw&÷W5&W÷6—F÷'’æÖ÷fT6çf5Fôw&÷W‡°¢v÷&·76T–C¢6†VÆÅv÷&·76T–BÀ¢6çf4–BÀ¢w&÷W–BÀ¢Ò“°¢v—B&Vg&W6„6FÆör‚“°¢ÒÀ¢¶w&÷W5&W÷6—F÷'’Â&Vg&W6„6FÆörÂ6†VÆÅv÷&·76T–EÒÀ¢“° ¢6öç7BFVÆWFT6çf4'”–BÒW6T6ÆÆ&6²€¢7–æ2†6çf4–C¢7G&–ær’Óâ°¢6öç7B7VÖÖ'’Ò7VÖÖ&–W5&Vbæ7W'&VçBæf–æB‚†—FVÒ’Óâ—FVÒæ–BÓÓÒ6çf4–B“°¢–b‚7VÖÖ'’ÇÂv–æF÷ræ6öæf—&Ò†
+=M½-Â*²G·7VÖÖ'’çF—FÆWÜ+³ö’’&WGW&ã°¢6öç7Bv47F—fRÒ6†VÆÅ7FFU&Vbæ7W'&VçBæ6çf4–BÓÓÒ6çf4–C°¢–b‡v47F—fR’°¢&W7F÷&T6öçG&öÆÆW%&Vbæ7W'&VçCòæ&÷'B‚“°¢f&–çE&Vg&W6„6öçG&öÆÆW%&Vbæ7W'&VçCòæ&÷'B‚“°¢ö&¦V7EW&Ç2ç&Wfö¶TÆÂ‚“°¢Ğ¢v—B&W÷6—F÷'’ç6ögDFVÆWFT6çf2‡°¢v÷&·76T–C¢6†VÆÅv÷&·76T–BÀ¢6çf4–BÀ¢Ò“°¢6öç7BæW‡BÒv—B&Vg&W6„6FÆör‚“°¢–b‚v47F—fR’&WGW&ã°¢&W÷6—F÷'’ç6WD7F—fT6çf3òâ†çVÆÂ“°¢6WDæöFW2…µÒ“°¢6WDVFvW2…µÒ“°¢–b†æW‡Bç7VÖÖ&–W5³Ò’v—B÷Vä6çf2†æW‡Bç7VÖÖ&–W5³Òæ–B“°¢VÇ6R°¢‡–G&F–æu&Vbæ7W'&VçBÒfÇ6S°¢6WE6†VÆÅ7FFR†V×G•6†VÆÅ7FFR‚’“°¢Ğ¢ÒÀ¢°¢ö&¦V7EW&Ç2À¢÷Vä6çf2À¢&Vg&W6„6FÆörÀ¢&W÷6—F÷'’À¢6WDVFvW2À¢6WDæöFW2À¢6†VÆÅv÷&·76T–BÀ¢f&–çE&Vg&W6„6öçG&öÆÆW%&VbÀ¢ÒÀ¢“° ¢6öç7BFVÆWFT6çf2ÒW6T6ÆÆ&6²†7–æ2‚’Óâ°¢–b‚6†VÆÅ7FFRæ6çf4–B’&WGW&ã°¢v—BFVÆWFT6çf4'”–B‡6†VÆÅ7FFRæ6çf4–B“°¢ÒÂ¶FVÆWFT6çf4'”–BÂ6†VÆÅ7FFRæ6çf4–EÒ“° ¢6öç7B&VæÖT6çf4'”–BÒW6T6ÆÆ&6²€¢†6çf4–C¢7G&–ærÂF—FÆS¢7G&–ær“¢fö–BÓâ°¢6öç7BæW‡EF—FÆRÒF—FÆRçG&–Ò‚“°¢–b‚æW‡EF—FÆRÇÂ&VæÖT–äfÆ–v‡E&Vbæ7W'&VçBæ†2†6çf4–B’’&WGW&ã°¢6öç7B&Wf–÷W5F—FÆRĞ¢7VÖÖ&–W5&Vbæ7W'&VçBæf–æB‚†—FVÒ’Óâ—FVÒæ–BÓÓÒ6çf4–B“òçF—FÆRóğ¢6†VÆÅ7FFU&Vbæ7W'&VçBçF—FÆS°¢&VæÖT–äfÆ–v‡E&Vbæ7W'&VçBæFB†6çf4–B“°¢6WE7VÖÖ&–W2‚†7W'&VçB’Óà¢7W'&VçBæÖ‚‡7VÖÖ'’’Óà¢7VÖÖ'’æ–BÓÓÒ6çf4–Bò²ââç7VÖÖ'’ÂF—FÆS¢æW‡EF—FÆRÒ¢7VÖÖ'’À¢’À¢“°¢fö–B†7–æ2‚’Óâ°¢G'’°¢–b†6çf4–BÓÒ6†VÆÅ7FFU&Vbæ7W'&VçBæ6çf4–B¢v—B÷Vä6çf2†6çf4–B“°¢6öçG&öÆÆW"ç6WEF—FÆR†æW‡EF—FÆR“°¢–b‡6fUF–ÖW%&Vbæ7W'&VçB’°¢6ÆV%F–ÖV÷WB‡6fUF–ÖW%&Vbæ7W'&VçB“°¢6fUF–ÖW%&Vbæ7W'&VçBÒçVÆÃ°¢Ğ¢6öç7B&W7VÇBÒv—B6öçG&öÆÆW"ç6fR‚“°¢–b‡&W7VÇCòç7FGW2ÓÓÒ&6öæfÆ–7B"¢F‡&÷ræWrW'&÷"‚$6çf26†ævVBVÇ6Wv†W&Râ&VÆöBFò6öçF–çVRâ"“°¢6öç7B6fVBÒ6öçG&öÆÆW"ç7FFS°¢6WE7VÖÖ&–W2‚†7W'&VçB’Óà¢7W'&VçBæÖ‚‡7VÖÖ'’’Óà¢7VÖÖ'’æ–BÓÓÒ6çf4–@¢ò²ââç7VÖÖ'’ÂF—FÆS¢æW‡EF—FÆRÂ&Wf—6–öã¢6fVBç&Wf—6–öâĞ¢¢7VÖÖ'’À¢’À¢“°¢7–æ57FFR‚“°¢Ò6F6‚†W'&÷#¢Væ¶æ÷vâ’°¢6öçG&öÆÆW"ç6WEF—FÆR‡&Wf–÷W5F—FÆR“°¢6WE7VÖÖ&–W2‚†7W'&VçB’Óà¢7W'&VçBæÖ‚‡7VÖÖ'’’Óà¢7VÖÖ'’æ–BÓÓÒ6çf4–@¢ò²ââç7VÖÖ'’ÂF—FÆS¢&Wf–÷W5F—FÆRĞ¢¢7VÖÖ'’À¢’À¢“°¢6WE6†VÆÅ7FFR‡°¢ââæ6öçG&öÆÆW"ç7FFRÀ¢7FGW3¢&W'&÷""À¢W'&÷# ¢W'&÷"–ç7Fæ6VöbW'&÷ ¢òW'&÷"æÖW76vP¢¢$f–ÆVBFò&VæÖR6çf2â"À¢Ò“°¢Òf–æÆÇ’°¢&VæÖT–äfÆ–v‡E&Vbæ7W'&VçBæFVÆWFR†6çf4–B“°¢Ğ¢Ò’‚’æ6F6‚‡7–æ57FFR“°¢ÒÀ¢¶6öçG&öÆÆW"Â÷Vä6çf2Â7–æ57FFUÒÀ¢“° ¢6öç7B6öÖÖ—Ef–Ww÷'DÖ÷fRÒW6T6ÆÆ&6²€¢‡f–Ww÷'C¢6çf5åf–Ww÷'B’Óâ°¢–b‚6†VÆÅ7FFRæ6çf4–BÇÂf–Ww÷'Ef—6–&ÆR’&WGW&ã°¢–b€¢—5&öw&ÖÖF–5f–Ww÷'DÖ÷fR‡°¢6çf4–C¢6†VÆÅ7FFRæ6çf4–BÀ¢–æ—F–Æ—¦F–öã¢&öw&ÖÖF–5f–Ww÷'E&Vbæ7W'&VçBÀ¢f–Ww÷'BÀ¢Ò¢’°¢&öw&ÖÖF–5f–Ww÷'E&Vbæ7W'&VçBÒçVÆÃ°¢&WGW&ã°¢Ğ¢&öw&ÖÖF–5f–Ww÷'E&Vbæ7W'&VçBÒçVÆÃ°¢6WE6†VÆÅ7FFR‚†7W'&VçB’Óâ‡²ââæ7W'&VçBÂf–Ww÷'C¢²ââçf–Ww÷'BÒÒ’“°¢òòWw&FW2×W7B&Vv–â–ÖÖVF–FVÇ’âÆ÷vW"×&W6öÇWF–öâ6÷W&6R—2öæÇ¢òò6öç6–FW&VBgFW"F†R¦ööÒ†2&VÖ–æVB7F–ÆÂf÷"öæRFV&÷Væ6Rv–æF÷rà¢66†VGVÆT–ÖvUf&–çE&Vg&W6‚‡f–Ww÷'Bç¦ööÒÂfÇ6R“°¢–b‡f&–çDF÷væw&FUF–ÖW%&Vbæ7W'&VçBÓÒçVÆÂ¢6ÆV%F–ÖV÷WB‡f&–çDF÷væw&FUF–ÖW%&Vbæ7W'&VçB“°¢f&–çDF÷væw&FUF–ÖW%&Vbæ7W'&VçBÒv–æF÷rç6WEF–ÖV÷WB‚‚’Óâ°¢f&–çDF÷væw&FUF–ÖW%&Vbæ7W'&VçBÒçVÆÃ°¢66†VGVÆT–ÖvUf&–çE&Vg&W6‚‡f–Ww÷'Bç¦ööÒÂG'VR“°¢ÒÂ““°¢–b‡f–Ww÷'EF–ÖW%&Vbæ7W'&VçB’6ÆV%F–ÖV÷WB‡f–Ww÷'EF–ÖW%&Vbæ7W'&VçB“°¢f–Ww÷'EF–ÖW%&Vbæ7W'&VçBÒ6WEF–ÖV÷WB‚‚’Óâ°¢f–Ww÷'EF–ÖW%&Vbæ7W'&VçBÒçVÆÃ°¢fö–B6öçG&öÆÆW"ç6fUf–Ww÷'B‡f–Ww÷'B’æ6F6‚‚†W'&÷#¢Væ¶æ÷vâ’Óà¢6WE6†VÆÅ7FFR‚†7W'&VçB’Óâ‡°¢ââæ7W'&VçBÀ¢7FGW3¢&W'&÷""À¢W'&÷# ¢W'&÷"–ç7Fæ6VöbW'&÷"òW'&÷"æÖW76vR¢%f–Ww÷'B6fRf–ÆVBâ"À¢Ò’’À¢“°¢ÒÂ#C“°¢ÒÀ¢°¢6öçG&öÆÆW"À¢66†VGVÆT–ÖvUf&–çE&Vg&W6‚À¢6†VÆÅ7FFRæ6çf4–BÀ¢f–Ww÷'Ef—6–&ÆRÀ¢ÒÀ¢“° ¢6öç7B6æ6VÅä–æW'F–ÒW6T6ÆÆ&6²€¢†6öÖÖ—D7W'&VçEf–Ww÷'C¢&ööÆVâ’Óâ°¢6öç7Bv47F—fRÒä–æW'F–7F—fU&Vbæ7W'&VçC°¢–b‡ä–æW'F–g&ÖU&Vbæ7W'&VçBÓÒçVÆÂ’°¢6æ6VÄæ–ÖF–öäg&ÖR‡ä–æW'F–g&ÖU&Vbæ7W'&VçB“°¢ä–æW'F–g&ÖU&Vbæ7W'&VçBÒçVÆÃ°¢Ğ¢ä–æW'F–7F—fU&Vbæ7W'&VçBÒfÇ6S°¢ä–æW'F–fVÆö6—G•&Vbæ7W'&VçBÒçVÆÃ°¢ä–æW'F–f–Ww÷'E&Vbæ7W'&VçBÒçVÆÃ°¢ä–æW'F–Æ7Dg&ÖU&Vbæ7W'&VçBÒçVÆÃ°¢–b‡v47F—fRbb6öÖÖ—D7W'&VçEf–Ww÷'B¢6öÖÖ—Ef–Ww÷'DÖ÷fR‡&V7DfÆ÷rævWEf–Ww÷'B‚’“°¢ÒÀ¢¶6öÖÖ—Ef–Ww÷'DÖ÷fRÂ&V7DfÆ÷uÒÀ¢“° ¢6öç7B7F'Eä–æW'F–ÒW6T6ÆÆ&6²€¢†–æ—F–ÅfVÆö6—G“¢6çf5åfVÆö6—G’’Óâ°¢6æ6VÅä–æW'F–†fÇ6R“°¢ä–æW'F–7F—fU&Vbæ7W'&VçBÒG'VS°¢ä–æW'F–fVÆö6—G•&Vbæ7W'&VçBÒ–æ—F–ÅfVÆö6—G“°¢ä–æW'F–f–Ww÷'E&Vbæ7W'&VçBÒ&V7DfÆ÷rævWEf–Ww÷'B‚“°¢ä–æW'F–Æ7Dg&ÖU&Vbæ7W'&VçBÒW&f÷&Öæ6Rææ÷r‚“° ¢6öç7BF–6²Ò†æ÷s¢çVÖ&W"“¢fö–BÓâ°¢6öç7BfVÆö6—G’Òä–æW'F–fVÆö6—G•&Vbæ7W'&VçC°¢6öç7Bf–Ww÷'BÒä–æW'F–f–Ww÷'E&Vbæ7W'&VçC°¢6öç7BÆ7Dg&ÖTBÒä–æW'F–Æ7Dg&ÖU&Vbæ7W'&VçC°¢–b€¢ä–æW'F–7F—fU&Vbæ7W'&VçBÇÀ¢fVÆö6—G’ÇÀ¢f–Ww÷'BÇÀ¢Æ7Dg&ÖTBÓÓÒçVÆÀ¢¢&WGW&ã°¢6öç7B7FWÒGfæ6T6çf5ä–æW'F–‡°¢f–Ww÷'BÀ¢fVÆö6—G’À¢VÆ6VD×3¢æ÷rÒÆ7Dg&ÖTBÀ¢Ò“°¢ä–æW'F–fVÆö6—G•&Vbæ7W'&VçBÒ7FWçfVÆö6—G“°¢ä–æW'F–f–Ww÷'E&Vbæ7W'&VçBÒ7FWçf–Ww÷'C°¢ä–æW'F–Æ7Dg&ÖU&Vbæ7W'&VçBÒæ÷s°¢fö–B&V7DfÆ÷rç6WEf–Ww÷'B‡7FWçf–Ww÷'BÂ²GW&F–öã¢Ò“° ¢–b‡7FWæFöæR’°¢ä–æW'F–g&ÖU&Vbæ7W'&VçBÒ&WVW7Dæ–ÖF–öäg&ÖR‚‚’Óâ°¢ä–æW'F–g&ÖU&Vbæ7W'&VçBÒçVÆÃ°¢ä–æW'F–7F—fU&Vbæ7W'&VçBÒfÇ6S°¢ä–æW'F–fVÆö6—G•&Vbæ7W'&VçBÒçVÆÃ°¢ä–æW'F–f–Ww÷'E&Vbæ7W'&VçBÒçVÆÃ°¢ä–æW'F–Æ7Dg&ÖU&Vbæ7W'&VçBÒçVÆÃ°¢6öÖÖ—Ef–Ww÷'DÖ÷fR‡&V7DfÆ÷rævWEf–Ww÷'B‚’“°¢Ò“°¢&WGW&ã°¢Ğ¢ä–æW'F–g&ÖU&Vbæ7W'&VçBÒ&WVW7Dæ–ÖF–öäg&ÖR‡F–6²“°¢Ó° ¢ä–æW'F–g&ÖU&Vbæ7W'&VçBÒ&WVW7Dæ–ÖF–öäg&ÖR‡F–6²“°¢ÒÀ¢¶6æ6VÅä–æW'F–Â6öÖÖ—Ef–Ww÷'DÖ÷fRÂ&V7DfÆ÷uÒÀ¢“° ¢6öç7B†æFÆUf–Ww÷'DÖ÷fRÒW6T6ÆÆ&6²€¢…ó¢Væ¶æ÷vâÂf–Ww÷'C¢6çf5åf–Ww÷'B’Óâ°¢–b‚Ö–FFÆUä7F—fU&Vbæ7W'&VçBÇÂä–æW'F–7F—fU&Vbæ7W'&VçB’&WGW&ã°¢6öç7Bæ÷rÒW&f÷&Öæ6Rææ÷r‚“°¢å6×ÆW5&Vbæ7W'&VçBÒ°¢ââçå6×ÆW5&Vbæ7W'&VçBæf–ÇFW"‚‡6×ÆR’Óâæ÷rÒ6×ÆRæBÃÒ#’À¢²ƒ¢f–Ww÷'Bç‚Â“¢f–Ww÷'Bç’ÂC¢æ÷rÒÀ¢Òç6Æ–6R‚Ó‚“°¢ÒÀ¢µÒÀ¢“° ¢6öç7B&Vv–åF÷V6…f–Ww÷'DvW7GW&RÒW6T6ÆÆ&6²‚‚“¢fö–BÓâ°¢–b‡F÷V6…f–Ww÷'DvW7GW&T7F—fU&Vbæ7W'&VçB’&WGW&ã°¢F÷V6…f–Ww÷'DvW7GW&T7F—fU&Vbæ7W'&VçBÒG'VS°¢æöFTG&t7F—fU&Vbæ7W'&VçBÒfÇ6S°¢VFvU&VÖ÷fÅ7W&W76–öåVçF–Å&Vbæ7W'&VçBÒFFRææ÷r‚’²S°¢6WEF÷V6…f–Ww÷'DvW7GW&T7F—fR‡G'VR“° ¢6öç7B6æ6†÷BÒF÷V6„vW7GW&TæöFW5&Vbæ7W'&VçC°¢–b‡6æ6†÷B’°¢æöFW5&Vbæ7W'&VçBÒ6æ6†÷C°¢6WDæöFW2‡6æ6†÷B“°¢Ğ¢6öç7B6æöæ–6ÄVFvW2Ò6çf4Fö7VÖVçEFôVFvW2€¢6öçG&öÆÆW"ç7FFRæFö7VÖVçBÀ¢†æFÆTVFvUWFFRÀ¢“°¢VFvW5&Vbæ7W'&VçBÒ6æöæ–6ÄVFvW3°¢6WDVFvW2†6æöæ–6ÄVFvW2“°¢ÒÂ¶6öçG&öÆÆW"Â†æFÆTVFvUWFFRÂ6WDVFvW2Â6WDæöFW5Ò“° ¢6öç7B†æFÆT6çf5ö–çFW$F÷vâÒW6T6ÆÆ&6²€¢†WfVçC¢&V7Eö–çFW$WfVçCÄ…DÔÄF—dVÆVÖVçCâ’Óâ°¢–b‡7G–ÆTW–VG&÷W%6÷W&6T–BbbWfVçBæ'WGFöâÓÓÒ’°¢6öç7BF&vWDVÆVÖVçBĞ¢WfVçBçF&vWB–ç7Fæ6VöbVÆVÖVç@¢òWfVçBçF&vWBæ6Æ÷6W7CÄ…DÔÄVÆVÖVçCâ‚"ç&V7BÖfÆ÷uõöæöFR"¢¢çVÆÃ°¢–b‚F&vWDVÆVÖVçB’°¢6WE7G–ÆTW–VG&÷W%6÷W&6T–B†çVÆÂ“°¢ÒVÇ6R°¢WfVçBç&WfVçDFVfVÇB‚“°¢WfVçBç7F÷&÷vF–öâ‚“°¢6öç7B6÷W&6T–BÒ7G–ÆTW–VG&÷W%6÷W&6T–C°¢6öç7BF&vWD–BÒF&vWDVÆVÖVçBæFF6WBæ–C°¢–b‚F&vWD–BÇÂF&vWD–BÓÓÒ6÷W&6T–B’&WGW&ã°¢6öç7B'VçF–ÖTæöFW2Ò&V7DfÆ÷rævWDæöFW2‚“°¢6öç7B6÷W&6TæöFRÒ'VçF–ÖTæöFW2æf–æB‚†æöFR’ÓâæöFRæ–BÓÓÒ6÷W&6T–B“°¢6öç7BF&vWDæöFRÒ'VçF–ÖTæöFW2æf–æB‚†æöFR’ÓâæöFRæ–BÓÓÒF&vWD–B“°¢–b€¢6÷W&6TæöFSòçG—RÓÓÒ4åd5õDU…EôäôDUõE•Rb`¢F&vWDæöFSòçG—RÓÓÒ4åd5õDU…EôäôDUõE•P¢’°¢WFFUFW‡E7G–ÆR‡6÷W&6T–BÂ°¢6öÆ÷#¢F&vWDæöFRæFFç7G–ÆRæ6öÆ÷"À¢&6¶w&÷VæD6öÆ÷#¢F&vWDæöFRæFFç7G–ÆRæ&6¶w&÷VæD6öÆ÷"À¢Ò“°¢6WE7G–ÆTW–VG&÷W%6÷W&6T–B†çVÆÂ“°¢&WGW&ã°¢Ğ¢–b€¢6÷W&6TæöFSòçG—RÓÓÒ4åd5õ4„UôäôDUõE•Rb`¢F&vWDæöFSòçG—RÓÓÒ4åd5õ4„UôäôDUõE•P¢’°¢WFFU6†U7G–ÆR‡6÷W&6T–BÂ°¢6öÆ÷#¢F&vWDæöFRæFFç7G–ÆRæ6öÆ÷"À¢f–ÆÄ6öÆ÷#¢F&vWDæöFRæFFç7G–ÆRæf–ÆÄ6öÆ÷"À¢Ò“°¢6WE7G–ÆTW–VG&÷W%6÷W&6T–B†çVÆÂ“°¢&WGW&ã°¢Ğ¢–b€¢6÷W&6TæöFSòçG—RÓÓÒ4åd5ô%D”4ÄUôäôDUõE•Rb`¢F&vWDæöFSòçG—RÓÓÒ4åd5ô%D”4ÄUôäôDUõE•P¢’°¢WFFT'F–6ÆU7G–ÆR‡6÷W&6T–BÂF&vWDæöFRæFFç7G–ÆR“°¢6WE7G–ÆTW–VG&÷W%6÷W&6T–B†çVÆÂ“°¢&WGW&ã°¢Ğ¢&WGW&ã°¢Ğ¢Ğ¢–b†WfVçBçö–çFW%G—RÓÓÒ'F÷V6‚"’°¢6öç7B7F—fUF÷V6…ö–çFW'2Ò7F—fUF÷V6…ö–çFW'5&Vbæ7W'&VçC°¢–b†7F—fUF÷V6…ö–çFW'2ç6—¦RÓÓÒ’°¢F÷V6„vW7GW&TæöFW5&Vbæ7W'&VçBÒ6æ6†÷D6çf5F÷V6„vW7GW&TæöFW2€¢æöFW5&Vbæ7W'&VçBÀ¢“°¢Ğ¢7F—fUF÷V6…ö–çFW'2æFB†WfVçBçö–çFW$–B“°¢–b†7F—fUF÷V6…ö–çFW'2ç6—¦RãÒ"’&Vv–åF÷V6…f–Ww÷'DvW7GW&R‚“°¢Ğ¢6æ6VÅä–æW'F–‡G'VR“°¢–b†WfVçBæ'WGFöâÓÒ’&WGW&ã°¢Ö–FFÆUä7F—fU&Vbæ7W'&VçBÒG'VS°¢6öç7Bf–Ww÷'BÒ&V7DfÆ÷rævWEf–Ww÷'B‚“°¢å6×ÆW5&Vbæ7W'&VçBÒ°¢²ƒ¢f–Ww÷'Bç‚Â“¢f–Ww÷'Bç’ÂC¢W&f÷&Öæ6Rææ÷r‚’ÒÀ¢Ó°¢ÒÀ¢°¢&Vv–åF÷V6…f–Ww÷'DvW7GW&RÀ¢6æ6VÅä–æW'F–À¢&V7DfÆ÷rÀ¢7G–ÆTW–VG&÷W%6÷W&6T–BÀ¢WFFU6†U7G–ÆRÀ¢WFFT'F–6ÆU7G–ÆRÀ¢WFFUFW‡E7G–ÆRÀ¢ÒÀ¢“° ¢6öç7B†æFÆT6çf5ö–çFW$Ö÷fRÒW6T6ÆÆ&6²€¢†WfVçC¢&V7Eö–çFW$WfVçCÄ…DÔÄF—dVÆVÖVçCâ’Óâ°¢ö–çFW%&Vbæ7W'&VçBÒ²ƒ¢WfVçBæ6Æ–VçE‚Â“¢WfVçBæ6Æ–VçE’Ó°¢ÒÀ¢µÒÀ¢“° ¢6öç7B†æFÆT6çf5v†VVÂÒW6T6ÆÆ&6²‚‚’Óâ°¢6æ6VÅä–æW'F–‡G'VR“°¢ÒÂ¶6æ6VÅä–æW'F–Ò“° ¢W6TVffV7B‚‚’Óâ°¢6öç7B&VÆV6UF÷V6…ö–çFW"Ò†WfVçC¢ö–çFW$WfVçB“¢fö–BÓâ°¢–b†WfVçBçö–çFW%G—RÓÒ'F÷V6‚"’&WGW&ã°¢7F—fUF÷V6…ö–çFW'5&Vbæ7W'&VçBæFVÆWFR†WfVçBçö–çFW$–B“°¢–b†7F—fUF÷V6…ö–çFW'5&Vbæ7W'&VçBç6—¦Râ’&WGW&ã°¢v–æF÷rç&WVW7Dæ–ÖF–öäg&ÖR‚‚’Óâ°¢–b†7F—fUF÷V6…ö–çFW'5&Vbæ7W'&VçBç6—¦Râ’&WGW&ã°¢F÷V6„vW7GW&TæöFW5&Vbæ7W'&VçBÒçVÆÃ°¢–b‚F÷V6…f–Ww÷'DvW7GW&T7F—fU&Vbæ7W'&VçB’&WGW&ã°¢F÷V6…f–Ww÷'DvW7GW&T7F—fU&Vbæ7W'&VçBÒfÇ6S°¢6WEF÷V6…f–Ww÷'DvW7GW&T7F—fR†fÇ6R“°¢Ò“°¢Ó°¢6öç7Böåö–çFW%WÒ†WfVçC¢ö–çFW$WfVçB“¢fö–BÓâ°¢&VÆV6UF÷V6…ö–çFW"†WfVçB“°¢–b†WfVçBæ'WGFöâÓÒÇÂÖ–FFÆUä7F—fU&Vbæ7W'&VçB’&WGW&ã°¢Ö–FFÆUä7F—fU&Vbæ7W'&VçBÒfÇ6S°¢6öç7BfVÆö6—G’Ò6çf5å&VÆV6UfVÆö6—G’‡å6×ÆW5&Vbæ7W'&VçB“°¢å6×ÆW5&Vbæ7W'&VçBÒµÓ°¢–b‡fVÆö6—G’’7F'Eä–æW'F–‡fVÆö6—G’“°¢VÇ6R6öÖÖ—Ef–Ww÷'DÖ÷fR‡&V7DfÆ÷rævWEf–Ww÷'B‚’“°¢Ó°¢6öç7Böåö–çFW$6æ6VÂÒ†WfVçC¢ö–çFW$WfVçB“¢fö–BÓâ°¢&VÆV6UF÷V6…ö–çFW"†WfVçB“°¢–b‚Ö–FFÆUä7F—fU&Vbæ7W'&VçB’&WGW&ã°¢Ö–FFÆUä7F—fU&Vbæ7W'&VçBÒfÇ6S°¢å6×ÆW5&Vbæ7W'&VçBÒµÓ°¢6öÖÖ—Ef–Ww÷'DÖ÷fR‡&V7DfÆ÷rævWEf–Ww÷'B‚’“°¢Ó°¢v–æF÷ræFDWfVçDÆ—7FVæW"‚'ö–çFW'W"Âöåö–çFW%WÂG'VR“°¢v–æF÷ræFDWfVçDÆ—7FVæW"‚'ö–çFW&6æ6VÂ"Âöåö–çFW$6æ6VÂÂG'VR“°¢&WGW&â‚’Óâ°¢v–æF÷rç&VÖ÷fTWfVçDÆ—7FVæW"‚'ö–çFW'W"Âöåö–çFW%WÂG'VR“°¢v–æF÷rç&VÖ÷fTWfVçDÆ—7FVæW"‚'ö–çFW&6æ6VÂ"Âöåö–çFW$6æ6VÂÂG'VR“°¢Ó°¢ÒÂ¶6öÖÖ—Ef–Ww÷'DÖ÷fRÂ&V7DfÆ÷rÂ7F'Eä–æW'F–Ò“° ¢W6TVffV7B€¢‚’Óâ‚’Óâ°¢–b‡ä–æW'F–g&ÖU&Vbæ7W'&VçBÓÒçVÆÂ¢6æ6VÄæ–ÖF–öäg&ÖR‡ä–æW'F–g&ÖU&Vbæ7W'&VçB“°¢ÒÀ¢µÒÀ¢“° ¢6öç7BöäÖ÷fTVæBÒW6T6ÆÆ&6²€¢…ó¢Væ¶æ÷vâÂf–Ww÷'C¢6çf5åf–Ww÷'B’Óâ°¢–b†Ö–FFÆUä7F—fU&Vbæ7W'&VçBÇÂä–æW'F–7F—fU&Vbæ7W'&VçB’&WGW&ã°¢6öÖÖ—Ef–Ww÷'DÖ÷fR‡f–Ww÷'B“°¢ÒÀ¢¶6öÖÖ—Ef–Ww÷'DÖ÷fUÒÀ¢“° ¢6öç7B¶VWÆö6Ä6†ævW2ÒW6T6ÆÆ&6²‚‚’Óâ°¢fö–B6öçG&öÆÆW ¢æ¶VWÆö6Ä6†ævW2‚¢çF†Vâ†7–æ2‡&W7VÇB’Óâ°¢7–æ57FFR‚“°¢–b‡&W7VÇCòç7FGW2ÓÒ'6fVB"’&WGW&ã°¢6ÆV$6öæfÆ–7DG&gB‚“°¢v—B&Vg&W6„6FÆör‚“°¢Ò¢æ6F6‚‡7–æ57FFR“°¢ÒÂ¶6ÆV$6öæfÆ–7DG&gBÂ6öçG&öÆÆW"Â&Vg&W6„6FÆörÂ7–æ57FFUÒ“° ¢6öç7B&VÆöDÆFW7EfW'6–öâÒW6T6ÆÆ&6²‚‚’Óâ°¢6öç7B7W'&VçBÒ6öçG&öÆÆW"ç7FFS°¢6fT6öæfÆ–7DG&gB†7W'&VçB“°¢–b†7W'&VçBæ6çf4–B’fö–B÷Vä6çf2†7W'&VçBæ6çf4–B“°¢ÒÂ¶6öçG&öÆÆW"Â÷Vä6çf2Â6fT6öæfÆ–7DG&gEÒ“° ¢6öç7B&W7F÷&TÆö6Ä6öæfÆ–7DG&gBÒW6T6ÆÆ&6²‚‚’Óâ°¢6öç7BG&gBÒ&VD6öæfÆ–7DG&gB‚“°¢–b‚G&gB’&WGW&ã°¢6öç7B&W7F÷&VBÒ6öçG&öÆÆW"ç&W7F÷&T6öæfÆ–7DG&gB†G&gB“°¢–b‚&W7F÷&VB’&WGW&ã°¢6WE6†VÆÅ7FFR‡&W7F÷&VB“°¢6WE&VæÖUF—FÆR‡&W7F÷&VBçF—FÆR“°¢fö–B&W7F÷&Tf÷$6çf2‡&W7F÷&VB’æ6F6‚‡7–æ57FFR“°¢ÒÂ¶6öçG&öÆÆW"Â&VD6öæfÆ–7DG&gBÂ&W7F÷&Tf÷$6çf2Â7–æ57FFUÒ“° ¢6öç7BFW6·F÷Æ—7E7FFRĞ¢ÆöF–ætÆ–fV7–6ÆRÓÓÒ&Æ—7BÖÆöF–ær ¢ò&ÆöF–ær ¢¢ÆöF–ætÆ–fV7–6ÆRÓÓÒ&V×G’Ö6öæf—&ÖVB ¢ò&V×G’ ¢¢ÆöF–ætÆ–fV7–6ÆRÓÓÒ&W'&÷""bb7VÖÖ&–W2æÆVæwF‚ÓÓÒ ¢ò&W'&÷" ¢¢'&VG’#°¢6öç7B6çf4'&VF7'VÖ"ÒW6TÖVÖò€¢‚’Óà¢vWD6çf4'&VF7'VÖ"€¢w&÷W2À¢7VÖÖ&–W2æf–æB‚‡7VÖÖ'’’Óâ7VÖÖ'’æ–BÓÓÒ6†VÆÅ7FFRæ6çf4–B’À¢’À¢¶w&÷W2Â6†VÆÅ7FFRæ6çf4–BÂ7VÖÖ&–W5ÒÀ¢“°¢6öç7BFW6·F÷6–FV&"ÒVÖ&VFFVBò€¢Ä6çf4FW6·F÷6–FV& ¢7F—fT6çf4–C×·6†VÆÅ7FFRæ6çf4–GĞ¢6÷“×¶6÷—Ğ¢W'&÷#×·6†VÆÅ7FFRæW'&÷'Ğ¢w&÷W3×¶w&÷W7Ğ¢w&÷W4W'&÷#×¶w&÷W4W'&÷'Ğ¢†–v†Æ–v‡FVDw&÷W–C×¶†–v†Æ–v‡FVD6çf4w&÷W–GĞ¢Æ—7E7FFS×¶FW6·F÷Æ—7E7FFWĞ¢öä7&VFT6çf3×²‡F—FÆRÂw&÷W–B’Óâfö–B7&VFT6çf2‡F—FÆRÂw&÷W–B—Ğ¢öä7&VFTw&÷W×²‡F—FÆRÂ&VçDw&÷W–B’Óà¢fö–B7&VFT6çf4w&÷W‡F—FÆRÂ&VçDw&÷W–B¢Ğ¢öäFVÆWFT6çf3×²†6çf4–B’Óâfö–BFVÆWFT6çf4'”–B†6çf4–B—Ğ¢öäFVÆWFTw&÷W×²†w&÷W–B’Óâfö–BFVÆWFT6çf4w&÷W†w&÷W–B—Ğ¢öäÖ÷fT6çf3×²†6çf4–BÂw&÷W–B’Óà¢fö–BÖ÷fT6çf5Fôw&÷W†6çf4–BÂw&÷W–B¢Ğ¢öäÖ÷fTw&÷W×²†w&÷W–BÂ&VçDw&÷W–B’Óà¢fö–BÖ÷fT6çf4w&÷W†w&÷W–BÂ&VçDw&÷W–B¢Ğ¢öå&VæÖT6çf3×·&VæÖT6çf4'”–GĞ¢öå&VæÖTw&÷W×²†w&÷W–BÂF—FÆR’Óâfö–B&VæÖT6çf4w&÷W†w&÷W–BÂF—FÆR—Ğ¢öå&WG'“×²‚’Óâv–æF÷ræÆö6F–öâç&VÆöB‚—Ğ¢öå6VÆV7D6çf3×²†6çf4–B’Óâ°¢6WD†–v†Æ–v‡FVD6çf4w&÷W–B†çVÆÂ“°¢fö–B÷Vä6çf2†6çf4–B“°¢×Ğ¢7VÖÖ&–W3×·7VÖÖ&–W7Ğ¢óà¢’¢çVÆÃ° ¢6öç7BFW6·F÷FööÆ&"ÒVÖ&VFFVBò€¢Ä6çf4FW6·F÷FööÆ& ¢'&VF7'VÖ#×·°¢†–v†Æ–v‡FVDw&÷W–C¢†–v†Æ–v‡FVD6çf4w&÷W–BÀ¢öå6VÆV7D6çf3¢†6çf4–B’Óâ°¢6WD†–v†Æ–v‡FVD6çf4w&÷W–B†çVÆÂ“°¢fö–B÷Vä6çf2†6çf4–B“°¢ÒÀ¢öå6VÆV7Dw&÷W¢6WD†–v†Æ–v‡FVD6çf4w&÷W–BÀ¢6VvÖVçG3¢6çf4'&VF7'VÖ"À¢×Ğ¢6å&VFó×¶6öçG&öÆÆW"æ6å&VF÷Ğ¢6åVæFó×¶6öçG&öÆÆW"æ6åVæF÷Ğ¢–çFW&7F—fS×´&ööÆVâ‡6†VÆÅ7FFRæ6çf4–B’bbÆöF–ætÆ–fV7–6ÆRÓÓÒ'&VG’'Ğ¢6÷“×¶6÷—Ğ¢W'&÷#×·6†VÆÅ7FFRæW'&÷'Ğ¢6öæfÆ–7DG&gDf–Æ&ÆS×¶6öæfÆ–7DG&gDf–Æ&ÆWĞ¢'F–6ÆU–6¶W$÷Vã×¶'F–6ÆU–6¶W$÷VçĞ¢'F–6ÆUVW'“×¶'F–6ÆUVW'—Ğ¢'F–6ÆU&W7VÇG3×¶'F–6ÆU&W7VÇG7Ğ¢'F–6ÆUFööÇ5&VG“×¶¶æ÷vÆVFvT'F–6ÆW2æÆVæwF‚âĞ¢öäFEFc×²†f–ÆW2’Óâfö–BWÆöEFdf–ÆW2†f–ÆW2—Ğ¢öäFD–ÖvS×²†f–ÆW2’Óà¢fö–B–ævW7B€¢²f–ÆW2Â—FV×3¢µÒÂG—W3¢f–ÆW2æÖ‚†f–ÆR’Óâf–ÆRçG—R’ÒÀ¢&f–ÆR×–6¶W""À¢çVÆÂÀ¢¢Ğ¢öäFEFW‡C×²‚’Óâ7&VFUFW‡DæöFR†çVÆÂÂ""ÂG'VR—Ğ¢öäFE&V7FævÆS×²‚’Óâ7&VFU6†TæöFR‚'&V7FævÆR"—Ğ¢öäFD6—&6ÆS×²‚’Óâ7&VFU6†TæöFR‚&6—&6ÆR"—Ğ¢öäFE7VÖÖ'“×¶7&VFU7VÖÖ'”æöFWĞ¢öäW‡÷'E÷'F&ÆT6÷“×²‚’Óâfö–BW‡÷'E÷'F&ÆT6çf46÷’‚—Ğ¢öä6Æ÷6T'F–6ÆU–6¶W#×²‚’Óâ6WD'F–6ÆU–6¶W$÷Vâ†fÇ6R—Ğ¢öä6Æ÷6Tf–ÆU–6¶W#×²‚’Óâ6WDf–ÆU–6¶W$÷Vâ†fÇ6R—Ğ¢öä6Æ÷6UF6µ–6¶W#×²‚’Óâ6WEF6µ–6¶W$÷Vâ†fÇ6R—Ğ¢öäf–ÆUVW'”6†ævS×·6WDf–ÆUVW'—Ğ¢öä¶VWÆö6Ä6†ævW3×¶¶VWÆö6Ä6†ævW7Ğ¢öå&VFó×²‚’ÓâÇ”6çf4†—7F÷'’‚'&VFò"—Ğ¢öå&VÆöEv–ææW#×·&VÆöDÆFW7EfW'6–öçĞ¢öå&W7F÷&TÆö6ÄG&gC×·&W7F÷&TÆö6Ä6öæfÆ–7DG&gGĞ¢öå&WG'“×²‚’Óâ°¢–b‡6†VÆÅ7FFRæ6çf4–B’fö–B÷Vä6çf2‡6†VÆÅ7FFRæ6çf4–B“°¢VÇ6Rv–æF÷ræÆö6F–öâç&VÆöB‚“°¢×Ğ¢öå6VÆV7Df–ÆS×²†f–ÆR’Óâfö–B7&VFU&ö¦V7Df–ÆTæöFR†f–ÆR—Ğ¢öå6VÆV7D'F–6ÆS×¶7&VFT'F–6ÆTæöFWĞ¢öå6VÆV7EF6³×¶7&VFUF6´æöFWĞ¢öä'F–6ÆUVW'”6†ævS×·6WD'F–6ÆUVW'—Ğ¢öåF6µVW'”6†ævS×·6WEF6µVW'—Ğ¢öåFövvÆTf–ÆU–6¶W#×²‚’Óâ°¢6WD'F–6ÆU–6¶W$÷Vâ†fÇ6R“°¢6WEF6µ–6¶W$÷Vâ†fÇ6R“°¢6WDf–ÆU–6¶W$÷Vâ‚†7W'&VçB’Óâ7W'&VçB“°¢×Ğ¢öåFövvÆT'F–6ÆU–6¶W#×²‚’Óâ°¢6WDf–ÆU–6¶W$÷Vâ†fÇ6R“°¢6WEF6µ–6¶W$÷Vâ†fÇ6R“°¢6WD'F–6ÆU–6¶W$÷Vâ‚†7W'&VçB’Óâ7W'&VçB“°¢×Ğ¢öåFövvÆU6–FV&#×²‚’Óâ°¢&VFW%6–FV&%v4WFô6öÆÆ6VE&Vbæ7W'&VçBÒfÇ6S°¢6WDFW6·F÷6–FV&$÷Vâ‚†7W'&VçB’Óâ7W'&VçB“°¢×Ğ¢öåFövvÆUF6µ–6¶W#×²‚’Óâ°¢6WD'F–6ÆU–6¶W$÷Vâ†fÇ6R“°¢6WDf–ÆU–6¶W$÷Vâ†fÇ6R“°¢6WEF6µ–6¶W$÷Vâ‚†7W'&VçB’Óâ7W'&VçB“°¢×Ğ¢öåVæFó×²‚’ÓâÇ”6çf4†—7F÷'’‚'VæFò"—Ğ¢f–ÆU–6¶W$÷Vã×¶f–ÆU–6¶W$÷VçĞ¢f–ÆUVW'“×¶f–ÆUVW'—Ğ¢f–ÆU&W7VÇG3×¶f–ÆU&W7VÇG7Ğ¢f–ÆU6V&6…7FGW3×¶f–ÆU6V&6…7FGW7Ğ¢f–ÆUFööÇ5&VG“×´&ööÆVâ€¢&ö¦V7Df–ÆU&W÷6—F÷'’bb&ö¦V7Df–ÆUf&–çE&W÷6—F÷'’bb&ö¦V7D–BÀ¢—Ğ¢6–FV&$÷Vã×¶FW6·F÷6–FV&$÷VçĞ¢7FGW3×·6†VÆÅ7FFRç7FGW7Ğ¢F6µ–6¶W$÷Vã×·F6µ–6¶W$÷VçĞ¢F6µVW'“×·F6µVW'—Ğ¢F6µ&W7VÇG3×·F6µ&W7VÇG7Ğ¢F6µ6V&6…7FGW3×·F6µ6V&6…7FGW7Ğ¢F6µFööÇ5&VG“×´&ööÆVâ‡F6´'&–FvRbbF6µv÷&·76T–B—Ğ¢óà¢’¢çVÆÃ° ¢6öç7BFW6·F÷Æ–÷WBÒ†6öçFVçC¢&V7Bå&V7DæöFR“¢&V7Bä¥5‚äVÆVÖVçBÓâ€¢ÆÖ–à¢6Æ74æÖS×¶G·7G–ÆW2çvWÒG·7G–ÆW2çvTVÖ&VFFVGÒG·7G–ÆW2æFW6·F÷6çf5vWÒG¶FW6·F÷6–FV&$÷Vâò""¢7G–ÆW2æFW6·F÷6çf5vU6–FV&$6öÆÆ6VGÖĞ¢à¢¶FW6·F÷6–FV&'Ğ¢Ç6V7F–öâ6Æ74æÖS×·7G–ÆW2æFW6·F÷6çf4Ö–çÒ&–ÖÆ&VÃÒ-
+]í½"#à¢¶FW6·F÷FööÆ&'Ğ¢¶6öçFVçGĞ¢Â÷6V7F–öãà¢ÂöÖ–ãà¢“° ¢–b‚6†VÆÅ7FFRæ6çf4–BbbÆöF–ætÆ–fV7–6ÆRÓÒ&V×G’Ö6öæf—&ÖVB"’°¢6öç7B—4W'&÷"ÒÆöF–ætÆ–fV7–6ÆRÓÓÒ&W'&÷"#°¢–b†VÖ&VFFVB’°¢&WGW&âFW6·F÷Æ–÷WB€¢ÆF—b6Æ74æÖS×·7G–ÆW2æ6çf5w&Óà¢ÆF—b6Æ74æÖS×·7G–ÆW2æ6çf7Óà¢Ç6V7F–öâ6Æ74æÖS×·7G–ÆW2æ6çf4ÆöF–æwÒ&–Ö'W7“×²—4W'&÷'Óà¢¶—4W'&÷"ò€¢Æ'WGFöà¢6Æ74æÖS×·7G–ÆW2æ'WGFöçĞ¢öä6Æ–6³×²‚’Óâv–æF÷ræÆö6F–öâç&VÆöB‚—Ğ¢G—SÒ&'WGFöâ ¢à¢	ıí--í-À¢Âö'WGFöãà¢’¢€¢ÆF—b&–ÖÆ&VÃÒ$ÆöF–ær6çf2"&öÆSÒ'7FGW2"óà¢—Ğ¢Â÷6V7F–öãà¢ÂöF—cà¢ÂöF—câÀ¢“°¢Ğ¢&WGW&â€¢ÆÖ–â6Æ74æÖS×·7G–ÆW2çvWÓà¢Æ†VFW"6Æ74æÖS×·7G–ÆW2æ†VFW'Óà¢ÆF—b6Æ74æÖS×·7G–ÆW2çF—FÆTw&÷WÓà¢Ç6Æ74æÖS×·7G–ÆW2æW–V'&÷wÓç¶6÷’æW–V'&÷wÓÂ÷à¢Æƒ6Æ74æÖS×·7G–ÆW2çF—FÆWÓä6çf3Âöƒà¢Ç6Æ74æÖS×¶—4W'&÷"ò7G–ÆW2ç7FGW4W'&÷"¢7G–ÆW2ç7FGW7Óà¢¶—4W'&÷"ò‡6†VÆÅ7FFRæW'&÷"óò6÷’æW'&÷"’¢6÷’æÆöF–æwĞ¢Â÷à¢ÂöF—cà¢Âö†VFW#à¢Ç6V7F–öâ6Æ74æÖS×·7G–ÆW2æÆöF–æu6†VÆÇÒ&–Ö'W7“×²—4W'&÷'Óà¢¶—4W'&÷"ò€¢Æ'WGFöà¢6Æ74æÖS×·7G–ÆW2æ'WGFöçĞ¢öä6Æ–6³×²‚’Óâv–æF÷ræÆö6F–öâç&VÆöB‚—Ğ¢G—SÒ&'WGFöâ ¢à¢	ıí--í-À¢Âö'WGFöãà¢’¢€¢ÆF—`¢6Æ74æÖS×·7G–ÆW2æÆöF–ætvVöÖWG'—Ğ¢&–ÖÆ&VÃÒ$ÆöF–ær6çf2 ¢&öÆSÒ'7FGW2 ¢à¢Ç7âóà¢Ç7âóà¢Ç7âóà¢ÂöF—cà¢—Ğ¢Â÷6V7F–öãà¢ÂöÖ–ãà¢“°¢Ğ ¢–b‚6†VÆÅ7FFRæ6çf4–B’°¢–b†VÖ&VFFVB’°¢&WGW&âFW6·F÷Æ–÷WB€¢Ç6V7F–öâ6Æ74æÖS×·7G–ÆW2æV×G—Óà¢ÆF—b6Æ74æÖS×·7G–ÆW2æV×G”6&GÓà¢Æƒ#ç¶6÷’æV×G•F—FÆWÓÂöƒ#à¢Çç¶6÷’æV×G”FW67&—F–öçÓÂ÷à¢·6†VÆÅ7FFRæW'&÷"ò€¢Ç6Æ74æÖS×·7G–ÆW2ç7FGW4W'&÷'Óç·6†VÆÅ7FFRæW'&÷'ÓÂ÷à¢’¢çVÆÇĞ¢ÂöF—cà¢Â÷6V7F–öãâÀ¢“°¢Ğ¢&WGW&â€¢ÆÖ–â6Æ74æÖS×·7G–ÆW2çvWÓà¢Æ†VFW"6Æ74æÖS×·7G–ÆW2æ†VFW'Óà¢ÆF—b6Æ74æÖS×·7G–ÆW2çF—FÆTw&÷WÓà¢Ç6Æ74æÖS×·7G–ÆW2æW–V'&÷wÓç¶6÷’æW–V'&÷wÓÂ÷à¢Æƒ6Æ74æÖS×·7G–ÆW2çF—FÆWÓä–æf–æ—FR6çf3Âöƒà¢Ç6Æ74æÖS×·7G–ÆW2ç7FGW7Óç¶6÷’ç7FGW7ÓÂ÷à¢ÂöF—cà¢Âö†VFW#à¢Ç6V7F–öâ6Æ74æÖS×·7G–ÆW2æV×G—Óà¢ÆF—b6Æ74æÖS×·7G–ÆW2æV×G”6&GÓà¢Æƒ#ç¶6÷’æV×G•F—FÆWÓÂöƒ#à¢Çç¶6÷’æV×G”FW67&—F–öçÓÂ÷à¢ÆF—b6Æ74æÖS×·7G–ÆW2æ7&VFU&÷wÓà¢Æ–çW@¢6Æ74æÖS×·7G–ÆW2æ–çWGĞ¢fÇVS×¶æWuF—FÆWĞ¢öä6†ævS×²†WfVçB’Óâ6WDæWuF—FÆR†WfVçBçF&vWBçfÇVR—Ğ¢&–ÖÆ&VÃÒ$6çf2F—FÆR ¢óà¢Æ'WGFöà¢6Æ74æÖS×¶G·7G–ÆW2æ'WGFöçÒG·7G–ÆW2ç&–Ö'—ÖĞ¢G—SÒ&'WGFöâ ¢öä6Æ–6³×²‚’Óâfö–B7&VFT6çf2‚—Ğ¢à¢¶6÷’æ7&VFWĞ¢Âö'WGFöãà¢ÂöF—cà¢·6†VÆÅ7FFRæW'&÷"ò€¢Ç6Æ74æÖS×·7G–ÆW2ç7FGW4W'&÷'Óç·6†VÆÅ7FFRæW'&÷'ÓÂ÷à¢’¢çVÆÇĞ¢ÂöF—cà¢Â÷6V7F–öãà¢ÂöÖ–ãà¢“°¢Ğ ¢6öç7B7FGW4Æ&VÂĞ¢6†VÆÅ7FFRç7FGW2ÓÓÒ'6fVB ¢ò6÷’ç6fV@¢¢6†VÆÅ7FFRç7FGW2ÓÓÒ'6f–ær ¢ò6÷’ç6f–æp¢¢6†VÆÅ7FFRç7FGW2ÓÓÒ&6öæfÆ–7B ¢ò6÷’æ6öæfÆ–7@¢¢6†VÆÅ7FFRç7FGW2ÓÓÒ&ÆöF–ær ¢ò6÷’æÆöF–æp¢¢6÷’æW'&÷#°¢–b†VÖ&VFFVB’°¢&WGW&âFW6·F÷Æ–÷WB€¢ÆF—b6Æ74æÖS×·7G–ÆW2æ6çf5v÷&·76WÓà¢ÆF—b6Æ74æÖS×·7G–ÆW2æ6çf5w&Óà¢ÆF—`¢&Vc×·w&W%&VgĞ¢6Æ74æÖS×¶G·7G–ÆW2æ6çf7ÒG¶G&÷7F—fRò7G–ÆW2æG&÷7F—fR¢"'ÒG·7G–ÆTW–VG&÷W%6÷W&6T–Bò7G–ÆW2æ6çf57G–ÆTW–VG&÷W$7F—fR¢"'ÖĞ¢öäG&tVçFW#×²‚’Óâ6WDG&÷7F—fR‡G'VR—Ğ¢öäG&tÆVfS×²‚’Óâ6WDG&÷7F—fR†fÇ6R—Ğ¢öäG&t÷fW#×²†WfVçB’Óâ°¢–b‡G&ç6fW$†4f–ÆW2‡G&ç6fW%–ÆöB†WfVçBææF—fTWfVçB’’¢WfVçBç&WfVçDFVfVÇB‚“°¢×Ğ¢öäG&÷×¶öäG&÷Ğ¢öåö–çFW$F÷vä6GW&S×¶†æFÆT6çf5ö–çFW$F÷vçĞ¢öåö–çFW$Ö÷fT6GW&S×¶†æFÆT6çf5ö–çFW$Ö÷fWĞ¢öåv†VVÄ6GW&S×¶†æFÆT6çf5v†VVÇĞ¢à¢Å&V7DfÆ÷p¢6Æ74æÖS×¶G·7G–ÆW2æ6çf5f–Ww÷'GÒG·f–Ww÷'Ef—6–&ÆRò""¢7G–ÆW2æ6çf5f–Ww÷'D†–FFVçÖĞ¢æöFW3×·&VæFW&VDæöFW7Ğ¢VFvW3×¶VFvW7Ğ¢æöFUG—W3×¶æöFUG—W7Ğ¢VFvUG—W3×¶VFvUG—W7Ğ¢öäæöFW46†ævS×¶†æFÆTæöFW46†ævWĞ¢öäVFvW46†ævS×¶†æFÆTVFvW46†ævWĞ¢öäæöFTG&u7F'C×¶†æFÆTæöFTG&u7F'GĞ¢öäæöFTG&u7F÷×¶†æFÆTæöFTG&u7F÷Ğ¢öäæöFTF÷V&ÆT6Æ–6³×²†WfVçBÂæöFR’Óâ°¢–b†æöFRçG—RÓÓÒ4åd5ô%D”4ÄUôäôDUõE•R’°¢WfVçBç&WfVçDFVfVÇB‚“°¢÷Vä'F–6ÆTæöFR†æöFR“°¢&WGW&ã°¢Ğ¢–b†æöFRçG—RÓÒ4åd5õDeôäôDUõE•R’&WGW&ã°¢WfVçBç&WfVçDFVfVÇB‚“°¢fö–B÷VåFdæöFR†æöFR“°¢×Ğ¢öäæöFT6Æ–6³×²†WfVçBÂæöFR’Óâ°¢–b†æöFRçG—RÓÒ4åd5õ5TÔÔ%•ôäôDUõE•R’&WGW&ã°¢WfVçBç&WfVçDFVfVÇB‚“°¢÷Vå7VÖÖ'”æöFR†æöFR“°¢×Ğ¢öä6öææV7C×¶†æFÆT6öææV7GĞ¢6öææV7F–öäÖöFS×´6öææV7F–öäÖöFRäÆö÷6WĞ¢6öææV7F–öäÆ–æT6ö×öæVçC×´6çf46öææV7F–öäÆ–æWĞ¢Ö–å¦ööÓ×´4åd5õd”Uuõ%EôÄ”Ô•E2æÖ–å¦öö×Ğ¢Ö…¦ööÓ×´4åd5õd”Uuõ%EôÄ”Ô•E2æÖ…¦öö×Ğ¢äöäG&s×·F÷V6…&–Ö'”–çWBò³ÂÒ¢³×Ğ¢6VÆV7F–öäöäG&s×²F÷V6…&–Ö'”–çWGĞ¢6VÆV7F–öäÖöFS×µ6VÆV7F–öäÖöFRå'F–ÇĞ¢æöFW4G&vv&ÆS×²F÷V6…f–Ww÷'DvW7GW&T7F—fWĞ¢æöFW46öææV7F&ÆS×²F÷V6…f–Ww÷'DvW7GW&T7F—fWĞ¢VÆVÖVçG56VÆV7F&ÆS×²F÷V6…f–Ww÷'DvW7GW&T7F—fWĞ¢æöFTG&uF‡&W6†öÆC×·F÷V6…&–Ö'”–çWBò‚¢Ğ¢¦ööÔöå–æ6€¢öäÖ÷fS×¶†æFÆUf–Ww÷'DÖ÷fWĞ¢öäÖ÷fTVæC×¶öäÖ÷fTVæGĞ¢öä–æ—C×²‚’Óâ6WDfÆ÷t–ç7Fæ6TWö6‚‚†7W'&VçB’Óâ7W'&VçB²—Ğ¢öåæT6Æ–6³×²†WfVçB’Óâ°¢–b‡F÷V6…f–Ww÷'DvW7GW&T7F—fU&Vbæ7W'&VçBÇÂWfVçBæFWF–ÂÓÒ"¢&WGW&ã°¢7&VFUFW‡DæöFR€¢²ƒ¢WfVçBæ6Æ–VçE‚Â“¢WfVçBæ6Æ–VçE’ÒÀ¢""À¢G'VRÀ¢“°¢×Ğ¢FVÆWFT¶W”6öFS×µ²$&6·76R"Â$FVÆWFR%×Ğ¢à¢Ä&6¶w&÷VæBv×³#GÒ6öÆ÷#Ò"6CfC6C"óà¢Ä6öçG&öÇ26†÷t–çFW&7F—fS×¶fÇ6WÒóà¢ÄÖ–æ”Ö ¢6Æ74æÖS×·7G–ÆW2æÖ–æ–ÖĞ¢÷6—F–öãÒ&&÷GFöÒ×&–v‡B ¢Ö6´6öÆ÷#Ò'&v&ƒ#‚Â#RÂ#2Âã‚’ ¢æöFT6öÆ÷#×¶6çf4Ö–æ”ÖæöFT6öÆ÷'Ğ¢æöFU7G&ö¶T6öÆ÷#Ò"3sƒsf2 ¢æöFU7G&ö¶Uv–GFƒ×³Ğ¢ææ&ÆP¢¦ööÖ&ÆP¢óà¢Ä6çf4VFvTÖ&¶W$FVf–æ—F–öç2óà¢Âõ&V7DfÆ÷sà¢²f–Ww÷'Ef—6–&ÆRò€¢ÆF—b6Æ74æÖS×·7G–ÆW2æ6çf4ÆöF–æwÒ&öÆSÒ'7FGW2#à¢&W&–ær6çf>(
+`¢ÂöF—cà¢’¢çVÆÇĞ¢ÆF—b6Æ74æÖS×·7G–ÆW2æ6çf4†–çGÓà¢¶G&÷7F—fP¢ò$G&÷ärÂ¥TrÂvV%÷"Db†W&R ¢¢%7FRÂG&÷÷"6†ö÷6Rf–ÆR+rG&ræB&W6—¦R&R6fVB'Ğ¢ÂöF—cà¢ÂöF—cà¢ÂöF—cà¢¶÷VåFbò€¢Æ6–FP¢6Æ74æÖS×¶G·7G–ÆW2çFe&VFW'Ò6çf2×Fb×&VFW"G·FdgVÆÇ67&VVâòG·7G–ÆW2çFe&VFW$gVÆÇ67&VVçÒ6çf2×Fb×&VFW"ÖgVÆÇ67&VVæ¢"'ÖĞ¢&–ÖÆ&VÃÒ-	ıíÍí-Db ¢à¢Æ†VFW"6Æ74æÖS×·7G–ÆW2çFe&VFW$†VFW'Óà¢Ç7G&öærF—FÆS×¶÷VåFbææÖWÓç¶÷VåFbææÖWÓÂ÷7G&öæsà¢ÆF—b6Æ74æÖS×·7G–ÆW2çFe&VFW$†VFW$7F–öç7Óà¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢öä6Æ–6³×²‚’Óâ6WEFdgVÆÇ67&VVâ‚†7W'&VçB’Óâ7W'&VçB—Ğ¢&–ÖÆ&VÃ×°¢FdgVÆÇ67&VVà¢ò-	-]İ=-ÂDb"í­í-=âıİ]½Â ¢¢-
+}-]İ=-ÂDbİ-]Âİ­Ò ¢Ğ¢&–×&W76VC×·FdgVÆÇ67&VVçĞ¢F—FÆS×·FdgVÆÇ67&VVâò-	-]İ=-Â"ıİ]½Â"¢-	İ-]Âİ­Ò'Ğ¢à¢ÅV”–6öà¢æÖS×·FdgVÆÇ67&VVâò&gVÆÇ67&VVâÖW†—B"¢&gVÆÇ67&VVâ'Ğ¢óà¢Âö'WGFöãà¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢öä6Æ–6³×²‚’Óâ6Æ÷6UFe&VFW"‚—Ğ¢&–ÖÆ&VÃÒ-	}­½-ÂDb ¢F—FÆSÒ-	}­½-ÂDb ¢à¢ÅV”–6öâæÖSÒ&6Æ÷6R"óà¢Âö'WGFöãà¢ÂöF—cà¢Âö†VFW#à¢Æ–g&ÖP¢7&3×¶÷VåFbæö&¦V7EW&ÇĞ¢F—FÆS×¶÷VåFbææÖWĞ¢6Æ74æÖS×·7G–ÆW2çFe&VFW$g&ÖWĞ¢óà¢Âö6–FSà¢’¢çVÆÇĞ¢·6†VÆÅ7FFRæ÷Vä'F–6ÆT–Bò€¢Æ6–FP¢&–ÖÆ&VÃÒ-	ıíÍí---Í‚ ¢6Æ74æÖS×¶G·7G–ÆW2æ'F–6ÆU&VFW'Ò6çf2Ö'F–6ÆR×&VFW&Ğ¢à¢Æ†VFW"6Æ74æÖS×·7G–ÆW2çFe&VFW$†VFW'Óà¢Ç7G&öærF—FÆS×¶÷Vä'F–6ÆSòçF—FÆRóò-
+--Íòİ]Mí-=ıİ'Óà¢¶÷Vä'F–6ÆSòçF—FÆRóò-
+--Íòİ]Mí-=ıİ'Ğ¢Â÷7G&öæsà¢ÆF—b6Æ74æÖS×·7G–ÆW2çFe&VFW$†VFW$7F–öç7Óà¢Æ'WGFöà¢&–ÖÆ&VÃÒ-	}­½-Â--Íâ ¢öä6Æ–6³×¶6Æ÷6T'F–6ÆU&VFW'Ğ¢F—FÆSÒ-	}­½-Â--Íâ ¢G—SÒ&'WGFöâ ¢à¢ÅV”–6öâæÖSÒ&6Æ÷6R"óà¢Âö'WGFöãà¢ÂöF—cà¢Âö†VFW#à¢¶÷Vä'F–6ÆRò€¢Æ'F–6ÆP¢&–ÖÆ&VÃ×¶÷Vä'F–6ÆRçF—FÆWĞ¢6Æ74æÖS×¶Fö7VÖVçB×vRG·7G–ÆW2æ'F–6ÆU&VFW$Fö7VÖVçGÖĞ¢à¢ÆF—b6Æ74æÖSÒ&Fö7VÖVçB×vRÖ–ææW"#à¢ÄÖ&¶F÷väFö7VÖVçE&Wf–Wp¢Fö7VÖVçC×¶÷Vä'F–6ÆWĞ¢öä–çFW&æÄÆ–æ³×²†Fö7VÖVçD–B’Óâ°¢–b€¢¶æ÷vÆVFvT'F–6ÆW2ç6öÖR€¢†'F–6ÆR’Óâ'F–6ÆRæ–BÓÓÒFö7VÖVçD–BÀ¢¢¢÷Vä'F–6ÆTg&öÕ&VFW"†Fö7VÖVçD–B“°¢×Ğ¢óà¢ÂöF—cà¢Âö'F–6ÆSà¢’¢€¢ÆF—b6Æ74æÖS×·7G–ÆW2æ'F–6ÆU&VFW$Ö—76–æwÒ&öÆSÒ'7FGW2#à¢
+--Íòí½ÍRİ]Mí-=ıİâ	-½]-RM===â}]]r­İíı­2*½	í-­½-À¢--Íì+²"-]]İ]’ıİ]½‚à¢ÂöF—cà¢—Ğ¢Âö6–FSà¢’¢çVÆÇĞ¢¶÷Vå7VÖÖ'’ò€¢Æ6–FP¢&–ÖÆ&VÃÒ-	ıíÍí-=ÍÍ² ¢6Æ74æÖS×¶G·7G–ÆW2çFe&VFW'ÒG·7G–ÆW2ç7VÖÖ'•&VFW'Ò6çf2×7VÖÖ'’×&VFW&Ğ¢à¢Æ†VFW"6Æ74æÖS×·7G–ÆW2çFe&VFW$†VFW'Óà¢Ç7G&öærF—FÆS×¶÷Vå7VÖÖ'’çF—FÆWÓç¶÷Vå7VÖÖ'’çF—FÆWÓÂ÷7G&öæsà¢ÆF—b6Æ74æÖS×·7G–ÆW2çFe&VFW$†VFW$7F–öç7Óà¢Æ'WGFöà¢&–ÖÆ&VÃÒ-	}­½-Â=ÍÍ2 ¢öä6Æ–6³×¶6Æ÷6U7VÖÖ'•&VFW'Ğ¢F—FÆSÒ-	}­½-Â=ÍÍ2 ¢G—SÒ&'WGFöâ ¢à¢ÅV”–6öâæÖSÒ&6Æ÷6R"óà¢Âö'WGFöãà¢ÂöF—cà¢Âö†VFW#à¢Æ'F–6ÆP¢&–ÖÆ&VÃ×¶÷Vå7VÖÖ'’çF—FÆWĞ¢6Æ74æÖS×·7G–ÆW2ç7VÖÖ'•&VFW$Fö7VÖVçGĞ¢à¢¶÷Vå7VÖÖ'”VçG&–W2æÆVæwF‚âò€¢ÆöÂ6Æ74æÖS×·7G–ÆW2ç7VÖÖ'•&VFW$Æ—7GÓà¢¶÷Vå7VÖÖ'”VçG&–W2æÖ‚†VçG'’’Óâ€¢ÆÆ’¶W“×¶VçG'’ææöFT–GÓà¢ÄÖ&¶F÷vå7G&–æu&Wf–Wp¢6öçFVçD–C×¶7VÖÖ'“¢G¶÷Vå7VÖÖ'’æ–GÓ¢G¶VçG'’ææöFT–GÖĞ¢Ö&¶F÷vã×¶VçG'’æÖ&¶F÷vçĞ¢óà¢ÂöÆ“à¢’—Ğ¢ÂööÃà¢’¢€¢Ç6Æ74æÖS×·7G–ÆW2ç7VÖÖ'•&VFW$V×G—Óà¢	ıíM­½í}-R¢*½
+=ÍÍ\+²-]­-í-½R½‚=]íÍ]-}]­RİíM²à¢Â÷à¢—Ğ¢Âö'F–6ÆSà¢Âö6–FSà¢’¢çVÆÇĞ¢ÂöF—câÀ¢“°¢Ğ¢&WGW&â€¢ÆÖ–â6Æ74æÖS×¶G·7G–ÆW2çvWÒG¶VÖ&VFFVBò7G–ÆW2çvTVÖ&VFFVB¢"'ÖÓà¢Æ†VFW"6Æ74æÖS×·7G–ÆW2æ†VFW'Óà¢ÆF—b6Æ74æÖS×·7G–ÆW2çF—FÆTw&÷WÓà¢Ç6Æ74æÖS×·7G–ÆW2æW–V'&÷wÓç¶6÷’æW–V'&÷wÓÂ÷à¢Æƒ6Æ74æÖS×·7G–ÆW2çF—FÆWÓç·6†VÆÅ7FFRçF—FÆWÓÂöƒà¢Ç ¢6Æ74æÖS×¶G·7G–ÆW2ç7FGW7ÒG·6†VÆÅ7FFRç7FGW2ÓÓÒ&6öæfÆ–7B"ò7G–ÆW2ç7FGW46öæfÆ–7B¢6†VÆÅ7FFRç7FGW2ÓÓÒ&W'&÷""ò7G–ÆW2ç7FGW4W'&÷"¢"'ÖĞ¢à¢·7FGW4Æ&VÇĞ¢·6†VÆÅ7FFRæW'&÷"ò+rG·6†VÆÅ7FFRæW'&÷'Ö¢"'Ğ¢Â÷à¢ÂöF—cà¢ÆF—b6Æ74æÖS×·7G–ÆW2æ†VFW$7F–öç7Óà¢Ç6VÆV7@¢6Æ74æÖS×·7G–ÆW2ç6VÆV7GĞ¢fÇVS×·6†VÆÅ7FFRæ6çf4–GĞ¢öä6†ævS×²†WfVçB’Óâfö–B÷Vä6çf2†WfVçBçF&vWBçfÇVR—Ğ¢&–ÖÆ&VÃÒ$6çf26VÆV7F÷" ¢à¢·7VÖÖ&–W2æÖ‚‡7VÖÖ'’’Óâ€¢Æ÷F–öâ¶W“×·7VÖÖ'’æ–GÒfÇVS×·7VÖÖ'’æ–GÓà¢·7VÖÖ'’çF—FÆWĞ¢Âö÷F–öãà¢’—Ğ¢Â÷6VÆV7Cà¢Æ–çW@¢6Æ74æÖS×·7G–ÆW2æ–çWGĞ¢fÇVS×·&VæÖUF—FÆWĞ¢öä6†ævS×²†WfVçB’Óâ6WE&VæÖUF—FÆR†WfVçBçF&vWBçfÇVR—Ğ¢&–ÖÆ&VÃÒ%&VæÖR6çf2 ¢óà¢Æ'WGFöà¢6Æ74æÖS×·7G–ÆW2æ'WGFöçĞ¢G—SÒ&'WGFöâ ¢öä6Æ–6³×·&VæÖT6çf7Ğ¢à¢¶6÷’ç&VæÖWĞ¢Âö'WGFöãà¢Æ'WGFöà¢6Æ74æÖS×·7G–ÆW2æ'WGFöçĞ¢G—SÒ&'WGFöâ ¢öä6Æ–6³×²‚’Óâfö–B7&VFT6çf2‚—Ğ¢à¢¶6÷’ææWt6çf7Ğ¢Âö'WGFöãà¢Æ'WGFöà¢6Æ74æÖS×¶G·7G–ÆW2æ'WGFöçÒG·7G–ÆW2æFævW'ÖĞ¢G—SÒ&'WGFöâ ¢öä6Æ–6³×²‚’Óâfö–BFVÆWFT6çf2‚—Ğ¢à¢¶6÷’æFVÆWFWĞ¢Âö'WGFöãà¢·6†VÆÅ7FFRç7FGW2ÓÓÒ&6öæfÆ–7B"ò€¢Ãà¢Æ'WGFöà¢6Æ74æÖS×¶G·7G–ÆW2æ'WGFöçÒG·7G–ÆW2ç&–Ö'—ÖĞ¢G—SÒ&'WGFöâ ¢öä6Æ–6³×¶¶VWÆö6Ä6†ævW7Ğ¢à¢¶6÷’æ¶VWÆö6Ä6†ævW7Ğ¢Âö'WGFöãà¢Æ'WGFöà¢6Æ74æÖS×·7G–ÆW2æ'WGFöçĞ¢G—SÒ&'WGFöâ ¢öä6Æ–6³×·&VÆöDÆFW7EfW'6–öçĞ¢à¢¶6÷’ç&VÆöEv–ææW'Ğ¢Âö'WGFöãà¢Âóà¢’¢6öæfÆ–7DG&gDf–Æ&ÆRò€¢Æ'WGFöà¢6Æ74æÖS×·7G–ÆW2æ'WGFöçĞ¢G—SÒ&'WGFöâ ¢öä6Æ–6³×·&W7F÷&TÆö6Ä6öæfÆ–7DG&gGĞ¢à¢¶6÷’ç&W7F÷&TÆö6ÄG&gGĞ¢Âö'WGFöãà¢’¢çVÆÇĞ¢·6†VÆÅ7FFRç7FGW2ÓÓÒ&W'&÷""ò€¢Æ'WGFöà¢6Æ74æÖS×·7G–ÆW2æ'WGFöçĞ¢G—SÒ&'WGFöâ ¢öä6Æ–6³×²‚’Óâfö–B÷Vä6çf2‡6†VÆÅ7FFRæ6çf4–B—Ğ¢à¢	ıí--í-À¢Âö'WGFöãà¢’¢çVÆÇĞ¢ÆÆ&VÂ6Æ74æÖS×¶G·7G–ÆW2æ'WGFöçÒG·7G–ÆW2ç&–Ö'—ÖÓà¢¶6÷’æFD–ÖvWĞ¢Æ–çW@¢†–FFVà¢G—SÒ&f–ÆR ¢66WCÒ&–ÖvR÷ærÆ–ÖvRö§VrÆ–ÖvR÷vV' ¢×VÇF—ÆP¢öä6†ævS×¶öå–6¶W'Ğ¢óà¢ÂöÆ&VÃà¢Æ'WGFöà¢6Æ74æÖS×·7G–ÆW2æ'WGFöçĞ¢G—SÒ&'WGFöâ ¢öä6Æ–6³×²‚’Óâ7&VFUFW‡DæöFR†çVÆÂÂ""ÂG'VR—Ğ¢à¢¶6÷’çFW‡GĞ¢Âö'WGFöãà¢Æ'WGFöà¢6Æ74æÖS×·7G–ÆW2æ'WGFöçĞ¢G—SÒ&'WGFöâ ¢öä6Æ–6³×²‚’Óâ7&VFU6†TæöFR‚'&V7FævÆR"—Ğ¢à¢	ııÍí==í½Íİ ¢Âö'WGFöãà¢Æ'WGFöà¢6Æ74æÖS×·7G–ÆW2æ'WGFöçĞ¢G—SÒ&'WGFöâ ¢öä6Æ–6³×²‚’Óâ7&VFU6†TæöFR‚&6—&6ÆR"—Ğ¢à¢	­=0¢Âö'WGFöãà¢ÆF—b6Æ74æÖS×·7G–ÆW2çF6µ–6¶W'Óà¢Æ'WGFöà¢6Æ74æÖS×¶G·7G–ÆW2æ'WGFöçÒG·7G–ÆW2ç&–Ö'—ÖĞ¢G—SÒ&'WGFöâ ¢F—6&ÆVC×²F6´'&–FvRÇÂF6µv÷&·76T–GĞ¢&–ÖW‡æFVC×·F6µ–6¶W$÷VçĞ¢öä6Æ–6³×²‚’Óâ6WEF6µ–6¶W$÷Vâ‚†7W'&VçB’Óâ7W'&VçB—Ğ¢à¢	}M} ¢Âö'WGFöãà¢·F6µ–6¶W$÷Vâò€¢ÆF—`¢6Æ74æÖS×·7G–ÆW2çF6µ–6¶W%æVÇĞ¢&öÆSÒ&F–Æör ¢&–ÖÆ&VÃÒ-	Mí--Â}M}2 ¢à¢ÆF—b6Æ74æÖS×·7G–ÆW2çF6µ–6¶W$†VFW'Óà¢Ç7G&öæsí	Mí--Â}M}3Â÷7G&öæsà¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢6Æ74æÖS×·7G–ÆW2çF6µ–6¶W$6Æ÷6WĞ¢&–ÖÆ&VÃÒ-	}­½-Â-½í}M}‚ ¢öä6Æ–6³×²‚’Óâ6WEF6µ–6¶W$÷Vâ†fÇ6R—Ğ¢à¢9p¢Âö'WGFöãà¢ÂöF—cà¢Æ–çW@¢6Æ74æÖS×·7G–ÆW2æ–çWGĞ¢G—SÒ'6V&6‚ ¢fÇVS×·F6µVW'—Ğ¢WFôfö7W0¢Æ6V†öÆFW#Ò-	ıí¢ıâİ}-İâ ¢&–ÖÆ&VÃÒ-	ıí¢}Mr ¢öä6†ævS×²†WfVçB’Óâ6WEF6µVW'’†WfVçBçF&vWBçfÇVR—Ğ¢óà¢ÆF—b6Æ74æÖS×·7G–ÆW2çF6µ–6¶W%&W7VÇG7Óà¢·F6µ6V&6…7FGW2ÓÓÒ&ÆöF–ær"ò€¢Ç6Æ74æÖS×·7G–ÆW2çF6µ–6¶W$V×G—Óí	}==}­}M~(
+cÂ÷à¢’¢F6µ6V&6…7FGW2ÓÓÒ&W'&÷""ò€¢Ç6Æ74æÖS×·7G–ÆW2çF6µ–6¶W$W'&÷'Ò&öÆSÒ&ÆW'B#à¢	İR=M½íÂ}==}-Â}M}€¢Â÷à¢’¢F6µ&W7VÇG2æÆVæwF‚ÓÓÒò€¢Ç6Æ74æÖS×·7G–ÆW2çF6µ–6¶W$V×G—Óà¢·F6µVW'’çG&–Ò‚¢ò-
+í-ıM]İ’İ]" ¢¢-	"İ-íÂıí]­-Rİ]"}Mr'Ğ¢Â÷à¢’¢€¢F6µ&W7VÇG2æÖ‚‡F6²’Óâ€¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢6Æ74æÖS×·7G–ÆW2çF6µ–6¶W%&W7VÇGĞ¢¶W“×·F6²æ–GĞ¢öä6Æ–6³×²‚’Óâ7&VFUF6´æöFR‡F6²—Ğ¢à¢Ç7G&öæsç·F6²çF—FÆWÓÂ÷7G&öæsà¢Ç7ãç·F6²æ6ö×ÆWFVBò-	-½ıí½İ]İâ"¢-	"í-R'ÓÂ÷7ãà¢Âö'WGFöãà¢’¢—Ğ¢ÂöF—cà¢ÂöF—cà¢’¢çVÆÇĞ¢ÂöF—cà¢ÂöF—cà¢Âö†VFW#à¢ÆF—b6Æ74æÖS×·7G–ÆW2æ6çf5w&Óà¢ÆF—`¢&Vc×·w&W%&VgĞ¢6Æ74æÖS×¶G·7G–ÆW2æ6çf7ÒG¶G&÷7F—fRò7G–ÆW2æG&÷7F—fR¢"'ÒG·7G–ÆTW–VG&÷W%6÷W&6T–Bò7G–ÆW2æ6çf57G–ÆTW–VG&÷W$7F—fR¢"'ÖĞ¢öäG&tVçFW#×²‚’Óâ6WDG&÷7F—fR‡G'VR—Ğ¢öäG&tÆVfS×²‚’Óâ6WDG&÷7F—fR†fÇ6R—Ğ¢öäG&t÷fW#×²†WfVçB’Óâ°¢–b‡G&ç6fW$†4f–ÆW2‡G&ç6fW%–ÆöB†WfVçBææF—fTWfVçB’’¢WfVçBç&WfVçDFVfVÇB‚“°¢×Ğ¢öäG&÷×¶öäG&÷Ğ¢öåö–çFW$F÷vä6GW&S×¶†æFÆT6çf5ö–çFW$F÷vçĞ¢öåö–çFW$Ö÷fT6GW&S×¶†æFÆT6çf5ö–çFW$Ö÷fWĞ¢öåv†VVÄ6GW&S×¶†æFÆT6çf5v†VVÇĞ¢à¢Å&V7DfÆ÷p¢6Æ74æÖS×¶G·7G–ÆW2æ6çf5f–Ww÷'GÒG·f–Ww÷'Ef—6–&ÆRò""¢7G–ÆW2æ6çf5f–Ww÷'D†–FFVçÖĞ¢æöFW3×·&VæFW&VDæöFW7Ğ¢VFvW3×¶VFvW7Ğ¢æöFUG—W3×¶æöFUG—W7Ğ¢VFvUG—W3×¶VFvUG—W7Ğ¢öäæöFW46†ævS×¶†æFÆTæöFW46†ævWĞ¢öäVFvW46†ævS×¶†æFÆTVFvW46†ævWĞ¢öäæöFTG&u7F'C×¶†æFÆTæöFTG&u7F'GĞ¢öäæöFTG&u7F÷×¶†æFÆTæöFTG&u7F÷Ğ¢öäæöFTF÷V&ÆT6Æ–6³×²†WfVçBÂæöFR’Óâ°¢–b†æöFRçG—RÓÓÒ4åd5ô%D”4ÄUôäôDUõE•R’°¢WfVçBç&WfVçDFVfVÇB‚“°¢÷Vä'F–6ÆTæöFR†æöFR“°¢&WGW&ã°¢Ğ¢–b†æöFRçG—RÓÒ4åd5õDeôäôDUõE•R’&WGW&ã°¢WfVçBç&WfVçDFVfVÇB‚“°¢fö–B÷VåFdæöFR†æöFR“°¢×Ğ¢öäæöFT6Æ–6³×²†WfVçBÂæöFR’Óâ°¢–b†æöFRçG—RÓÒ4åd5õ5TÔÔ%•ôäôDUõE•R’&WGW&ã°¢WfVçBç&WfVçDFVfVÇB‚“°¢÷Vå7VÖÖ'”æöFR†æöFR“°¢×Ğ¢öä6öææV7C×¶†æFÆT6öææV7GĞ¢6öææV7F–öäÖöFS×´6öææV7F–öäÖöFRäÆö÷6WĞ¢6öææV7F–öäÆ–æT6ö×öæVçC×´6çf46öææV7F–öäÆ–æWĞ¢Ö–å¦ööÓ×´4åd5õd”Uuõ%EôÄ”Ô•E2æÖ–å¦öö×Ğ¢Ö…¦ööÓ×´4åd5õd”Uuõ%EôÄ”Ô•E2æÖ…¦öö×Ğ¢äöäG&s×·F÷V6…&–Ö'”–çWBò³ÂÒ¢³×Ğ¢6VÆV7F–öäöäG&s×²F÷V6…&–Ö'”–çWGĞ¢6VÆV7F–öäÖöFS×µ6VÆV7F–öäÖöFRå'F–ÇĞ¢æöFW4G&vv&ÆS×²F÷V6…f–Ww÷'DvW7GW&T7F—fWĞ¢æöFW46öææV7F&ÆS×²F÷V6…f–Ww÷'DvW7GW&T7F—fWĞ¢VÆVÖVçG56VÆV7F&ÆS×²F÷V6…f–Ww÷'DvW7GW&T7F—fWĞ¢æöFTG&uF‡&W6†öÆC×·F÷V6…&–Ö'”–çWBò‚¢Ğ¢¦ööÔöå–æ6€¢öäÖ÷fS×¶†æFÆUf–Ww÷'DÖ÷fWĞ¢öäÖ÷fTVæC×¶öäÖ÷fTVæGĞ¢öä–æ—C×²‚’Óâ6WDfÆ÷t–ç7Fæ6TWö6‚‚†7W'&VçB’Óâ7W'&VçB²—Ğ¢öåæT6Æ–6³×²†WfVçB’Óâ°¢–b‡F÷V6…f–Ww÷'DvW7GW&T7F—fU&Vbæ7W'&VçBÇÂWfVçBæFWF–ÂÓÒ"¢&WGW&ã°¢7&VFUFW‡DæöFR‡²ƒ¢WfVçBæ6Æ–VçE‚Â“¢WfVçBæ6Æ–VçE’ÒÂ""ÂG'VR“°¢×Ğ¢FVÆWFT¶W”6öFS×µ²$&6·76R"Â$FVÆWFR%×Ğ¢à¢Ä&6¶w&÷VæBv×³#GÒ6öÆ÷#Ò"6CfC6C"óà¢Ä6öçG&öÇ26†÷t–çFW&7F—fS×¶fÇ6WÒóà¢ÄÖ–æ”Ö ¢6Æ74æÖS×·7G–ÆW2æÖ–æ–ÖĞ¢÷6—F–öãÒ&&÷GFöÒ×&–v‡B ¢Ö6´6öÆ÷#Ò'&v&ƒ#‚Â#RÂ#2Âã‚’ ¢æöFT6öÆ÷#×¶6çf4Ö–æ”ÖæöFT6öÆ÷'Ğ¢æöFU7G&ö¶T6öÆ÷#Ò"3sƒsf2 ¢æöFU7G&ö¶Uv–GFƒ×³Ğ¢ææ&ÆP¢¦ööÖ&ÆP¢óà¢Ä6çf4VFvTÖ&¶W$FVf–æ—F–öç2óà¢Âõ&V7DfÆ÷sà¢²f–Ww÷'Ef—6–&ÆRò€¢ÆF—b6Æ74æÖS×·7G–ÆW2æ6çf4ÆöF–æwÒ&öÆSÒ'7FGW2#à¢&W&–ær6çf>(
+`¢ÂöF—cà¢’¢çVÆÇĞ¢ÆF—b6Æ74æÖS×·7G–ÆW2æ6çf4†–çGÓà¢¶G&÷7F—fP¢ò$G&÷ärÂ¥Tr÷"vV%†W&R ¢¢%7FRÂG&÷÷"6†ö÷6Râ–ÖvR+rG&ræB&W6—¦R&R6fVB'Ğ¢ÂöF—cà¢·6†÷tF–væ÷7F–72ò€¢ÆFWF–Ç26Æ74æÖS×·7G–ÆW2æFWF–Ç7Óà¢Ç7VÖÖ'“äFWF–Ç3Â÷7VÖÖ'“à¢ÆF—b6Æ74æÖS×·7G–ÆW2æF–væ÷7F–77Óà¢Ç7ãà¢æöFW2Ç7G&öæsç¶æöFW2æÆVæwF‡ÓÂ÷7G&öæsà¢Â÷7ãà¢Ç7ãà¢&Wf—6–öâÇ7G&öæsç·6†VÆÅ7FFRç&Wf—6–öçÓÂ÷7G&öæsà¢Â÷7ãà¢Ç7ãà¢&VG2Ç7G&öæsç·&W7F÷&U7FG2ç&VG7ÓÂ÷7G&öæsà¢Â÷7ãà¢Ç7ãà¢Ö‚Ç7G&öæsç·&W7F÷&U7FG2æÖ„6öæ7W'&Væ7—ÓÂ÷7G&öæsà¢Â÷7ãà¢Ç7ãà¢Ö—76–ærÇ7G&öæsç·&W7F÷&U7FG2æÖ—76–æwÓÂ÷7G&öæsà¢Â÷7ãà¢Ç7ãà¢U$Ç2Ç7G&öæsç¶ö&¦V7EW&Ç2æ6÷VçB‚—ÓÂ÷7G&öæsà¢Â÷7ãà¢Ç7ãà¢6æöæ–6ÂÇ7G&öæsç·6†VÆÅ7FFRæFö7VÖVçBææöFW2æÆVæwF‡ÓÂ÷7G&öæsà¢Â÷7ãà¢Ç7ãà¢f–Ww÷'G²"'Ğ¢Ç7G&öæsç·6†VÆÅ7FFRçf–Ww÷'Bç¦ööÒçFôf—†VBƒ"—Ü9sÂ÷7G&öæsà¢Â÷7ãà¢ÂöF—cà¢ÂöFWF–Ç3à¢’¢çVÆÇĞ¢ÂöF—cà¢ÂöF—cà¢·6†÷tF–væ÷7F–72ò€¢Æfö÷FW"6Æ74æÖS×·7G–ÆW2æfö÷FW'Óà¢Ç7ãç¶6÷’æ—6öÆFVGÓÂ÷7ãà¢Ç7ãç·6†VÆÅv÷&·76T–GÓÂ÷7ãà¢Ç7ãä6çf2&Wf—6–öâ·6†VÆÅ7FFRç&Wf—6–öçÓÂ÷7ãà¢Âöfö÷FW#à¢’¢çVÆÇĞ¢ÂöÖ–ãà¢“°§Ğ ¦W‡÷'BgVæ7F–öâ–æf–æ—FT6çf4Æö6Å6†VÆÂ‡°¢7F—fUF6´FWF–Ç5F6´–BÀ¢76WE&W÷6—F÷'’À¢6÷’À¢VÖ&VFFVBÀ¢w&÷W&W÷6—F÷'’À¢¶æ÷vÆVFvT'F–6ÆW2À¢&ö¦V7Df–ÆU&W÷6—F÷'’À¢&ö¦V7Df–ÆUf&–çE&W÷6—F÷'’À¢&ö¦V7D–BÀ¢&W÷6—F÷'’À¢'VçF–ÖT66†RÀ¢6†÷tF–væ÷7F–72À¢F6´'&–FvRÀ¢F6µv÷&·76T–BÀ¢W6W$–BÀ¢v÷&·76T–BÀ§Ó¢°¢7F—fUF6´FWF–Ç5F6´–Có¢7G&–æs°¢76WE&W÷6—F÷'“¢6çf476WE&W÷6—F÷'“°¢6÷“¢6çf56†VÆÄ6÷“°¢VÖ&VFFVCó¢&ööÆVã°¢w&÷W&W÷6—F÷'“ó¢6çf4w&÷W&W÷6—F÷'“°¢¶æ÷vÆVFvT'F–6ÆW3ó¢&VFöæÇ’&÷F÷G—TFö7VÖVçEµÓ°¢&ö¦V7Df–ÆU&W÷6—F÷'“ó¢&ö¦V7Df–ÆU&W÷6—F÷'“°¢&ö¦V7Df–ÆUf&–çE&W÷6—F÷'“ó¢&ö¦V7Df–ÆT–ÖvUf&–çE&W÷6—F÷'“°¢&ö¦V7D–Có¢7G&–æs°¢&W÷6—F÷'“¢6çf56†VÆÅ&W÷6—F÷'“°¢'VçF–ÖT66†Só¢6Æ÷VD6çf5'VçF–ÖT66†S°¢6†÷tF–væ÷7F–73¢&ööÆVã°¢F6´'&–FvSó¢6çf5F6´'&–FvS°¢F6µv÷&·76T–Có¢7G&–æs°¢W6W$–C¢7G&–æs°¢v÷&·76T–C¢7G&–æs°§Ò“¢&V7Bä¥5‚äVÆVÖVçB°¢&WGW&â€¢Å&V7DfÆ÷u&÷f–FW#à¢Ä–æf–æ—FT6çf4Æö6Å6†VÆÅ7W&f6P¢7F—fUF6´FWF–Ç5F6´–C×¶7F—fUF6´FWF–Ç5F6´–GĞ¢76WE&W÷6—F÷'“×¶76WE&W÷6—F÷'—Ğ¢6÷“×¶6÷—Ğ¢VÖ&VFFVC×¶VÖ&VFFVGĞ¢w&÷W&W÷6—F÷'“×¶w&÷W&W÷6—F÷'—Ğ¢¶æ÷vÆVFvT'F–6ÆW3×¶¶æ÷vÆVFvT'F–6ÆW7Ğ¢&ö¦V7Df–ÆU&W÷6—F÷'“×·&ö¦V7Df–ÆU&W÷6—F÷'—Ğ¢&ö¦V7Df–ÆUf&–çE&W÷6—F÷'“×·&ö¦V7Df–ÆUf&–çE&W÷6—F÷'—Ğ¢&ö¦V7D–C×·&ö¦V7D–GĞ¢&W÷6—F÷'“×·&W÷6—F÷'—Ğ¢'VçF–ÖT66†S×·'VçF–ÖT66†WĞ¢6†÷tF–væ÷7F–73×·6†÷tF–væ÷7F–77Ğ¢F6´'&–FvS×·F6´'&–FvWĞ¢F6µv÷&·76T–C×·F6µv÷&·76T–GĞ¢W6W$–C×·W6W$–GĞ¢v÷&·76T–C×·v÷&·76T–GĞ¢óà¢Âõ&V7DfÆ÷u&÷f–FW#à¢“°§Ğ

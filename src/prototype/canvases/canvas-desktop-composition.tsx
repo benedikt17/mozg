@@ -373,6 +373,7 @@ export function CanvasDesktopToolbar({
   onAddRectangle,
   onAddCircle,
   onAddSummary,
+  onExportPortableCopy,
   onCloseFilePicker,
   onCloseArticlePicker,
   onCloseTaskPicker,
@@ -427,6 +428,7 @@ export function CanvasDesktopToolbar({
   onAddRectangle: () => void;
   onAddCircle: () => void;
   onAddSummary: () => void;
+  onExportPortableCopy: () => void;
   onCloseFilePicker: () => void;
   onCloseArticlePicker: () => void;
   onCloseTaskPicker: () => void;
@@ -607,6 +609,14 @@ export function CanvasDesktopToolbar({
           variant="quiet"
         />
         <CanvasAutoLayoutButton disabled={!isReady} />
+        <IconButton
+          disabled={!isReady}
+          icon={<UiIcon name="share" />}
+          label="Скачать автономную копию холста"
+          onClick={onExportPortableCopy}
+          title="Скачать автономную копию"
+          variant="quiet"
+        />
         <IconButton
           disabled={!isReady}
           icon={<UiIcon name="file-plus" />}
