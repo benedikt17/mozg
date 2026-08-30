@@ -10,7 +10,14 @@ export type CanvasPortableBackupFile = Pick<
   "byteSize" | "checksum" | "id" | "mimeType" | "name" | "originalName"
 >;
 
+export type CanvasPortableBackupArticle = {
+  articleId: string;
+  markdown: string;
+  title: string;
+};
+
 export type CanvasPortableBackupSource = {
+  articles?: readonly CanvasPortableBackupArticle[];
   canvasId: string;
   document: CanvasDocumentV2;
   files?: readonly CanvasPortableBackupFile[];
@@ -19,6 +26,13 @@ export type CanvasPortableBackupSource = {
 };
 
 export type CanvasPortableBackupManifest = {
+  articles: Array<{
+    articleId: string;
+    nodeIds: string[];
+    path: string | null;
+    status: "included" | "unresolved";
+    title: string;
+  }>;
   canvas: {
     id: string;
     nodeCount: number;
@@ -37,7 +51,7 @@ export type CanvasPortableBackupManifest = {
   format: "mozg-canvas-portable-backup";
   generatedAt: string;
   note: string;
-  version: 1;
+  version: 2;
 };
 
 export type CanvasPortableBackupEntry = {
@@ -67,6 +81,7 @@ export function createCanvasPortableBackup(
   const entries: CanvasPortableBackupEntry[] = [
     {
       content: createPortableCanvasViewer({
+        articles: source.articles ?? [],
         document: source.document,
         manifest,
         title: source.title,
@@ -81,6 +96,7 @@ export function createCanvasPortableBackup(
       content: `${JSON.stringify(manifest, null, 2)}\n`,
       path: "manifest.json",
     },
+    ...portableArticleEntries(source.articles ?? [], manifest),
   ];
   return {
     bytes: createStoreZip(entries, generatedAt),
@@ -117,8 +133,37 @@ export function createCanvasPortableManifest(
     nodeIds.push(node.id);
     references.set(fileId, nodeIds);
   }
+  const articlesById = new Map(
+    (source.articles ?? []).map((article) => [article.articleId, article]),
+  );
+  const articleReferences = new Map<string, string[]>();
+  for (const node of source.document.nodes) {
+    if (node.kind !== "article") continue;
+    const nodeIds = articleReferences.get(node.articleId) ?? [];
+    nodeIds.push(node.id);
+    articleReferences.set(node.articleId, nodeIds);
+  }
 
   return {
+    articles: [...articleReferences.entries()]
+      .map(([articleId, nodeIds]) => {
+        const article = articlesById.get(articleId);
+        const node = source.document.nodes.find(
+          (candidate) =>
+            candidate.kind === "article" && candidate.articleId === articleId,
+        );
+        return {
+          articleId,
+          nodeIds,
+          path: article ? portableArticlePath(article) : null,
+          status: article ? ("included" as const) : ("unresolved" as const),
+          title:
+            article?.title ??
+            (node?.kind === "article" ? node.lastKnownTitle : undefined) ??
+            "Статья",
+        };
+      })
+      .sort((left, right) => left.title.localeCompare(right.title, "ru")),
     canvas: {
       id: source.canvasId,
       nodeCount: source.document.nodes.length,
@@ -141,16 +186,18 @@ export function createCanvasPortableManifest(
       .sort((left, right) => left.name.localeCompare(right.name, "ru")),
     format: "mozg-canvas-portable-backup",
     generatedAt: generatedAt.toISOString(),
-    note: "This portable copy contains the Canvas structure and file metadata only. Binary files are not included.",
-    version: 1,
+    note: "This portable copy contains the Canvas structure, linked Knowledge articles and file metadata. Binary files are not included.",
+    version: 2,
   };
 }
 
 function createPortableCanvasViewer({
+  articles,
   document,
   manifest,
   title,
 }: {
+  articles: readonly CanvasPortableBackupArticle[];
   document: CanvasDocumentV2;
   manifest: CanvasPortableBackupManifest;
   title: string;
@@ -163,6 +210,7 @@ function createPortableCanvasViewer({
       title: node.title,
     }));
   const data = JSON.stringify({
+    articles,
     document,
     manifest,
     summaries,
@@ -198,6 +246,9 @@ function createPortableCanvasViewer({
     .node.summary { display:grid; place-content:center; text-align:center; background:#fff0a0; border:2px solid #e3b932; font-weight:700; }
     .node.file { background:#f1edff; border-color:#c8bdf0; }
     .node.article,.node.task { background:#e5f0ff; border-color:#a8c5e9; }
+    .node.article { cursor:zoom-in; }
+    .branch-toggle { position:absolute; right:-12px; top:-12px; display:grid; place-items:center; min-width:25px; height:25px; padding:0 6px; border:1px solid #625a4d; border-radius:999px; background:#fffdf9; color:#3f392f; font:700 13px/1 inherit; box-shadow:0 1px 4px rgba(35,29,18,.18); cursor:pointer; }
+    .branch-toggle:hover { background:#fff0a0; }
     .node-kind { display:block; margin-bottom:7px; color:#625f56; font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
     .node-title { font-weight:650; }
     .file-note { color:#635c76; font-size:12px; }
@@ -207,6 +258,12 @@ function createPortableCanvasViewer({
     ol { margin:10px 0 0; padding-left:26px; }
     li { margin:9px 0; white-space:pre-wrap; line-height:1.5; }
     .empty { color:#6c675f; }
+    .article-reader { position:fixed; z-index:5; top:0; right:0; bottom:0; width:min(540px,100vw); padding:24px; overflow:auto; border-left:1px solid #ded9d0; background:#fffdf9; box-shadow:-12px 0 36px rgba(35,29,18,.16); }
+    .article-reader[hidden] { display:none; }
+    .article-reader-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+    .article-reader-title { margin:0; font-size:22px; line-height:1.2; }
+    .article-close { flex:none; width:32px; height:32px; border:1px solid #d7d0c4; border-radius:7px; background:#fff; font:700 18px/1 inherit; cursor:pointer; }
+    .article-markdown { margin:22px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; font:15px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     details { margin-top:28px; padding:12px 14px; background:#eeece7; border-radius:10px; color:#514e47; }
     code { overflow-wrap:anywhere; }
   </style>
@@ -214,13 +271,14 @@ function createPortableCanvasViewer({
 <body>
   <header><h1 id="title"></h1><p class="meta" id="meta"></p></header>
   <main>
-    <p class="notice">Автономная копия для просмотра. Тяните фон мышью или пальцем, колесом меняйте масштаб, «Вписать» возвращает общий вид. Вложенные файлы не скачиваются и не включены: вместо них показана их карточка с известными метаданными.</p>
+    <p class="notice">Автономная копия для просмотра. Тяните фон мышью или пальцем, колесом меняйте масштаб, «Вписать» возвращает общий вид. Кнопки − и +N сворачивают ветки, двойной клик по статье открывает её. Вложенные файлы не скачиваются и не включены: вместо них показана их карточка с известными метаданными.</p>
     <div aria-label="Интерактивный просмотр холста" class="canvas-shell" id="canvas-viewport" tabindex="0">
       <div aria-label="Масштаб холста" class="canvas-tools" role="toolbar"><button id="zoom-out" title="Уменьшить" type="button">−</button><button id="zoom-fit" title="Вписать холст" type="button">Вписать</button><button id="zoom-in" title="Увеличить" type="button">+</button><output id="zoom-value">100%</output></div>
       <div class="scene" id="scene"><svg id="edges" aria-hidden="true"></svg></div>
     </div>
+    <aside aria-label="Статья из Знаний" class="article-reader" hidden id="article-reader"><div class="article-reader-header"><h2 class="article-reader-title" id="article-title"></h2><button aria-label="Закрыть статью" class="article-close" id="article-close" type="button">×</button></div><pre class="article-markdown" id="article-content"></pre></aside>
     <section id="summaries"></section>
-    <details><summary>Состав архива</summary><p><code>canvas.json</code> — исходный CanvasDocument для будущего импорта; <code>manifest.json</code> — версия, ревизия и метаданные файлов; <code>index.html</code> — этот автономный просмотрщик.</p></details>
+    <details><summary>Состав архива</summary><p><code>canvas.json</code> — исходный CanvasDocument для будущего импорта; <code>articles/*.md</code> — связанные статьи из «Знаний»; <code>manifest.json</code> — версия, ревизия и метаданные файлов; <code>index.html</code> — этот автономный просмотрщик.</p></details>
   </main>
   <script>
     const data = ${data};
@@ -255,6 +313,12 @@ function createPortableCanvasViewer({
     viewport.addEventListener('wheel', (event) => { event.preventDefault(); const rect=viewport.getBoundingClientRect(); zoomAt(camera.zoom * (event.deltaY < 0 ? 1.12 : 1/1.12), {x:event.clientX-rect.left,y:event.clientY-rect.top}); }, {passive:false});
     window.addEventListener('resize', fitCanvas);
     const byId = new Map(nodes.map((node) => [node.id,node]));
+    const articleById = new Map(data.articles.map((article) => [article.articleId, article]));
+    const outgoing = new Map();
+    for (const edge of data.document.edges) { if (edge.sourceNodeId === edge.targetNodeId) continue; const targets=outgoing.get(edge.sourceNodeId) || new Set(); targets.add(edge.targetNodeId); outgoing.set(edge.sourceNodeId,targets); }
+    const collapsedNodeIds = new Set(nodes.filter((node) => node.branchCollapsed === true).map((node) => node.id));
+    const descendantsOf = (rootId) => { const descendants=new Set(), queue=[...(outgoing.get(rootId) || [])]; while (queue.length) { const current=queue.shift(); if (!current || current === rootId || descendants.has(current)) continue; descendants.add(current); for (const child of outgoing.get(current) || []) queue.push(child); } return descendants; };
+    const hiddenNodeIds = () => { const hidden=new Set(); for (const rootId of collapsedNodeIds) for (const childId of descendantsOf(rootId)) hidden.add(childId); return hidden; };
     const label = (node) => {
       if (node.kind === 'text' || node.kind === 'shape') return node.markdown || 'Пустая заметка';
       if (node.kind === 'summary') return 'Σ\\n' + node.title;
@@ -263,14 +327,38 @@ function createPortableCanvasViewer({
     };
     const kindLabel = (node) => ({text:'Текст',shape:'Геометрия',summary:'Сумма',pdf:'Файл',image:'Изображение',article:'Статья',task:'Задача'})[node.kind] || 'Нода';
     const formatBytes = (bytes) => bytes === null || bytes === undefined ? 'размер неизвестен' : bytes < 1024 ? bytes + ' Б' : bytes < 1024*1024 ? (bytes/1024).toFixed(1) + ' КБ' : (bytes/1024/1024).toFixed(1) + ' МБ';
-    for (const edge of data.document.edges) { const source=byId.get(edge.sourceNodeId), target=byId.get(edge.targetNodeId); if (!source || !target) continue; const line=document.createElementNS('http://www.w3.org/2000/svg','line'); line.setAttribute('class','edge'); line.setAttribute('x1',source.position.x+source.size.width/2+offsetX); line.setAttribute('y1',source.position.y+source.size.height/2+offsetY); line.setAttribute('x2',target.position.x+target.size.width/2+offsetX); line.setAttribute('y2',target.position.y+target.size.height/2+offsetY); edgeLayer.append(line); }
-    for (const node of nodes) { const el=document.createElement('div'); const visualKind=node.kind === 'pdf' || node.kind === 'image' ? 'file' : node.kind; el.className='node '+visualKind; el.style.left=(node.position.x+offsetX)+'px'; el.style.top=(node.position.y+offsetY)+'px'; el.style.width=node.size.width+'px'; el.style.height=node.size.height+'px'; const kind=document.createElement('span'); kind.className='node-kind'; kind.textContent=kindLabel(node); const content=document.createElement('span'); content.className=node.kind === 'pdf' || node.kind === 'image' ? 'file-note' : 'node-title'; content.textContent=label(node); el.append(kind,content); scene.append(el); }
+    const reader=document.getElementById('article-reader'); const articleTitle=document.getElementById('article-title'); const articleContent=document.getElementById('article-content');
+    const openArticle = (articleId) => { const article=articleById.get(articleId); const listed=data.manifest.articles.find((candidate) => candidate.articleId === articleId); articleTitle.textContent=article ? article.title : (listed ? listed.title : 'Статья'); articleContent.textContent=article ? article.markdown : 'Эта статья не была найдена во время экспорта.'; reader.hidden=false; };
+    document.getElementById('article-close').addEventListener('click', () => { reader.hidden=true; });
+    const renderScene = () => { const hidden=hiddenNodeIds(); edgeLayer.replaceChildren(); scene.replaceChildren(edgeLayer); for (const edge of data.document.edges) { if (hidden.has(edge.sourceNodeId) || hidden.has(edge.targetNodeId)) continue; const source=byId.get(edge.sourceNodeId), target=byId.get(edge.targetNodeId); if (!source || !target) continue; const line=document.createElementNS('http://www.w3.org/2000/svg','line'); line.setAttribute('class','edge'); line.setAttribute('x1',source.position.x+source.size.width/2+offsetX); line.setAttribute('y1',source.position.y+source.size.height/2+offsetY); line.setAttribute('x2',target.position.x+target.size.width/2+offsetX); line.setAttribute('y2',target.position.y+target.size.height/2+offsetY); edgeLayer.append(line); } for (const node of nodes) { if (hidden.has(node.id)) continue; const el=document.createElement('div'); const visualKind=node.kind === 'pdf' || node.kind === 'image' ? 'file' : node.kind; el.className='node '+visualKind; el.style.left=(node.position.x+offsetX)+'px'; el.style.top=(node.position.y+offsetY)+'px'; el.style.width=node.size.width+'px'; el.style.height=node.size.height+'px'; const kind=document.createElement('span'); kind.className='node-kind'; kind.textContent=kindLabel(node); const content=document.createElement('span'); content.className=node.kind === 'pdf' || node.kind === 'image' ? 'file-note' : 'node-title'; content.textContent=label(node); el.append(kind,content); if (node.kind === 'article') { el.title='Двойной клик — открыть статью из Знаний'; el.addEventListener('dblclick', (event) => { event.stopPropagation(); openArticle(node.articleId); }); } const directChildCount=(outgoing.get(node.id) || new Set()).size; if (directChildCount) { const toggle=document.createElement('button'); toggle.className='branch-toggle'; const collapsed=collapsedNodeIds.has(node.id); toggle.textContent=collapsed ? '+' + directChildCount : '−'; toggle.title=collapsed ? 'Развернуть дочерние карточки' : 'Свернуть дочерние карточки'; toggle.addEventListener('pointerdown', (event) => { event.stopPropagation(); }); toggle.addEventListener('click', (event) => { event.stopPropagation(); if (collapsedNodeIds.has(node.id)) collapsedNodeIds.delete(node.id); else collapsedNodeIds.add(node.id); renderScene(); }); el.append(toggle); } scene.append(el); } };
+    renderScene();
     requestAnimationFrame(fitCanvas);
     const summaryRoot = document.getElementById('summaries');
     if (data.summaries.length) { const heading=document.createElement('h2'); heading.textContent='Суммы'; summaryRoot.append(heading); for (const summary of data.summaries) { const card=document.createElement('article'); card.className='summary-card'; const title=document.createElement('strong'); title.textContent='Σ ' + summary.title; card.append(title); if (!summary.entries.length) { const empty=document.createElement('p'); empty.className='empty'; empty.textContent='К «Сумме» не подключены текстовые или геометрические ноды.'; card.append(empty); } else { const list=document.createElement('ol'); for (const entry of summary.entries) { const item=document.createElement('li'); item.textContent=entry.markdown; list.append(item); } card.append(list); } summaryRoot.append(card); } }
   </script>
 </body>
 </html>\n`;
+}
+
+function portableArticleEntries(
+  articles: readonly CanvasPortableBackupArticle[],
+  manifest: CanvasPortableBackupManifest,
+): CanvasPortableBackupEntry[] {
+  const includedIds = new Set(
+    manifest.articles
+      .filter((article) => article.status === "included")
+      .map((article) => article.articleId),
+  );
+  return articles
+    .filter((article) => includedIds.has(article.articleId))
+    .map((article) => ({
+      content: `# ${article.title}\n\n${article.markdown.trim()}\n`,
+      path: portableArticlePath(article),
+    }));
+}
+
+function portableArticlePath(article: CanvasPortableBackupArticle): string {
+  return `articles/${safeFileSegment(article.title)}-${safeFileSegment(article.articleId)}.md`;
 }
 
 function nodeFileId(node: CanvasNode): string | null {

@@ -2329,6 +2329,18 @@ function InfiniteCanvasLocalShellSurface({
         return;
 
       const document = controller.state.document;
+      const articleIds = new Set(
+        document.nodes
+          .filter((node) => node.kind === "article")
+          .map((node) => node.articleId),
+      );
+      const articles = knowledgeArticles
+        .filter((article) => articleIds.has(article.id))
+        .map((article) => ({
+          articleId: article.id,
+          markdown: article.content.join("\n"),
+          title: article.title,
+        }));
       const fileIds = new Set(
         document.nodes.flatMap((node) => {
           if (node.kind === "pdf") return [node.fileId];
@@ -2355,6 +2367,7 @@ function InfiniteCanvasLocalShellSurface({
             ).filter((file): file is ProjectFileRecord => file !== null)
           : [];
       const archive = createCanvasPortableBackup({
+        articles,
         canvasId: controller.state.canvasId,
         document,
         files,
@@ -2377,6 +2390,7 @@ function InfiniteCanvasLocalShellSurface({
     }
   }, [
     controller,
+    knowledgeArticles,
     projectFileRepository,
     projectId,
     shellWorkspaceId,

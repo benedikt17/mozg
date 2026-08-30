@@ -56,6 +56,15 @@ const source: CanvasPortableBackupSource = {
         size: { width: 220, height: 160 },
         zIndex: 4,
       },
+      {
+        id: "article",
+        kind: "article",
+        articleId: "article-yaga",
+        lastKnownTitle: "Легенда о Яге",
+        position: { x: 700, y: 320 },
+        size: { width: 220, height: 160 },
+        zIndex: 5,
+      },
     ],
     edges: [
       {
@@ -80,6 +89,13 @@ const source: CanvasPortableBackupSource = {
       },
     ],
   } satisfies CanvasDocumentV2,
+  articles: [
+    {
+      articleId: "article-yaga",
+      title: "Легенда о Яге",
+      markdown: "Яга живёт на границе трёх миров.",
+    },
+  ],
   files: [
     {
       id: "file-pdf",
@@ -103,6 +119,7 @@ describe("Canvas portable export", () => {
     const files = readStoredZipFiles(archive.bytes);
     const viewer = files.get("index.html") ?? "";
     const manifest = JSON.parse(files.get("manifest.json") ?? "{}") as {
+      articles: Array<{ path: string; status: string; title: string }>;
       files: Array<{ name: string; status: string }>;
     };
 
@@ -111,9 +128,25 @@ describe("Canvas portable export", () => {
     expect(viewer).toContain("Царевич не может разбудить");
     expect(viewer).toContain("Сценарий.pdf");
     expect(viewer).toContain("файл не вложен");
+    expect(viewer).toContain('id="canvas-viewport"');
+    expect(viewer).toContain("fitCanvas");
+    expect(viewer).toContain("pointerdown");
+    expect(viewer).toContain("branch-toggle");
+    expect(viewer).toContain("collapsedNodeIds");
+    expect(viewer).toContain("Двойной клик — открыть статью");
     expect(viewer).not.toContain("fetch(");
+    expect(files.get("articles/Легенда о Яге-article-yaga.md")).toContain(
+      "Яга живёт на границе трёх миров.",
+    );
     expect(manifest.files).toMatchObject([
       { name: "Сценарий.pdf", status: "metadata-only" },
+    ]);
+    expect(manifest.articles).toMatchObject([
+      {
+        path: "articles/Легенда о Яге-article-yaga.md",
+        status: "included",
+        title: "Легенда о Яге",
+      },
     ]);
   });
 
