@@ -13,6 +13,8 @@ export type PreparedProjectFileUpload = {
   byteSize: number;
   width: number | null;
   height: number | null;
+  /** Content identity used to make repeated uploads idempotent. */
+  checksum: string;
   resumeKey: string;
 };
 
@@ -112,6 +114,7 @@ export async function prepareProjectFileBrowserUpload(
   const dimensions = isProjectFileImageMimeType(mimeType)
     ? await readProjectImageDimensions(blob)
     : null;
+  const checksum = await projectFileBrowserChecksum(blob);
 
   return {
     name: fileName,
@@ -121,6 +124,7 @@ export async function prepareProjectFileBrowserUpload(
     byteSize: blob.size,
     width: dimensions?.width ?? null,
     height: dimensions?.height ?? null,
+    checksum,
     resumeKey: projectFileBrowserResumeKey({
       fileName,
       byteSize: blob.size,
@@ -128,6 +132,27 @@ export async function prepareProjectFileBrowserUpload(
       mimeType,
     }),
   };
+}
+
+/**
+ * A filename and a timestamp are not an identity: users can rename a file or
+ * retry the same selection from another device.  The content digest is used by
+ * the Project Files reservation RPC to reuse an already-ready binary.
+ */
+export async function projectFileBrowserChecksum(blob: Blob): Promise<string> {
+  if (!globalThis.crypto?.subtle) {
+    throw new ProjectFileBrowserUploadError(
+      "Браузер не поддерживает безопасную проверку содержимого файла.",
+    );
+  }
+  const digest = await globalThis.crypto.subtle.digest(
+    "SHA-256",
+    await blob.arrayBuffer(),
+  );
+  const hex = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return `sha256:${hex}`;
 }
 
 async function readProjectImageDimensions(

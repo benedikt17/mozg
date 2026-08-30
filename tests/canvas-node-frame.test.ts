@@ -26,24 +26,38 @@ describe("CanvasNodeFrame composition", () => {
     expect(frame).toContain('data-slot="connections"');
     expect(frame).toContain('data-slot="toolbar"');
     expect(frame).toContain('data-slot="context-menu"');
+    expect(frame).toContain("selected: boolean;");
+    expect(frame).toContain("const selectedNonReaderNodeCount");
+    expect(frame).toContain("const selectedNodeCount");
+    expect(frame).toContain("readerOpen?: boolean");
+    expect(frame).toContain(
+      "toolbarWhenReaderOpen\n      ? selectedNodeCount === 1\n      : selectedNonReaderNodeCount === 1",
+    );
+    expect(frame).toContain("<NodeToolbarSlot selected={toolbarVisible}>");
     expect(frame).toContain("isVisible={selected}");
+    expect(frame).toContain(
+      "selected text or shape node still exposes its own formatting tools",
+    );
   });
 
-  it("is the only interaction frame used by task, text, image, shape, PDF, and summary bodies", () => {
+  it("is the only interaction frame used by task, article, text, image, shape, PDF, and summary bodies", () => {
     const shell = source(
       "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
     );
 
     expect(shell).toContain("function ImageNodeBody");
     expect(shell).toContain("function PdfNodeBody");
+    expect(shell).toContain("function ArticleNodeBody");
+    expect(shell).toContain("toolbarWhenReaderOpen");
     expect(shell).toContain("function TextNodeBody");
     expect(shell).toContain("function ShapeNodeBody");
     expect(shell).toContain("function SummaryNodeBody");
     expect(shell).toContain("function TaskNodeBody");
-    expect(shell.match(/<CanvasNodeFrame/g)).toHaveLength(6);
+    expect(shell.match(/<CanvasNodeFrame/g)).toHaveLength(7);
     expect(shell).not.toContain("NodeResizer");
     expect(shell).toContain("CANVAS_IMAGE_NODE_TYPE]: ImageNodeBody");
     expect(shell).toContain("CANVAS_PDF_NODE_TYPE]: PdfNodeBody");
+    expect(shell).toContain("CANVAS_ARTICLE_NODE_TYPE]: ArticleNodeBody");
     expect(shell).toContain("CANVAS_TEXT_NODE_TYPE]: TextNodeBody");
     expect(shell).toContain("CANVAS_SHAPE_NODE_TYPE]: ShapeNodeBody");
     expect(shell).toContain("CANVAS_SUMMARY_NODE_TYPE]: SummaryNodeBody");

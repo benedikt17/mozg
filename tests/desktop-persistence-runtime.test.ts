@@ -161,6 +161,10 @@ class SharedCasAdapter implements DesktopPersistenceAdapter {
     });
   }
 
+  loadLatestWorkspace(): Promise<DesktopPersistenceLoadResult> {
+    return this.loadWorkspace();
+  }
+
   initializeWorkspace(): Promise<DesktopPersistenceSaveResult> {
     throw new Error("The shared CAS test starts from an existing snapshot.");
   }
@@ -518,6 +522,29 @@ describe("DesktopPersistenceRuntime", () => {
     await reloaded.start();
     expect(reloaded.lifecycle).toMatchObject({ status: "ready", revision: 10 });
     expect(store.snapshot.tasks[0]?.title).toBe("Tab A winner");
+  });
+
+  it("lets the losing editor explicitly save the preserved local snapshot", async () => {
+    const store = new SharedCasStore();
+    const runtimeA = createRuntime(new SharedCasAdapter(store));
+    const runtimeB = createRuntime(new SharedCasAdapter(store));
+    await Promise.all([runtimeA.start(), runtimeB.start()]);
+
+    runtimeA.observeSnapshot(changedSnapshot("Tab A winner"));
+    await vi.advanceTimersByTimeAsync(DESKTOP_AUTOSAVE_DEBOUNCE_MS);
+    runtimeB.observeSnapshot(changedSnapshot("Tab B local work"));
+    await vi.advanceTimersByTimeAsync(DESKTOP_AUTOSAVE_DEBOUNCE_MS);
+    expect(runtimeB.lifecycle).toMatchObject({ status: "conflict" });
+
+    await runtimeB.keepLocalChanges();
+
+    expect(runtimeB.lifecycle).toMatchObject({ status: "ready", revision: 11 });
+    expect(store.snapshot.tasks[0]?.title).toBe("Tab B local work");
+    expect(store.saveCalls).toEqual([
+      { expectedRevision: 9, title: "Tab A winner" },
+      { expectedRevision: 9, title: "Tab B local work" },
+      { expectedRevision: 10, title: "Tab B local work" },
+    ]);
   });
 
   it("flushes a pending snapshot before the debounce expires", async () => {

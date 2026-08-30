@@ -40,6 +40,8 @@ export type CanvasNodeFrameProps = {
   centerTextContent?: boolean;
   className?: string;
   toolbar?: ReactNode;
+  /** Keep this node's toolbar available while its companion reader is open. */
+  toolbarWhenReaderOpen?: boolean;
   contextMenu?: ReactNode;
   /** Shared interaction layer for persistent Canvas connections. */
   connectionHandleLayer?: ReactNode;
@@ -144,13 +146,19 @@ export function ConnectionHandleLayer({
 
 function NodeToolbarSlot({
   children,
+  selected,
 }: {
   children: ReactNode;
+  selected: boolean;
 }): React.JSX.Element {
   return (
     <NodeToolbar
       className={styles.nodeToolbarSlot}
       data-slot="toolbar"
+      // Opening a PDF keeps its Canvas node selected as a persistent visual
+      // indicator. Opt out of React Flow's single-selection default so a
+      // selected text or shape node still exposes its own formatting tools.
+      isVisible={selected}
       position={Position.Top}
       offset={10}
     >
@@ -395,11 +403,22 @@ export function CanvasNodeFrame({
   centerTextContent,
   className,
   toolbar,
+  toolbarWhenReaderOpen = false,
   contextMenu,
   connectionHandleLayer,
 }: CanvasNodeFrameProps): React.JSX.Element {
   const nodeId = useNodeId();
   const internalNode = useInternalNode(nodeId ?? "");
+  const selectedNonReaderNodeCount = useStore(
+    (state) =>
+      state.nodes.filter(
+        (node) =>
+          node.selected && !(node.data as { readerOpen?: boolean }).readerOpen,
+      ).length,
+  );
+  const selectedNodeCount = useStore(
+    (state) => state.nodes.filter((node) => node.selected).length,
+  );
   const directChildCount = useStore((state) => {
     if (!nodeId) return 0;
     return new Set(
@@ -419,6 +438,11 @@ export function CanvasNodeFrame({
       }
     )?.style?.textAlign ?? "center";
   const renderedToolbar = toolbar;
+  const toolbarVisible =
+    selected &&
+    (toolbarWhenReaderOpen
+      ? selectedNodeCount === 1
+      : selectedNonReaderNodeCount === 1);
   const renderedChildren = isTextFrame
     ? withCenteredTextContent(children, textAlign)
     : children;
@@ -447,7 +471,9 @@ export function CanvasNodeFrame({
         />
       ) : null}
       {renderedToolbar ? (
-        <NodeToolbarSlot>{renderedToolbar}</NodeToolbarSlot>
+        <NodeToolbarSlot selected={toolbarVisible}>
+          {renderedToolbar}
+        </NodeToolbarSlot>
       ) : null}
       {contextMenu ? (
         <NodeContextMenuSlot>{contextMenu}</NodeContextMenuSlot>

@@ -256,6 +256,7 @@ export class CloudCanvasShellRepository
     if (!view || view.userId !== input.userId) return null;
     return {
       canvasId: view.canvasId,
+      openArticleId: view.openArticleId,
       userId: view.userId,
       viewportX: view.viewportX,
       viewportY: view.viewportY,
@@ -271,6 +272,7 @@ export class CloudCanvasShellRepository
       viewportX: input.viewportX,
       viewportY: input.viewportY,
       zoom: input.zoom,
+      openArticleId: input.openArticleId,
     });
   }
 

@@ -1,0 +1,3 @@
+-- This migration records the Production hotfix for the PDF validator's
+-- legacy text projection. The canonical definition is kept in
+-- 20260826160000_canvas_pdf_nodes.sql with a supported fontSize of 18.

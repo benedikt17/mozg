@@ -351,11 +351,16 @@ describe("IndexedDbCanvasRepository", () => {
       viewportX: 4,
       viewportY: -2,
       zoom: 1.5,
+      openArticleId: "doc-l-koschei",
       updatedAt: time,
     });
     expect(
       await repository.loadViewState({ canvasId: canvas.id, userId: "u1" }),
-    ).toMatchObject({ viewportX: 4, zoom: 1.5 });
+    ).toMatchObject({
+      viewportX: 4,
+      zoom: 1.5,
+      openArticleId: "doc-l-koschei",
+    });
     expect(
       await repository.loadViewState({ canvasId: canvas.id, userId: "u2" }),
     ).toBeNull();

@@ -59,6 +59,14 @@ values
   '23000000-0000-0000-0000-000000000001/63000000-0000-0000-0000-000000000004/original',
   'image/png', 1024, 400, 300,
   '13000000-0000-0000-0000-000000000001', now(), now()
+),
+(
+  '63000000-0000-0000-0000-000000000005',
+  '23000000-0000-0000-0000-000000000001', 'project-a',
+  'ready.pdf', 'ready.pdf',
+  '23000000-0000-0000-0000-000000000001/63000000-0000-0000-0000-000000000005/original',
+  'application/pdf', 1228800, null, null,
+  '13000000-0000-0000-0000-000000000001', now(), null
 );
 
 set local role authenticated;
@@ -124,6 +132,16 @@ select throws_ok(
   '22023',
   'Canvas Project File reference is unavailable',
   'Canvas rejects a deleted Project File'
+);
+
+select lives_ok(
+  $$
+  select * from public.save_canvas_document(
+    current_setting('test.b3_canvas_id')::uuid, 2, 'B3 Canvas',
+    '{"schemaVersion":2,"nodes":[{"id":"pdf-node-1","kind":"pdf","fileId":"63000000-0000-0000-0000-000000000005","lastKnownName":"ready.pdf","position":{"x":0,"y":0},"size":{"width":300,"height":180},"zIndex":1}],"edges":[]}'::jsonb
+  )
+  $$,
+  'Canvas can save a ready PDF Project File from the same Project'
 );
 
 select throws_ok(

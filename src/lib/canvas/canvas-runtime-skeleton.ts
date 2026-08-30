@@ -1,6 +1,7 @@
 import type { CanvasDocument } from "@/lib/canvas/canvas-document";
 import type { CanvasTaskBridge } from "@/lib/canvas/canvas-task-bridge";
 import {
+  canvasDocumentToArticleNodes,
   canvasDocumentToImageNodes,
   canvasDocumentToPdfNodes,
   canvasDocumentToShapeNodes,
@@ -23,6 +24,7 @@ export function canvasDocumentToRuntimeSkeleton(
   return [
     ...canvasDocumentToImageNodes(document),
     ...canvasDocumentToPdfNodes(document),
+    ...canvasDocumentToArticleNodes(document),
     ...canvasDocumentToTaskNodes(document, options),
     ...canvasDocumentToTextNodes(document),
     ...canvasDocumentToShapeNodes(document),

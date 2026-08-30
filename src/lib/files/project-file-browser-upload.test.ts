@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveProjectFileBrowserMimeType } from "./project-file-browser-upload";
+import {
+  projectFileBrowserChecksum,
+  resolveProjectFileBrowserMimeType,
+} from "./project-file-browser-upload";
 
 describe("resolveProjectFileBrowserMimeType", () => {
   it("keeps supported browser MIME types", () => {
@@ -28,5 +31,13 @@ describe("resolveProjectFileBrowserMimeType", () => {
     expect(
       resolveProjectFileBrowserMimeType("archive.zip", "application/zip"),
     ).toBe(null);
+  });
+
+  it("uses a stable SHA-256 identity for the exact file contents", async () => {
+    await expect(
+      projectFileBrowserChecksum(new Blob(["same PDF bytes"])),
+    ).resolves.toBe(
+      "sha256:07dbe48c5da487890a8eeb3ec25e5aa88d1a490d6a696a77eca5c3719fdc4170",
+    );
   });
 });

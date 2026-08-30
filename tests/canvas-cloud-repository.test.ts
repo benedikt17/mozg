@@ -340,7 +340,7 @@ describe("SupabaseCloudCanvasRepository", () => {
     });
   });
 
-  it("loads and saves the authenticated user's separate viewport state", async () => {
+  it("loads and saves the authenticated user's separate Canvas view state", async () => {
     const upserted: unknown[] = [];
     const client = fakeClient({
       queryResults: [
@@ -361,6 +361,7 @@ describe("SupabaseCloudCanvasRepository", () => {
       viewportX: 4,
       viewportY: -2,
       zoom: 1.5,
+      openArticleId: null,
     });
     await expect(
       repo.saveCanvasViewState({
@@ -369,6 +370,7 @@ describe("SupabaseCloudCanvasRepository", () => {
         viewportX: 8,
         viewportY: -4,
         zoom: 2,
+        openArticleId: "doc-l-koschei",
       }),
     ).resolves.toBeUndefined();
     expect(upserted).toEqual([
@@ -378,6 +380,7 @@ describe("SupabaseCloudCanvasRepository", () => {
         viewport_x: 8,
         viewport_y: -4,
         zoom: 2,
+        open_article_id: "doc-l-koschei",
       },
     ]);
   });

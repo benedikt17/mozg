@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import type { ProjectFolderRecord } from "@/lib/files/project-file-repository";
 import {
   formatProjectFileSize,
+  getProjectFileAspectRatio,
   getProjectFolderBreadcrumbs,
   getProjectFolderMoveTargets,
   getProjectFolderTree,
+  isProjectFilePreviewable,
 } from "@/prototype/files/files-workspace";
 
 const baseFolder = {
@@ -89,5 +91,35 @@ describe("formatProjectFileSize", () => {
     expect(formatProjectFileSize(512)).toBe("512 Б");
     expect(formatProjectFileSize(1536)).toBe("1,5 КБ");
     expect(formatProjectFileSize(5 * 1024 * 1024)).toBe("5 МБ");
+  });
+});
+
+describe("isProjectFilePreviewable", () => {
+  it("opens images and PDFs in the built-in viewer, but leaves other files downloadable", () => {
+    expect(isProjectFilePreviewable({ mimeType: "image/png" })).toBe(true);
+    expect(isProjectFilePreviewable({ mimeType: "image/webp" })).toBe(true);
+    expect(isProjectFilePreviewable({ mimeType: "application/pdf" })).toBe(
+      true,
+    );
+    expect(isProjectFilePreviewable({ mimeType: "text/markdown" })).toBe(false);
+    expect(
+      isProjectFilePreviewable({
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("getProjectFileAspectRatio", () => {
+  it("preserves known image proportions and ignores incomplete metadata", () => {
+    expect(getProjectFileAspectRatio({ width: 1920, height: 1080 })).toBe(
+      16 / 9,
+    );
+    expect(getProjectFileAspectRatio({ width: 1080, height: 1920 })).toBe(
+      9 / 16,
+    );
+    expect(getProjectFileAspectRatio({ width: null, height: 1080 })).toBeNull();
+    expect(getProjectFileAspectRatio({ width: 1080, height: 0 })).toBeNull();
   });
 });

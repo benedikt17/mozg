@@ -17,6 +17,7 @@ import {
   useDesktopCanvasTaskRuntime,
   useDesktopTaskRuntime,
 } from "@/prototype/tasks/desktop-task-runtime";
+import { getActiveProjectDocuments } from "@/prototype/state/knowledge-state";
 import styles from "./infinite-canvas-local-shell.module.css";
 import "@/prototype/desktop-shell.css";
 import "@/prototype/desktop-workspaces.css";
@@ -39,6 +40,8 @@ const localCanvasShellCopy: CanvasShellCopy = {
   loading: "Loading",
   error: "Error",
   reloadWinner: "Reload winner",
+  keepLocalChanges: "Keep my changes",
+  restoreLocalDraft: "Restore my local copy",
   isolated: "Workspace isolated",
   status: "Private local workspace · no production data",
 };
@@ -93,6 +96,7 @@ function InfiniteCanvasLocalShellComposition(): React.JSX.Element {
               assetRepository={repository}
               copy={localCanvasShellCopy}
               groupRepository={repository}
+              knowledgeArticles={getActiveProjectDocuments(state)}
               repository={repository}
               showDiagnostics
               userId={INFINITE_CANVAS_LOCAL_SHELL_USER_ID}

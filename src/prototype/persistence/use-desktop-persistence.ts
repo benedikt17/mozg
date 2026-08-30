@@ -9,6 +9,11 @@ import {
 } from "@/prototype/persistence/desktop-persistence-runtime";
 import { IndexedDbDesktopPersistenceAdapter } from "@/prototype/persistence/indexeddb-adapter";
 import { CloudDesktopPersistenceAdapter } from "@/prototype/persistence/cloud-persistence-adapter";
+import {
+  clearDesktopConflictDraft,
+  readDesktopConflictDraft,
+  saveDesktopConflictDraft,
+} from "@/prototype/persistence/desktop-conflict-draft";
 import type { DesktopCloudBootstrap } from "@/prototype/persistence/cloud-snapshot-bridge";
 import type { DesktopRuntimeMode } from "@/lib/desktop-runtime-mode";
 import type { DesktopPersistenceAdapter } from "@/prototype/persistence/persistence-adapter";
@@ -20,6 +25,8 @@ export type UseDesktopPersistenceResult = {
   refreshFromSource: () => Promise<DesktopPersistenceRefreshResult>;
   retryLoad: () => void;
   retrySave: () => void;
+  keepLocalChanges: () => Promise<void>;
+  discardLocalChanges: () => Promise<void>;
 };
 
 export function createDesktopPersistenceAdapter({
@@ -80,6 +87,7 @@ export function useDesktopPersistence(
   );
   const initialSnapshot = useRef(snapshot);
   const runtime = useRef<DesktopPersistenceRuntime | null>(null);
+  const conflictDraftScope = `${runtimeMode}:${cloudBootstrap?.workspaceId ?? "local"}`;
   const [lifecycle, setLifecycle] = useState<DesktopPersistenceLifecycle>(() =>
     enabled
       ? { status: "loading" }
@@ -109,11 +117,21 @@ export function useDesktopPersistence(
           dispatch({ type: "refresh-domain", snapshot: loadedSnapshot });
       },
       onLifecycleChange: (nextLifecycle) => {
+        if (nextLifecycle.status === "conflict") {
+          saveDesktopConflictDraft(
+            conflictDraftScope,
+            coordinator.getLocalSnapshot(),
+          );
+        }
         if (active) setLifecycle(nextLifecycle);
       },
     });
     runtime.current = coordinator;
-    void coordinator.start();
+    void coordinator.start().then(() => {
+      if (!active) return;
+      const draft = readDesktopConflictDraft(conflictDraftScope);
+      if (draft) coordinator.restoreConflictDraft(draft);
+    });
 
     const flushWhenHidden = (): void => {
       if (document.visibilityState === "hidden") void coordinator.flush();
@@ -131,7 +149,7 @@ export function useDesktopPersistence(
       if (runtime.current === coordinator) runtime.current = null;
       coordinator.dispose();
     };
-  }, [cloudBootstrap, dispatch, enabled, runtimeMode]);
+  }, [cloudBootstrap, conflictDraftScope, dispatch, enabled, runtimeMode]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -155,6 +173,29 @@ export function useDesktopPersistence(
     if (!enabled) return;
     void runtime.current?.retrySave();
   }, [enabled]);
+  const keepLocalChanges = useCallback(async () => {
+    if (!enabled) return;
+    const coordinator = runtime.current;
+    await coordinator?.keepLocalChanges();
+    if (coordinator?.lifecycle.status === "ready") {
+      clearDesktopConflictDraft(conflictDraftScope);
+    }
+  }, [conflictDraftScope, enabled]);
+  const discardLocalChanges = useCallback(async () => {
+    if (!enabled) return;
+    const coordinator = runtime.current;
+    await coordinator?.discardLocalChanges();
+    if (coordinator?.lifecycle.status === "ready") {
+      clearDesktopConflictDraft(conflictDraftScope);
+    }
+  }, [conflictDraftScope, enabled]);
 
-  return { lifecycle, refreshFromSource, retryLoad, retrySave };
+  return {
+    lifecycle,
+    refreshFromSource,
+    retryLoad,
+    retrySave,
+    keepLocalChanges,
+    discardLocalChanges,
+  };
 }

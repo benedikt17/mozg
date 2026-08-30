@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Edge, Node } from "@xyflow/react";
 import {
+  canvasBranchDescendantNodeIds,
   canvasBranchCollapsedNodeIds,
   canvasBranchRuntimeState,
   projectCanvasBranchCollapse,
+  translateCanvasBranchDescendants,
 } from "@/lib/canvas/canvas-branch-collapse";
 import { parseCanvasDocumentV2 } from "@/lib/canvas/canvas-document";
 import {
@@ -124,6 +126,36 @@ describe("Canvas branch collapse projection", () => {
         projected.nodes.find((item) => item.id === "root")?.data,
       )?.directChildCount,
     ).toBe(1);
+  });
+
+  it("moves every hidden descendant with its collapsed parent", () => {
+    const nodes = [
+      { ...node("root"), position: { x: 20, y: 30 } },
+      { ...node("child"), position: { x: 170, y: 60 } },
+      { ...node("grandchild"), position: { x: 360, y: 110 } },
+      { ...node("unrelated"), position: { x: 20, y: 400 } },
+    ];
+    const edges = [
+      edge("root-child", "root", "child"),
+      edge("child-grandchild", "child", "grandchild"),
+    ];
+
+    const translated = translateCanvasBranchDescendants(
+      nodes,
+      canvasBranchDescendantNodeIds("root", edges),
+      { x: 80, y: -25 },
+    );
+
+    expect(translated.find((item) => item.id === "child")?.position).toEqual({
+      x: 250,
+      y: 35,
+    });
+    expect(
+      translated.find((item) => item.id === "grandchild")?.position,
+    ).toEqual({ x: 440, y: 85 });
+    expect(
+      translated.find((item) => item.id === "unrelated")?.position,
+    ).toEqual({ x: 20, y: 400 });
   });
 
   it("reapplies persisted collapse state after a document is restored", () => {

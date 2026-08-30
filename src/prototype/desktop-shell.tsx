@@ -362,7 +362,24 @@ function DesktopPersistenceStatus({
         <span>
           {getDesktopPersistenceStatusMessage(persistence.lifecycle.error.code)}
         </span>
-        {isConflict ? null : (
+        {isConflict ? (
+          <>
+            <button
+              className="ui-button"
+              onClick={() => void persistence.keepLocalChanges()}
+              type="button"
+            >
+              Сохранить мои изменения
+            </button>
+            <button
+              className="ui-button"
+              onClick={() => void persistence.discardLocalChanges()}
+              type="button"
+            >
+              Загрузить актуальную версию
+            </button>
+          </>
+        ) : (
           <button
             className="ui-button"
             onClick={persistence.retrySave}
