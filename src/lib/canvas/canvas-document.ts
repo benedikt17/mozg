@@ -76,6 +76,12 @@ export type CanvasShapeNode = CanvasNodeBase & {
   style: CanvasShapeStyle;
 };
 
+/** A live, Canvas-local document assembled from incoming text and shape nodes. */
+export type CanvasSummaryNode = CanvasNodeBase & {
+  kind: "summary";
+  title: string;
+};
+
 export type CanvasLegacyImageNode = CanvasNodeBase & {
   kind: "image";
   assetId: string;
@@ -102,6 +108,7 @@ export type CanvasNode =
   | CanvasArticleNode
   | CanvasTextNode
   | CanvasShapeNode
+  | CanvasSummaryNode
   | CanvasImageNode
   | CanvasPdfNode;
 
@@ -125,6 +132,8 @@ export type CanvasEdgeV2 = {
   targetHandle: CanvasHandleSide;
   routing: CanvasEdgeRouting;
   arrows: CanvasEdgeArrows;
+  /** Persistent insertion order for a text/shape edge entering a summary. */
+  summaryOrder?: number;
 };
 
 export type CanvasViewport = {
@@ -480,7 +489,10 @@ function parseNode(
 ): CanvasNode {
   const node = requireRecord(value, path);
   const kind = requireString(node.kind, `${path}.kind`) as CanvasNode["kind"];
-  if ((kind === "shape" || kind === "pdf") && !allowV2Extensions) {
+  if (
+    (kind === "shape" || kind === "pdf" || kind === "summary") &&
+    !allowV2Extensions
+  ) {
     fail(
       "unsupported_node_kind",
       `${path}.kind`,
@@ -522,7 +534,9 @@ function parseNode(
                 : "assetId"
               : kind === "pdf"
                 ? "fileId"
-                : null;
+                : kind === "summary"
+                  ? "title"
+                  : null;
   if (specificKey === null) {
     fail(
       "unsupported_node_kind",
@@ -537,11 +551,34 @@ function parseNode(
   if (kind === "shape") {
     requiredKeys.push("markdown", "style");
   }
+
   requireExactKeys(node, requiredKeys, allowedKeys, path);
   const id = requireIdentifier(node.id, `${path}.id`);
   const position = requirePoint(node.position, `${path}.position`);
   const size = requireSize(node.size, `${path}.size`);
   const zIndex = requireZIndex(node.zIndex, `${path}.zIndex`);
+
+  if (kind === "summary") {
+    const title = requireString(node.title, `${path}.title`);
+    if (
+      title.trim().length === 0 ||
+      title.length > CANVAS_DOCUMENT_LIMITS.maxTitleLength
+    ) {
+      fail(
+        "invalid_summary_title",
+        `${path}.title`,
+        "Canvas summary title is invalid",
+      );
+    }
+    return {
+      id,
+      kind,
+      title,
+      position,
+      size,
+      zIndex,
+    };
+  }
 
   if (kind === "task") {
     const result: CanvasTaskNode = {
@@ -693,7 +730,23 @@ function enumValue<T extends string>(
 
 function parseEdgeV2(value: unknown, path: string): CanvasEdgeV2 {
   const edge = requireRecord(value, path);
-  requireExactKeys(edge, EDGE_V2_KEYS, [], path);
+  requireExactKeys(edge, EDGE_V2_KEYS, ["summaryOrder"], path);
+  const summaryOrder = Object.prototype.hasOwnProperty.call(
+    edge,
+    "summaryOrder",
+  )
+    ? requireFiniteNumber(edge.summaryOrder, `${path}.summaryOrder`)
+    : undefined;
+  if (
+    summaryOrder !== undefined &&
+    (!Number.isSafeInteger(summaryOrder) || summaryOrder < 1)
+  ) {
+    fail(
+      "invalid_summary_order",
+      `${path}.summaryOrder`,
+      "Canvas summary order must be a positive safe integer",
+    );
+  }
   return {
     id: requireIdentifier(edge.id, `${path}.id`),
     sourceNodeId: requireIdentifier(edge.sourceNodeId, `${path}.sourceNodeId`),
@@ -722,12 +775,13 @@ function parseEdgeV2(value: unknown, path: string): CanvasEdgeV2 {
       `${path}.arrows`,
       "arrow placement",
     ),
+    ...(summaryOrder === undefined ? {} : { summaryOrder }),
   };
 }
 
-function validateNodesAndEdges<T extends CanvasEdge>(
+function validateNodesAndEdges(
   nodes: CanvasNode[],
-  edges: T[],
+  edges: CanvasEdgeV2[],
 ): void {
   const nodeIds = new Set<string>();
   for (const [index, node] of nodes.entries()) {
@@ -743,6 +797,8 @@ function validateNodesAndEdges<T extends CanvasEdge>(
 
   const edgeIds = new Set<string>();
   const edgeEndpoints = new Set<string>();
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  const summaryOrders = new Map<string, Set<number>>();
   for (const [index, edge] of edges.entries()) {
     if (edgeIds.has(edge.id)) {
       fail(
@@ -778,6 +834,45 @@ function validateNodesAndEdges<T extends CanvasEdge>(
         "dangling_edge",
         `document.edges[${index}].targetNodeId`,
         "Edge target node does not exist",
+      );
+    }
+    const target = nodesById.get(edge.targetNodeId);
+    const source = nodesById.get(edge.sourceNodeId);
+    const summaryOrder = edge.summaryOrder;
+    if (source?.kind === "summary") {
+      fail(
+        "summary_output_not_allowed",
+        `document.edges[${index}]`,
+        "Canvas summaries accept inputs but do not produce edges",
+      );
+    }
+    if (target?.kind === "summary") {
+      if (
+        !source ||
+        (source.kind !== "text" && source.kind !== "shape") ||
+        summaryOrder === undefined
+      ) {
+        fail(
+          "invalid_summary_connection",
+          `document.edges[${index}]`,
+          "Canvas summaries accept ordered text and shape inputs only",
+        );
+      }
+      const seenOrders = summaryOrders.get(target.id) ?? new Set<number>();
+      if (seenOrders.has(summaryOrder)) {
+        fail(
+          "duplicate_summary_order",
+          `document.edges[${index}].summaryOrder`,
+          "Canvas summary input order must be unique",
+        );
+      }
+      seenOrders.add(summaryOrder);
+      summaryOrders.set(target.id, seenOrders);
+    } else if (summaryOrder !== undefined) {
+      fail(
+        "unexpected_summary_order",
+        `document.edges[${index}].summaryOrder`,
+        "Canvas summary order is only valid for summary inputs",
       );
     }
     edgeIds.add(edge.id);

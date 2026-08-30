@@ -4,6 +4,7 @@ import {
   canvasDocumentToImageNodes,
   canvasDocumentToPdfNodes,
   canvasDocumentToShapeNodes,
+  canvasDocumentToSummaryNodes,
   canvasDocumentToTaskNodes,
   canvasDocumentToTextNodes,
   type CanvasFlowNode,
@@ -25,5 +26,6 @@ export function canvasDocumentToRuntimeSkeleton(
     ...canvasDocumentToTaskNodes(document, options),
     ...canvasDocumentToTextNodes(document),
     ...canvasDocumentToShapeNodes(document),
+    ...canvasDocumentToSummaryNodes(document),
   ];
 }

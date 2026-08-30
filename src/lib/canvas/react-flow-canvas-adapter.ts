@@ -14,6 +14,7 @@ import {
   type CanvasSize,
   type CanvasShapeNode,
   type CanvasShapeVariant,
+  type CanvasSummaryNode,
   type CanvasTextNode,
 } from "@/lib/canvas/canvas-document";
 import {
@@ -66,6 +67,7 @@ export const CANVAS_IMAGE_NODE_TYPE = "canvasImage";
 export const CANVAS_PDF_NODE_TYPE = "canvasPdf";
 export const CANVAS_TEXT_NODE_TYPE = "canvasText";
 export const CANVAS_SHAPE_NODE_TYPE = "canvasShape";
+export const CANVAS_SUMMARY_NODE_TYPE = "canvasSummary";
 export const CANVAS_TASK_NODE_TYPE = "canvasTask";
 export const CANVAS_EDGE_TYPE = "canvasEdge";
 const MAX_INITIAL_WIDTH = 640;
@@ -129,6 +131,17 @@ export type CanvasShapeFlowNode = Node<
   typeof CANVAS_SHAPE_NODE_TYPE
 >;
 
+export type CanvasSummaryNodeData = {
+  title: string;
+  /** Ephemeral UI marker; never persisted into the Canvas document. */
+  readerOpen?: boolean;
+};
+
+export type CanvasSummaryFlowNode = Node<
+  CanvasSummaryNodeData,
+  typeof CANVAS_SUMMARY_NODE_TYPE
+>;
+
 export type CanvasTaskNodeData = {
   taskId: string;
   lastKnownTitle?: string;
@@ -147,6 +160,7 @@ export type CanvasFlowNode =
   | CanvasPdfFlowNode
   | CanvasTextFlowNode
   | CanvasShapeFlowNode
+  | CanvasSummaryFlowNode
   | CanvasTaskFlowNode;
 
 export type CanvasEdgeFlowData = {
@@ -637,6 +651,34 @@ export function createCanvasPdfId(
   return `pdf-node-${idGenerator()}`;
 }
 
+export function createCanvasSummaryId(
+  idGenerator: () => string = () =>
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+): string {
+  return `summary-node-${idGenerator()}`;
+}
+
+export function createCanvasSummaryFlowNode(input: {
+  id: string;
+  title: string;
+  position: FlowPosition;
+  size?: CanvasSize;
+  zIndex?: number;
+}): CanvasSummaryFlowNode {
+  const size = input.size ?? { width: 156, height: 96 };
+  return {
+    id: input.id,
+    type: CANVAS_SUMMARY_NODE_TYPE,
+    position: { ...input.position },
+    width: size.width,
+    height: size.height,
+    style: { width: size.width, height: size.height },
+    zIndex: input.zIndex,
+    data: { title: input.title },
+  };
+}
+
 export function createCanvasPdfFlowNode(input: {
   id: string;
   fileId: string;
@@ -738,6 +780,22 @@ export function canvasDocumentToShapeNodes(
         size: node.size,
         zIndex: node.zIndex,
         style: node.style,
+      }),
+    );
+}
+
+export function canvasDocumentToSummaryNodes(
+  document: CanvasDocument,
+): CanvasSummaryFlowNode[] {
+  return document.nodes
+    .filter((node): node is CanvasSummaryNode => node.kind === "summary")
+    .map((node) =>
+      createCanvasSummaryFlowNode({
+        id: node.id,
+        title: node.title,
+        position: node.position,
+        size: node.size,
+        zIndex: node.zIndex,
       }),
     );
 }
@@ -863,6 +921,14 @@ export function runtimeNodesToCanvasDocument(
         shape: runtime.data.shape,
         markdown: runtime.data.markdown,
         style: { ...runtime.data.style },
+        position: { ...runtime.position },
+        size: runtimeNodeSize(runtime),
+      };
+    }
+    if (node.kind === "summary" && runtime.type === CANVAS_SUMMARY_NODE_TYPE) {
+      return {
+        ...node,
+        title: runtime.data.title,
         position: { ...runtime.position },
         size: runtimeNodeSize(runtime),
       };
