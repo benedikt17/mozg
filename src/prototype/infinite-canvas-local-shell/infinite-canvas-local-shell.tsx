@@ -430,6 +430,13 @@ function transferPayload(
   };
 }
 
+function eventTargetsCanvasArticleReader(event: Event): boolean {
+  return event.composedPath().some((candidate) => {
+    if (!(candidate instanceof Element)) return false;
+    return candidate.closest(".canvas-article-reader") !== null;
+  });
+}
+
 function DecodedCanvasImage({
   nodeId,
   assetId,
@@ -4135,7 +4142,12 @@ function InfiniteCanvasLocalShellSurface({
 
   useEffect(() => {
     const onCopy = (event: ClipboardEvent) => {
-      if (eventTouchesEditingSurface(event) || !event.clipboardData) return;
+      if (
+        eventTouchesEditingSurface(event) ||
+        eventTargetsCanvasArticleReader(event) ||
+        !event.clipboardData
+      )
+        return;
       const selectedNodeIds = new Set(
         nodesRef.current.filter((node) => node.selected).map((node) => node.id),
       );
@@ -4156,7 +4168,11 @@ function InfiniteCanvasLocalShellSurface({
 
   useEffect(() => {
     const onPaste = (event: ClipboardEvent) => {
-      if (eventTouchesEditingSurface(event)) return;
+      if (
+        eventTouchesEditingSurface(event) ||
+        eventTargetsCanvasArticleReader(event)
+      )
+        return;
       const canvasPayload = parseCanvasNodeClipboardPayload(
         event.clipboardData?.getData(CANVAS_NODE_CLIPBOARD_MIME) ?? "",
       );
