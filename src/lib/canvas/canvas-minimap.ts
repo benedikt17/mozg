@@ -3,6 +3,7 @@ import {
   CANVAS_ARTICLE_NODE_TYPE,
   CANVAS_IMAGE_NODE_TYPE,
   CANVAS_SHAPE_NODE_TYPE,
+  CANVAS_SUMMARY_NODE_TYPE,
   CANVAS_TASK_NODE_TYPE,
   CANVAS_TEXT_NODE_TYPE,
 } from "@/lib/canvas/react-flow-canvas-adapter";
@@ -17,6 +18,8 @@ export function canvasMiniMapNodeColor(node: Pick<Node, "type">): string {
       return "#d97706";
     case CANVAS_SHAPE_NODE_TYPE:
       return "#d97706";
+    case CANVAS_SUMMARY_NODE_TYPE:
+      return "#d6a900";
     case CANVAS_TEXT_NODE_TYPE:
     default:
       return "#57534e";

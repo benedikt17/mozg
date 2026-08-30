@@ -76,6 +76,7 @@ describe("Canvas PDF reader UI", () => {
     const shellStyles = source("src/prototype/desktop-shell.css");
 
     expect(shell).toContain("canvas-pdf-reader");
+    expect(shell).toContain("canvas-summary-reader");
     expect(readerStyles).toMatch(
       /\.pdfReader,\s*\.articleReader\s*\{[^}]*position: fixed;/u,
     );
@@ -83,7 +84,7 @@ describe("Canvas PDF reader UI", () => {
       /\.pdfReader,\s*\.articleReader\s*\{[^}]*inset: 0 0 0 auto;/u,
     );
     expect(shellStyles).toContain(
-      ":scope:has(.canvas-pdf-reader, .canvas-article-reader) .project-workspace",
+      ":scope:has(.canvas-pdf-reader, .canvas-article-reader, .canvas-summary-reader) .project-workspace",
     );
     expect(shellStyles).toContain(
       "padding-right: var(--canvas-pdf-reader-width);",

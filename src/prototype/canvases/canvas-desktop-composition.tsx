@@ -372,6 +372,7 @@ export function CanvasDesktopToolbar({
   onAddText,
   onAddRectangle,
   onAddCircle,
+  onAddSummary,
   onCloseFilePicker,
   onCloseArticlePicker,
   onCloseTaskPicker,
@@ -425,6 +426,7 @@ export function CanvasDesktopToolbar({
   onAddText: () => void;
   onAddRectangle: () => void;
   onAddCircle: () => void;
+  onAddSummary: () => void;
   onCloseFilePicker: () => void;
   onCloseArticlePicker: () => void;
   onCloseTaskPicker: () => void;
@@ -705,6 +707,14 @@ export function CanvasDesktopToolbar({
           label="Добавить круг"
           onClick={onAddCircle}
           title="Круг"
+          variant="quiet"
+        />
+        <IconButton
+          disabled={!isReady}
+          icon={<span aria-hidden="true">Σ</span>}
+          label="Добавить сумму"
+          onClick={onAddSummary}
+          title="Сумма"
           variant="quiet"
         />
         <div

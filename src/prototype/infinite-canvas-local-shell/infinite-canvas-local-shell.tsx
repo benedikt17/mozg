@@ -118,6 +118,7 @@ import {
   CANVAS_IMAGE_NODE_TYPE,
   CANVAS_PDF_NODE_TYPE,
   CANVAS_SHAPE_NODE_TYPE,
+  CANVAS_SUMMARY_NODE_TYPE,
   CANVAS_TASK_NODE_TYPE,
   CANVAS_TEXT_NODE_TYPE,
   CANVAS_EDGE_TYPE,
@@ -126,6 +127,7 @@ import {
   canvasDocumentToImageNodes,
   canvasDocumentToPdfNodes,
   canvasDocumentToShapeNodes,
+  canvasDocumentToSummaryNodes,
   canvasDocumentToTaskNodes,
   canvasDocumentToTextNodes,
   canvasImageAdapterDependenciesForCanvas,
@@ -138,6 +140,8 @@ import {
   createCanvasEdgeFromConnection,
   createCanvasShapeFlowNode,
   createCanvasShapeId,
+  createCanvasSummaryFlowNode,
+  createCanvasSummaryId,
   createCanvasTextFlowNode,
   findCachedCanvasImagePayload,
   ingestCanvasImageTransferToNodes,
@@ -150,6 +154,7 @@ import {
   type CanvasImageFlowNode,
   type CanvasArticleFlowNode,
   type CanvasShapeFlowNode,
+  type CanvasSummaryFlowNode,
   type CanvasTaskFlowNode,
   type CanvasPdfFlowNode,
   type CanvasTextFlowNode,
@@ -165,7 +170,13 @@ import {
   type CanvasHandleSide,
   type CanvasShapeNode,
   type CanvasShapeVariant,
+  type CanvasSummaryNode,
 } from "@/lib/canvas/canvas-document";
+import {
+  canvasSummaryEntries,
+  isCanvasSummarySourceNode,
+  nextCanvasSummaryOrder,
+} from "@/lib/canvas/canvas-summary";
 import type { CanvasAssetVariantRepository } from "@/lib/canvas/canvas-image-variants";
 import {
   canvasArrowsToEndpointArrows,
@@ -1002,6 +1013,32 @@ function ArticleNodeBody({
   );
 }
 
+function SummaryNodeBody({
+  data,
+  selected,
+}: NodeProps<CanvasSummaryFlowNode>): React.JSX.Element {
+  return (
+    <CanvasNodeFrame
+      selected={selected}
+      minWidth={132}
+      minHeight={80}
+      className={`${styles.summaryNodeFrame} ${
+        data.readerOpen ? styles.summaryNodeFrameReaderOpen : ""
+      }`.trim()}
+      connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
+    >
+      <div className={styles.summaryNodeContent}>
+        <span aria-hidden="true" className={styles.summaryNodeSymbol}>
+          Σ
+        </span>
+        <span className={styles.summaryNodeTitle} title={data.title}>
+          {data.title}
+        </span>
+      </div>
+    </CanvasNodeFrame>
+  );
+}
+
 function TextNodeBody({
   data,
   selected,
@@ -1610,6 +1647,7 @@ const nodeTypes = {
   [CANVAS_IMAGE_NODE_TYPE]: ImageNodeBody,
   [CANVAS_PDF_NODE_TYPE]: PdfNodeBody,
   [CANVAS_ARTICLE_NODE_TYPE]: ArticleNodeBody,
+  [CANVAS_SUMMARY_NODE_TYPE]: SummaryNodeBody,
   [CANVAS_TASK_NODE_TYPE]: TaskNodeBody,
   [CANVAS_TEXT_NODE_TYPE]: TextNodeBody,
   [CANVAS_SHAPE_NODE_TYPE]: ShapeNodeBody,
@@ -1813,19 +1851,42 @@ function InfiniteCanvasLocalShellSurface({
         : null,
     [knowledgeArticles, shellState.openArticleId],
   );
+  const [openSummaryNodeId, setOpenSummaryNodeId] = useState<string | null>(
+    null,
+  );
+  const openSummary = useMemo(
+    () =>
+      openSummaryNodeId
+        ? (shellState.document.nodes.find(
+            (node): node is CanvasSummaryNode =>
+              node.id === openSummaryNodeId && node.kind === "summary",
+          ) ?? null)
+        : null,
+    [openSummaryNodeId, shellState.document.nodes],
+  );
+  const openSummaryEntries = useMemo(
+    () =>
+      openSummary
+        ? canvasSummaryEntries(shellState.document, openSummary.id)
+        : [],
+    [openSummary, shellState.document],
+  );
   const renderedNodes = useMemo<CanvasFlowNode[]>(() => {
     const openPdfNodeId = openPdf?.nodeId;
     const openArticleId = shellState.openArticleId;
-    if (!openPdfNodeId && !openArticleId) return nodes;
+    if (!openPdfNodeId && !openArticleId && !openSummaryNodeId) return nodes;
     return nodes.map((node) =>
       node.type === CANVAS_PDF_NODE_TYPE && node.id === openPdfNodeId
         ? { ...node, data: { ...node.data, readerOpen: true } }
         : node.type === CANVAS_ARTICLE_NODE_TYPE &&
             node.data.articleId === openArticleId
           ? { ...node, data: { ...node.data, readerOpen: true } }
-          : node,
+          : node.type === CANVAS_SUMMARY_NODE_TYPE &&
+              node.id === openSummaryNodeId
+            ? { ...node, data: { ...node.data, readerOpen: true } }
+            : node,
     );
-  }, [nodes, openPdf?.nodeId, shellState.openArticleId]);
+  }, [nodes, openPdf?.nodeId, openSummaryNodeId, shellState.openArticleId]);
   const [fileQuery, setFileQuery] = useState("");
   const [fileCatalog, setFileCatalog] = useState<ProjectFileRecord[]>([]);
   const [fileSearchStatus, setFileSearchStatus] = useState<
@@ -2324,8 +2385,28 @@ function InfiniteCanvasLocalShellSurface({
       if (touchViewportGestureActiveRef.current) return;
       const edge = createCanvasEdgeFromConnection(connection);
       if (!edge) return;
+      const source = controller.state.document.nodes.find(
+        (node) => node.id === edge.sourceNodeId,
+      );
+      const target = controller.state.document.nodes.find(
+        (node) => node.id === edge.targetNodeId,
+      );
+      if (source?.kind === "summary") return;
+      const orderedEdge =
+        target?.kind === "summary"
+          ? isCanvasSummarySourceNode(source)
+            ? {
+                ...edge,
+                summaryOrder: nextCanvasSummaryOrder(
+                  controller.state.document,
+                  target.id,
+                ),
+              }
+            : null
+          : edge;
+      if (!orderedEdge) return;
       const attachedEdge = autoAttachCanvasEdge(
-        edge,
+        orderedEdge,
         canvasFlowNodeBoundsRecords(nodesRef.current),
       );
       const previousEdgeCount = controller.state.document.edges.length;
@@ -2542,6 +2623,7 @@ function InfiniteCanvasLocalShellSurface({
         }),
         ...canvasDocumentToTextNodes(nextState.document),
         ...canvasDocumentToShapeNodes(nextState.document),
+        ...canvasDocumentToSummaryNodes(nextState.document),
       ];
       const restoredEdges = canvasDocumentToEdges(
         nextState.document,
@@ -3442,6 +3524,43 @@ function InfiniteCanvasLocalShellSurface({
     ],
   );
 
+  const createSummaryNode = useCallback(() => {
+    if (!shellState.canvasId) return;
+    const size = { width: 156, height: 96 };
+    const center = centerPosition();
+    const canonical: CanvasSummaryNode = {
+      id: createCanvasSummaryId(),
+      kind: "summary",
+      title: "Сумма",
+      position: {
+        x: center.x - size.width / 2,
+        y: center.y - size.height / 2,
+      },
+      size,
+      zIndex:
+        shellState.document.nodes.reduce(
+          (maximum, current) => Math.max(maximum, current.zIndex),
+          0,
+        ) + 1,
+    };
+    const runtime = createCanvasSummaryFlowNode(canonical);
+    setNodes((current) => [
+      ...current.map((item) => ({ ...item, selected: false })),
+      { ...runtime, selected: true },
+    ]);
+    controller.insertCanvasNodes([canonical]);
+    syncState();
+    scheduleSave();
+  }, [
+    centerPosition,
+    controller,
+    scheduleSave,
+    setNodes,
+    shellState.canvasId,
+    shellState.document.nodes,
+    syncState,
+  ]);
+
   const createTaskNode = useCallback(
     (task: CanvasTaskProjection) => {
       if (!shellState.canvasId || !taskBridge || !taskWorkspaceId) return;
@@ -4156,6 +4275,7 @@ function InfiniteCanvasLocalShellSurface({
           fileId: node.data.fileId,
         });
         saveOpenArticleId(null);
+        setOpenSummaryNodeId(null);
         setPdfFullscreen(false);
         setOpenPdf((current) => {
           if (current) URL.revokeObjectURL(current.objectUrl);
@@ -4197,6 +4317,12 @@ function InfiniteCanvasLocalShellSurface({
     [leaveReaderLayout, openPdf?.nodeId],
   );
 
+  const closeSummaryReader = useCallback(() => {
+    const nodeId = openSummaryNodeId;
+    setOpenSummaryNodeId(null);
+    leaveReaderLayout(nodeId);
+  }, [leaveReaderLayout, openSummaryNodeId]);
+
   const closeArticleReader = useCallback(() => {
     const nodeId = nodesRef.current.find(
       (node) =>
@@ -4211,7 +4337,19 @@ function InfiniteCanvasLocalShellSurface({
     (node: CanvasFlowNode) => {
       if (node.type !== CANVAS_ARTICLE_NODE_TYPE) return;
       closePdfReader(false);
+      setOpenSummaryNodeId(null);
       saveOpenArticleId(node.data.articleId);
+      enterReaderLayout(node.id);
+    },
+    [closePdfReader, enterReaderLayout, saveOpenArticleId],
+  );
+
+  const openSummaryNode = useCallback(
+    (node: CanvasFlowNode) => {
+      if (node.type !== CANVAS_SUMMARY_NODE_TYPE) return;
+      closePdfReader(false);
+      saveOpenArticleId(null);
+      setOpenSummaryNodeId(node.id);
       enterReaderLayout(node.id);
     },
     [closePdfReader, enterReaderLayout, saveOpenArticleId],
@@ -5016,6 +5154,7 @@ function InfiniteCanvasLocalShellSurface({
       onAddText={() => createTextNode(null, "", true)}
       onAddRectangle={() => createShapeNode("rectangle")}
       onAddCircle={() => createShapeNode("circle")}
+      onAddSummary={createSummaryNode}
       onCloseArticlePicker={() => setArticlePickerOpen(false)}
       onCloseFilePicker={() => setFilePickerOpen(false)}
       onCloseTaskPicker={() => setTaskPickerOpen(false)}
@@ -5240,6 +5379,11 @@ function InfiniteCanvasLocalShellSurface({
                 event.preventDefault();
                 void openPdfNode(node);
               }}
+              onNodeClick={(event, node) => {
+                if (node.type !== CANVAS_SUMMARY_NODE_TYPE) return;
+                event.preventDefault();
+                openSummaryNode(node);
+              }}
               onConnect={handleConnect}
               connectionMode={ConnectionMode.Loose}
               connectionLineComponent={CanvasConnectionLine}
@@ -5378,6 +5522,47 @@ function InfiniteCanvasLocalShellSurface({
                 статью» в верхней панели.
               </div>
             )}
+          </aside>
+        ) : null}
+        {openSummary ? (
+          <aside
+            aria-label="Просмотр суммы"
+            className={`${styles.pdfReader} ${styles.summaryReader} canvas-summary-reader`}
+          >
+            <header className={styles.pdfReaderHeader}>
+              <strong title={openSummary.title}>{openSummary.title}</strong>
+              <div className={styles.pdfReaderHeaderActions}>
+                <button
+                  aria-label="Закрыть сумму"
+                  onClick={closeSummaryReader}
+                  title="Закрыть сумму"
+                  type="button"
+                >
+                  <UiIcon name="close" />
+                </button>
+              </div>
+            </header>
+            <article
+              aria-label={openSummary.title}
+              className={styles.summaryReaderDocument}
+            >
+              {openSummaryEntries.length > 0 ? (
+                <ol className={styles.summaryReaderList}>
+                  {openSummaryEntries.map((entry) => (
+                    <li key={entry.nodeId}>
+                      <MarkdownStringPreview
+                        contentId={`summary:${openSummary.id}:${entry.nodeId}`}
+                        markdown={entry.markdown}
+                      />
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className={styles.summaryReaderEmpty}>
+                  Подключите к «Сумме» текстовые или геометрические ноды.
+                </p>
+              )}
+            </article>
           </aside>
         ) : null}
       </div>,
@@ -5587,7 +5772,7 @@ function InfiniteCanvasLocalShellSurface({
         >
           <ReactFlow
             className={`${styles.canvasViewport} ${viewportVisible ? "" : styles.canvasViewportHidden}`}
-            nodes={nodes}
+            nodes={renderedNodes}
             edges={edges}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
@@ -5604,6 +5789,11 @@ function InfiniteCanvasLocalShellSurface({
               if (node.type !== CANVAS_PDF_NODE_TYPE) return;
               event.preventDefault();
               void openPdfNode(node);
+            }}
+            onNodeClick={(event, node) => {
+              if (node.type !== CANVAS_SUMMARY_NODE_TYPE) return;
+              event.preventDefault();
+              openSummaryNode(node);
             }}
             onConnect={handleConnect}
             connectionMode={ConnectionMode.Loose}
