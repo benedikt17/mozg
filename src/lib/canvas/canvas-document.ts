@@ -46,6 +46,8 @@ export type CanvasNodeBase = {
   position: CanvasPoint;
   size: CanvasSize;
   zIndex: number;
+  /** Persisted branch state; hidden descendants remain a runtime projection. */
+  branchCollapsed?: boolean;
 };
 
 export type CanvasTaskNode = CanvasNodeBase & {
@@ -499,15 +501,15 @@ function parseNode(
       "This Canvas node kind requires CanvasDocumentV2",
     );
   }
-  const optionalKeys = ["lastKnownTitle"];
+  const branchCollapseOptionalKey = ["branchCollapsed"];
   const allowedKeys =
     kind === "task" || kind === "article"
-      ? optionalKeys
+      ? ["lastKnownTitle", ...branchCollapseOptionalKey]
       : kind === "text"
-        ? ["style"]
+        ? ["style", ...branchCollapseOptionalKey]
         : kind === "pdf"
-          ? ["lastKnownName"]
-          : [];
+          ? ["lastKnownName", ...branchCollapseOptionalKey]
+          : branchCollapseOptionalKey;
   const hasImageAssetId =
     kind === "image" && Object.prototype.hasOwnProperty.call(node, "assetId");
   const hasImageFileId =
@@ -557,6 +559,14 @@ function parseNode(
   const position = requirePoint(node.position, `${path}.position`);
   const size = requireSize(node.size, `${path}.size`);
   const zIndex = requireZIndex(node.zIndex, `${path}.zIndex`);
+  const branchCollapsed = Object.prototype.hasOwnProperty.call(
+    node,
+    "branchCollapsed",
+  )
+    ? requireBoolean(node.branchCollapsed, `${path}.branchCollapsed`)
+    : undefined;
+  const branchCollapse =
+    branchCollapsed === undefined ? {} : { branchCollapsed };
 
   if (kind === "summary") {
     const title = requireString(node.title, `${path}.title`);
@@ -587,6 +597,7 @@ function parseNode(
       position,
       size,
       zIndex,
+      ...branchCollapse,
       taskId: requireIdentifier(node.taskId, `${path}.taskId`),
     };
     if (Object.prototype.hasOwnProperty.call(node, "lastKnownTitle")) {
@@ -605,6 +616,7 @@ function parseNode(
       position,
       size,
       zIndex,
+      ...branchCollapse,
       articleId: requireIdentifier(node.articleId, `${path}.articleId`),
     };
     if (Object.prototype.hasOwnProperty.call(node, "lastKnownTitle")) {
@@ -631,6 +643,7 @@ function parseNode(
       position,
       size,
       zIndex,
+      ...branchCollapse,
       markdown,
       ...(Object.prototype.hasOwnProperty.call(node, "style")
         ? { style: requireCanvasTextStyle(node.style, `${path}.style`) }
@@ -662,6 +675,7 @@ function parseNode(
       position,
       size,
       zIndex,
+      ...branchCollapse,
       markdown,
       style: requireCanvasShapeStyle(node.style, `${path}.style`),
     };
@@ -674,6 +688,7 @@ function parseNode(
       position,
       size,
       zIndex,
+      ...branchCollapse,
       fileId: requireIdentifier(node.fileId, `${path}.fileId`),
     };
     if (Object.prototype.hasOwnProperty.call(node, "lastKnownName")) {
@@ -695,6 +710,7 @@ function parseNode(
     position,
     size,
     zIndex,
+    ...branchCollapse,
     ...(hasImageFileId
       ? { fileId: requireIdentifier(node.fileId, `${path}.fileId`) }
       : { assetId: requireIdentifier(node.assetId, `${path}.assetId`) }),

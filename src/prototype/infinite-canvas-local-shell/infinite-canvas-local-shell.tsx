@@ -102,6 +102,12 @@ import {
   type CanvasAltDragDuplicateSession,
 } from "@/lib/canvas/canvas-alt-drag-duplicate";
 import {
+  CANVAS_BRANCH_COLLAPSE_EVENT,
+  canvasBranchCollapsedNodeIds,
+  projectCanvasBranchCollapse,
+  type CanvasBranchCollapseEventDetail,
+} from "@/lib/canvas/canvas-branch-collapse";
+import {
   CANVAS_IMAGE_NODE_TYPE,
   CANVAS_PDF_NODE_TYPE,
   CANVAS_SHAPE_NODE_TYPE,
@@ -1972,6 +1978,31 @@ function InfiniteCanvasLocalShellSurface({
   }, [controller, syncState]);
 
   useEffect(() => {
+    const persistBranchCollapse = (event: Event): void => {
+      if (!(event instanceof CustomEvent)) return;
+      const detail = event.detail as CanvasBranchCollapseEventDetail;
+      if (
+        !detail ||
+        typeof detail.nodeId !== "string" ||
+        typeof detail.collapsed !== "boolean"
+      )
+        return;
+      controller.setCanvasBranchCollapsed(detail.nodeId, detail.collapsed);
+      syncState();
+      scheduleSave();
+    };
+    window.addEventListener(
+      CANVAS_BRANCH_COLLAPSE_EVENT,
+      persistBranchCollapse,
+    );
+    return () =>
+      window.removeEventListener(
+        CANVAS_BRANCH_COLLAPSE_EVENT,
+        persistBranchCollapse,
+      );
+  }, [controller, scheduleSave, syncState]);
+
+  useEffect(() => {
     const bounds = canvasFlowNodeBoundsRecords(nodes);
     const signature = bounds
       .map(
@@ -2213,8 +2244,18 @@ function InfiniteCanvasLocalShellSurface({
         ...canvasDocumentToShapeNodes(nextState.document),
         ...canvasDocumentToSummaryNodes(nextState.document),
       ];
-      setNodes(placeholders);
-      setEdges(canvasDocumentToEdges(nextState.document, handleEdgeUpdate));
+      const restoredEdges = canvasDocumentToEdges(
+        nextState.document,
+        handleEdgeUpdate,
+      );
+      const projected = projectCanvasBranchCollapse(
+        placeholders,
+        restoredEdges,
+        undefined,
+        canvasBranchCollapsedNodeIds(nextState.document.nodes),
+      );
+      setNodes(projected.nodes);
+      setEdges(projected.edges);
       hydratingRef.current = true;
       setRestoreStats(EMPTY_RESTORE_STATS);
       setLoadingLifecycle("skeleton-ready");
@@ -2235,7 +2276,10 @@ function InfiniteCanvasLocalShellSurface({
             workspaceId: shellWorkspaceId,
             canvasId: nextState.canvasId ?? "",
           });
-          copy[index] = { ...existing, data: { ...node.data } };
+          copy[index] = {
+            ...existing,
+            data: { ...existing.data, ...node.data },
+          };
           return copy;
         });
       };
@@ -2457,7 +2501,10 @@ function InfiniteCanvasLocalShellSurface({
                   canvasId: adapterDependencies.canvasId ?? "",
                 });
                 const next = [...current];
-                next[index] = { ...existing, data: { ...node.data } };
+                next[index] = {
+                  ...existing,
+                  data: { ...existing.data, ...node.data },
+                };
                 return next;
               });
             },
@@ -2506,7 +2553,10 @@ function InfiniteCanvasLocalShellSurface({
                 canvasId: adapterDependencies.canvasId ?? "",
               });
               const next = [...current];
-              next[index] = { ...existing, data: { ...node.data } };
+              next[index] = {
+                ...existing,
+                data: { ...existing.data, ...node.data },
+              };
               return next;
             });
           },
@@ -2552,13 +2602,21 @@ function InfiniteCanvasLocalShellSurface({
       });
       // Keep the runtime-cache composition contract explicit for desktop-shell checks:
       // setNodes(withCachedAssetPayloads(skeleton, snapshot.assetPayloads))
-      setNodes(
+      const cachedEdges = canvasDocumentToEdges(
+        cachedState.document,
+        handleEdgeUpdate,
+      );
+      const projected = projectCanvasBranchCollapse(
         withCachedAssetPayloads(skeleton, snapshot.assetPayloads, {
           workspaceId: shellWorkspaceId,
           canvasId: cachedState.canvasId,
         }),
+        cachedEdges,
+        undefined,
+        canvasBranchCollapsedNodeIds(cachedState.document.nodes),
       );
-      setEdges(canvasDocumentToEdges(cachedState.document, handleEdgeUpdate));
+      setNodes(projected.nodes);
+      setEdges(projected.edges);
       setShellState(cachedState);
       setRenameTitle(cachedState.title);
       hydratingRef.current = false;

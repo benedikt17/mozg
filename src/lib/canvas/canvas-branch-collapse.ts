@@ -2,6 +2,12 @@ import type { Edge, Node } from "@xyflow/react";
 
 export const CANVAS_BRANCH_RUNTIME_KEY = "__mozgBranch";
 const CANVAS_BRANCH_EDGE_RUNTIME_KEY = "__mozgBranchHidden";
+export const CANVAS_BRANCH_COLLAPSE_EVENT = "mozg:canvas-branch-collapse";
+
+export type CanvasBranchCollapseEventDetail = {
+  nodeId: string;
+  collapsed: boolean;
+};
 
 export type CanvasBranchRuntimeState = {
   collapsed: boolean;
@@ -28,6 +34,27 @@ export function canvasBranchRuntimeState(
     typeof candidate.hiddenByBranch === "boolean"
     ? candidate
     : null;
+}
+
+export function canvasBranchCollapsedNodeIds(
+  nodes: readonly { id: string; branchCollapsed?: boolean }[],
+): Set<string> {
+  return new Set(
+    nodes
+      .filter((node) => node.branchCollapsed === true)
+      .map((node) => node.id),
+  );
+}
+
+export function dispatchCanvasBranchCollapse(
+  detail: CanvasBranchCollapseEventDetail,
+): void {
+  window.dispatchEvent(
+    new CustomEvent<CanvasBranchCollapseEventDetail>(
+      CANVAS_BRANCH_COLLAPSE_EVENT,
+      { detail },
+    ),
+  );
 }
 
 function adjacencyForEdges(edges: readonly Edge[]): Map<string, Set<string>> {
@@ -63,9 +90,10 @@ export function projectCanvasBranchCollapse<
   nodes: readonly TNode[],
   edges: readonly TEdge[],
   toggledNodeId?: string,
+  persistedCollapsedNodeIds: Iterable<string> = [],
 ): { nodes: TNode[]; edges: TEdge[] } {
   const adjacency = adjacencyForEdges(edges);
-  const collapsedIds = new Set<string>();
+  const collapsedIds = new Set(persistedCollapsedNodeIds);
 
   for (const node of nodes) {
     if (canvasBranchRuntimeState(node.data)?.collapsed)
