@@ -40,6 +40,7 @@ export async function handleKnowledgeBackupCron(
 function toPublicResult(result: AutomaticKnowledgeBackupResult) {
   return {
     ok: true,
+    canvasCount: result.canvasCount,
     documentCount: result.documentCount,
     fileName: result.fileName,
     kind: result.kind,

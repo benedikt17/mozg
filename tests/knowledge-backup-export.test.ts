@@ -78,12 +78,14 @@ describe("Knowledge backup export", () => {
     ).toBe("# Первая\n\nТекст");
     expect(manifest).toMatchObject({
       activeDocumentCount: 2,
+      canvasCount: 0,
+      canvases: [],
       deletedDocumentCount: 1,
       documentCount: 3,
       format: "mozg-knowledge-backup",
       generatedAt: generatedAt.toISOString(),
       projectCount: 1,
-      version: 1,
+      version: 2,
     });
     expect(manifest.documents.map((document) => document.documentId)).toEqual([
       "doc-1",
@@ -117,6 +119,41 @@ describe("Knowledge backup export", () => {
     expect(files.get("_Корзина/Проект- A/Корзина-/Удалённая-.md")).toBe(
       "Удалённый текст",
     );
+  });
+
+  it("keeps appended portable Canvas entries in the same archive", () => {
+    const archive = createKnowledgeBackup(
+      {
+        ...backupSource(),
+        canvasBackup: {
+          canvases: [
+            {
+              canvasId: "canvas-yaga",
+              nodeCount: 3,
+              path: "Холсты/Проект- A/Яга",
+              projectId: "project-a",
+              revision: 4,
+              title: "Яга",
+            },
+          ],
+          entries: [
+            {
+              content: "<html>offline</html>",
+              directory: false,
+              path: "Холсты/Проект- A/Яга/index.html",
+            },
+          ],
+        },
+      },
+      new Date("2026-08-16T23:59:59.000Z"),
+    );
+    const files = readStoredZipFiles(archive.bytes);
+
+    expect(files.get("Холсты/Проект- A/Яга/index.html")).toBe(
+      "<html>offline</html>",
+    );
+    expect(files.get("manifest.json")).toContain('"canvasCount": 1');
+    expect(files.get("manifest.json")).toContain('"canvas-yaga"');
   });
 });
 

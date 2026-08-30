@@ -3,12 +3,14 @@ import type {
   CanvasDocumentV2,
   CanvasNode,
 } from "@/lib/canvas/canvas-document";
-import type { ProjectFileRecord } from "@/lib/files/project-file-repository";
-
-export type CanvasPortableBackupFile = Pick<
-  ProjectFileRecord,
-  "byteSize" | "checksum" | "id" | "mimeType" | "name" | "originalName"
->;
+export type CanvasPortableBackupFile = {
+  byteSize: number;
+  checksum: string | null;
+  id: string;
+  mimeType: string | null;
+  name: string;
+  originalName: string;
+};
 
 export type CanvasPortableBackupArticle = {
   articleId: string;
@@ -77,6 +79,25 @@ export function createCanvasPortableBackup(
   source: CanvasPortableBackupSource,
   generatedAt = new Date(),
 ): CanvasPortableBackupArchive {
+  const { entries, manifest } = createCanvasPortableBackupEntries(
+    source,
+    generatedAt,
+  );
+  return {
+    bytes: createStoreZip(entries, generatedAt),
+    entries,
+    fileName: canvasPortableBackupFileName(source.title, generatedAt),
+    manifest,
+  };
+}
+
+export function createCanvasPortableBackupEntries(
+  source: CanvasPortableBackupSource,
+  generatedAt = new Date(),
+): {
+  entries: CanvasPortableBackupEntry[];
+  manifest: CanvasPortableBackupManifest;
+} {
   const manifest = createCanvasPortableManifest(source, generatedAt);
   const entries: CanvasPortableBackupEntry[] = [
     {
@@ -98,12 +119,7 @@ export function createCanvasPortableBackup(
     },
     ...portableArticleEntries(source.articles ?? [], manifest),
   ];
-  return {
-    bytes: createStoreZip(entries, generatedAt),
-    entries,
-    fileName: canvasPortableBackupFileName(source.title, generatedAt),
-    manifest,
-  };
+  return { entries, manifest };
 }
 
 export function canvasPortableBackupFileName(

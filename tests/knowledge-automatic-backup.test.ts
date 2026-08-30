@@ -9,10 +9,10 @@ describe("automatic Knowledge backup format", () => {
 
   it("uses stable daily and weekly filenames", () => {
     expect(automaticKnowledgeBackupFileName("daily", generatedAt)).toBe(
-      "MOZG-Knowledge-Daily-2026-08-16.zip",
+      "MOZG-Backup-Daily-2026-08-16.zip",
     );
     expect(automaticKnowledgeBackupFileName("weekly", generatedAt)).toBe(
-      "MOZG-Knowledge-Weekly-2026-08-16.zip",
+      "MOZG-Backup-Weekly-2026-08-16.zip",
     );
   });
 
@@ -20,6 +20,7 @@ describe("automatic Knowledge backup format", () => {
     expect(
       createKnowledgeBackupCaption({
         activeDocumentCount: 85,
+        canvasCount: 12,
         deletedDocumentCount: 17,
         documentCount: 102,
         generatedAt,
@@ -29,10 +30,11 @@ describe("automatic Knowledge backup format", () => {
       }),
     ).toBe(
       [
-        "MOZG · Знания · Контрольная недельная копия",
+        "MOZG · Знания + Холсты · Контрольная недельная копия",
         "Дата: 2026-08-16 UTC",
         "Workspace: Личное пространство",
         "Документов: 102 · активных 85 · в Корзине 17",
+        "Холстов: 12 · без вложенных бинарных файлов",
         "Revision: 3620",
       ].join("\n"),
     );

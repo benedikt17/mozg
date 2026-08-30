@@ -8,6 +8,8 @@ import {
   type DesktopCloudSnapshotRow,
 } from "@/prototype/persistence/cloud-snapshot-bridge";
 import { createKnowledgeBackup } from "@/prototype/knowledge/knowledge-backup-export";
+import { CANVAS_DOCUMENT_V2_SCHEMA_VERSION } from "@/lib/canvas/canvas-document";
+import { createAutomaticCanvasBackupBundle } from "./automatic-canvas-backup";
 import {
   automaticKnowledgeBackupFileName,
   createKnowledgeBackupCaption,
@@ -46,6 +48,7 @@ const telegramResponseSchema = z
   .passthrough();
 
 export type AutomaticKnowledgeBackupResult = {
+  canvasCount: number;
   documentCount: number;
   fileName: string;
   kind: KnowledgeBackupKind;
@@ -98,8 +101,60 @@ export async function runAutomaticKnowledgeBackup(
   }
 
   const snapshot = parsed.bootstrap.snapshot;
+  const [{ data: canvasRows, error: canvasError }, { data: groupRows, error: groupError }, { data: fileRows, error: fileError }] =
+    await Promise.all([
+      supabase
+        .from("canvases")
+        .select("id, project_id, group_id, title, document, revision")
+        .eq("workspace_id", workspace.id)
+        .eq("schema_version", CANVAS_DOCUMENT_V2_SCHEMA_VERSION)
+        .is("deleted_at", null),
+      supabase
+        .from("canvas_groups")
+        .select("id, project_id, parent_group_id, title")
+        .eq("workspace_id", workspace.id)
+        .is("deleted_at", null),
+      supabase
+        .from("project_files")
+        .select("id, byte_size, checksum, mime_type, name, original_name")
+        .eq("workspace_id", workspace.id)
+        .is("deleted_at", null),
+    ]);
+  if (canvasError || groupError || fileError) {
+    throw new Error("Canvas backup snapshot is unavailable");
+  }
+  const canvasBackup = createAutomaticCanvasBackupBundle(
+    {
+      canvases: (canvasRows ?? []).map((row) => ({
+        document: row.document,
+        groupId: row.group_id,
+        id: row.id,
+        projectId: row.project_id,
+        revision: row.revision,
+        title: row.title,
+      })),
+      documents: snapshot.documents,
+      files: (fileRows ?? []).map((row) => ({
+        byteSize: row.byte_size,
+        checksum: row.checksum,
+        id: row.id,
+        mimeType: row.mime_type,
+        name: row.name,
+        originalName: row.original_name,
+      })),
+      groups: (groupRows ?? []).map((row) => ({
+        id: row.id,
+        parentGroupId: row.parent_group_id,
+        projectId: row.project_id,
+        title: row.title,
+      })),
+      projects: snapshot.projects,
+    },
+    generatedAt,
+  );
   const archive = createKnowledgeBackup(
     {
+      canvasBackup,
       documents: snapshot.documents,
       knowledgeFolders: snapshot.knowledgeFolders,
       projects: snapshot.projects,
@@ -113,6 +168,7 @@ export async function runAutomaticKnowledgeBackup(
   const fileName = automaticKnowledgeBackupFileName(kind, generatedAt);
   const caption = createKnowledgeBackupCaption({
     activeDocumentCount: archive.manifest.activeDocumentCount,
+    canvasCount: archive.manifest.canvasCount,
     deletedDocumentCount: archive.manifest.deletedDocumentCount,
     documentCount: archive.manifest.documentCount,
     generatedAt,
@@ -132,6 +188,7 @@ export async function runAutomaticKnowledgeBackup(
   });
 
   return {
+    canvasCount: archive.manifest.canvasCount,
     documentCount: archive.manifest.documentCount,
     fileName,
     kind,

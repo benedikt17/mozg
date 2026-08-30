@@ -10,7 +10,9 @@ import type {
 export type KnowledgeBackupSource = Pick<
   DesktopPrototypeState,
   "documents" | "knowledgeFolders" | "projects"
->;
+> & {
+  canvasBackup?: KnowledgeBackupCanvasBundle;
+};
 
 export type KnowledgeBackupEntry = {
   content: string;
@@ -26,14 +28,30 @@ export type KnowledgeBackupManifestDocument = {
   title: string;
 };
 
+export type KnowledgeBackupManifestCanvas = {
+  canvasId: string;
+  nodeCount: number;
+  path: string;
+  projectId: string;
+  revision: number;
+  title: string;
+};
+
+export type KnowledgeBackupCanvasBundle = {
+  canvases: KnowledgeBackupManifestCanvas[];
+  entries: KnowledgeBackupEntry[];
+};
+
 export type KnowledgeBackupManifest = {
   activeDocumentCount: number;
+  canvasCount: number;
+  canvases: KnowledgeBackupManifestCanvas[];
   deletedDocumentCount: number;
   documentCount: number;
   format: "mozg-knowledge-backup";
   generatedAt: string;
   projectCount: number;
-  version: 1;
+  version: 2;
   documents: KnowledgeBackupManifestDocument[];
 };
 
@@ -165,16 +183,20 @@ export function createKnowledgeBackupEntries(
     addDirectory("_Корзина");
     exportDocuments(deletedDocuments, "_Корзина");
   }
+  const canvasBackup = source.canvasBackup;
+  if (canvasBackup) entries.push(...canvasBackup.entries);
 
   const manifest: KnowledgeBackupManifest = {
     activeDocumentCount: activeDocuments.length,
+    canvasCount: canvasBackup?.canvases.length ?? 0,
+    canvases: canvasBackup?.canvases ?? [],
     deletedDocumentCount: deletedDocuments.length,
     documentCount: source.documents.length,
     documents,
     format: "mozg-knowledge-backup",
     generatedAt: generatedAt.toISOString(),
     projectCount: projects.length,
-    version: 1,
+    version: 2,
   };
 
   entries.unshift({

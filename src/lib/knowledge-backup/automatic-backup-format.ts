@@ -2,6 +2,7 @@ export type KnowledgeBackupKind = "daily" | "weekly";
 
 export type KnowledgeBackupCaptionInput = {
   activeDocumentCount: number;
+  canvasCount: number;
   deletedDocumentCount: number;
   documentCount: number;
   generatedAt: Date;
@@ -16,11 +17,12 @@ export function automaticKnowledgeBackupFileName(
 ): string {
   const date = formatUtcDate(generatedAt);
   const label = kind === "daily" ? "Daily" : "Weekly";
-  return `MOZG-Knowledge-${label}-${date}.zip`;
+  return `MOZG-Backup-${label}-${date}.zip`;
 }
 
 export function createKnowledgeBackupCaption({
   activeDocumentCount,
+  canvasCount,
   deletedDocumentCount,
   documentCount,
   generatedAt,
@@ -33,10 +35,11 @@ export function createKnowledgeBackupCaption({
       ? "Ежедневная резервная копия"
       : "Контрольная недельная копия";
   return [
-    `MOZG · Знания · ${label}`,
+    `MOZG · Знания + Холсты · ${label}`,
     `Дата: ${formatUtcDate(generatedAt)} UTC`,
     `Workspace: ${workspaceName}`,
     `Документов: ${documentCount} · активных ${activeDocumentCount} · в Корзине ${deletedDocumentCount}`,
+    `Холстов: ${canvasCount} · без вложенных бинарных файлов`,
     `Revision: ${revision}`,
   ].join("\n");
 }
