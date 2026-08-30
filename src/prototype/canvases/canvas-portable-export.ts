@@ -183,8 +183,13 @@ function createPortableCanvasViewer({
     .meta { margin:8px 0 0; color:#6c675f; font-size:14px; }
     main { max-width:1500px; margin:0 auto; padding:24px clamp(18px,4vw,56px) 56px; }
     .notice { margin:0 0 18px; padding:12px 14px; border:1px solid #ead7a7; background:#fff8e5; border-radius:10px; color:#5d4813; font-size:14px; }
-    .canvas-shell { overflow:auto; border:1px solid #ded9d0; border-radius:14px; background-color:#fffefb; background-image:radial-gradient(#e5e0d6 .8px, transparent .8px); background-size:18px 18px; box-shadow:0 12px 40px rgba(52,43,28,.07); }
-    .scene { position:relative; min-width:960px; min-height:640px; }
+    .canvas-shell { position:relative; height:min(72vh,840px); min-height:440px; overflow:hidden; border:1px solid #ded9d0; border-radius:14px; background-color:#fffefb; background-image:radial-gradient(#e5e0d6 .8px, transparent .8px); background-size:18px 18px; box-shadow:0 12px 40px rgba(52,43,28,.07); cursor:grab; touch-action:none; user-select:none; }
+    .canvas-shell:active { cursor:grabbing; }
+    .scene { position:absolute; left:0; top:0; transform-origin:0 0; will-change:transform; }
+    .canvas-tools { position:absolute; z-index:3; top:14px; right:14px; display:flex; gap:6px; padding:6px; border:1px solid #ded9d0; border-radius:9px; background:rgba(255,253,249,.94); box-shadow:0 3px 10px rgba(35,29,18,.1); }
+    .canvas-tools button { min-width:32px; height:30px; border:1px solid #d7d0c4; border-radius:6px; background:#fff; color:#353129; font:600 14px/1 inherit; cursor:pointer; }
+    .canvas-tools button:hover { background:#fff5ce; border-color:#dcb93f; }
+    .canvas-tools output { display:grid; place-items:center; min-width:48px; color:#5c564d; font-size:12px; }
     svg { position:absolute; inset:0; overflow:visible; pointer-events:none; }
     .edge { stroke:#706c63; stroke-width:2; fill:none; opacity:.8; }
     .node { position:absolute; overflow:hidden; padding:12px; border:1px solid #b6b0a7; border-radius:8px; background:#fff; box-shadow:0 3px 10px rgba(35,29,18,.12); white-space:pre-wrap; font-size:13px; line-height:1.38; cursor:default; }
@@ -209,14 +214,18 @@ function createPortableCanvasViewer({
 <body>
   <header><h1 id="title"></h1><p class="meta" id="meta"></p></header>
   <main>
-    <p class="notice">Автономная копия для просмотра. Вложенные файлы не скачиваются и не включены: вместо них показана их карточка с известными метаданными.</p>
-    <div class="canvas-shell"><div class="scene" id="scene"><svg id="edges" aria-hidden="true"></svg></div></div>
+    <p class="notice">Автономная копия для просмотра. Тяните фон мышью или пальцем, колесом меняйте масштаб, «Вписать» возвращает общий вид. Вложенные файлы не скачиваются и не включены: вместо них показана их карточка с известными метаданными.</p>
+    <div aria-label="Интерактивный просмотр холста" class="canvas-shell" id="canvas-viewport" tabindex="0">
+      <div aria-label="Масштаб холста" class="canvas-tools" role="toolbar"><button id="zoom-out" title="Уменьшить" type="button">−</button><button id="zoom-fit" title="Вписать холст" type="button">Вписать</button><button id="zoom-in" title="Увеличить" type="button">+</button><output id="zoom-value">100%</output></div>
+      <div class="scene" id="scene"><svg id="edges" aria-hidden="true"></svg></div>
+    </div>
     <section id="summaries"></section>
     <details><summary>Состав архива</summary><p><code>canvas.json</code> — исходный CanvasDocument для будущего импорта; <code>manifest.json</code> — версия, ревизия и метаданные файлов; <code>index.html</code> — этот автономный просмотрщик.</p></details>
   </main>
   <script>
     const data = ${data};
     const fileById = new Map(data.manifest.files.map((file) => [file.fileId, file]));
+    const viewport = document.getElementById('canvas-viewport');
     const scene = document.getElementById('scene');
     const edgeLayer = document.getElementById('edges');
     document.getElementById('title').textContent = data.title;
@@ -229,6 +238,22 @@ function createPortableCanvasViewer({
     const width = Math.max(960, bounds.maxX - bounds.minX + pad * 2);
     const height = Math.max(640, bounds.maxY - bounds.minY + pad * 2);
     scene.style.width = width + 'px'; scene.style.height = height + 'px'; edgeLayer.setAttribute('viewBox', '0 0 ' + width + ' ' + height); edgeLayer.setAttribute('width', width); edgeLayer.setAttribute('height', height);
+    const camera = { x:0, y:0, zoom:1 };
+    const zoomOutput = document.getElementById('zoom-value');
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    const renderCamera = () => { scene.style.transform = 'translate(' + camera.x + 'px,' + camera.y + 'px) scale(' + camera.zoom + ')'; zoomOutput.textContent = Math.round(camera.zoom * 100) + '%'; };
+    const fitCanvas = () => { const rect=viewport.getBoundingClientRect(); camera.zoom=clamp(Math.min((rect.width-48)/width,(rect.height-48)/height),.05,1); camera.x=(rect.width-width*camera.zoom)/2; camera.y=(rect.height-height*camera.zoom)/2; renderCamera(); };
+    const zoomAt = (nextZoom, point) => { const zoom=clamp(nextZoom,.05,2); const ratio=zoom/camera.zoom; camera.x=point.x-(point.x-camera.x)*ratio; camera.y=point.y-(point.y-camera.y)*ratio; camera.zoom=zoom; renderCamera(); };
+    document.getElementById('zoom-out').addEventListener('click', () => zoomAt(camera.zoom / 1.25, {x:viewport.clientWidth/2,y:viewport.clientHeight/2}));
+    document.getElementById('zoom-in').addEventListener('click', () => zoomAt(camera.zoom * 1.25, {x:viewport.clientWidth/2,y:viewport.clientHeight/2}));
+    document.getElementById('zoom-fit').addEventListener('click', fitCanvas);
+    let drag = null;
+    viewport.addEventListener('pointerdown', (event) => { if (event.target.closest('.canvas-tools')) return; drag={x:event.clientX,y:event.clientY,cameraX:camera.x,cameraY:camera.y}; viewport.setPointerCapture(event.pointerId); });
+    viewport.addEventListener('pointermove', (event) => { if (!drag) return; camera.x=drag.cameraX+event.clientX-drag.x; camera.y=drag.cameraY+event.clientY-drag.y; renderCamera(); });
+    const endDrag = () => { drag=null; };
+    viewport.addEventListener('pointerup', endDrag); viewport.addEventListener('pointercancel', endDrag);
+    viewport.addEventListener('wheel', (event) => { event.preventDefault(); const rect=viewport.getBoundingClientRect(); zoomAt(camera.zoom * (event.deltaY < 0 ? 1.12 : 1/1.12), {x:event.clientX-rect.left,y:event.clientY-rect.top}); }, {passive:false});
+    window.addEventListener('resize', fitCanvas);
     const byId = new Map(nodes.map((node) => [node.id,node]));
     const label = (node) => {
       if (node.kind === 'text' || node.kind === 'shape') return node.markdown || 'Пустая заметка';
@@ -240,6 +265,7 @@ function createPortableCanvasViewer({
     const formatBytes = (bytes) => bytes === null || bytes === undefined ? 'размер неизвестен' : bytes < 1024 ? bytes + ' Б' : bytes < 1024*1024 ? (bytes/1024).toFixed(1) + ' КБ' : (bytes/1024/1024).toFixed(1) + ' МБ';
     for (const edge of data.document.edges) { const source=byId.get(edge.sourceNodeId), target=byId.get(edge.targetNodeId); if (!source || !target) continue; const line=document.createElementNS('http://www.w3.org/2000/svg','line'); line.setAttribute('class','edge'); line.setAttribute('x1',source.position.x+source.size.width/2+offsetX); line.setAttribute('y1',source.position.y+source.size.height/2+offsetY); line.setAttribute('x2',target.position.x+target.size.width/2+offsetX); line.setAttribute('y2',target.position.y+target.size.height/2+offsetY); edgeLayer.append(line); }
     for (const node of nodes) { const el=document.createElement('div'); const visualKind=node.kind === 'pdf' || node.kind === 'image' ? 'file' : node.kind; el.className='node '+visualKind; el.style.left=(node.position.x+offsetX)+'px'; el.style.top=(node.position.y+offsetY)+'px'; el.style.width=node.size.width+'px'; el.style.height=node.size.height+'px'; const kind=document.createElement('span'); kind.className='node-kind'; kind.textContent=kindLabel(node); const content=document.createElement('span'); content.className=node.kind === 'pdf' || node.kind === 'image' ? 'file-note' : 'node-title'; content.textContent=label(node); el.append(kind,content); scene.append(el); }
+    requestAnimationFrame(fitCanvas);
     const summaryRoot = document.getElementById('summaries');
     if (data.summaries.length) { const heading=document.createElement('h2'); heading.textContent='Суммы'; summaryRoot.append(heading); for (const summary of data.summaries) { const card=document.createElement('article'); card.className='summary-card'; const title=document.createElement('strong'); title.textContent='Σ ' + summary.title; card.append(title); if (!summary.entries.length) { const empty=document.createElement('p'); empty.className='empty'; empty.textContent='К «Сумме» не подключены текстовые или геометрические ноды.'; card.append(empty); } else { const list=document.createElement('ol'); for (const entry of summary.entries) { const item=document.createElement('li'); item.textContent=entry.markdown; list.append(item); } card.append(list); } summaryRoot.append(card); } }
   </script>
