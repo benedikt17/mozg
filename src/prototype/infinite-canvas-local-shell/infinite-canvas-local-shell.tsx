@@ -5527,7 +5527,7 @@ function InfiniteCanvasLocalShellSurface({
         {openSummary ? (
           <aside
             aria-label="Просмотр суммы"
-            className={`${styles.pdfReader} ${styles.summaryReader}`}
+            className={`${styles.pdfReader} ${styles.summaryReader} canvas-summary-reader`}
           >
             <header className={styles.pdfReaderHeader}>
               <strong title={openSummary.title}>{openSummary.title}</strong>

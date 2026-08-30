@@ -412,7 +412,7 @@
     grid-template-rows: var(--header-height) minmax(0, 1fr);
   }
 
-  :scope:has(.canvas-pdf-reader, .canvas-article-reader) .project-workspace {
+  :scope:has(.canvas-pdf-reader, .canvas-article-reader, .canvas-summary-reader) .project-workspace {
     padding-right: var(--canvas-pdf-reader-width);
   }
 
@@ -3418,7 +3418,7 @@
   }
 
   @media (max-width: 900px) {
-    :scope:has(.canvas-pdf-reader, .canvas-article-reader) .project-workspace {
+    :scope:has(.canvas-pdf-reader, .canvas-article-reader, .canvas-summary-reader) .project-workspace {
       padding-right: 0;
     }
   }
