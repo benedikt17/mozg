@@ -975,15 +975,6 @@ export type Database = {
         }
         Returns: boolean
       }
-      fail_project_file_pdf_cover: {
-        Args: {
-          target_error: string
-          target_file_id: string
-          target_project_id: string
-          target_workspace_id: string
-        }
-        Returns: undefined
-      }
       finalize_canvas_asset: {
         Args: {
           target_asset_id: string
@@ -1049,6 +1040,15 @@ export type Database = {
           target_max_edge: number
           workspace_id: string
         }[]
+      }
+      fail_project_file_pdf_cover: {
+        Args: {
+          target_error: string
+          target_file_id: string
+          target_project_id: string
+          target_workspace_id: string
+        }
+        Returns: undefined
       }
       finalize_project_file: {
         Args: {
