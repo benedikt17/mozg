@@ -66,6 +66,11 @@ import {
   projectExplicitCanvasResizes,
 } from "@/lib/canvas/canvas-runtime-projection";
 import {
+  CANVAS_CONTENT_AUTO_SIZE_EVENT,
+  nextCanvasContentSize,
+  type CanvasContentAutoSizeDetail,
+} from "@/lib/canvas/canvas-content-auto-size";
+import {
   advanceCanvasPanInertia,
   canvasPanReleaseVelocity,
   type CanvasPanSample,
@@ -901,6 +906,27 @@ function CanvasTextEditor({
 }): React.JSX.Element {
   const [draft, setDraft] = useState(markdown);
   const skipNextBlurCommitRef = useRef(false);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const reportContentHeight = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const previousHeight = textarea.style.height;
+    textarea.style.height = "0px";
+    const contentHeight = textarea.scrollHeight;
+    textarea.style.height = previousHeight;
+    window.dispatchEvent(
+      new CustomEvent<CanvasContentAutoSizeDetail>(
+        CANVAS_CONTENT_AUTO_SIZE_EVENT,
+        { detail: { id, kind: eventKind, contentHeight } },
+      ),
+    );
+  }, [eventKind, id]);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(reportContentHeight);
+    return () => cancelAnimationFrame(frame);
+  }, [draft, reportContentHeight]);
+
   const update = (value: string) => {
     setDraft(value);
     window.dispatchEvent(
@@ -925,6 +951,7 @@ function CanvasTextEditor({
   return (
     <textarea
       autoFocus
+      ref={textareaRef}
       value={draft}
       placeholder="Type something"
       aria-label="Canvas text"
@@ -1058,6 +1085,7 @@ function TextNodeBody({
       selected={selected}
       minWidth={120}
       minHeight={32}
+      centerTextContent={false}
       className={styles.textNodeFrame}
       toolbar={<TextSelectionToolbar id={id} style={data.style} />}
       connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
@@ -1098,7 +1126,7 @@ function ShapeNodeBody({
       minWidth={data.shape === "circle" ? 80 : 100}
       minHeight={data.shape === "circle" ? 80 : 60}
       keepAspectRatio={data.shape === "circle"}
-      centerTextContent
+      centerTextContent={!data.isEditing}
       className={styles.shapeNodeFrame}
       toolbar={<ShapeSelectionToolbar id={id} style={data.style} />}
       connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
@@ -3533,6 +3561,58 @@ function InfiniteCanvasLocalShellSurface({
     [controller, scheduleSave, setNodes, syncState],
   );
 
+  const fitTextOrShapeNodeToContent = useCallback(
+    (detail: CanvasContentAutoSizeDetail): void => {
+      if (
+        hydratingRef.current ||
+        !Number.isFinite(detail.contentHeight) ||
+        detail.contentHeight <= 0
+      )
+        return;
+
+      let changed = false;
+      const nextNodes = nodesRef.current.map((node) => {
+        const matchesText =
+          detail.kind === "text" && node.type === CANVAS_TEXT_NODE_TYPE;
+        const matchesShape =
+          detail.kind === "shape" && node.type === CANVAS_SHAPE_NODE_TYPE;
+        if (node.id !== detail.id || (!matchesText && !matchesShape))
+          return node;
+
+        const currentWidth = node.width ?? (Number(node.style?.width) || 1);
+        const currentHeight = node.height ?? (Number(node.style?.height) || 1);
+        const size = nextCanvasContentSize({
+          kind: detail.kind,
+          ...(node.type === CANVAS_SHAPE_NODE_TYPE
+            ? { shape: node.data.shape }
+            : {}),
+          currentWidth,
+          currentHeight,
+          contentHeight: detail.contentHeight,
+        });
+        if (size.width === currentWidth && size.height === currentHeight)
+          return node;
+
+        changed = true;
+        return {
+          ...node,
+          measured: undefined,
+          width: size.width,
+          height: size.height,
+          style: { ...node.style, width: size.width, height: size.height },
+        };
+      });
+      if (!changed) return;
+
+      nodesRef.current = nextNodes;
+      setNodes(nextNodes);
+      controller.setRuntimeNodes(nextNodes);
+      syncState();
+      scheduleSave();
+    },
+    [controller, scheduleSave, setNodes, syncState],
+  );
+
   const updateShapeStyle = useCallback(
     (id: string, patch: Partial<CanvasShapeStyle>) => {
       let found = false;
@@ -3754,6 +3834,10 @@ function InfiniteCanvasLocalShellSurface({
       const id = (event as CustomEvent<{ id?: string }>).detail?.id;
       if (id) setStyleEyedropperSourceId(id);
     };
+    const onContentAutoSize = (event: Event) => {
+      const detail = (event as CustomEvent<CanvasContentAutoSizeDetail>).detail;
+      if (detail?.id) fitTextOrShapeNodeToContent(detail);
+    };
     window.addEventListener("mozg:canvas-text-edit", onEdit);
     window.addEventListener("mozg:canvas-text-commit", onCommit);
     window.addEventListener("mozg:canvas-text-cancel", onCancel);
@@ -3763,6 +3847,7 @@ function InfiniteCanvasLocalShellSurface({
     window.addEventListener("mozg:canvas-shape-cancel", onShapeCancel);
     window.addEventListener("mozg:canvas-shape-style", onShapeStyle);
     window.addEventListener("mozg:canvas-article-style", onArticleStyle);
+    window.addEventListener(CANVAS_CONTENT_AUTO_SIZE_EVENT, onContentAutoSize);
     window.addEventListener(
       "mozg:canvas-style-eyedropper-start",
       onEyedropperStart,
@@ -3778,6 +3863,10 @@ function InfiniteCanvasLocalShellSurface({
       window.removeEventListener("mozg:canvas-shape-style", onShapeStyle);
       window.removeEventListener("mozg:canvas-article-style", onArticleStyle);
       window.removeEventListener(
+        CANVAS_CONTENT_AUTO_SIZE_EVENT,
+        onContentAutoSize,
+      );
+      window.removeEventListener(
         "mozg:canvas-style-eyedropper-start",
         onEyedropperStart,
       );
@@ -3785,6 +3874,7 @@ function InfiniteCanvasLocalShellSurface({
   }, [
     commitShapeNode,
     commitTextNode,
+    fitTextOrShapeNodeToContent,
     setShapeEditing,
     setTextEditing,
     updateShapeStyle,
