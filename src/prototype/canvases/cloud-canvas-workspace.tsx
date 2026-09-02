@@ -287,6 +287,7 @@ function CloudCanvasProjectWorkspace({
     canvasId: string;
     requestId: number;
   } | null>(null);
+  const [dualPaneRuntimeReady, setDualPaneRuntimeReady] = useState(false);
   const openRequestSequence = useRef(0);
 
   useEffect(() => {
@@ -296,18 +297,23 @@ function CloudCanvasProjectWorkspace({
       projectId,
       userId,
     );
-    if (!restored) return;
     const frame = window.requestAnimationFrame(() => {
-      setSplitViewActive(restored.splitViewActive);
-      setActivePane(restored.activePane);
-      setPrimaryCanvasId(restored.primaryCanvasId);
-      setSecondaryCanvasId(restored.secondaryCanvasId);
+      if (restored) {
+        setSplitViewActive(restored.splitViewActive);
+        setActivePane(restored.activePane);
+        setPrimaryCanvasId(restored.primaryCanvasId);
+        setSecondaryCanvasId(restored.secondaryCanvasId);
+      }
+      // Do not mount the primary React Flow pane at its one-pane width and
+      // then turn on split mode one frame later. Its saved x/y viewport is in
+      // pane pixels, so the first mount must already have the final layout.
+      setDualPaneRuntimeReady(true);
     });
     return () => window.cancelAnimationFrame(frame);
   }, [projectId, userId, workspaceId]);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !dualPaneRuntimeReady) return;
     setProjectDualPaneRuntimeState(workspaceId, projectId, {
       userId,
       splitViewActive,
@@ -317,6 +323,7 @@ function CloudCanvasProjectWorkspace({
     });
   }, [
     activePane,
+    dualPaneRuntimeReady,
     primaryCanvasId,
     projectId,
     secondaryCanvasId,
@@ -410,6 +417,13 @@ function CloudCanvasProjectWorkspace({
     return (
       <main className="cloud-canvas-session-shell" aria-busy="true">
         <p role="status">Подключение к Canvas…</p>
+      </main>
+    );
+  }
+  if (!dualPaneRuntimeReady) {
+    return (
+      <main className="cloud-canvas-session-shell" aria-busy="true">
+        <p role="status">Восстанавливаем рабочее место Canvas…</p>
       </main>
     );
   }

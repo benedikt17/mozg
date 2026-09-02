@@ -97,6 +97,9 @@ describe("Canvas dual-pane runtime composition", () => {
     expect(workspace).toContain(
       "setSecondaryCanvasId(restored.secondaryCanvasId)",
     );
+    expect(workspace).toContain("const [dualPaneRuntimeReady");
+    expect(workspace).toContain("if (!dualPaneRuntimeReady)");
+    expect(workspace).toContain("setDualPaneRuntimeReady(true)");
   });
 
   it("flushes the latest viewport into the pane cache during navigation", () => {
