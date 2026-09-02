@@ -10,6 +10,10 @@ const shellPath = path.resolve(
   process.cwd(),
   "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
 );
+const shellStylesPath = path.resolve(
+  process.cwd(),
+  "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css",
+);
 
 describe("Canvas dual-pane runtime composition", () => {
   it("creates independent repository and runtime-cache boundaries per pane", () => {
@@ -53,5 +57,22 @@ describe("Canvas dual-pane runtime composition", () => {
     expect(workspace).toContain('selectCanvasInPane("primary", canvasId)');
     expect(workspace).toContain('selectCanvasInPane("secondary", canvasId)');
     expect(shell).toContain("if (onToolbarSelectCanvas)");
+  });
+
+  it("keeps the primary Canvas mounted at full pane height", () => {
+    const styles = fs.readFileSync(shellStylesPath, "utf8");
+
+    expect(styles).toMatch(
+      /\.desktopCanvasPane\s*>\s*\.desktopCanvasMain\s*\{[^}]*height:\s*100%;/u,
+    );
+  });
+
+  it("renders the MiniMap for the active pane only", () => {
+    const shell = fs.readFileSync(shellPath, "utf8");
+
+    expect(shell).toContain(
+      "const showMiniMap = !splitViewActive || paneActive;",
+    );
+    expect(shell.match(/\{showMiniMap \? \(/gu)).toHaveLength(2);
   });
 });

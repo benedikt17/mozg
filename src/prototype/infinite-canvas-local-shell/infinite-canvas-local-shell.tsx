@@ -5667,6 +5667,7 @@ function InfiniteCanvasLocalShellSurface({
           : shellState.status === "loading"
             ? copy.loading
             : copy.error;
+  const showMiniMap = !splitViewActive || paneActive;
   if (embedded) {
     return desktopLayout(
       <div className={styles.canvasWorkspace}>
@@ -5739,16 +5740,18 @@ function InfiniteCanvasLocalShellSurface({
             >
               <Background gap={24} color="#d6d3d1" />
               <Controls showInteractive={false} />
-              <MiniMap
-                className={styles.minimap}
-                position="bottom-right"
-                maskColor="rgba(28, 25, 23, 0.08)"
-                nodeColor={canvasMiniMapNodeColor}
-                nodeStrokeColor="#78716c"
-                nodeStrokeWidth={1}
-                pannable
-                zoomable
-              />
+              {showMiniMap ? (
+                <MiniMap
+                  className={styles.minimap}
+                  position="bottom-right"
+                  maskColor="rgba(28, 25, 23, 0.08)"
+                  nodeColor={canvasMiniMapNodeColor}
+                  nodeStrokeColor="#78716c"
+                  nodeStrokeWidth={1}
+                  pannable
+                  zoomable
+                />
+              ) : null}
               <CanvasEdgeMarkerDefinitions />
             </ReactFlow>
             {!viewportVisible ? (
@@ -6147,16 +6150,18 @@ function InfiniteCanvasLocalShellSurface({
           >
             <Background gap={24} color="#d6d3d1" />
             <Controls showInteractive={false} />
-            <MiniMap
-              className={styles.minimap}
-              position="bottom-right"
-              maskColor="rgba(28, 25, 23, 0.08)"
-              nodeColor={canvasMiniMapNodeColor}
-              nodeStrokeColor="#78716c"
-              nodeStrokeWidth={1}
-              pannable
-              zoomable
-            />
+            {showMiniMap ? (
+              <MiniMap
+                className={styles.minimap}
+                position="bottom-right"
+                maskColor="rgba(28, 25, 23, 0.08)"
+                nodeColor={canvasMiniMapNodeColor}
+                nodeStrokeColor="#78716c"
+                nodeStrokeWidth={1}
+                pannable
+                zoomable
+              />
+            ) : null}
             <CanvasEdgeMarkerDefinitions />
           </ReactFlow>
           {!viewportVisible ? (
