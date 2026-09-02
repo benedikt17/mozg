@@ -1996,9 +1996,10 @@ function InfiniteCanvasLocalShellSurface({
   const [flowInstanceEpoch, setFlowInstanceEpoch] = useState(0);
   const [viewportInitialization, setViewportInitialization] =
     useState<CanvasViewportInitialization | null>(null);
-  const [viewportVisible, setViewportVisible] = useState(
-    Boolean(initialRuntime?.shellState.canvasId),
-  );
+  // A cached scene still needs one programmatic React Flow viewport move after
+  // remount. Keep it hidden until that exact move has been applied so a pane
+  // never flashes at the default camera position before restoring its own.
+  const [viewportVisible, setViewportVisible] = useState(false);
   const repository = providedRepository;
   const groupsRepository = groupRepository;
   const imageRepository = assetRepository;

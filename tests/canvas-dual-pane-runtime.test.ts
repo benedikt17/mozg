@@ -105,4 +105,14 @@ describe("Canvas dual-pane runtime composition", () => {
     expect(shell).toContain("const latestViewport = latestViewportRef.current");
     expect(shell).toContain("void controller.saveViewport(latestViewport)");
   });
+
+  it("reveals a restored pane only after its saved viewport is applied", () => {
+    const shell = fs.readFileSync(shellPath, "utf8");
+
+    expect(shell).toContain(
+      "const [viewportVisible, setViewportVisible] = useState(false)",
+    );
+    expect(shell).toContain("const applied = await reactFlow.setViewport(");
+    expect(shell).toContain("setViewportVisible(true)");
+  });
 });
