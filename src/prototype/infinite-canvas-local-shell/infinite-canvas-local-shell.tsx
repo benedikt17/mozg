@@ -5736,7 +5736,7 @@ function InfiniteCanvasLocalShellSurface({
                   true,
                 );
               }}
-              deleteKeyCode={["Backspace", "Delete"]}
+              deleteKeyCode={clipboardActive ? ["Backspace", "Delete"] : null}
             >
               <Background gap={24} color="#d6d3d1" />
               <Controls showInteractive={false} />
@@ -6146,7 +6146,7 @@ function InfiniteCanvasLocalShellSurface({
                 return;
               createTextNode({ x: event.clientX, y: event.clientY }, "", true);
             }}
-            deleteKeyCode={["Backspace", "Delete"]}
+            deleteKeyCode={clipboardActive ? ["Backspace", "Delete"] : null}
           >
             <Background gap={24} color="#d6d3d1" />
             <Controls showInteractive={false} />

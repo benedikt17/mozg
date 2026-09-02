@@ -42,6 +42,16 @@ describe("Canvas dual-pane runtime composition", () => {
     expect(shell).toContain("!clipboardActive ||");
   });
 
+  it("allows the Delete shortcut in the active pane only", () => {
+    const shell = fs.readFileSync(shellPath, "utf8");
+
+    expect(
+      shell.match(
+        /deleteKeyCode=\{clipboardActive \? \["Backspace", "Delete"\] : null\}/gu,
+      ),
+    ).toHaveLength(2);
+  });
+
   it("uses the shared sidebar to select a Canvas in the active pane", () => {
     const source = fs.readFileSync(workspacePath, "utf8");
 
