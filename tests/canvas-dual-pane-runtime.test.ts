@@ -118,4 +118,14 @@ describe("Canvas dual-pane runtime composition", () => {
     expect(shell).toContain("const applied = await reactFlow.setViewport(");
     expect(shell).toContain("setViewportVisible(true)");
   });
+
+  it("keeps warm image payloads when the cached Canvas revision is current", () => {
+    const shell = fs.readFileSync(shellPath, "utf8");
+
+    expect(shell).toContain("preserveWarmImagePayloadsRef.current =");
+    expect(shell).toContain("if (preserveWarmImagePayloads)");
+    expect(shell).toContain(
+      "await restoreForCanvasRef.current(controller.state)",
+    );
+  });
 });

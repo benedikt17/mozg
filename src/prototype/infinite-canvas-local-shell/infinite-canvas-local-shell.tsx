@@ -358,6 +358,30 @@ function withCachedAssetPayloads(
   });
 }
 
+function hasCachedPayloadForEveryImageNode(
+  nodes: readonly CanvasFlowNode[],
+  assetPayloads: ReadonlyMap<string, CanvasImageRuntimePayload>,
+  scope: { workspaceId: string; canvasId: string },
+): boolean {
+  return nodes.every((node) => {
+    if (node.type !== CANVAS_IMAGE_NODE_TYPE) return true;
+    const requestedSource =
+      node.data.resolutionSource ??
+      canvasImageResolutionSourceFromLegacyKind(
+        node.data.variantKind ?? "original",
+      );
+    return Boolean(
+      findCachedCanvasImagePayload({
+        payloads: assetPayloads,
+        workspaceId: scope.workspaceId,
+        canvasId: scope.canvasId,
+        assetId: node.data.assetId,
+        requestedSource,
+      }),
+    );
+  });
+}
+
 function canvasFlowNodeBounds(
   node: CanvasFlowNode,
 ): CanvasNodeBoundsRecord | null {
@@ -1840,6 +1864,7 @@ function InfiniteCanvasLocalShellSurface({
   const variantPayloadsRef = useRef<Map<string, CanvasImageRuntimePayload>>(
     new Map(initialRuntime?.assetPayloads),
   );
+  const preserveWarmImagePayloadsRef = useRef(false);
   const pendingContentHeightSaveRef = useRef(false);
   const nodeGeometrySignatureRef = useRef("");
   const nodeDragActiveRef = useRef(false);
@@ -2744,6 +2769,8 @@ function InfiniteCanvasLocalShellSurface({
 
   const restoreForCanvas = useCallback(
     async (nextState: LocalCanvasShellState) => {
+      const preserveWarmImagePayloads = preserveWarmImagePayloadsRef.current;
+      preserveWarmImagePayloadsRef.current = false;
       restoreControllerRef.current?.abort();
       variantRefreshControllerRef.current?.abort();
       pendingContentHeightSaveRef.current = false;
@@ -2768,6 +2795,16 @@ function InfiniteCanvasLocalShellSurface({
         }
         imageLoadCacheRef.current.clear();
         imageLoadCacheCanvasIdRef.current = nextState.canvasId;
+      }
+      if (preserveWarmImagePayloads) {
+        // The runtime snapshot has already mounted the matching document with
+        // live object URLs. Keep that scene intact while the post-save
+        // reconciliation completes; rebuilding it would blank images before
+        // their cached payloads can be painted again.
+        hydratingRef.current = false;
+        setRestoreStats(EMPTY_RESTORE_STATS);
+        setLoadingLifecycle("ready");
+        return;
       }
       restoreControllerRef.current = new AbortController();
       variantPayloadsRef.current.clear();
@@ -3281,6 +3318,27 @@ function InfiniteCanvasLocalShellSurface({
           }
 
           if (unchanged) {
+            const cachedNodes = canvasDocumentToRuntimeSkeleton(
+              initialRuntime.shellState.document,
+              {
+                onContentHeightChange: handleTaskNodeContentHeightChange,
+                taskBridge: taskBridgeRef.current,
+                taskWorkspaceId: taskWorkspaceIdRef.current,
+              },
+            );
+            preserveWarmImagePayloadsRef.current =
+              hasCachedPayloadForEveryImageNode(
+                cachedNodes,
+                initialRuntime.assetPayloads,
+                {
+                  workspaceId: shellWorkspaceId,
+                  canvasId: cachedSummary.id,
+                },
+              );
+            // Keep the safe post-save reconciliation call. When every image
+            // is already present in the runtime snapshot it consumes the warm
+            // mode above instead of tearing that snapshot down and rebuilding
+            // images one at a time.
             await restoreForCanvasRef.current(controller.state);
             return;
           }
