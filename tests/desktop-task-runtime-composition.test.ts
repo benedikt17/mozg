@@ -27,8 +27,9 @@ it("keeps Canvas bootstrap one-shot when active Canvas callbacks change", () => 
     "await openCanvasRef.current(cachedSummary.id);",
   );
   expect(canvasShell).toContain(
-    "if (items[0]) await openCanvasRef.current(items[0].id);",
+    "if (firstAvailable) await openCanvasRef.current(firstAvailable.id);",
   );
+  expect(canvasShell).toContain("initialExcludedCanvasIdRef.current");
 });
 
 describe("C4 desktop Canvas toolbar", () => {

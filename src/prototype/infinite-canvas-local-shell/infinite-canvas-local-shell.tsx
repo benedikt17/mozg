@@ -44,6 +44,7 @@ import {
   type CSSProperties,
   type DragEvent as ReactDragEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from "react";
 import {
   attachCanvasImagePasteListener,
@@ -98,7 +99,7 @@ import type { CanvasArticleStyle } from "@/lib/canvas/canvas-article-style";
 import {
   CANVAS_NODE_CLIPBOARD_MIME,
   createCanvasNodeClipboardPayload,
-  materializeCanvasNodeClipboardPaste,
+  materializeCanvasClipboardPaste,
   parseCanvasNodeClipboardPayload,
   serializeCanvasNodeClipboardPayload,
   type CanvasNodeClipboardPayload,
@@ -1735,16 +1736,30 @@ type CanvasLoadingLifecycle =
 function InfiniteCanvasLocalShellSurface({
   activeTaskDetailsTaskId,
   assetRepository,
+  canvasOpenRequest,
+  clipboardActive = true,
   embedded = false,
   copy,
+  excludedCanvasId,
   groupRepository,
+  hideDesktopSidebar = false,
   knowledgeArticles = [],
+  onActiveCanvasChange,
+  onCanvasDeleted,
+  onPaneActivate,
+  onSidebarSelectCanvas,
+  onToolbarSelectCanvas,
+  onToggleSplitView,
+  paneActive = true,
   projectFileRepository,
   projectFileVariantRepository,
   projectId,
   repository: providedRepository,
   runtimeCache,
+  secondaryPane,
   showDiagnostics,
+  sidebarActiveCanvasId,
+  splitViewActive = false,
   taskBridge,
   taskWorkspaceId,
   userId,
@@ -1752,23 +1767,43 @@ function InfiniteCanvasLocalShellSurface({
 }: {
   activeTaskDetailsTaskId?: string;
   assetRepository: CanvasAssetRepository;
+  canvasOpenRequest?: { canvasId: string; requestId: number } | null;
+  clipboardActive?: boolean;
   embedded?: boolean;
   copy: CanvasShellCopy;
+  excludedCanvasId?: string | null;
   groupRepository?: CanvasGroupRepository;
+  hideDesktopSidebar?: boolean;
   knowledgeArticles?: readonly PrototypeDocument[];
+  onActiveCanvasChange?: (canvasId: string | null) => void;
+  onCanvasDeleted?: (canvasId: string) => void;
+  onPaneActivate?: () => void;
+  onSidebarSelectCanvas?: (canvasId: string) => void;
+  onToolbarSelectCanvas?: (canvasId: string) => void;
+  onToggleSplitView?: () => void;
+  paneActive?: boolean;
   projectFileRepository?: ProjectFileRepository;
   projectFileVariantRepository?: ProjectFileImageVariantRepository;
   projectId?: string;
   repository: CanvasShellRepository;
   runtimeCache?: CloudCanvasRuntimeCache;
+  secondaryPane?: ReactNode;
   showDiagnostics: boolean;
+  sidebarActiveCanvasId?: string | null;
+  splitViewActive?: boolean;
   taskBridge?: CanvasTaskBridge;
   taskWorkspaceId?: string;
   userId: string;
   workspaceId: string;
 }): React.JSX.Element {
+  const initialExcludedCanvasIdRef = useRef(excludedCanvasId);
   const initialRuntimeRef = useRef<CloudCanvasRuntimeSnapshot | null>(
-    runtimeCache?.getActive({ workspaceId, userId }) ?? null,
+    (() => {
+      const cached = runtimeCache?.getActive({ workspaceId, userId }) ?? null;
+      return cached?.canvasId === initialExcludedCanvasIdRef.current
+        ? null
+        : cached;
+    })(),
   );
   const initialRuntime = initialRuntimeRef.current;
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -1855,6 +1890,7 @@ function InfiniteCanvasLocalShellSurface({
   const [restoreStats, setRestoreStats] =
     useState<RestoreStats>(EMPTY_RESTORE_STATS);
   const [dropActive, setDropActive] = useState(false);
+  const [clipboardNotice, setClipboardNotice] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState(copy.defaultTitle);
   const [renameTitle, setRenameTitle] = useState("");
   const renameInFlightRef = useRef(new Set<string>());
@@ -2111,6 +2147,10 @@ function InfiniteCanvasLocalShellSurface({
   useEffect(() => {
     shellStateRef.current = shellState;
   }, [shellState]);
+
+  useEffect(() => {
+    onActiveCanvasChange?.(shellState.canvasId);
+  }, [onActiveCanvasChange, shellState.canvasId]);
 
   useEffect(() => {
     if (imageLoadCacheUserIdRef.current === shellUserId) return;
@@ -2877,6 +2917,7 @@ function InfiniteCanvasLocalShellSurface({
   useEffect(() => {
     const onHistoryKeyDown = (event: KeyboardEvent): void => {
       if (
+        !clipboardActive ||
         eventTouchesEditingSurface(event) ||
         !(event.ctrlKey || event.metaKey)
       )
@@ -2896,7 +2937,7 @@ function InfiniteCanvasLocalShellSurface({
     };
     window.addEventListener("keydown", onHistoryKeyDown, true);
     return () => window.removeEventListener("keydown", onHistoryKeyDown, true);
-  }, [applyCanvasHistory, controller]);
+  }, [applyCanvasHistory, clipboardActive, controller]);
 
   const openCanvas = useCallback(
     async (canvasId: string) => {
@@ -2940,6 +2981,17 @@ function InfiniteCanvasLocalShellSurface({
 
   const openCanvasRef = useRef(openCanvas);
   openCanvasRef.current = openCanvas;
+
+  useEffect(() => {
+    const request = canvasOpenRequest;
+    if (
+      !request ||
+      request.canvasId === excludedCanvasId ||
+      request.canvasId === shellStateRef.current.canvasId
+    )
+      return;
+    void openCanvas(request.canvasId);
+  }, [canvasOpenRequest, excludedCanvasId, openCanvas]);
 
   const refreshImageVariants = useCallback(
     (viewportZoom: number, allowDowngrade: boolean): void => {
@@ -3230,7 +3282,10 @@ function InfiniteCanvasLocalShellSurface({
           await openCanvasRef.current(cachedSummary.id);
           return;
         }
-        if (items[0]) await openCanvasRef.current(items[0].id);
+        const firstAvailable = items.find(
+          (item) => item.id !== initialExcludedCanvasIdRef.current,
+        );
+        if (firstAvailable) await openCanvasRef.current(firstAvailable.id);
         else {
           hydratingRef.current = false;
           setShellState(emptyShellState());
@@ -3940,10 +3995,17 @@ function InfiniteCanvasLocalShellSurface({
       const target = pointerRef.current
         ? screenToFlowRef.current(pointerRef.current)
         : centerPosition();
-      const canonicalNodes = materializeCanvasNodeClipboardPaste(payload, {
+      const materialized = materializeCanvasClipboardPaste(payload, {
         target,
+        targetCanvasId: canvasId,
         zIndexStart: highestZIndex + 1,
       });
+      setClipboardNotice(
+        materialized.skippedCanvasAssetImages > 0
+          ? "Изображение старого типа не перенесено: оно привязано к исходному холсту"
+          : null,
+      );
+      const canonicalNodes = materialized.nodes;
 
       try {
         const runtimeNodes: CanvasFlowNode[] = [];
@@ -3953,6 +4015,18 @@ function InfiniteCanvasLocalShellSurface({
               createCanvasTextFlowNode({
                 id: node.id,
                 markdown: node.markdown,
+                position: node.position,
+                size: node.size,
+                style: node.style,
+                zIndex: node.zIndex,
+              }),
+            );
+          } else if (node.kind === "article") {
+            runtimeNodes.push(
+              createCanvasArticleFlowNode({
+                id: node.id,
+                articleId: node.articleId,
+                lastKnownTitle: node.lastKnownTitle,
                 position: node.position,
                 size: node.size,
                 style: node.style,
@@ -3979,6 +4053,16 @@ function InfiniteCanvasLocalShellSurface({
                 position: node.position,
                 size: node.size,
                 style: node.style,
+                zIndex: node.zIndex,
+              }),
+            );
+          } else if (node.kind === "summary") {
+            runtimeNodes.push(
+              createCanvasSummaryFlowNode({
+                id: node.id,
+                title: node.title,
+                position: node.position,
+                size: node.size,
                 zIndex: node.zIndex,
               }),
             );
@@ -4054,13 +4138,32 @@ function InfiniteCanvasLocalShellSurface({
           runtimeIds.has(node.id),
         );
         if (persistedNodes.length === 0) return;
+        const persistedEdges = materialized.edges.filter(
+          (edge) =>
+            runtimeIds.has(edge.sourceNodeId) &&
+            runtimeIds.has(edge.targetNodeId),
+        );
+        const runtimeEdges = canvasDocumentToEdges(
+          {
+            schemaVersion: 2,
+            nodes: persistedNodes,
+            edges: persistedEdges,
+          },
+          handleEdgeUpdate,
+        );
+        const currentDocument = controller.state.document;
+        controller.setDocument({
+          ...currentDocument,
+          nodes: [...currentDocument.nodes, ...persistedNodes],
+          edges: [...currentDocument.edges, ...persistedEdges],
+        });
         setNodes((current) => [
           ...current.map((node) =>
             node.selected ? { ...node, selected: false } : node,
           ),
           ...runtimeNodes.map((node) => ({ ...node, selected: true })),
         ]);
-        controller.insertCanvasNodes(persistedNodes);
+        setEdges((current) => [...current, ...runtimeEdges]);
         syncState();
         scheduleSave();
       } catch (error: unknown) {
@@ -4076,10 +4179,12 @@ function InfiniteCanvasLocalShellSurface({
       adapterDependencies,
       centerPosition,
       controller,
+      handleEdgeUpdate,
       handleTaskNodeContentHeightChange,
       projectFileImageDependenciesForCanvas,
       scheduleSave,
       setNodes,
+      setEdges,
       shellWorkspaceId,
       syncState,
       taskBridge,
@@ -4233,6 +4338,7 @@ function InfiniteCanvasLocalShellSurface({
   useEffect(() => {
     const onCopy = (event: ClipboardEvent) => {
       if (
+        !clipboardActive ||
         eventTouchesEditingSurface(event) ||
         eventTargetsCanvasArticleReader(event) ||
         !event.clipboardData
@@ -4244,6 +4350,7 @@ function InfiniteCanvasLocalShellSurface({
       const payload = createCanvasNodeClipboardPayload(
         controller.state.document,
         selectedNodeIds,
+        controller.state.canvasId ?? undefined,
       );
       if (!payload) return;
       event.preventDefault();
@@ -4254,11 +4361,12 @@ function InfiniteCanvasLocalShellSurface({
     };
     window.addEventListener("copy", onCopy);
     return () => window.removeEventListener("copy", onCopy);
-  }, [controller]);
+  }, [clipboardActive, controller]);
 
   useEffect(() => {
     const onPaste = (event: ClipboardEvent) => {
       if (
+        !clipboardActive ||
         eventTouchesEditingSurface(event) ||
         eventTargetsCanvasArticleReader(event)
       )
@@ -4284,7 +4392,7 @@ function InfiniteCanvasLocalShellSurface({
       createTextNode(pointerRef.current, text, false);
     };
     return attachCanvasImagePasteListener(onPaste);
-  }, [createTextNode, pasteCanvasNodes]);
+  }, [clipboardActive, createTextNode, pasteCanvasNodes]);
 
   useEffect(() => {
     const guard = (event: DragEvent) => {
@@ -4861,6 +4969,7 @@ function InfiniteCanvasLocalShellSurface({
         workspaceId: shellWorkspaceId,
         canvasId,
       });
+      onCanvasDeleted?.(canvasId);
       const next = await refreshCatalog();
       if (!wasActive) return;
       repository.setActiveCanvas?.(null);
@@ -4874,6 +4983,7 @@ function InfiniteCanvasLocalShellSurface({
     },
     [
       objectUrls,
+      onCanvasDeleted,
       openCanvas,
       refreshCatalog,
       repository,
@@ -5278,37 +5388,41 @@ function InfiniteCanvasLocalShellSurface({
       ),
     [groups, shellState.canvasId, summaries],
   );
-  const desktopSidebar = embedded ? (
-    <CanvasDesktopSidebar
-      activeCanvasId={shellState.canvasId}
-      copy={copy}
-      error={shellState.error}
-      groups={groups}
-      groupsError={groupsError}
-      highlightedGroupId={highlightedCanvasGroupId}
-      listState={desktopListState}
-      onCreateCanvas={(title, groupId) => void createCanvas(title, groupId)}
-      onCreateGroup={(title, parentGroupId) =>
-        void createCanvasGroup(title, parentGroupId)
-      }
-      onDeleteCanvas={(canvasId) => void deleteCanvasById(canvasId)}
-      onDeleteGroup={(groupId) => void deleteCanvasGroup(groupId)}
-      onMoveCanvas={(canvasId, groupId) =>
-        void moveCanvasToGroup(canvasId, groupId)
-      }
-      onMoveGroup={(groupId, parentGroupId) =>
-        void moveCanvasGroup(groupId, parentGroupId)
-      }
-      onRenameCanvas={renameCanvasById}
-      onRenameGroup={(groupId, title) => void renameCanvasGroup(groupId, title)}
-      onRetry={() => window.location.reload()}
-      onSelectCanvas={(canvasId) => {
-        setHighlightedCanvasGroupId(null);
-        void openCanvas(canvasId);
-      }}
-      summaries={summaries}
-    />
-  ) : null;
+  const desktopSidebar =
+    embedded && !hideDesktopSidebar ? (
+      <CanvasDesktopSidebar
+        activeCanvasId={sidebarActiveCanvasId ?? shellState.canvasId}
+        copy={copy}
+        error={shellState.error}
+        groups={groups}
+        groupsError={groupsError}
+        highlightedGroupId={highlightedCanvasGroupId}
+        listState={desktopListState}
+        onCreateCanvas={(title, groupId) => void createCanvas(title, groupId)}
+        onCreateGroup={(title, parentGroupId) =>
+          void createCanvasGroup(title, parentGroupId)
+        }
+        onDeleteCanvas={(canvasId) => void deleteCanvasById(canvasId)}
+        onDeleteGroup={(groupId) => void deleteCanvasGroup(groupId)}
+        onMoveCanvas={(canvasId, groupId) =>
+          void moveCanvasToGroup(canvasId, groupId)
+        }
+        onMoveGroup={(groupId, parentGroupId) =>
+          void moveCanvasGroup(groupId, parentGroupId)
+        }
+        onRenameCanvas={renameCanvasById}
+        onRenameGroup={(groupId, title) =>
+          void renameCanvasGroup(groupId, title)
+        }
+        onRetry={() => window.location.reload()}
+        onSelectCanvas={(canvasId) => {
+          setHighlightedCanvasGroupId(null);
+          if (onSidebarSelectCanvas) onSidebarSelectCanvas(canvasId);
+          else void openCanvas(canvasId);
+        }}
+        summaries={summaries}
+      />
+    ) : null;
 
   const desktopToolbar = embedded ? (
     <CanvasDesktopToolbar
@@ -5316,7 +5430,8 @@ function InfiniteCanvasLocalShellSurface({
         highlightedGroupId: highlightedCanvasGroupId,
         onSelectCanvas: (canvasId) => {
           setHighlightedCanvasGroupId(null);
-          void openCanvas(canvasId);
+          if (onToolbarSelectCanvas) onToolbarSelectCanvas(canvasId);
+          else void openCanvas(canvasId);
         },
         onSelectGroup: setHighlightedCanvasGroupId,
         segments: canvasBreadcrumb,
@@ -5371,6 +5486,7 @@ function InfiniteCanvasLocalShellSurface({
         setTaskPickerOpen(false);
         setArticlePickerOpen((current) => !current);
       }}
+      onToggleSplitView={onToggleSplitView}
       onToggleSidebar={() => {
         readerSidebarWasAutoCollapsedRef.current = false;
         setDesktopSidebarOpen((current) => !current);
@@ -5389,6 +5505,8 @@ function InfiniteCanvasLocalShellSurface({
         projectFileRepository && projectFileVariantRepository && projectId,
       )}
       sidebarOpen={desktopSidebarOpen}
+      showSidebarToggle={!hideDesktopSidebar}
+      splitViewActive={splitViewActive}
       status={shellState.status}
       taskPickerOpen={taskPickerOpen}
       taskQuery={taskQuery}
@@ -5400,13 +5518,32 @@ function InfiniteCanvasLocalShellSurface({
 
   const desktopLayout = (content: React.ReactNode): React.JSX.Element => (
     <main
-      className={`${styles.page} ${styles.pageEmbedded} ${styles.desktopCanvasPage} ${desktopSidebarOpen ? "" : styles.desktopCanvasPageSidebarCollapsed}`}
+      className={`${styles.page} ${styles.pageEmbedded} ${styles.desktopCanvasPage} ${desktopSidebarOpen && !hideDesktopSidebar ? "" : styles.desktopCanvasPageSidebarCollapsed}`}
     >
       {desktopSidebar}
-      <section className={styles.desktopCanvasMain} aria-label="Холст">
-        {desktopToolbar}
-        {content}
-      </section>
+      {secondaryPane ? (
+        <div className={styles.desktopCanvasDualGrid}>
+          <div
+            className={`${styles.desktopCanvasPane} ${paneActive ? styles.desktopCanvasPaneActive : ""}`}
+            onPointerDownCapture={onPaneActivate}
+          >
+            <section className={styles.desktopCanvasMain} aria-label="Холст 1">
+              {desktopToolbar}
+              {content}
+            </section>
+          </div>
+          {secondaryPane}
+        </div>
+      ) : (
+        <section
+          className={styles.desktopCanvasMain}
+          aria-label="Холст"
+          onPointerDownCapture={onPaneActivate}
+        >
+          {desktopToolbar}
+          {content}
+        </section>
+      )}
     </main>
   );
 
@@ -5620,15 +5757,16 @@ function InfiniteCanvasLocalShellSurface({
               </div>
             ) : null}
             <div className={styles.canvasHint}>
-              {dropActive
-                ? "Drop PNG, JPEG, WebP or PDF here"
-                : "Paste, drop or choose a file · drag and resize are saved"}
+              {clipboardNotice ??
+                (dropActive
+                  ? "Drop PNG, JPEG, WebP or PDF here"
+                  : "Paste, drop or choose a file · drag and resize are saved")}
             </div>
           </div>
         </div>
         {openPdf ? (
           <aside
-            className={`${styles.pdfReader} canvas-pdf-reader ${pdfFullscreen ? `${styles.pdfReaderFullscreen} canvas-pdf-reader-fullscreen` : ""}`}
+            className={`${styles.pdfReader} canvas-pdf-reader ${splitViewActive ? styles.canvasReaderInPane : ""} ${pdfFullscreen ? `${styles.pdfReaderFullscreen} canvas-pdf-reader-fullscreen` : ""}`}
             aria-label="Просмотр PDF"
           >
             <header className={styles.pdfReaderHeader}>
@@ -5669,7 +5807,7 @@ function InfiniteCanvasLocalShellSurface({
         {shellState.openArticleId ? (
           <aside
             aria-label="Просмотр статьи"
-            className={`${styles.articleReader} canvas-article-reader`}
+            className={`${styles.articleReader} canvas-article-reader ${splitViewActive ? styles.canvasReaderInPane : ""}`}
           >
             <header className={styles.pdfReaderHeader}>
               <strong title={openArticle?.title ?? "Статья недоступна"}>
@@ -5716,7 +5854,7 @@ function InfiniteCanvasLocalShellSurface({
         {openSummary ? (
           <aside
             aria-label="Просмотр суммы"
-            className={`${styles.pdfReader} ${styles.summaryReader} canvas-summary-reader`}
+            className={`${styles.pdfReader} ${styles.summaryReader} canvas-summary-reader ${splitViewActive ? styles.canvasReaderInPane : ""}`}
           >
             <header className={styles.pdfReaderHeader}>
               <strong title={openSummary.title}>{openSummary.title}</strong>
@@ -6027,9 +6165,10 @@ function InfiniteCanvasLocalShellSurface({
             </div>
           ) : null}
           <div className={styles.canvasHint}>
-            {dropActive
-              ? "Drop PNG, JPEG or WebP here"
-              : "Paste, drop or choose an image · drag and resize are saved"}
+            {clipboardNotice ??
+              (dropActive
+                ? "Drop PNG, JPEG or WebP here"
+                : "Paste, drop or choose an image · drag and resize are saved")}
           </div>
           {showDiagnostics ? (
             <details className={styles.details}>
@@ -6079,16 +6218,30 @@ function InfiniteCanvasLocalShellSurface({
 export function InfiniteCanvasLocalShell({
   activeTaskDetailsTaskId,
   assetRepository,
+  canvasOpenRequest,
+  clipboardActive,
   copy,
   embedded,
+  excludedCanvasId,
   groupRepository,
+  hideDesktopSidebar,
   knowledgeArticles,
+  onActiveCanvasChange,
+  onCanvasDeleted,
+  onPaneActivate,
+  onSidebarSelectCanvas,
+  onToolbarSelectCanvas,
+  onToggleSplitView,
+  paneActive,
   projectFileRepository,
   projectFileVariantRepository,
   projectId,
   repository,
   runtimeCache,
+  secondaryPane,
   showDiagnostics,
+  sidebarActiveCanvasId,
+  splitViewActive,
   taskBridge,
   taskWorkspaceId,
   userId,
@@ -6096,16 +6249,30 @@ export function InfiniteCanvasLocalShell({
 }: {
   activeTaskDetailsTaskId?: string;
   assetRepository: CanvasAssetRepository;
+  canvasOpenRequest?: { canvasId: string; requestId: number } | null;
+  clipboardActive?: boolean;
   copy: CanvasShellCopy;
   embedded?: boolean;
+  excludedCanvasId?: string | null;
   groupRepository?: CanvasGroupRepository;
+  hideDesktopSidebar?: boolean;
   knowledgeArticles?: readonly PrototypeDocument[];
+  onActiveCanvasChange?: (canvasId: string | null) => void;
+  onCanvasDeleted?: (canvasId: string) => void;
+  onPaneActivate?: () => void;
+  onSidebarSelectCanvas?: (canvasId: string) => void;
+  onToolbarSelectCanvas?: (canvasId: string) => void;
+  onToggleSplitView?: () => void;
+  paneActive?: boolean;
   projectFileRepository?: ProjectFileRepository;
   projectFileVariantRepository?: ProjectFileImageVariantRepository;
   projectId?: string;
   repository: CanvasShellRepository;
   runtimeCache?: CloudCanvasRuntimeCache;
+  secondaryPane?: ReactNode;
   showDiagnostics: boolean;
+  sidebarActiveCanvasId?: string | null;
+  splitViewActive?: boolean;
   taskBridge?: CanvasTaskBridge;
   taskWorkspaceId?: string;
   userId: string;
@@ -6116,16 +6283,30 @@ export function InfiniteCanvasLocalShell({
       <InfiniteCanvasLocalShellSurface
         activeTaskDetailsTaskId={activeTaskDetailsTaskId}
         assetRepository={assetRepository}
+        canvasOpenRequest={canvasOpenRequest}
+        clipboardActive={clipboardActive}
         copy={copy}
         embedded={embedded}
+        excludedCanvasId={excludedCanvasId}
         groupRepository={groupRepository}
+        hideDesktopSidebar={hideDesktopSidebar}
         knowledgeArticles={knowledgeArticles}
+        onActiveCanvasChange={onActiveCanvasChange}
+        onCanvasDeleted={onCanvasDeleted}
+        onPaneActivate={onPaneActivate}
+        onSidebarSelectCanvas={onSidebarSelectCanvas}
+        onToolbarSelectCanvas={onToolbarSelectCanvas}
+        onToggleSplitView={onToggleSplitView}
+        paneActive={paneActive}
         projectFileRepository={projectFileRepository}
         projectFileVariantRepository={projectFileVariantRepository}
         projectId={projectId}
         repository={repository}
         runtimeCache={runtimeCache}
+        secondaryPane={secondaryPane}
         showDiagnostics={showDiagnostics}
+        sidebarActiveCanvasId={sidebarActiveCanvasId}
+        splitViewActive={splitViewActive}
         taskBridge={taskBridge}
         taskWorkspaceId={taskWorkspaceId}
         userId={userId}

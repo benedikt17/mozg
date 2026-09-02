@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createCloudCanvasAssetRepository } from "@/lib/canvas/cloud-canvas-asset-repository";
 import { createCloudCanvasRepository } from "@/lib/canvas/cloud-canvas-repository";
 import { createProjectScopedCloudCanvasRepository } from "@/lib/canvas/project-scoped-cloud-canvas-repository";
@@ -12,11 +12,18 @@ import { SupabaseProjectFileRepository } from "@/lib/files/cloud-project-file-re
 import { SupabaseProjectFileImageVariantRepository } from "@/lib/files/cloud-project-file-image-variant-repository";
 import { projectFileResumableUploadEndpoint } from "@/lib/files/project-file-resumable-upload";
 import { createClient } from "@/lib/supabase/browser";
+import type { CanvasTaskBridge } from "@/lib/canvas/canvas-task-bridge";
+import {
+  resolveCanvasPaneSelection,
+  type CanvasPaneId,
+} from "@/lib/canvas/canvas-dual-pane";
 import {
   InfiniteCanvasLocalShell,
   type CanvasShellCopy,
 } from "@/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell";
 import { useDesktopCanvasTaskRuntime } from "@/prototype/tasks/desktop-task-runtime";
+import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
+import styles from "@/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.module.css";
 
 const PROJECT_RUNTIME_CACHE_LIMIT = 8;
 const projectRuntimeCaches = new Map<string, CloudCanvasRuntimeCache>();
@@ -24,8 +31,9 @@ const projectRuntimeCaches = new Map<string, CloudCanvasRuntimeCache>();
 function projectRuntimeCache(
   workspaceId: string,
   projectId: string,
+  pane: CanvasPaneId,
 ): CloudCanvasRuntimeCache {
-  const key = `${workspaceId}:${projectId}`;
+  const key = `${workspaceId}:${projectId}:${pane}`;
   const existing = projectRuntimeCaches.get(key);
   if (existing) {
     projectRuntimeCaches.delete(key);
@@ -86,9 +94,38 @@ export function CloudCanvasWorkspace({
     taskBridge,
     taskProjectId: projectId,
   } = useDesktopCanvasTaskRuntime();
+  return (
+    <CloudCanvasProjectWorkspace
+      activeTaskDetailsTaskId={activeTaskDetailsTaskId}
+      key={`${workspaceId}:${projectId}`}
+      knowledgeArticles={knowledgeArticles}
+      projectId={projectId}
+      taskBridge={taskBridge}
+      workspaceId={workspaceId}
+    />
+  );
+}
+
+function CloudCanvasProjectWorkspace({
+  activeTaskDetailsTaskId,
+  knowledgeArticles,
+  projectId,
+  taskBridge,
+  workspaceId,
+}: {
+  activeTaskDetailsTaskId?: string;
+  knowledgeArticles: readonly PrototypeDocument[];
+  projectId: string;
+  taskBridge: CanvasTaskBridge;
+  workspaceId: string;
+}): React.JSX.Element {
   const supabase = useMemo(() => createClient(), []);
-  const runtimeCache = useMemo(
-    () => projectRuntimeCache(workspaceId, projectId),
+  const primaryRuntimeCache = useMemo(
+    () => projectRuntimeCache(workspaceId, projectId, "primary"),
+    [projectId, workspaceId],
+  );
+  const secondaryRuntimeCache = useMemo(
+    () => projectRuntimeCache(workspaceId, projectId, "secondary"),
     [projectId, workspaceId],
   );
   const cloudAssetRepository = useMemo(
@@ -142,28 +179,32 @@ export function CloudCanvasWorkspace({
         workspaceId,
         projectId,
       });
-      const baseShellRepository = new CloudCanvasShellRepository(
-        workspaceId,
-        canvasRepository,
-        cloudAssetRepository,
-        runtimeCache,
-      );
-      const shellRepository = createProjectFileBackedCanvasShellRepository({
-        repository: baseShellRepository,
-        projectFileRepository,
-        projectFileVariantRepository,
-        workspaceId,
-        projectId,
-      });
+      const createPaneRepository = (runtimeCache: CloudCanvasRuntimeCache) => {
+        const baseShellRepository = new CloudCanvasShellRepository(
+          workspaceId,
+          canvasRepository,
+          cloudAssetRepository,
+          runtimeCache,
+        );
+        return createProjectFileBackedCanvasShellRepository({
+          repository: baseShellRepository,
+          projectFileRepository,
+          projectFileVariantRepository,
+          workspaceId,
+          projectId,
+        });
+      };
+      const primaryRepository = createPaneRepository(primaryRuntimeCache);
+      const secondaryRepository = createPaneRepository(secondaryRuntimeCache);
       return {
-        assetRepository: shellRepository,
-        repository: shellRepository,
+        primaryRepository,
+        secondaryRepository,
         error: null,
       };
     } catch {
       return {
-        assetRepository: null,
-        repository: null,
+        primaryRepository: null,
+        secondaryRepository: null,
         error: "Не удалось настроить облачное хранилище холстов.",
       };
     }
@@ -172,10 +213,93 @@ export function CloudCanvasWorkspace({
     projectFileRepository,
     projectFileVariantRepository,
     projectId,
-    runtimeCache,
+    primaryRuntimeCache,
+    secondaryRuntimeCache,
     supabase,
     workspaceId,
   ]);
+
+  const [splitViewActive, setSplitViewActive] = useState(false);
+  const [activePane, setActivePane] = useState<CanvasPaneId>("primary");
+  const [primaryCanvasId, setPrimaryCanvasId] = useState<string | null>(null);
+  const [secondaryCanvasId, setSecondaryCanvasId] = useState<string | null>(
+    null,
+  );
+  const [primaryOpenRequest, setPrimaryOpenRequest] = useState<{
+    canvasId: string;
+    requestId: number;
+  } | null>(null);
+  const [secondaryOpenRequest, setSecondaryOpenRequest] = useState<{
+    canvasId: string;
+    requestId: number;
+  } | null>(null);
+  const openRequestSequence = useRef(0);
+
+  const toggleSplitView = useCallback(() => {
+    if (splitViewActive) setActivePane("primary");
+    setSplitViewActive(!splitViewActive);
+  }, [splitViewActive]);
+
+  const requestCanvasInPane = useCallback(
+    (pane: CanvasPaneId, canvasId: string): void => {
+      const request = { canvasId, requestId: ++openRequestSequence.current };
+      if (pane === "primary") setPrimaryOpenRequest(request);
+      else setSecondaryOpenRequest(request);
+    },
+    [],
+  );
+
+  const selectCanvasFromSidebar = useCallback(
+    (requestedCanvasId: string): void => {
+      if (!splitViewActive) {
+        setActivePane("primary");
+        requestCanvasInPane("primary", requestedCanvasId);
+        return;
+      }
+      const selection = resolveCanvasPaneSelection({
+        activePane,
+        primaryCanvasId,
+        requestedCanvasId,
+        secondaryCanvasId,
+      });
+      setActivePane(selection.activePane);
+      if (selection.openCanvasId)
+        requestCanvasInPane(selection.targetPane, selection.openCanvasId);
+    },
+    [
+      activePane,
+      primaryCanvasId,
+      requestCanvasInPane,
+      secondaryCanvasId,
+      splitViewActive,
+    ],
+  );
+
+  const selectCanvasInPane = useCallback(
+    (pane: CanvasPaneId, requestedCanvasId: string): void => {
+      const selection = resolveCanvasPaneSelection({
+        activePane: pane,
+        primaryCanvasId,
+        requestedCanvasId,
+        secondaryCanvasId,
+      });
+      setActivePane(selection.activePane);
+      if (selection.openCanvasId)
+        requestCanvasInPane(selection.targetPane, selection.openCanvasId);
+    },
+    [primaryCanvasId, requestCanvasInPane, secondaryCanvasId],
+  );
+
+  const handleCanvasDeleted = useCallback(
+    (canvasId: string): void => {
+      if (canvasId !== secondaryCanvasId) return;
+      setSplitViewActive(false);
+      setSecondaryCanvasId(null);
+      setSecondaryOpenRequest(null);
+      setActivePane("primary");
+    },
+    [secondaryCanvasId],
+  );
 
   if (!workspaceId.trim()) {
     return (
@@ -187,8 +311,8 @@ export function CloudCanvasWorkspace({
   }
   if (
     dependencies.error ||
-    !dependencies.repository ||
-    !dependencies.assetRepository
+    !dependencies.primaryRepository ||
+    !dependencies.secondaryRepository
   ) {
     return <p role="alert">{dependencies.error}</p>;
   }
@@ -200,21 +324,79 @@ export function CloudCanvasWorkspace({
     );
   }
 
+  const secondaryPane = splitViewActive ? (
+    <div
+      className={`${styles.desktopCanvasPane} ${activePane === "secondary" ? styles.desktopCanvasPaneActive : ""}`}
+      onPointerDownCapture={() => setActivePane("secondary")}
+    >
+      <InfiniteCanvasLocalShell
+        activeTaskDetailsTaskId={activeTaskDetailsTaskId}
+        assetRepository={dependencies.secondaryRepository}
+        canvasOpenRequest={secondaryOpenRequest}
+        clipboardActive={activePane === "secondary"}
+        copy={cloudCanvasShellCopy}
+        embedded
+        excludedCanvasId={primaryCanvasId}
+        groupRepository={dependencies.secondaryRepository}
+        hideDesktopSidebar
+        key={`${workspaceId}:${projectId}:secondary`}
+        knowledgeArticles={knowledgeArticles}
+        onActiveCanvasChange={setSecondaryCanvasId}
+        onCanvasDeleted={handleCanvasDeleted}
+        onPaneActivate={() => setActivePane("secondary")}
+        onToolbarSelectCanvas={(canvasId) =>
+          selectCanvasInPane("secondary", canvasId)
+        }
+        onToggleSplitView={toggleSplitView}
+        paneActive={activePane === "secondary"}
+        projectFileRepository={projectFileRepository}
+        projectFileVariantRepository={projectFileVariantRepository}
+        projectId={projectId}
+        repository={dependencies.secondaryRepository}
+        runtimeCache={secondaryRuntimeCache}
+        showDiagnostics={false}
+        splitViewActive
+        taskBridge={taskBridge}
+        taskWorkspaceId={projectId}
+        userId={userId}
+        workspaceId={workspaceId}
+      />
+    </div>
+  ) : null;
+
   return (
     <InfiniteCanvasLocalShell
       activeTaskDetailsTaskId={activeTaskDetailsTaskId}
-      assetRepository={dependencies.assetRepository}
+      assetRepository={dependencies.primaryRepository}
+      canvasOpenRequest={primaryOpenRequest}
+      clipboardActive={!splitViewActive || activePane === "primary"}
       copy={cloudCanvasShellCopy}
       embedded
       key={`${workspaceId}:${projectId}`}
-      repository={dependencies.repository}
-      groupRepository={dependencies.repository}
+      repository={dependencies.primaryRepository}
+      groupRepository={dependencies.primaryRepository}
       knowledgeArticles={knowledgeArticles}
+      onActiveCanvasChange={setPrimaryCanvasId}
+      onCanvasDeleted={handleCanvasDeleted}
+      onPaneActivate={() => setActivePane("primary")}
+      onSidebarSelectCanvas={selectCanvasFromSidebar}
+      onToolbarSelectCanvas={(canvasId) =>
+        selectCanvasInPane("primary", canvasId)
+      }
+      onToggleSplitView={toggleSplitView}
+      paneActive={!splitViewActive || activePane === "primary"}
       projectFileRepository={projectFileRepository}
       projectFileVariantRepository={projectFileVariantRepository}
       projectId={projectId}
-      runtimeCache={runtimeCache}
+      runtimeCache={primaryRuntimeCache}
+      secondaryPane={secondaryPane}
       showDiagnostics={false}
+      sidebarActiveCanvasId={
+        splitViewActive && activePane === "secondary"
+          ? secondaryCanvasId
+          : primaryCanvasId
+      }
+      splitViewActive={splitViewActive}
       taskBridge={taskBridge}
       taskWorkspaceId={projectId}
       userId={userId}

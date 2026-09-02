@@ -390,6 +390,7 @@ export function CanvasDesktopToolbar({
   onTaskQueryChange,
   onToggleFilePicker,
   onToggleArticlePicker,
+  onToggleSplitView,
   onToggleSidebar,
   onToggleTaskPicker,
   onUndo,
@@ -403,6 +404,8 @@ export function CanvasDesktopToolbar({
   articleQuery,
   articleResults,
   articleToolsReady,
+  splitViewActive = false,
+  showSidebarToggle = true,
   sidebarOpen,
   status,
   taskPickerOpen,
@@ -445,6 +448,7 @@ export function CanvasDesktopToolbar({
   onTaskQueryChange: (query: string) => void;
   onToggleFilePicker: () => void;
   onToggleArticlePicker: () => void;
+  onToggleSplitView?: () => void;
   onToggleSidebar: () => void;
   onToggleTaskPicker: () => void;
   onUndo: () => void;
@@ -458,6 +462,8 @@ export function CanvasDesktopToolbar({
   articleQuery: string;
   articleResults: readonly PrototypeDocument[];
   articleToolsReady: boolean;
+  splitViewActive?: boolean;
+  showSidebarToggle?: boolean;
   sidebarOpen: boolean;
   status: LocalCanvasShellStatus;
   taskPickerOpen: boolean;
@@ -573,21 +579,39 @@ export function CanvasDesktopToolbar({
       role="toolbar"
     >
       <div className={`${styles.desktopCanvasToolbarGroup} document-actions`}>
-        <IconButton
-          icon={<UiIcon name={sidebarOpen ? "panel-left" : "panel-right"} />}
-          label={
-            sidebarOpen
-              ? "Свернуть список холстов"
-              : "Развернуть список холстов"
-          }
-          onClick={onToggleSidebar}
-          title={
-            sidebarOpen
-              ? "Свернуть список холстов"
-              : "Развернуть список холстов"
-          }
-          variant="quiet"
-        />
+        {showSidebarToggle ? (
+          <IconButton
+            icon={<UiIcon name={sidebarOpen ? "panel-left" : "panel-right"} />}
+            label={
+              sidebarOpen
+                ? "Свернуть список холстов"
+                : "Развернуть список холстов"
+            }
+            onClick={onToggleSidebar}
+            title={
+              sidebarOpen
+                ? "Свернуть список холстов"
+                : "Развернуть список холстов"
+            }
+            variant="quiet"
+          />
+        ) : null}
+        {onToggleSplitView ? (
+          <IconButton
+            icon={<UiIcon name="split" />}
+            label={
+              splitViewActive ? "Закрыть второй холст" : "Открыть второй холст"
+            }
+            onClick={onToggleSplitView}
+            title={
+              splitViewActive
+                ? "Закрыть второй холст"
+                : "Открыть второй холст рядом"
+            }
+            aria-pressed={splitViewActive}
+            variant="quiet"
+          />
+        ) : null}
         <IconButton
           className="knowledge-content-history-action"
           disabled={!isReady || !canUndo}

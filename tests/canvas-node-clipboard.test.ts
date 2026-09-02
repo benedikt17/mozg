@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createCanvasNodeClipboardPayload,
+  materializeCanvasClipboardPaste,
   materializeCanvasNodeClipboardPaste,
   parseCanvasNodeClipboardPayload,
   serializeCanvasNodeClipboardPayload,
@@ -37,7 +38,17 @@ const document: CanvasDocumentV2 = {
       zIndex: 3,
     },
   ],
-  edges: [],
+  edges: [
+    {
+      id: "edge-1",
+      sourceNodeId: "text-1",
+      sourceHandle: "right",
+      targetNodeId: "task-1",
+      targetHandle: "left",
+      routing: "curved",
+      arrows: "end",
+    },
+  ],
 };
 
 describe("Canvas node clipboard", () => {
@@ -51,11 +62,56 @@ describe("Canvas node clipboard", () => {
       "text-1",
       "image-1",
     ]);
+    expect(payload?.edges).toEqual([]);
     expect(
       parseCanvasNodeClipboardPayload(
         serializeCanvasNodeClipboardPayload(payload!),
       ),
     ).toEqual(payload);
+  });
+
+  it("copies internal edges and remaps their node ids", () => {
+    const payload = createCanvasNodeClipboardPayload(
+      document,
+      new Set(["text-1", "task-1"]),
+      "canvas-a",
+    )!;
+    const ids = ["text-copy", "task-copy", "edge-copy"];
+    const pasted = materializeCanvasClipboardPaste(payload, {
+      targetCanvasId: "canvas-b",
+      zIndexStart: 10,
+      idGenerator: () => ids.shift()!,
+    });
+
+    expect(pasted.nodes.map((node) => node.id)).toEqual([
+      "text-text-copy",
+      "task-task-copy",
+    ]);
+    expect(pasted.edges).toEqual([
+      expect.objectContaining({
+        id: "edge-edge-copy",
+        sourceNodeId: "text-text-copy",
+        targetNodeId: "task-task-copy",
+        routing: "curved",
+        arrows: "end",
+      }),
+    ]);
+  });
+
+  it("does not carry Canvas-owned image assets into another Canvas", () => {
+    const payload = createCanvasNodeClipboardPayload(
+      document,
+      new Set(["text-1", "image-1"]),
+      "canvas-a",
+    )!;
+    const pasted = materializeCanvasClipboardPaste(payload, {
+      targetCanvasId: "canvas-b",
+      zIndexStart: 10,
+      idGenerator: () => "copy",
+    });
+
+    expect(pasted.nodes.map((node) => node.kind)).toEqual(["text"]);
+    expect(pasted.skippedCanvasAssetImages).toBe(1);
   });
 
   it("rejects malformed or unsupported clipboard JSON", () => {

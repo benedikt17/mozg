@@ -3,16 +3,25 @@ import {
   CANVAS_DOCUMENT_V2_SCHEMA_VERSION,
   parseCanvasDocumentV2,
   type CanvasDocumentV2,
+  type CanvasEdgeV2,
   type CanvasNode,
 } from "@/lib/canvas/canvas-document";
 
 export const CANVAS_NODE_CLIPBOARD_MIME =
   "application/x-mozg-canvas-nodes+json";
-const CANVAS_NODE_CLIPBOARD_VERSION = 1 as const;
+const CANVAS_NODE_CLIPBOARD_VERSION = 2 as const;
 
 export type CanvasNodeClipboardPayload = {
   version: typeof CANVAS_NODE_CLIPBOARD_VERSION;
+  sourceCanvasId?: string;
   nodes: CanvasNode[];
+  edges: CanvasEdgeV2[];
+};
+
+export type CanvasClipboardPasteResult = {
+  edges: CanvasEdgeV2[];
+  nodes: CanvasNode[];
+  skippedCanvasAssetImages: number;
 };
 
 export type CanvasClipboardPasteTarget = {
@@ -24,25 +33,29 @@ function cloneNode(node: CanvasNode): CanvasNode {
   return structuredClone(node);
 }
 
-function copyableNode(node: CanvasNode): boolean {
-  return (
-    node.kind === "image" ||
-    node.kind === "pdf" ||
-    node.kind === "text" ||
-    node.kind === "shape" ||
-    node.kind === "task"
-  );
-}
-
 export function createCanvasNodeClipboardPayload(
   document: CanvasDocumentV2,
   selectedNodeIds: ReadonlySet<string>,
+  sourceCanvasId?: string,
 ): CanvasNodeClipboardPayload | null {
   const nodes = document.nodes
-    .filter((node) => selectedNodeIds.has(node.id) && copyableNode(node))
+    .filter((node) => selectedNodeIds.has(node.id))
     .map(cloneNode);
   if (nodes.length === 0) return null;
-  return { version: CANVAS_NODE_CLIPBOARD_VERSION, nodes };
+  const copiedNodeIds = new Set(nodes.map((node) => node.id));
+  const edges = document.edges
+    .filter(
+      (edge) =>
+        copiedNodeIds.has(edge.sourceNodeId) &&
+        copiedNodeIds.has(edge.targetNodeId),
+    )
+    .map((edge) => structuredClone(edge));
+  return {
+    version: CANVAS_NODE_CLIPBOARD_VERSION,
+    ...(sourceCanvasId ? { sourceCanvasId } : {}),
+    nodes,
+    edges,
+  };
 }
 
 export function serializeCanvasNodeClipboardPayload(
@@ -60,17 +73,33 @@ export function parseCanvasNodeClipboardPayload(
       version?: unknown;
       nodes?: unknown;
     };
-    if (parsed.version !== CANVAS_NODE_CLIPBOARD_VERSION) return null;
+    if (
+      parsed.version !== 1 &&
+      parsed.version !== CANVAS_NODE_CLIPBOARD_VERSION
+    )
+      return null;
     if (!Array.isArray(parsed.nodes)) return null;
+    const edges =
+      parsed.version === CANVAS_NODE_CLIPBOARD_VERSION &&
+      Array.isArray((parsed as { edges?: unknown }).edges)
+        ? (parsed as { edges: unknown[] }).edges
+        : [];
     const validated = parseCanvasDocumentV2({
       schemaVersion: CANVAS_DOCUMENT_V2_SCHEMA_VERSION,
       nodes: parsed.nodes,
-      edges: [],
+      edges,
     });
-    const nodes = validated.nodes.filter(copyableNode).map(cloneNode);
-    if (nodes.length !== validated.nodes.length || nodes.length === 0)
+    if (validated.nodes.length === 0) return null;
+    const sourceCanvasId = (parsed as { sourceCanvasId?: unknown })
+      .sourceCanvasId;
+    if (sourceCanvasId !== undefined && typeof sourceCanvasId !== "string")
       return null;
-    return { version: CANVAS_NODE_CLIPBOARD_VERSION, nodes };
+    return {
+      version: CANVAS_NODE_CLIPBOARD_VERSION,
+      ...(sourceCanvasId ? { sourceCanvasId } : {}),
+      nodes: validated.nodes.map(cloneNode),
+      edges: validated.edges.map((edge) => structuredClone(edge)),
+    };
   } catch {
     return null;
   }
@@ -114,26 +143,71 @@ export function materializeCanvasNodeClipboardPaste(
     idGenerator?: () => string;
   },
 ): CanvasNode[] {
+  return materializeCanvasClipboardPaste(payload, options).nodes;
+}
+
+export function materializeCanvasClipboardPaste(
+  payload: CanvasNodeClipboardPayload,
+  options: {
+    offset?: number;
+    target?: CanvasClipboardPasteTarget;
+    targetCanvasId?: string;
+    zIndexStart: number;
+    idGenerator?: () => string;
+  },
+): CanvasClipboardPasteResult {
   const idGenerator =
     options.idGenerator ??
     (() =>
       globalThis.crypto?.randomUUID?.() ??
       `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const isCrossCanvasPaste = Boolean(
+    payload.sourceCanvasId &&
+    options.targetCanvasId &&
+    payload.sourceCanvasId !== options.targetCanvasId,
+  );
+  const sourceNodes = payload.nodes.filter(
+    (node) =>
+      !(isCrossCanvasPaste && node.kind === "image" && "assetId" in node),
+  );
   const translation = pasteTranslation(
-    payload.nodes,
+    sourceNodes,
     options.target,
     options.offset ?? 0,
   );
-  return payload.nodes.map((node, index) => ({
-    ...cloneNode(node),
-    id: `${node.kind}-${idGenerator()}`,
-    position: {
-      x: shiftedCoordinate(node.position.x, translation.x),
-      y: shiftedCoordinate(node.position.y, translation.y),
-    },
-    zIndex: Math.min(
-      CANVAS_DOCUMENT_LIMITS.maxZIndex,
-      options.zIndexStart + index,
-    ),
-  }));
+  const nodeIds = new Map<string, string>();
+  const nodes = sourceNodes.map((node, index) => {
+    const id = `${node.kind}-${idGenerator()}`;
+    nodeIds.set(node.id, id);
+    return {
+      ...cloneNode(node),
+      id,
+      position: {
+        x: shiftedCoordinate(node.position.x, translation.x),
+        y: shiftedCoordinate(node.position.y, translation.y),
+      },
+      zIndex: Math.min(
+        CANVAS_DOCUMENT_LIMITS.maxZIndex,
+        options.zIndexStart + index,
+      ),
+    };
+  });
+  const edges = payload.edges.flatMap((edge) => {
+    const sourceNodeId = nodeIds.get(edge.sourceNodeId);
+    const targetNodeId = nodeIds.get(edge.targetNodeId);
+    if (!sourceNodeId || !targetNodeId) return [];
+    return [
+      {
+        ...structuredClone(edge),
+        id: `edge-${idGenerator()}`,
+        sourceNodeId,
+        targetNodeId,
+      },
+    ];
+  });
+  return {
+    nodes,
+    edges,
+    skippedCanvasAssetImages: payload.nodes.length - sourceNodes.length,
+  };
 }

@@ -27,7 +27,7 @@ describe("Canvas selection clipboard runtime", () => {
 
     expect(canvasPaste).toBeGreaterThan(-1);
     expect(imagePaste).toBeGreaterThan(canvasPaste);
-    expect(source).toContain("materializeCanvasNodeClipboardPaste(payload");
+    expect(source).toContain("materializeCanvasClipboardPaste(payload");
     expect(source).toContain("screenToFlowRef.current(pointerRef.current)");
     expect(source).toContain("target,");
     expect(source).toContain("onPointerMoveCapture={handleCanvasPointerMove}");
@@ -49,11 +49,14 @@ describe("Canvas selection clipboard runtime", () => {
     expect(textPasteRuntime).toContain("style: node.style,");
   });
 
-  it("persists pasted nodes as one canonical controller mutation", () => {
+  it("persists pasted nodes and internal edges as one canonical mutation", () => {
     const source = fs.readFileSync(controllerPath, "utf8");
     const shell = fs.readFileSync(shellPath, "utf8");
 
     expect(source).toContain("insertCanvasNodes(nodes: readonly CanvasNode[])");
-    expect(shell).toContain("controller.insertCanvasNodes(persistedNodes)");
+    expect(shell).toContain("controller.setDocument({");
+    expect(shell).toContain(
+      "edges: [...currentDocument.edges, ...persistedEdges]",
+    );
   });
 });
