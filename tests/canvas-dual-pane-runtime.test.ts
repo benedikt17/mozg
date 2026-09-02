@@ -85,4 +85,24 @@ describe("Canvas dual-pane runtime composition", () => {
     );
     expect(shell.match(/\{showMiniMap \? \(/gu)).toHaveLength(2);
   });
+
+  it("restores split selection from project-scoped browser runtime state", () => {
+    const workspace = fs.readFileSync(workspacePath, "utf8");
+
+    expect(workspace).toContain("projectDualPaneRuntimeStates");
+    expect(workspace).toContain("getProjectDualPaneRuntimeState(");
+    expect(workspace).toContain("setProjectDualPaneRuntimeState(");
+    expect(workspace).toContain("setSplitViewActive(restored.splitViewActive)");
+    expect(workspace).toContain("setPrimaryCanvasId(restored.primaryCanvasId)");
+    expect(workspace).toContain(
+      "setSecondaryCanvasId(restored.secondaryCanvasId)",
+    );
+  });
+
+  it("flushes the latest viewport into the pane cache during navigation", () => {
+    const shell = fs.readFileSync(shellPath, "utf8");
+
+    expect(shell).toContain("const latestViewport = latestViewportRef.current");
+    expect(shell).toContain("void controller.saveViewport(latestViewport)");
+  });
 });

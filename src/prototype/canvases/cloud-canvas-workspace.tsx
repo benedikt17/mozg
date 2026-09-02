@@ -28,6 +28,56 @@ import styles from "@/prototype/infinite-canvas-local-shell/infinite-canvas-loca
 const PROJECT_RUNTIME_CACHE_LIMIT = 8;
 const projectRuntimeCaches = new Map<string, CloudCanvasRuntimeCache>();
 
+type CloudCanvasDualPaneRuntimeState = {
+  activePane: CanvasPaneId;
+  primaryCanvasId: string | null;
+  secondaryCanvasId: string | null;
+  splitViewActive: boolean;
+  userId: string;
+};
+
+const PROJECT_DUAL_PANE_RUNTIME_LIMIT = 8;
+const projectDualPaneRuntimeStates = new Map<
+  string,
+  CloudCanvasDualPaneRuntimeState
+>();
+
+function projectDualPaneRuntimeKey(
+  workspaceId: string,
+  projectId: string,
+): string {
+  return `${workspaceId}:${projectId}`;
+}
+
+function getProjectDualPaneRuntimeState(
+  workspaceId: string,
+  projectId: string,
+  userId: string,
+): CloudCanvasDualPaneRuntimeState | null {
+  const key = projectDualPaneRuntimeKey(workspaceId, projectId);
+  const state = projectDualPaneRuntimeStates.get(key);
+  if (!state || state.userId !== userId) return null;
+  projectDualPaneRuntimeStates.delete(key);
+  projectDualPaneRuntimeStates.set(key, state);
+  return state;
+}
+
+function setProjectDualPaneRuntimeState(
+  workspaceId: string,
+  projectId: string,
+  state: CloudCanvasDualPaneRuntimeState,
+): void {
+  const key = projectDualPaneRuntimeKey(workspaceId, projectId);
+  projectDualPaneRuntimeStates.delete(key);
+  projectDualPaneRuntimeStates.set(key, state);
+  while (projectDualPaneRuntimeStates.size > PROJECT_DUAL_PANE_RUNTIME_LIMIT) {
+    const oldest = projectDualPaneRuntimeStates.entries().next().value as
+      [string, CloudCanvasDualPaneRuntimeState] | undefined;
+    if (!oldest) return;
+    projectDualPaneRuntimeStates.delete(oldest[0]);
+  }
+}
+
 function projectRuntimeCache(
   workspaceId: string,
   projectId: string,
@@ -55,6 +105,10 @@ function projectRuntimeCache(
 function clearProjectRuntimeCachesExcept(userId: string | null): void {
   for (const cache of projectRuntimeCaches.values()) {
     cache.clearAllExcept(userId);
+  }
+  for (const [key, state] of projectDualPaneRuntimeStates) {
+    if (userId && state.userId === userId) continue;
+    projectDualPaneRuntimeStates.delete(key);
   }
 }
 
@@ -234,6 +288,42 @@ function CloudCanvasProjectWorkspace({
     requestId: number;
   } | null>(null);
   const openRequestSequence = useRef(0);
+
+  useEffect(() => {
+    if (!userId) return;
+    const restored = getProjectDualPaneRuntimeState(
+      workspaceId,
+      projectId,
+      userId,
+    );
+    if (!restored) return;
+    const frame = window.requestAnimationFrame(() => {
+      setSplitViewActive(restored.splitViewActive);
+      setActivePane(restored.activePane);
+      setPrimaryCanvasId(restored.primaryCanvasId);
+      setSecondaryCanvasId(restored.secondaryCanvasId);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [projectId, userId, workspaceId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    setProjectDualPaneRuntimeState(workspaceId, projectId, {
+      userId,
+      splitViewActive,
+      activePane,
+      primaryCanvasId,
+      secondaryCanvasId,
+    });
+  }, [
+    activePane,
+    primaryCanvasId,
+    projectId,
+    secondaryCanvasId,
+    splitViewActive,
+    userId,
+    workspaceId,
+  ]);
 
   const toggleSplitView = useCallback(() => {
     if (splitViewActive) setActivePane("primary");

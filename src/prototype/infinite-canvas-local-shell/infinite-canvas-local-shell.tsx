@@ -1818,6 +1818,9 @@ function InfiniteCanvasLocalShellSurface({
   const shellStateRef = useRef<LocalCanvasShellState>(
     initialRuntime?.shellState ?? emptyShellState(),
   );
+  const latestViewportRef = useRef<CanvasPanViewport | null>(
+    initialRuntime?.shellState.viewport ?? null,
+  );
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pdfUploadInFlightRef = useRef(new Map<string, Promise<void>>());
   const viewportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2956,6 +2959,7 @@ function InfiniteCanvasLocalShellSurface({
       const nextState = await controller.openCanvas(canvasId);
       if (generation !== canvasGenerationRef.current) return;
       repository.setActiveCanvas?.(canvasId);
+      latestViewportRef.current = { ...nextState.viewport };
       setShellState(nextState);
       setRenameTitle(nextState.title);
       setViewportInitialization({
@@ -3316,6 +3320,15 @@ function InfiniteCanvasLocalShellSurface({
         variantDowngradeTimerRef.current = null;
       }
       let latestState = controller.state;
+      // Viewport persistence is intentionally debounced during panning.  On a
+      // route change there may be no time for that debounce to fire, so flush
+      // the latest rendered position into the controller before creating the
+      // in-memory snapshot for this pane.
+      const latestViewport = latestViewportRef.current;
+      if (latestState.canvasId && latestViewport) {
+        void controller.saveViewport(latestViewport).catch(() => undefined);
+        latestState = controller.state;
+      }
       if (saveTimerRef.current) {
         controller.setRuntimeNodes(nodesRef.current);
         latestState = controller.setRuntimeEdges(edgesRef.current);
@@ -5072,6 +5085,7 @@ function InfiniteCanvasLocalShellSurface({
         return;
       }
       programmaticViewportRef.current = null;
+      latestViewportRef.current = { ...viewport };
       setShellState((current) => ({ ...current, viewport: { ...viewport } }));
       // Upgrades must begin immediately. A lower-resolution source is only
       // considered after the zoom has remained still for one debounce window.
