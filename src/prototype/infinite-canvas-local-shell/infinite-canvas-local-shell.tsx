@@ -5481,12 +5481,10 @@ function InfiniteCanvasLocalShellSurface({
     if (current.status !== "conflict" || !current.canvasId) return;
 
     const canvasId = current.canvasId;
-    const discarded = controller.discardConflictState();
-    setShellState(discarded);
-    setNodes([]);
-    setEdges([]);
-    nodesRef.current = [];
-    edgesRef.current = [];
+    // Keep the mounted React Flow scene in place behind its loading overlay.
+    // Clearing the UI state here would unmount the flow before the refreshed
+    // Canvas gets its viewport, leaving the pane stuck in "Preparing canvas".
+    controller.discardConflictState();
     void openCanvas(canvasId).catch((error: unknown) => {
       setLoadingLifecycle("error");
       setShellState({
@@ -5498,7 +5496,7 @@ function InfiniteCanvasLocalShellSurface({
             : "Canvas content loading failed.",
       });
     });
-  }, [clearConflictDraft, controller, openCanvas, setEdges, setNodes]);
+  }, [clearConflictDraft, controller, openCanvas]);
 
   const desktopListState =
     loadingLifecycle === "list-loading"
