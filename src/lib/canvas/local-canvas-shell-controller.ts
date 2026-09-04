@@ -765,4 +765,20 @@ export class LocalCanvasShellController {
     if (!this.stateValue.canvasId) return this.state;
     return this.openCanvas(this.stateValue.canvasId);
   }
+
+  /**
+   * Drops a conflicted in-memory document before loading the server winner.
+   * This deliberately performs no save: the caller has chosen to discard the
+   * browser-held recovery copy.
+   */
+  discardConflictState(): LocalCanvasShellState {
+    if (!this.stateValue.autosaveBlocked) return this.state;
+    this.beginCanvasNavigation(null);
+    this.stateValue = emptyShellState();
+    this.documentHistory.reset();
+    this.mutationVersion = 0;
+    this.savedMutationVersion = 0;
+    this.saveInFlight = null;
+    return this.state;
+  }
 }

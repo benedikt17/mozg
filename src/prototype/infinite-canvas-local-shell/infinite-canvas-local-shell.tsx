@@ -5472,10 +5472,33 @@ function InfiniteCanvasLocalShellSurface({
   }, [readConflictDraft, shellState]);
 
   const discardLocalConflictDraft = useCallback(() => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    const current = controller.state;
     clearConflictDraft();
-    if (shellState.status === "conflict" && shellState.canvasId)
-      void openCanvas(shellState.canvasId);
-  }, [clearConflictDraft, openCanvas, shellState.canvasId, shellState.status]);
+    if (current.status !== "conflict" || !current.canvasId) return;
+
+    const canvasId = current.canvasId;
+    const discarded = controller.discardConflictState();
+    setShellState(discarded);
+    setNodes([]);
+    setEdges([]);
+    nodesRef.current = [];
+    edgesRef.current = [];
+    void openCanvas(canvasId).catch((error: unknown) => {
+      setLoadingLifecycle("error");
+      setShellState({
+        ...controller.state,
+        status: "error",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Canvas content loading failed.",
+      });
+    });
+  }, [clearConflictDraft, controller, openCanvas, setEdges, setNodes]);
 
   const desktopListState =
     loadingLifecycle === "list-loading"

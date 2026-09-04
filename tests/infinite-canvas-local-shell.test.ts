@@ -1540,6 +1540,36 @@ describe("production-shaped local Canvas shell", () => {
     ).toEqual({ x: 50, y: 60 });
   });
 
+  it("drops a conflicted local document before reopening the server winner", async () => {
+    const repository = new MemoryCanvasRepository();
+    const canvas = await repository.createCanvas({
+      workspaceId: WORKSPACE_A,
+      title: "Shared",
+    });
+    const first = new LocalCanvasShellController(controllerOptions(repository));
+    const second = new LocalCanvasShellController(
+      controllerOptions(repository),
+    );
+    await first.openCanvas(canvas.id);
+    await second.openCanvas(canvas.id);
+    first.setDocument(documentWithImage({ position: { x: 50, y: 60 } }));
+    await first.save();
+    second.setDocument(documentWithImage({ position: { x: 900, y: 901 } }));
+    expect(await second.save()).toEqual({ status: "conflict", revision: 2 });
+
+    const savedCalls = repository.saveCalls;
+    expect(second.discardConflictState()).toMatchObject({
+      canvasId: null,
+      status: "loading",
+      autosaveBlocked: false,
+    });
+    expect(await second.save()).toBeNull();
+    expect(repository.saveCalls).toBe(savedCalls);
+
+    const reopened = await second.openCanvas(canvas.id);
+    expect(reopened.document.nodes[0]?.position).toEqual({ x: 50, y: 60 });
+  });
+
   it("lets the losing editor explicitly save its preserved local document", async () => {
     const repository = new MemoryCanvasRepository();
     const canvas = await repository.createCanvas({
