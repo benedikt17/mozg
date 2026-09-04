@@ -1736,7 +1736,8 @@ export type CanvasShellCopy = {
   error: string;
   reloadWinner: string;
   keepLocalChanges: string;
-  restoreLocalDraft: string;
+  previewLocalDraft: string;
+  discardLocalDraft: string;
   isolated: string;
   status: string;
 };
@@ -5435,15 +5436,46 @@ function InfiniteCanvasLocalShellSurface({
     if (current.canvasId) void openCanvas(current.canvasId);
   }, [controller, openCanvas, saveConflictDraft]);
 
-  const restoreLocalConflictDraft = useCallback(() => {
-    const draft = readConflictDraft();
-    if (!draft) return;
-    const restored = controller.restoreConflictDraft(draft);
-    if (!restored) return;
-    setShellState(restored);
-    setRenameTitle(restored.title);
-    void restoreForCanvas(restored).catch(syncState);
-  }, [controller, readConflictDraft, restoreForCanvas, syncState]);
+  const previewLocalConflictDraft = useCallback(() => {
+    const draft =
+      readConflictDraft() ??
+      (shellState.status === "conflict" && shellState.canvasId
+        ? {
+            canvasId: shellState.canvasId,
+            document: shellState.document,
+            title: shellState.title,
+            viewport: shellState.viewport,
+          }
+        : null);
+    if (!draft?.canvasId) return;
+    const preview = createCanvasPortableBackup({
+      canvasId: draft.canvasId,
+      document: draft.document,
+      revision: shellState.revision,
+      title: `${draft.title ?? shellState.title} — локальная копия`,
+    });
+    const viewer = preview.entries.find((entry) => entry.path === "index.html");
+    if (!viewer) return;
+    const objectUrl = URL.createObjectURL(
+      new Blob([viewer.content], { type: "text/html" }),
+    );
+    const previewWindow = window.open(
+      objectUrl,
+      "_blank",
+      "noopener,noreferrer",
+    );
+    if (!previewWindow) {
+      URL.revokeObjectURL(objectUrl);
+      return;
+    }
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  }, [readConflictDraft, shellState]);
+
+  const discardLocalConflictDraft = useCallback(() => {
+    clearConflictDraft();
+    if (shellState.status === "conflict" && shellState.canvasId)
+      void openCanvas(shellState.canvasId);
+  }, [clearConflictDraft, openCanvas, shellState.canvasId, shellState.status]);
 
   const desktopListState =
     loadingLifecycle === "list-loading"
@@ -5539,7 +5571,8 @@ function InfiniteCanvasLocalShellSurface({
       onKeepLocalChanges={keepLocalChanges}
       onRedo={() => applyCanvasHistory("redo")}
       onReloadWinner={reloadLatestVersion}
-      onRestoreLocalDraft={restoreLocalConflictDraft}
+      onPreviewLocalDraft={previewLocalConflictDraft}
+      onDiscardLocalDraft={discardLocalConflictDraft}
       onRetry={() => {
         if (shellState.canvasId) void openCanvas(shellState.canvasId);
         else window.location.reload();
@@ -6027,6 +6060,20 @@ function InfiniteCanvasLocalShellSurface({
           {shellState.status === "conflict" ? (
             <>
               <button
+                className={styles.button}
+                type="button"
+                onClick={previewLocalConflictDraft}
+              >
+                {copy.previewLocalDraft}
+              </button>
+              <button
+                className={styles.button}
+                type="button"
+                onClick={discardLocalConflictDraft}
+              >
+                {copy.discardLocalDraft}
+              </button>
+              <button
                 className={`${styles.button} ${styles.primary}`}
                 type="button"
                 onClick={keepLocalChanges}
@@ -6042,13 +6089,22 @@ function InfiniteCanvasLocalShellSurface({
               </button>
             </>
           ) : conflictDraftAvailable ? (
-            <button
-              className={styles.button}
-              type="button"
-              onClick={restoreLocalConflictDraft}
-            >
-              {copy.restoreLocalDraft}
-            </button>
+            <>
+              <button
+                className={styles.button}
+                type="button"
+                onClick={previewLocalConflictDraft}
+              >
+                {copy.previewLocalDraft}
+              </button>
+              <button
+                className={styles.button}
+                type="button"
+                onClick={discardLocalConflictDraft}
+              >
+                {copy.discardLocalDraft}
+              </button>
+            </>
           ) : null}
           {shellState.status === "error" ? (
             <button

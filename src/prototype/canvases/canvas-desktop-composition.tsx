@@ -381,7 +381,8 @@ export function CanvasDesktopToolbar({
   onKeepLocalChanges,
   onRedo,
   onReloadWinner,
-  onRestoreLocalDraft,
+  onPreviewLocalDraft,
+  onDiscardLocalDraft,
   onRetry,
   onSelectFile,
   onSelectArticle,
@@ -439,7 +440,8 @@ export function CanvasDesktopToolbar({
   onKeepLocalChanges: () => void;
   onRedo: () => void;
   onReloadWinner: () => void;
-  onRestoreLocalDraft: () => void;
+  onPreviewLocalDraft: () => void;
+  onDiscardLocalDraft: () => void;
   onRetry: () => void;
   onSelectFile: (file: ProjectFileRecord) => void;
   onSelectArticle: (article: PrototypeDocument) => void;
@@ -909,6 +911,20 @@ export function CanvasDesktopToolbar({
         {status === "conflict" ? (
           <>
             <PrototypeButton
+              onClick={onPreviewLocalDraft}
+              size="compact"
+              variant="quiet"
+            >
+              {copy.previewLocalDraft}
+            </PrototypeButton>
+            <PrototypeButton
+              onClick={onDiscardLocalDraft}
+              size="compact"
+              variant="quiet"
+            >
+              {copy.discardLocalDraft}
+            </PrototypeButton>
+            <PrototypeButton
               onClick={onKeepLocalChanges}
               size="compact"
               variant="quiet"
@@ -924,13 +940,22 @@ export function CanvasDesktopToolbar({
             </PrototypeButton>
           </>
         ) : conflictDraftAvailable ? (
-          <PrototypeButton
-            onClick={onRestoreLocalDraft}
-            size="compact"
-            variant="quiet"
-          >
-            {copy.restoreLocalDraft}
-          </PrototypeButton>
+          <>
+            <PrototypeButton
+              onClick={onPreviewLocalDraft}
+              size="compact"
+              variant="quiet"
+            >
+              {copy.previewLocalDraft}
+            </PrototypeButton>
+            <PrototypeButton
+              onClick={onDiscardLocalDraft}
+              size="compact"
+              variant="quiet"
+            >
+              {copy.discardLocalDraft}
+            </PrototypeButton>
+          </>
         ) : status === "error" ? (
           <PrototypeButton onClick={onRetry} size="compact" variant="quiet">
             Повторить

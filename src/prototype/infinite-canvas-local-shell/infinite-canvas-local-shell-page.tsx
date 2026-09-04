@@ -41,7 +41,8 @@ const localCanvasShellCopy: CanvasShellCopy = {
   error: "Error",
   reloadWinner: "Reload winner",
   keepLocalChanges: "Keep my changes",
-  restoreLocalDraft: "Restore my local copy",
+  previewLocalDraft: "Open local copy",
+  discardLocalDraft: "Delete local copy",
   isolated: "Workspace isolated",
   status: "Private local workspace · no production data",
 };

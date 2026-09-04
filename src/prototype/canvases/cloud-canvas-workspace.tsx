@@ -131,7 +131,8 @@ const cloudCanvasShellCopy: CanvasShellCopy = {
   error: "Ошибка",
   reloadWinner: "Загрузить актуальную версию",
   keepLocalChanges: "Сохранить мои изменения",
-  restoreLocalDraft: "Вернуть мою локальную копию",
+  previewLocalDraft: "Открыть локальную копию",
+  discardLocalDraft: "Удалить локальную копию",
   isolated: "Проект",
   status: "Облачное сохранение · V2",
 };
