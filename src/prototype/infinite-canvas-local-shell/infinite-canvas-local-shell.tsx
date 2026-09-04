@@ -2982,13 +2982,16 @@ function InfiniteCanvasLocalShellSurface({
   }, [applyCanvasHistory, clipboardActive, controller]);
 
   const openCanvas = useCallback(
-    async (canvasId: string) => {
+    async (canvasId: string, options?: { preserveViewport?: boolean }) => {
       const generation = ++canvasGenerationRef.current;
+      const preserveViewport = options?.preserveViewport === true;
       hydratingRef.current = true;
       setLoadingLifecycle("canvas-selected");
-      programmaticViewportRef.current = null;
-      setViewportInitialization(null);
-      setViewportVisible(false);
+      if (!preserveViewport) {
+        programmaticViewportRef.current = null;
+        setViewportInitialization(null);
+        setViewportVisible(false);
+      }
       setShellState((current) => ({
         ...current,
         status: "loading",
@@ -2998,14 +3001,16 @@ function InfiniteCanvasLocalShellSurface({
       const nextState = await controller.openCanvas(canvasId);
       if (generation !== canvasGenerationRef.current) return;
       repository.setActiveCanvas?.(canvasId);
-      latestViewportRef.current = { ...nextState.viewport };
+      if (!preserveViewport)
+        latestViewportRef.current = { ...nextState.viewport };
       setShellState(nextState);
       setRenameTitle(nextState.title);
-      setViewportInitialization({
-        canvasId,
-        generation,
-        viewport: { ...nextState.viewport },
-      });
+      if (!preserveViewport)
+        setViewportInitialization({
+          canvasId,
+          generation,
+          viewport: { ...nextState.viewport },
+        });
       void restoreForCanvas(nextState).catch((error: unknown) => {
         if (generation !== canvasGenerationRef.current) return;
         setLoadingLifecycle("error");
@@ -5485,17 +5490,21 @@ function InfiniteCanvasLocalShellSurface({
     // Clearing the UI state here would unmount the flow before the refreshed
     // Canvas gets its viewport, leaving the pane stuck in "Preparing canvas".
     controller.discardConflictState();
-    void openCanvas(canvasId).catch((error: unknown) => {
-      setLoadingLifecycle("error");
-      setShellState({
-        ...controller.state,
-        status: "error",
-        error:
-          error instanceof Error
-            ? error.message
-            : "Canvas content loading failed.",
-      });
-    });
+    // The server winner replaces document data only. The existing flow and
+    // camera are already valid, so do not run the first-open viewport gate.
+    void openCanvas(canvasId, { preserveViewport: true }).catch(
+      (error: unknown) => {
+        setLoadingLifecycle("error");
+        setShellState({
+          ...controller.state,
+          status: "error",
+          error:
+            error instanceof Error
+              ? error.message
+              : "Canvas content loading failed.",
+        });
+      },
+    );
   }, [clearConflictDraft, controller, openCanvas]);
 
   const desktopListState =

@@ -35,14 +35,16 @@ describe("Canvas local recovery draft controls", () => {
     expect(toolbar).not.toContain("onRestoreLocalDraft");
   });
 
-  it("keeps the mounted flow while a discarded conflict reloads the server copy", () => {
+  it("keeps the mounted flow and viewport while a discarded conflict reloads the server copy", () => {
     const shell = fs.readFileSync(shellPath, "utf8");
     const discardStart = shell.indexOf("const discardLocalConflictDraft");
     const discardEnd = shell.indexOf("const desktopListState", discardStart);
     const discardHandler = shell.slice(discardStart, discardEnd);
 
     expect(discardHandler).toContain("controller.discardConflictState()");
-    expect(discardHandler).toContain("void openCanvas(canvasId)");
+    expect(discardHandler).toContain(
+      "void openCanvas(canvasId, { preserveViewport: true })",
+    );
     expect(discardHandler).not.toContain("setShellState(discarded)");
     expect(discardHandler).not.toContain("setNodes([])");
     expect(discardHandler).not.toContain("setEdges([])");
