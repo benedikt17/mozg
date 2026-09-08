@@ -324,7 +324,8 @@ export function chooseProjectFilePreviewVariant(
     .filter((variant) => variant.readyAt !== null)
     .slice()
     .sort((left, right) => left.targetMaxEdge - right.targetMaxEdge);
-  return (
-    sorted.find((variant) => variant.targetMaxEdge >= preferredMaxEdge) ?? null
+  const preferred = sorted.find(
+    (variant) => variant.targetMaxEdge >= preferredMaxEdge,
   );
+  return preferred ?? null;
 }
