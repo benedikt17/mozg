@@ -187,11 +187,11 @@ async function decodeProjectFileImage(
       try {
         const bitmap = await createImageBitmap(blob);
         return {
-        source: bitmap,
-        width: bitmap.width,
-        height: bitmap.height,
-        close: () => bitmap.close(),
-      };
+          source: bitmap,
+          width: bitmap.width,
+          height: bitmap.height,
+          close: () => bitmap.close(),
+        };
       } catch {
         // Fall through to HTMLImageElement. Some browser engines accept the
         // source image but reject one or both createImageBitmap paths.
