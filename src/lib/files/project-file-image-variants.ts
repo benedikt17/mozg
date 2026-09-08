@@ -1,5 +1,7 @@
 export const PROJECT_FILE_IMAGE_VARIANT_MIME_TYPE = "image/webp" as const;
-export const PROJECT_FILE_IMAGE_VARIANT_TARGET_MAX_EDGES = [256, 320, 512, 1024, 2048, 4096] as const;
+export const PROJECT_FILE_IMAGE_VARIANT_TARGET_MAX_EDGES = [
+  256, 320, 512, 1024, 2048, 4096,
+] as const;
 export const PROJECT_FILE_PREVIEW_PREFERRED_MAX_EDGE = 1024;
 export const PROJECT_FILE_IMAGE_VARIANT_QUALITY = 0.82;
 export const PROJECT_FILE_IMAGE_VARIANT_MAX_BYTES = 20 * 1024 * 1024;
@@ -322,8 +324,7 @@ export function chooseProjectFilePreviewVariant(
     .filter((variant) => variant.readyAt !== null)
     .slice()
     .sort((left, right) => left.targetMaxEdge - right.targetMaxEdge);
-  const preferred = sorted.find(
-    (variant) => variant.targetMaxEdge >= preferredMaxEdge,
+  return (
+    sorted.find((variant) => variant.targetMaxEdge >= preferredMaxEdge) ?? null
   );
-  return preferred ?? null;
 }
