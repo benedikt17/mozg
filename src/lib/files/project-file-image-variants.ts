@@ -320,13 +320,11 @@ export function chooseProjectFilePreviewVariant(
   variants: readonly ProjectFileImageVariantMetadata[],
   preferredMaxEdge = PROJECT_FILE_PREVIEW_PREFERRED_MAX_EDGE,
 ): ProjectFileImageVariantMetadata | null {
+  const sorted = variants
+    .filter((variant) => variant.readyAt !== null)
+    .slice()
+    .sort((left, right) => left.targetMaxEdge - right.targetMaxEdge);
   return (
-    variants
-      .filter(
-        (variant) =>
-          variant.readyAt !== null && variant.targetMaxEdge >= preferredMaxEdge,
-      )
-      .slice()
-      .sort((left, right) => left.targetMaxEdge - right.targetMaxEdge)[0] ?? null
+    sorted.find((variant) => variant.targetMaxEdge >= preferredMaxEdge) ?? null
   );
 }
