@@ -33,6 +33,13 @@ jobs:
           else
             echo "DIFF_BASE_SHA=$PUSH_BEFORE_SHA" >> "$GITHUB_ENV"
           fi
+      - name: Diagnose image variant formatting
+        shell: bash
+        run: |
+          cp src/lib/files/project-file-image-variants.ts /tmp/project-file-image-variants.before.ts
+          pnpm exec prettier --write src/lib/files/project-file-image-variants.ts
+          diff -u /tmp/project-file-image-variants.before.ts src/lib/files/project-file-image-variants.ts || true
+          cp /tmp/project-file-image-variants.before.ts src/lib/files/project-file-image-variants.ts
       - name: Check formatting of changed files
         shell: bash
         run: |
