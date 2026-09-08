@@ -62,11 +62,24 @@ describe("Project File image variants", () => {
     ).toBe(1024);
   });
 
-  it("falls back to the largest available ready tier and ignores pending rows", () => {
+  it("uses a larger ready tier when the preferred tier is unavailable", () => {
+    expect(
+      chooseProjectFilePreviewVariant([
+        variant(256),
+        variant(512),
+        variant(2048),
+      ])?.targetMaxEdge,
+    ).toBe(2048);
+  });
+
+  it("returns null when only undersized or pending tiers exist", () => {
     const pending = { ...variant(1024), readyAt: null };
     expect(
-      chooseProjectFilePreviewVariant([variant(256), variant(512), pending])
-        ?.targetMaxEdge,
-    ).toBe(512);
+      chooseProjectFilePreviewVariant([variant(256), variant(512), pending]),
+    ).toBeNull();
+  });
+
+  it("returns null when the Files viewer needs 2048 but only 1024 is ready", () => {
+    expect(chooseProjectFilePreviewVariant([variant(1024)], 2048)).toBeNull();
   });
 });

@@ -187,11 +187,11 @@ async function decodeProjectFileImage(
       try {
         const bitmap = await createImageBitmap(blob);
         return {
-        source: bitmap,
-        width: bitmap.width,
-        height: bitmap.height,
-        close: () => bitmap.close(),
-      };
+          source: bitmap,
+          width: bitmap.width,
+          height: bitmap.height,
+          close: () => bitmap.close(),
+        };
       } catch {
         // Fall through to HTMLImageElement. Some browser engines accept the
         // source image but reject one or both createImageBitmap paths.
@@ -241,9 +241,7 @@ async function renderProjectFileImageVariant(
         })
       : new OffscreenCanvas(target.width, target.height);
   const context = canvas.getContext("2d") as
-    | CanvasRenderingContext2D
-    | OffscreenCanvasRenderingContext2D
-    | null;
+    CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
   if (!context) {
     throw new Error("Project File image 2D context is unavailable.");
   }
@@ -325,8 +323,6 @@ export function chooseProjectFilePreviewVariant(
     .slice()
     .sort((left, right) => left.targetMaxEdge - right.targetMaxEdge);
   return (
-    sorted.find((variant) => variant.targetMaxEdge >= preferredMaxEdge) ??
-    sorted.at(-1) ??
-    null
+    sorted.find((variant) => variant.targetMaxEdge >= preferredMaxEdge) ?? null
   );
 }
