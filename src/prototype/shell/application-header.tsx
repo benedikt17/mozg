@@ -175,10 +175,7 @@ function isMobileSidebarImmediateTouchButton(
   if (!button || !isInsideMobileSectionDrawer(button)) return false;
   if (button.closest('[role="menu"]') || button.hasAttribute("aria-haspopup"))
     return false;
-  return (
-    button.classList.contains("knowledge-tree-row") &&
-    button.classList.contains("folder")
-  );
+  return false;
 }
 
 export function ApplicationHeader({
