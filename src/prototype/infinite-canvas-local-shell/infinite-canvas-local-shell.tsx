@@ -5890,14 +5890,15 @@ function InfiniteCanvasLocalShellSurface({
                           : undefined
                       }
                     >
-                      {entry.role === "heading" ? (
-                        <h2>{entry.markdown}</h2>
-                      ) : (
+                      <div
+                        aria-level={entry.role === "heading" ? 2 : undefined}
+                        role={entry.role === "heading" ? "heading" : undefined}
+                      >
                         <MarkdownStringPreview
                           contentId={`summary:${openSummary.id}:${entry.nodeId}`}
                           markdown={entry.markdown}
                         />
-                      )}
+                      </div>
                     </li>
                   ))}
                 </ol>

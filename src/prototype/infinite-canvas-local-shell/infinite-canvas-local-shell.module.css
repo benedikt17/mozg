@@ -1896,8 +1896,7 @@
   margin-top: 1.25rem;
 }
 
-.summaryReaderHeading h2 {
+.summaryReaderHeading {
   font-size: 1.25em;
   font-weight: 700;
-  white-space: pre-wrap;
 }

@@ -150,15 +150,15 @@ describe("Canvas portable export", () => {
     ]);
   });
 
-  it("keeps summary paragraphs in their connection order", () => {
+  it("keeps summary paragraphs in their spatial order", () => {
     const archive = createCanvasPortableBackup(
       source,
       new Date("2026-08-30T12:00:00.000Z"),
     );
     const viewer = readStoredZipFiles(archive.bytes).get("index.html") ?? "";
 
-    expect(viewer.lastIndexOf("Проклятое зеркало")).toBeLessThan(
-      viewer.lastIndexOf("Царевич не может"),
+    expect(viewer.lastIndexOf("Царевич не может")).toBeLessThan(
+      viewer.lastIndexOf("Проклятое зеркало"),
     );
   });
 

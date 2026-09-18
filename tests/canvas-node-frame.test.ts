@@ -132,8 +132,10 @@ describe("CanvasNodeFrame composition", () => {
     expect(shell).toContain("canvasNodePerimeterAnchor");
     expect(shell).not.toContain("canvasEdgePerimeterAnchors");
     expect(shell).not.toContain("CANVAS_CONNECTION_HANDLE_EDGE_OFFSET");
-    expect(shell).toContain("findShortestCanvasHandlePair");
-    expect(shell).toContain("recomputeCanvasRuntimeEdgeHandles");
+    expect(shell).not.toContain("findShortestCanvasHandlePair");
+    expect(shell).not.toContain("recomputeCanvasRuntimeEdgeHandles");
+    expect(shell).toContain("onReconnect={handleReconnect}");
+    expect(shell).toContain("edgesReconnectable");
     expect(shell).toContain("controller.setRuntimeNodes");
     expect(shell).toContain("controller.setRuntimeEdges(edgesRef.current)");
     expect(styles).toContain("--connection-handle-center-offset");
@@ -150,12 +152,12 @@ describe("CanvasNodeFrame composition", () => {
     expect(styles).toContain(":global(.cloud-canvas-session-shell)");
   });
 
-  it("keeps edge-handle projection live during transient node drags", () => {
+  it("keeps the user's edge-handle choices during transient node drags", () => {
     const shell = source(
       "src/prototype/infinite-canvas-local-shell/infinite-canvas-local-shell.tsx",
     );
 
-    expect(shell).toContain("recomputeCanvasRuntimeEdgeHandles(");
+    expect(shell).not.toContain("recomputeCanvasRuntimeEdgeHandles(");
     expect(shell).toContain("controller.setRuntimeNodes(");
     expect(shell).toContain("controller.setRuntimeEdges(edgesRef.current)");
   });
