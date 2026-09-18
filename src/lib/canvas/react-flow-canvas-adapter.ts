@@ -4,10 +4,12 @@ import {
   type CanvasDocument,
   type CanvasDocumentV2,
   type CanvasEdgeArrows,
+  type CanvasEdgeBend,
   type CanvasEdgeRouting,
   type CanvasEdgeV2,
   type CanvasHandleSide,
   type CanvasImageNode,
+  type CanvasImagePin,
   type CanvasNode,
   type CanvasPoint,
   type CanvasArticleNode,
@@ -97,6 +99,8 @@ export type CanvasImageNodeData = {
   resolutionSource?: CanvasImageResolutionSource;
   /** Compatibility projection only; resolutionSource is authoritative. */
   variantKind?: CanvasAssetVariantKind | "original";
+  /** Persisted image annotations, normalized to the image bounds. */
+  pins?: CanvasImagePin[];
 };
 
 export type CanvasImageFlowNode = Node<
@@ -188,23 +192,36 @@ export type CanvasFlowNode =
 export type CanvasEdgeFlowData = {
   routing: CanvasEdgeRouting;
   arrows: CanvasEdgeArrows;
-  onUpdate?: (
-    edgeId: string,
-    update: Pick<CanvasEdgeV2, "routing" | "arrows">,
-  ) => void;
+  bend?: CanvasEdgeBend;
+  onUpdate?: (edgeId: string, update: CanvasEdgeFlowUpdate) => void;
+};
+
+export type CanvasEdgeFlowUpdate = Pick<CanvasEdgeV2, "routing" | "arrows"> & {
+  /** null clears the saved manual bend without changing manual endpoint sides. */
+  bend?: CanvasEdgeBend | null;
 };
 
 export type CanvasEdgeFlow = Edge<CanvasEdgeFlowData, typeof CANVAS_EDGE_TYPE>;
 
 export function updateCanvasEdgeFlowRuntime(
   edge: CanvasEdgeFlow,
-  update: Pick<CanvasEdgeFlowData, "routing" | "arrows">,
+  update: CanvasEdgeFlowUpdate,
 ): CanvasEdgeFlow {
   const markers = canvasArrowsToRuntimeMarkers(update.arrows);
+  const { bend, ...coreUpdate } = update;
+  const data: CanvasEdgeFlowData = {
+    ...edge.data,
+    ...coreUpdate,
+    ...(bend === undefined
+      ? {}
+      : bend === null
+        ? { bend: undefined }
+        : { bend }),
+  };
   return {
     ...edge,
     ...markers,
-    data: { ...edge.data, ...update },
+    data,
   };
 }
 
@@ -542,6 +559,7 @@ export function createCanvasImageFlowNode(input: {
       intrinsicHeight: input.record.height,
       objectUrl: input.objectUrl,
       source: input.source,
+      pins: [],
     },
   };
 }
@@ -568,6 +586,9 @@ function imageNodeForCanonical(
       source: "restored",
       resolutionSource,
       variantKind: canvasImageLegacyKindFromResolutionSource(resolutionSource),
+      ...(node.pins === undefined
+        ? {}
+        : { pins: node.pins.map((pin) => ({ ...pin })) }),
     },
   };
 }
@@ -592,6 +613,9 @@ export function canvasDocumentToImageNodes(
         intrinsicHeight: node.size.height,
         objectUrl: "",
         source: "restored",
+        ...(node.pins === undefined
+          ? {}
+          : { pins: node.pins.map((pin) => ({ ...pin })) }),
       },
     }));
 }
@@ -940,6 +964,9 @@ export function imageNodesToCanvasDocument(
       ...node,
       position: { ...runtime.position },
       size: nodeSize(runtime),
+      ...(runtime.data.pins === undefined
+        ? {}
+        : { pins: runtime.data.pins.map((pin) => ({ ...pin })) }),
     };
   });
   return parseCanvasDocumentV2({
@@ -973,6 +1000,9 @@ export function runtimeNodesToCanvasDocument(
         ...node,
         position: { ...runtime.position },
         size: runtimeNodeSize(runtime),
+        ...(runtime.data.pins === undefined
+          ? {}
+          : { pins: runtime.data.pins.map((pin) => ({ ...pin })) }),
       };
     }
     if (node.kind === "pdf" && runtime.type === CANVAS_PDF_NODE_TYPE) {
@@ -1095,6 +1125,7 @@ export function canvasEdgeToFlowEdge(
     data: {
       routing: edge.routing,
       arrows: edge.arrows,
+      ...(edge.bend === undefined ? {} : { bend: { ...edge.bend } }),
       onUpdate,
     },
   };

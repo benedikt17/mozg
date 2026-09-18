@@ -172,6 +172,9 @@ function runtimeNode(
       source: "restored",
       resolutionSource: source,
       variantKind: canvasImageLegacyKindFromResolutionSource(source),
+      ...(node.pins === undefined
+        ? {}
+        : { pins: node.pins.map((pin) => ({ ...pin })) }),
     },
   };
 }

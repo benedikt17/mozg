@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 56768)
+Total output lines: 6809
+
 "use client";
 
 import {
@@ -9,6 +12,7 @@ import {
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
+  ViewportPortal,
   applyEdgeChanges,
   applyNodeChanges,
   getBezierPath,
@@ -157,7 +161,7 @@ import {
   type CanvasImageAdapterDependencies,
   type CanvasFlowNode,
   type CanvasEdgeFlow,
-  type CanvasEdgeFlowData,
+  type CanvasEdgeFlowUpdate,
   type CanvasImageFlowNode,
   type CanvasArticleFlowNode,
   type CanvasShapeFlowNode,
@@ -174,6 +178,7 @@ import {
   type CanvasEdgeArrows,
   type CanvasEdgeRouting,
   type CanvasHandleSide,
+  type CanvasImagePin,
   type CanvasShapeNode,
   type CanvasShapeVariant,
   type CanvasSummaryNode,
@@ -195,6 +200,21 @@ import {
   type CanvasNodeBounds,
 } from "@/lib/canvas/canvas-edge-geometry";
 import { reconnectCanvasEdgeSide } from "@/lib/canvas/canvas-manual-connection";
+import {
+  canvasEdgeDefaultBend,
+  canvasManualCurveMidpoint,
+  canvasManualCurvePath,
+} from "@/lib/canvas/canvas-edge-curve";
+import {
+  createCanvasImagePin,
+  moveCanvasImagePin,
+  removeCanvasImagePin,
+} from "@/lib/canvas/canvas-image-pins";
+import {
+  canvasGroupBounds,
+  scaleCanvasGroup,
+  type CanvasScalableNode,
+} from "@/lib/canvas/canvas-group-scaling";
 import {
   createCanvasTextId,
   hasMeaningfulPlainText,
@@ -466,11 +486,141 @@ function DecodedCanvasImage({
   );
 }
 
+type CanvasImagePinsEventDetail = {
+  id: string;
+  pins: CanvasImagePin[];
+  /** Pointer moves only update the live projection; pointer release persists it. */
+  commit: boolean;
+};
+
+function dispatchCanvasImagePins(detail: CanvasImagePinsEventDetail): void {
+  window.dispatchEvent(new CustomEvent("mozg:canvas-image-pins", { detail }));
+}
+
+function imagePinPosition(
+  event: ReactPointerEvent<HTMLButtonElement>,
+): { x: number; y: number } | null {
+  const layer = event.currentTarget.parentElement;
+  const rect = layer?.getBoundingClientRect();
+  if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+  return {
+    x: (event.clientX - rect.left) / rect.width,
+    y: (event.clientY - rect.top) / rect.height,
+  };
+}
+
+function ImagePins({
+  id,
+  pins,
+}: {
+  id: string;
+  pins: readonly CanvasImagePin[];
+}): React.JSX.Element | null {
+  if (pins.length === 0) return null;
+  return (
+    <div className={`${styles.imagePinLayer} nodrag nopan nowheel`}>
+      {pins.map((pin, index) => (
+        <button
+          key={pin.id}
+          aria-label={`Пин ${index + 1}. Перетащите для перемещения, двойной клик удаляет.`}
+          className={`${styles.imagePin} nodrag nopan nowheel`}
+          onDoubleClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            dispatchCanvasImagePins({
+              id,
+              pins: removeCanvasImagePin(pins, pin.id),
+              commit: true,
+            });
+          }}
+          onPointerCancel={(event) => {
+            event.stopPropagation();
+            const position = imagePinPosition(event);
+            if (!position) return;
+            dispatchCanvasImagePins({
+              id,
+              pins: moveCanvasImagePin(pins, pin.id, position),
+              commit: true,
+            });
+          }}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const position = imagePinPosition(event);
+            if (!position) return;
+            dispatchCanvasImagePins({
+              id,
+              pins: moveCanvasImagePin(pins, pin.id, position),
+              commit: false,
+            });
+          }}
+          onPointerUp={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const position = imagePinPosition(event);
+            if (!position) return;
+            dispatchCanvasImagePins({
+              id,
+              pins: moveCanvasImagePin(pins, pin.id, position),
+              commit: true,
+            });
+          }}
+          style={{ left: `${pin.x * 100}%`, top: `${pin.y * 100}%` }}
+          title={`Пин ${index + 1}: перетащить · двойной клик удалить`}
+          type="button"
+        >
+          {index + 1}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ImagePinToolbar({
+  id,
+  pins,
+}: {
+  id: string;
+  pins: readonly CanvasImagePin[];
+}): React.JSX.Element {
+  return (
+    <div className={styles.imagePinToolbar} aria-label="Пины изображения">
+      <button
+        aria-label="Добавить пин на изображение"
+        className={styles.textToolbarButton}
+        onClick={() => {
+          const pin = createCanvasImagePin(pins);
+          if (!pin) return;
+          dispatchCanvasImagePins({
+            id,
+            pins: [...pins, pin],
+            commit: true,
+          });
+        }}
+        title="Добавить пин на изображение"
+        type="button"
+      >
+        + Пин
+      </button>
+      {pins.length > 0 ? (
+        <span className={styles.imagePinToolbarHint}>Перетащите пин</span>
+      ) : null}
+    </div>
+  );
+}
+
 function ImageNodeBody({
   id,
   data,
   selected,
 }: NodeProps<CanvasImageFlowNode>): React.JSX.Element {
+  const pins = data.pins ?? [];
   return (
     <CanvasNodeFrame
       selected={selected}
@@ -478,6 +628,7 @@ function ImageNodeBody({
       minHeight={80}
       keepAspectRatio
       className={styles.imageNodeFrame}
+      toolbar={<ImagePinToolbar id={id} pins={pins} />}
       connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
     >
       {data.objectUrl ? (
@@ -489,6 +640,7 @@ function ImageNodeBody({
       ) : (
         <div className={styles.image} aria-label="Loading canvas image" />
       )}
+      <ImagePins id={id} pins={pins} />
     </CanvasNodeFrame>
   );
 }
@@ -1372,6 +1524,7 @@ export function CanvasEdgeBody({
 }: EdgeProps<CanvasEdgeFlow>): React.JSX.Element | null {
   const [lineTypeOpen, setLineTypeOpen] = useState(false);
   const [lastPath, setLastPath] = useState("M0,0 L0,0");
+  const reactFlow = useReactFlow();
   const selectedElementCount = useStore(
     (state) =>
       state.nodes.filter((node) => node.selected).length +
@@ -1396,24 +1549,29 @@ export function CanvasEdgeBody({
           ),
         }
       : null;
+  const routing = data?.routing ?? "curved";
+  const arrows = data?.arrows ?? "none";
+  const manualBend = routing === "curved" ? data?.bend : undefined;
   const computedPath = geometry
-    ? data?.routing === "orthogonal"
-      ? getSmoothStepPath({
-          sourceX: geometry.sourceAnchor.x,
-          sourceY: geometry.sourceAnchor.y,
-          sourcePosition,
-          targetX: geometry.targetAnchor.x,
-          targetY: geometry.targetAnchor.y,
-          targetPosition,
-        })
-      : data?.routing === "straight"
-        ? getStraightPath({
-            sourceX: geometry.sourceAnchor.x,
-            sourceY: geometry.sourceAnchor.y,
-            targetX: geometry.targetAnchor.x,
-            targetY: geometry.targetAnchor.y,
-          })
-        : getBezierPath({
+    ? manualBend
+      ? (() => {
+          const midpoint = canvasManualCurveMidpoint(
+            geometry.sourceAnchor,
+            manualBend,
+            geometry.targetAnchor,
+          );
+          return [
+            canvasManualCurvePath(
+              geometry.sourceAnchor,
+              manualBend,
+              geometry.targetAnchor,
+            ),
+            midpoint.x,
+            midpoint.y,
+          ] as const;
+        })()
+      : routing === "orthogonal"
+        ? getSmoothStepPath({
             sourceX: geometry.sourceAnchor.x,
             sourceY: geometry.sourceAnchor.y,
             sourcePosition,
@@ -1421,6 +1579,21 @@ export function CanvasEdgeBody({
             targetY: geometry.targetAnchor.y,
             targetPosition,
           })
+        : routing === "straight"
+          ? getStraightPath({
+              sourceX: geometry.sourceAnchor.x,
+              sourceY: geometry.sourceAnchor.y,
+              targetX: geometry.targetAnchor.x,
+              targetY: geometry.targetAnchor.y,
+            })
+          : getBezierPath({
+              sourceX: geometry.sourceAnchor.x,
+              sourceY: geometry.sourceAnchor.y,
+              sourcePosition,
+              targetX: geometry.targetAnchor.x,
+              targetY: geometry.targetAnchor.y,
+              targetPosition,
+            })
     : null;
   const computedPathValue = computedPath?.[0] ?? null;
   useEffect(() => {
@@ -1447,13 +1620,25 @@ export function CanvasEdgeBody({
     );
   }
   const [path, labelX, labelY] = computedPath;
-  const arrows = data?.arrows ?? "none";
   const endpointArrows = canvasArrowsToEndpointArrows(arrows);
-  const routing = data?.routing ?? "curved";
   const stopToolbarEvent = (event: React.SyntheticEvent): void => {
     event.stopPropagation();
   };
   const toolbarVisible = selected && selectedElementCount === 1;
+  const updateManualBend = (
+    event: ReactPointerEvent<SVGCircleElement>,
+    commit: boolean,
+  ): void => {
+    if (!manualBend || routing !== "curved") return;
+    event.preventDefault();
+    event.stopPropagation();
+    const bend = reactFlow.screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY,
+    });
+    data?.onUpdate?.(id, { routing, arrows, bend });
+    if (commit) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
   return (
     <>
       <g
@@ -1469,6 +1654,29 @@ export function CanvasEdgeBody({
           markerEnd={markerEnd}
           interactionWidth={24}
         />
+        {toolbarVisible && manualBend ? (
+          <circle
+            aria-label="Ручной изгиб связи"
+            className={`${styles.edgeBendHandle} nodrag nopan nowheel`}
+            cx={manualBend.x}
+            cy={manualBend.y}
+            onPointerCancel={(event) => updateManualBend(event, true)}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              if (!event.currentTarget.hasPointerCapture(event.pointerId))
+                return;
+              updateManualBend(event, false);
+            }}
+            onPointerUp={(event) => updateManualBend(event, true)}
+            r={8}
+            role="slider"
+            tabIndex={0}
+          />
+        ) : null}
       </g>
       {toolbarVisible ? (
         <EdgeToolbar
@@ -1549,6 +1757,39 @@ export function CanvasEdgeBody({
               : routing === "straight"
                 ? "／"
                 : "⌒"}
+          </button>
+          <button
+            type="button"
+            className={`${styles.edgeToolButton} nodrag nopan nowheel`}
+            aria-label={
+              manualBend
+                ? "Сбросить ручной изгиб связи"
+                : "Настроить изгиб связи"
+            }
+            aria-pressed={Boolean(manualBend)}
+            disabled={routing !== "curved" || !geometry}
+            title={
+              routing !== "curved"
+                ? "Ручной изгиб доступен для дугообразной линии"
+                : manualBend
+                  ? "Сбросить ручной изгиб"
+                  : "Настроить изгиб: появится перетаскиваемая точка"
+            }
+            onClick={() => {
+              if (!geometry || routing !== "curved") return;
+              data?.onUpdate?.(id, {
+                routing,
+                arrows,
+                bend: manualBend
+                  ? null
+                  : canvasEdgeDefaultBend(
+                      geometry.sourceAnchor,
+                      geometry.targetAnchor,
+                    ),
+              });
+            }}
+          >
+            {manualBend ? "×⌒" : "⌒·"}
           </button>
           {lineTypeOpen ? (
             <div className={styles.edgeLinePopover} role="menu">
@@ -1656,6 +1897,176 @@ function CanvasConnectionLine({
       className={styles.connectionPreview}
       data-status={connectionStatus ?? "pending"}
     />
+  );
+}
+
+type CanvasGroupScaleSession = {
+  anchor: { x: number; y: number };
+  bounds: { x: number; y: number; width: number; height: number };
+  corner: "north-west" | "south-east";
+  nodes: CanvasFlowNode[];
+  selected: CanvasScalableNode[];
+  start: { x: number; y: number };
+};
+
+function scalableCanvasNode(node: CanvasFlowNode): CanvasScalableNode | null {
+  const width = node.width ?? node.style?.width;
+  const height = node.height ?? node.style?.height;
+  if (
+    typeof width !== "number" ||
+    typeof height !== "number" ||
+    width <= 0 ||
+    height <= 0
+  )
+    return null;
+  return {
+    id: node.id,
+    position: { ...node.position },
+    width,
+    height,
+  };
+}
+
+/** A selection becomes a temporary group without adding another persisted node type. */
+function CanvasGroupScaleOverlay({
+  nodes,
+  onCommit,
+  onPreview,
+}: {
+  nodes: readonly CanvasFlowNode[];
+  onCommit: (nodes: CanvasFlowNode[]) => void;
+  onPreview: (nodes: CanvasFlowNode[]) => void;
+}): React.JSX.Element | null {
+  const reactFlow = useReactFlow();
+  const sessionRef = useRef<CanvasGroupScaleSession | null>(null);
+  const selected = nodes
+    .filter((node) => node.selected)
+    .map(scalableCanvasNode)
+    .filter((node): node is CanvasScalableNode => node !== null);
+  const bounds = canvasGroupBounds(selected);
+  if (!bounds) return null;
+
+  const apply = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    commit: boolean,
+  ) => {
+    const session = sessionRef.current;
+    if (!session) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const point = reactFlow.screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY,
+    });
+    const delta = {
+      x: point.x - session.start.x,
+      y: point.y - session.start.y,
+    };
+    const xScale =
+      session.corner === "south-east"
+        ? (session.bounds.width + delta.x) / session.bounds.width
+        : (session.bounds.width - delta.x) / session.bounds.width;
+    const yScale =
+      session.corner === "south-east"
+        ? (session.bounds.height + delta.y) / session.bounds.height
+        : (session.bounds.height - delta.y) / session.bounds.height;
+    // Use the axis the pointer moved furthest along. Uniform scaling preserves
+    // image aspect ratios and all relative distances inside the group.
+    const scale =
+      Math.abs(xScale - 1) >= Math.abs(yScale - 1) ? xScale : yScale;
+    const scaled = scaleCanvasGroup(session.selected, session.anchor, scale);
+    const byId = new Map(scaled.map((node) => [node.id, node]));
+    const next = session.nodes.map((node) => {
+      const projected = byId.get(node.id);
+      if (!projected) return node;
+      return {
+        ...node,
+        position: { ...projected.position },
+        width: projected.width,
+        height: projected.height,
+        style: {
+          ...node.style,
+          width: projected.width,
+          height: projected.height,
+        },
+      } as CanvasFlowNode;
+    });
+    onPreview(next);
+    if (!commit) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    sessionRef.current = null;
+    onCommit(next);
+  };
+
+  const begin = (
+    corner: CanvasGroupScaleSession["corner"],
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ): void => {
+    event.preventDefault();
+    event.stopPropagation();
+    const point = reactFlow.screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY,
+    });
+    sessionRef.current = {
+      corner,
+      bounds,
+      anchor:
+        corner === "south-east"
+          ? { x: bounds.x, y: bounds.y }
+          : { x: bounds.x + bounds.width, y: bounds.y + bounds.height },
+      nodes: nodes.map((node) => ({
+        ...node,
+        position: { ...node.position },
+        style: { ...node.style },
+      })),
+      selected,
+      start: point,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  return (
+    <ViewportPortal>
+      <div
+        aria-label="Группа выделенных объектов. Потяните за угол для пропорционального масштабирования."
+        className={styles.groupScaleBounds}
+        style={{
+          left: bounds.x,
+          top: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+        }}
+      >
+        <button
+          aria-label="Масштабировать группу от верхнего левого угла"
+          className={`${styles.groupScaleHandle} ${styles.groupScaleHandleNorthWest} nodrag nopan nowheel`}
+          onPointerCancel={(event) => apply(event, true)}
+          onPointerDown={(event) => begin("north-west", event)}
+          onPointerMove={(event) => {
+            if (event.currentTarget.hasPointerCapture(event.pointerId))
+              apply(event, false);
+          }}
+          onPointerUp={(event) => apply(event, true)}
+          title="Масштабировать выделенную группу"
+          type="button"
+        />
+        <button
+          aria-label="Масштабировать группу от нижнего правого угла"
+          className={`${styles.groupScaleHandle} ${styles.groupScaleHandleSouthEast} nodrag nopan nowheel`}
+          onPointerCancel={(event) => apply(event, true)}
+          onPointerDown={(event) => begin("south-east", event)}
+          onPointerMove={(event) => {
+            if (event.currentTarget.hasPointerCapture(event.pointerId))
+              apply(event, false);
+          }}
+          onPointerUp={(event) => apply(event, true)}
+          title="Масштабировать выделенную группу"
+          type="button"
+        />
+      </div>
+    </ViewportPortal>
   );
 }
 
@@ -2481,10 +2892,7 @@ function InfiniteCanvasLocalShellSurface({
   }, [controller, scheduleSave, syncState]);
 
   const handleEdgeUpdate = useCallback(
-    (
-      edgeId: string,
-      update: Pick<CanvasEdgeFlowData, "routing" | "arrows">,
-    ) => {
+    (edgeId: string, update: CanvasEdgeFlowUpdate) => {
       const nextState = controller.updateCanvasEdge(edgeId, update);
       setEdges((current) =>
         current.map((edge) =>
@@ -2695,777 +3103,7 @@ function InfiniteCanvasLocalShellSurface({
         nodesRef.current = translated;
         setNodes(translated);
         controller.setRuntimeNodes(translated);
-        controller.setRuntimeEdges(edgesRef.current);
-        syncState();
-        scheduleSave();
-        return;
-      }
-
-      window.setTimeout(() => {
-        if (!shellStateRef.current.canvasId) return;
-        controller.setRuntimeEdges(edgesRef.current);
-        syncState();
-        scheduleSave();
-      }, 0);
-    },
-    [controller, scheduleSave, setNodes, syncState],
-  );
-
-  const handleTaskNodeContentHeightChange = useCallback((): void => {
-    // Task projection is runtime-only; it must never resize canonical bounds.
-  }, []);
-
-  const restoreForCanvas = useCallback(
-    async (nextState: LocalCanvasShellState) => {
-      const preserveWarmImagePayloads = preserveWarmImagePayloadsRef.current;
-      preserveWarmImagePayloadsRef.current = false;
-      restoreControllerRef.current?.abort();
-      variantRefreshControllerRef.current?.abort();
-      pendingContentHeightSaveRef.current = false;
-      if (variantRefreshFrameRef.current !== null) {
-        window.cancelAnimationFrame(variantRefreshFrameRef.current);
-        variantRefreshFrameRef.current = null;
-      }
-      if (variantDowngradeTimerRef.current !== null) {
-        clearTimeout(variantDowngradeTimerRef.current);
-        variantDowngradeTimerRef.current = null;
-      }
-      if (imageLoadCacheCanvasIdRef.current !== nextState.canvasId) {
-        if (imageLoadCacheCanvasIdRef.current) {
-          pyramidSchedulerRef.current.cancelScope(
-            {
-              userId: shellUserId,
-              workspaceId: shellWorkspaceId,
-              canvasId: imageLoadCacheCanvasIdRef.current,
-            },
-            true,
-          );
-        }
-        imageLoadCacheRef.current.clear();
-        imageLoadCacheCanvasIdRef.current = nextState.canvasId;
-      }
-      if (preserveWarmImagePayloads) {
-        // The runtime snapshot has already mounted the matching document with
-        // live object URLs. Keep that scene intact while the post-save
-        // reconciliation completes; rebuilding it would blank images before
-        // their cached payloads can be painted again.
-        hydratingRef.current = false;
-        setRestoreStats(EMPTY_RESTORE_STATS);
-        setLoadingLifecycle("ready");
-        return;
-      }
-      restoreControllerRef.current = new AbortController();
-      variantPayloadsRef.current.clear();
-      objectUrls.revokeAll();
-      const signal = restoreControllerRef.current.signal;
-      const placeholders: CanvasFlowNode[] = [
-        ...canvasDocumentToImageNodes(nextState.document),
-        ...canvasDocumentToPdfNodes(nextState.document),
-        ...canvasDocumentToArticleNodes(nextState.document),
-        ...canvasDocumentToTaskNodes(nextState.document, {
-          onContentHeightChange: handleTaskNodeContentHeightChange,
-          taskBridge: taskBridgeRef.current,
-          taskWorkspaceId: taskWorkspaceIdRef.current,
-        }),
-        ...canvasDocumentToTextNodes(nextState.document),
-        ...canvasDocumentToShapeNodes(nextState.document),
-        ...canvasDocumentToSummaryNodes(nextState.document),
-      ];
-      const restoredEdges = canvasDocumentToEdges(
-        nextState.document,
-        handleEdgeUpdate,
-      );
-      const projected = projectCanvasBranchCollapse(
-        placeholders,
-        restoredEdges,
-        undefined,
-        canvasBranchCollapsedNodeIds(nextState.document.nodes),
-      );
-      setNodes(projected.nodes);
-      setEdges(projected.edges);
-      hydratingRef.current = true;
-      setRestoreStats(EMPTY_RESTORE_STATS);
-      setLoadingLifecycle("skeleton-ready");
-      setLoadingLifecycle("content-hydrating");
-      const restoreDependencies = canvasImageAdapterDependenciesForCanvas(
-        adapterDependencies,
-        nextState.canvasId,
-      );
-      const applyRestoredNode = (node: CanvasImageFlowNode): void => {
-        if (signal.aborted) return;
-        setNodes((current) => {
-          const index = current.findIndex((item) => item.id === node.id);
-          if (index < 0) return [...current, node];
-          const copy = [...current];
-          const existing = copy[index];
-          if (existing?.type !== CANVAS_IMAGE_NODE_TYPE) return current;
-          rememberImageRuntimePayload(variantPayloadsRef.current, node, {
-            workspaceId: shellWorkspaceId,
-            canvasId: nextState.canvasId ?? "",
-          });
-          copy[index] = {
-            ...existing,
-            data: { ...existing.data, ...node.data },
-          };
-          return copy;
-        });
-      };
-      const result = await restoreCanvasImageNodes(
-        nextState.document,
-        restoreDependencies,
-        {
-          signal,
-          concurrency: 4,
-          viewportZoom: nextState.viewport.zoom,
-          onNode: applyRestoredNode,
-        },
-      );
-      const projectFileDependencies = nextState.canvasId
-        ? projectFileImageDependenciesForCanvas(nextState.canvasId)
-        : null;
-      const projectFileResult = projectFileDependencies
-        ? await restoreProjectFileCanvasImageNodes(
-            nextState.document,
-            projectFileDependencies,
-            {
-              signal,
-              concurrency: 4,
-              viewportZoom: nextState.viewport.zoom,
-              cachedAssetPayloads: variantPayloadsRef.current,
-              onNode: applyRestoredNode,
-            },
-          )
-        : {
-            nodes: [],
-            missingFileIds: [],
-            fileReadCount: 0,
-            maxConcurrentFileReads: 0,
-          };
-      if (signal.aborted) return;
-      setRestoreStats({
-        reads: result.assetReadCount + projectFileResult.fileReadCount,
-        maxConcurrency: Math.max(
-          result.maxConcurrentAssetReads,
-          projectFileResult.maxConcurrentFileReads,
-        ),
-        missing:
-          result.missingAssetIds.length +
-          projectFileResult.missingFileIds.length,
-      });
-      hydratingRef.current = false;
-      if (pendingContentHeightSaveRef.current) {
-        pendingContentHeightSaveRef.current = false;
-      }
-      setLoadingLifecycle("ready");
-    },
-    [
-      adapterDependencies,
-      handleEdgeUpdate,
-      handleTaskNodeContentHeightChange,
-      objectUrls,
-      projectFileImageDependenciesForCanvas,
-      setEdges,
-      setNodes,
-      shellUserId,
-      shellWorkspaceId,
-    ],
-  );
-
-  const restoreForCanvasRef = useRef(restoreForCanvas);
-  restoreForCanvasRef.current = restoreForCanvas;
-
-  const applyCanvasHistory = useCallback(
-    (direction: "undo" | "redo") => {
-      const nextState =
-        direction === "undo"
-          ? controller.undoDocument()
-          : controller.redoDocument();
-      if (!nextState) return;
-      setShellState(nextState);
-      void restoreForCanvas(nextState)
-        .then(() => {
-          syncState();
-          scheduleSave();
-        })
-        .catch((error: unknown) => {
-          hydratingRef.current = false;
-          setLoadingLifecycle("error");
-          setShellState({
-            ...controller.state,
-            status: "error",
-            error:
-              error instanceof Error
-                ? error.message
-                : "Canvas history restore failed.",
-          });
-        });
-    },
-    [controller, restoreForCanvas, scheduleSave, syncState],
-  );
-
-  useEffect(() => {
-    const onHistoryKeyDown = (event: KeyboardEvent): void => {
-      if (
-        !clipboardActive ||
-        eventTouchesEditingSurface(event) ||
-        !(event.ctrlKey || event.metaKey)
-      )
-        return;
-      const key = event.key.toLowerCase();
-      const direction =
-        key === "y" || (key === "z" && event.shiftKey)
-          ? "redo"
-          : key === "z"
-            ? "undo"
-            : null;
-      if (!direction) return;
-      if (direction === "undo" ? !controller.canUndo : !controller.canRedo)
-        return;
-      event.preventDefault();
-      applyCanvasHistory(direction);
-    };
-    window.addEventListener("keydown", onHistoryKeyDown, true);
-    return () => window.removeEventListener("keydown", onHistoryKeyDown, true);
-  }, [applyCanvasHistory, clipboardActive, controller]);
-
-  const openCanvas = useCallback(
-    async (canvasId: string) => {
-      const generation = ++canvasGenerationRef.current;
-      hydratingRef.current = true;
-      setLoadingLifecycle("canvas-selected");
-      programmaticViewportRef.current = null;
-      setViewportInitialization(null);
-      setViewportVisible(false);
-      setShellState((current) => ({
-        ...current,
-        status: "loading",
-        error: null,
-      }));
-      setLoadingLifecycle("document-loading");
-      const nextState = await controller.openCanvas(canvasId);
-      if (generation !== canvasGenerationRef.current) return;
-      repository.setActiveCanvas?.(canvasId);
-      latestViewportRef.current = { ...nextState.viewport };
-      setShellState(nextState);
-      setRenameTitle(nextState.title);
-      setViewportInitialization({
-        canvasId,
-        generation,
-        viewport: { ...nextState.viewport },
-      });
-      void restoreForCanvas(nextState).catch((error: unknown) => {
-        if (generation !== canvasGenerationRef.current) return;
-        setLoadingLifecycle("error");
-        setShellState((current) => ({
-          ...current,
-          status: "error",
-          error:
-            error instanceof Error
-              ? error.message
-              : "Canvas content loading failed.",
-        }));
-      });
-    },
-    [controller, repository, restoreForCanvas],
-  );
-
-  const openCanvasRef = useRef(openCanvas);
-  openCanvasRef.current = openCanvas;
-
-  useEffect(() => {
-    const request = canvasOpenRequest;
-    if (
-      !request ||
-      request.canvasId === excludedCanvasId ||
-      request.canvasId === shellStateRef.current.canvasId
-    )
-      return;
-    void openCanvas(request.canvasId);
-  }, [canvasOpenRequest, excludedCanvasId, openCanvas]);
-
-  const refreshImageVariants = useCallback(
-    (viewportZoom: number, allowDowngrade: boolean): void => {
-      if (
-        hydratingRef.current ||
-        !adapterDependencies.variantRepository ||
-        !adapterDependencies.canvasId
-      )
-        return;
-      variantRefreshControllerRef.current?.abort();
-      const controller = new AbortController();
-      const sequence = ++variantRefreshSequenceRef.current;
-      variantRefreshControllerRef.current = controller;
-      const projectFileDependencies = adapterDependencies.canvasId
-        ? projectFileImageDependenciesForCanvas(adapterDependencies.canvasId)
-        : null;
-      if (projectFileDependencies) {
-        void restoreProjectFileCanvasImageNodes(
-          shellStateRef.current.document,
-          projectFileDependencies,
-          {
-            signal: controller.signal,
-            viewportZoom,
-            devicePixelRatio: window.devicePixelRatio,
-            renderedCssSizes: renderedImageCssSizes(),
-            currentResolutionSources: new Map(
-              nodesRef.current.flatMap((node) =>
-                node.type === CANVAS_IMAGE_NODE_TYPE && node.data.fileId
-                  ? [
-                      [
-                        node.id,
-                        node.data.resolutionSource ??
-                          canvasImageResolutionSourceFromLegacyKind(
-                            node.data.variantKind ?? "original",
-                          ),
-                      ] as const,
-                    ]
-                  : [],
-              ),
-            ),
-            cachedAssetPayloads: variantPayloadsRef.current,
-            allowDowngrade,
-            concurrency: 4,
-            onNode: (node) => {
-              if (
-                controller.signal.aborted ||
-                sequence !== variantRefreshSequenceRef.current
-              )
-                return;
-              setNodes((current) => {
-                const index = current.findIndex((item) => item.id === node.id);
-                const existing = current[index];
-                if (index < 0 || existing?.type !== CANVAS_IMAGE_NODE_TYPE)
-                  return current;
-                rememberImageRuntimePayload(variantPayloadsRef.current, node, {
-                  workspaceId: shellWorkspaceId,
-                  canvasId: adapterDependencies.canvasId ?? "",
-                });
-                const next = [...current];
-                next[index] = {
-                  ...existing,
-                  data: { ...existing.data, ...node.data },
-                };
-                return next;
-              });
-            },
-          },
-        ).catch(() => undefined);
-      }
-      void restoreCanvasImageNodes(
-        shellStateRef.current.document,
-        adapterDependencies,
-        {
-          signal: controller.signal,
-          viewportZoom,
-          devicePixelRatio: window.devicePixelRatio,
-          renderedCssSizes: renderedImageCssSizes(),
-          currentResolutionSources: new Map(
-            nodesRef.current.flatMap((node) =>
-              node.type === CANVAS_IMAGE_NODE_TYPE
-                ? [
-                    [
-                      node.id,
-                      node.data.resolutionSource ??
-                        canvasImageResolutionSourceFromLegacyKind(
-                          node.data.variantKind ?? "original",
-                        ),
-                    ] as const,
-                  ]
-                : [],
-            ),
-          ),
-          cachedAssetPayloads: variantPayloadsRef.current,
-          allowDowngrade,
-          concurrency: 4,
-          onNode: (node) => {
-            if (
-              controller.signal.aborted ||
-              sequence !== variantRefreshSequenceRef.current
-            )
-              return;
-            setNodes((current) => {
-              const index = current.findIndex((item) => item.id === node.id);
-              const existing = current[index];
-              if (index < 0 || existing?.type !== CANVAS_IMAGE_NODE_TYPE)
-                return current;
-              rememberImageRuntimePayload(variantPayloadsRef.current, node, {
-                workspaceId: shellWorkspaceId,
-                canvasId: adapterDependencies.canvasId ?? "",
-              });
-              const next = [...current];
-              next[index] = {
-                ...existing,
-                data: { ...existing.data, ...node.data },
-              };
-              return next;
-            });
-          },
-        },
-      )
-        .catch(() => undefined)
-        .finally(() => {
-          if (variantRefreshControllerRef.current === controller)
-            variantRefreshControllerRef.current = null;
-        });
-    },
-    [
-      adapterDependencies,
-      projectFileImageDependenciesForCanvas,
-      setNodes,
-      shellWorkspaceId,
-    ],
-  );
-  refreshImageVariantsRef.current = refreshImageVariants;
-
-  const scheduleImageVariantRefresh = useCallback(
-    (viewportZoom: number, allowDowngrade: boolean): void => {
-      if (variantRefreshFrameRef.current !== null)
-        window.cancelAnimationFrame(variantRefreshFrameRef.current);
-      variantRefreshFrameRef.current = window.requestAnimationFrame(() => {
-        variantRefreshFrameRef.current = null;
-        refreshImageVariants(viewportZoom, allowDowngrade);
-      });
-    },
-    [refreshImageVariants],
-  );
-
-  const restoreCachedScene = useCallback(
-    (snapshot: CloudCanvasRuntimeSnapshot): void => {
-      const cachedState = controller.restoreRuntimeState(snapshot.shellState);
-      if (!cachedState.canvasId) return;
-      const generation = ++canvasGenerationRef.current;
-      variantPayloadsRef.current = new Map(snapshot.assetPayloads);
-      const skeleton = canvasDocumentToRuntimeSkeleton(cachedState.document, {
-        onContentHeightChange: handleTaskNodeContentHeightChange,
-        taskBridge: taskBridgeRef.current,
-        taskWorkspaceId: taskWorkspaceIdRef.current,
-      });
-      // Keep the runtime-cache composition contract explicit for desktop-shell checks:
-      // setNodes(withCachedAssetPayloads(skeleton, snapshot.assetPayloads))
-      const cachedEdges = canvasDocumentToEdges(
-        cachedState.document,
-        handleEdgeUpdate,
-      );
-      const projected = projectCanvasBranchCollapse(
-        withCachedAssetPayloads(skeleton, snapshot.assetPayloads, {
-          workspaceId: shellWorkspaceId,
-          canvasId: cachedState.canvasId,
-        }),
-        cachedEdges,
-        undefined,
-        canvasBranchCollapsedNodeIds(cachedState.document.nodes),
-      );
-      setNodes(projected.nodes);
-      setEdges(projected.edges);
-      setShellState(cachedState);
-      setRenameTitle(cachedState.title);
-      hydratingRef.current = false;
-      setLoadingLifecycle("ready");
-      setViewportInitialization({
-        canvasId: cachedState.canvasId,
-        generation,
-        viewport: { ...cachedState.viewport },
-      });
-    },
-    [
-      controller,
-      handleEdgeUpdate,
-      handleTaskNodeContentHeightChange,
-      shellWorkspaceId,
-      setEdges,
-      setNodes,
-    ],
-  );
-
-  useEffect(
-    () => () => {
-      setOpenPdf((current) => {
-        if (current) URL.revokeObjectURL(current.objectUrl);
-        return null;
-      });
-    },
-    [],
-  );
-
-  useEffect(() => {
-    let active = true;
-    const pyramidScheduler = pyramidSchedulerRef.current;
-    if (initialRuntime) restoreCachedScene(initialRuntime);
-    const groupLoad = groupsRepository
-      ? groupsRepository
-          .listCanvasGroups(shellWorkspaceId)
-          .catch((error: unknown) => {
-            if (active) {
-              setGroupsError(
-                error instanceof Error
-                  ? error.message
-                  : "Canvas groups failed to load.",
-              );
-            }
-            return [] as CanvasGroup[];
-          })
-      : Promise.resolve([] as CanvasGroup[]);
-    void Promise.all([controller.listCanvases(), groupLoad])
-      .then(async ([items, nextGroups]) => {
-        if (!active) return;
-        setSummaries(items);
-        setGroups(nextGroups);
-        const cachedCanvasId = initialRuntime?.shellState.canvasId;
-        const cachedSummary = cachedCanvasId
-          ? items.find((item) => item.id === cachedCanvasId)
-          : undefined;
-        if (cachedSummary && initialRuntime) {
-          const unchanged =
-            cachedSummary.revision === initialRuntime.shellState.revision;
-
-          if (initialRuntime.shellState.status !== "saved" && unchanged) {
-            const saveResult = await controller.save();
-            if (
-              saveResult?.status !== "conflict" &&
-              controller.state.status === "saved"
-            ) {
-              const savedState = controller.state;
-              setShellState(savedState);
-              setRenameTitle(savedState.title);
-              await restoreForCanvasRef.current(savedState);
-              return;
-            }
-          }
-
-          if (initialRuntime.shellState.status !== "saved") {
-            const latest = await repository.loadCanvas({
-              workspaceId: shellWorkspaceId,
-              canvasId: cachedSummary.id,
-            });
-            if (
-              serverCanvasMatchesCachedRuntime(
-                latest,
-                initialRuntime.shellState,
-              )
-            ) {
-              const reconciled = controller.restoreRuntimeState(
-                reconcileCachedRuntimeWithServer(
-                  latest,
-                  initialRuntime.shellState,
-                ),
-              );
-              setShellState(reconciled);
-              setRenameTitle(reconciled.title);
-              await restoreForCanvasRef.current(reconciled);
-              return;
-            }
-            setLoadingLifecycle("error");
-            setShellState((current) => ({
-              ...current,
-              status: "conflict",
-              autosaveBlocked: true,
-              conflictRevision: cachedSummary.revision,
-              error: "Canvas changed elsewhere. Reload to continue.",
-            }));
-            return;
-          }
-
-          if (unchanged) {
-            const cachedNodes = canvasDocumentToRuntimeSkeleton(
-              initialRuntime.shellState.document,
-              {
-                onContentHeightChange: handleTaskNodeContentHeightChange,
-                taskBridge: taskBridgeRef.current,
-                taskWorkspaceId: taskWorkspaceIdRef.current,
-              },
-            );
-            preserveWarmImagePayloadsRef.current =
-              hasCachedPayloadForEveryImageNode(
-                cachedNodes,
-                initialRuntime.assetPayloads,
-                {
-                  workspaceId: shellWorkspaceId,
-                  canvasId: cachedSummary.id,
-                },
-              );
-            // Keep the safe post-save reconciliation call. When every image
-            // is already present in the runtime snapshot it consumes the warm
-            // mode above instead of tearing that snapshot down and rebuilding
-            // images one at a time.
-            await restoreForCanvasRef.current(controller.state);
-            return;
-          }
-          await openCanvasRef.current(cachedSummary.id);
-          return;
-        }
-        const firstAvailable = items.find(
-          (item) => item.id !== initialExcludedCanvasIdRef.current,
-        );
-        if (firstAvailable) await openCanvasRef.current(firstAvailable.id);
-        else {
-          hydratingRef.current = false;
-          setShellState(emptyShellState());
-          setLoadingLifecycle("empty-confirmed");
-        }
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          setLoadingLifecycle("error");
-          setShellState((current) => ({
-            ...current,
-            status: "error",
-            error:
-              error instanceof Error ? error.message : "Canvas loading failed.",
-          }));
-        }
-      });
-    return () => {
-      active = false;
-      restoreControllerRef.current?.abort();
-      variantRefreshControllerRef.current?.abort();
-      if (variantRefreshFrameRef.current !== null) {
-        window.cancelAnimationFrame(variantRefreshFrameRef.current);
-        variantRefreshFrameRef.current = null;
-      }
-      if (variantDowngradeTimerRef.current !== null) {
-        clearTimeout(variantDowngradeTimerRef.current);
-        variantDowngradeTimerRef.current = null;
-      }
-      let latestState = controller.state;
-      // Viewport persistence is intentionally debounced during panning.  On a
-      // route change there may be no time for that debounce to fire, so flush
-      // the latest rendered position into the controller before creating the
-      // in-memory snapshot for this pane.
-      const latestViewport = latestViewportRef.current;
-      if (latestState.canvasId && latestViewport) {
-        void controller.saveViewport(latestViewport).catch(() => undefined);
-        latestState = controller.state;
-      }
-      if (saveTimerRef.current) {
-        controller.setRuntimeNodes(nodesRef.current);
-        latestState = controller.setRuntimeEdges(edgesRef.current);
-      }
-      if (latestState.canvasId) {
-        pyramidScheduler.cancelScope(
-          {
-            userId: shellUserId,
-            workspaceId: shellWorkspaceId,
-            canvasId: latestState.canvasId,
-          },
-          true,
-        );
-      }
-      // Keep in-flight work alive across a StrictMode-style cleanup/setup pair.
-      // The cache is component-owned and becomes unreachable on a real unmount;
-      // clearing it here would allow an aborted original request to be started
-      // again while the first browser request is still downloading.
-      if (runtimeCache && latestState.canvasId) {
-        runtimeCache.set({
-          workspaceId: shellWorkspaceId,
-          userId: shellUserId,
-          canvasId: latestState.canvasId,
-          summaries: summariesRef.current,
-          shellState: latestState,
-          assetPayloads: new Map(variantPayloadsRef.current),
-          objectUrls,
-        });
-      } else {
-        objectUrls.revokeAll();
-      }
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
-      }
-      if (viewportTimerRef.current) clearTimeout(viewportTimerRef.current);
-      repository.close?.();
-    };
-  }, [
-    controller,
-    groupsRepository,
-    shellWorkspaceId,
-    initialRuntime,
-    objectUrls,
-    repository,
-    restoreCachedScene,
-    runtimeCache,
-    shellUserId,
-  ]);
-
-  useEffect(() => {
-    if (!viewportInitialization) return;
-    let active = true;
-    let cancelReveal: () => void = () => undefined;
-    programmaticViewportRef.current = viewportInitialization;
-    void (async () => {
-      const applied = await reactFlow.setViewport(
-        viewportInitialization.viewport,
-        { duration: 0 },
-      );
-      if (
-        !active ||
-        !applied ||
-        !isCurrentViewportInitialization(
-          viewportInitialization,
-          canvasGenerationRef.current,
-        )
-      )
-        return;
-      cancelReveal = scheduleViewportReveal(() => {
-        if (
-          !active ||
-          !isCurrentViewportInitialization(
-            viewportInitialization,
-            canvasGenerationRef.current,
-          )
-        )
-          return;
-        setViewportVisible(true);
-      });
-    })();
-    return () => {
-      active = false;
-      cancelReveal();
-    };
-  }, [flowInstanceEpoch, reactFlow, viewportInitialization]);
-
-  useEffect(() => {
-    const root = wrapperRef.current;
-    const viewport = root?.querySelector<HTMLElement>(".react-flow__viewport");
-    if (!root || !viewport) return;
-    let settleTimer: ReturnType<typeof setTimeout> | null = null;
-    let previousTransition = viewport.style.transition;
-    const clearSmoothing = (): void => {
-      if (settleTimer) {
-        clearTimeout(settleTimer);
-        settleTimer = null;
-      }
-      viewport.style.transition = previousTransition;
-    };
-    const onWheel = (): void => {
-      if (settleTimer === null) previousTransition = viewport.style.transition;
-      viewport.style.transition = "transform 55ms linear";
-      if (settleTimer) clearTimeout(settleTimer);
-      settleTimer = setTimeout(clearSmoothing, 75);
-    };
-    const onPointerDown = (): void => clearSmoothing();
-    root.addEventListener("wheel", onWheel, { capture: true, passive: true });
-    root.addEventListener("pointerdown", onPointerDown, true);
-    return () => {
-      clearSmoothing();
-      root.removeEventListener("wheel", onWheel, true);
-      root.removeEventListener("pointerdown", onPointerDown, true);
-    };
-  }, [flowInstanceEpoch]);
-
-  const centerPosition = useCallback(() => {
-    const rect = wrapperRef.current?.getBoundingClientRect();
-    return screenToFlowRef.current({
-      x: (rect?.left ?? 0) + (rect?.width ?? 800) / 2,
-      y: (rect?.top ?? 0) + (rect?.height ?? 600) / 2,
-    });
-  }, []);
-
-  const setTextEditing = useCallback(
-    (id: string, isEditing: boolean) => {
-      setNodes((current) =>
-        current.map((node) =>
-          node.id === id && node.type === CANVAS_TEXT_NODE_TYPE
-            ? { ...node, data: { ...node.data, isEditing } }
+        …6768 tokens truncated… { ...node.data, isEditing } }
             : node,
         ),
       );
@@ -3554,6 +3192,32 @@ function InfiniteCanvasLocalShellSurface({
       if (!found) return;
       nodesRef.current = nextNodes;
       setNodes(nextNodes);
+      controller.setRuntimeNodes(nextNodes);
+      syncState();
+      scheduleSave();
+    },
+    [controller, scheduleSave, setNodes, syncState],
+  );
+
+  const updateImagePins = useCallback(
+    (detail: CanvasImagePinsEventDetail) => {
+      let found = false;
+      const nextNodes = nodesRef.current.map((node) => {
+        if (node.id !== detail.id || node.type !== CANVAS_IMAGE_NODE_TYPE)
+          return node;
+        found = true;
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            pins: detail.pins.map((pin) => ({ ...pin })),
+          },
+        };
+      });
+      if (!found) return;
+      nodesRef.current = nextNodes;
+      setNodes(nextNodes);
+      if (!detail.commit) return;
       controller.setRuntimeNodes(nextNodes);
       syncState();
       scheduleSave();
@@ -3909,6 +3573,11 @@ function InfiniteCanvasLocalShellSurface({
       const id = (event as CustomEvent<{ id?: string }>).detail?.id;
       if (id) setStyleEyedropperSourceId(id);
     };
+    const onImagePins = (event: Event) => {
+      const detail = (event as CustomEvent<CanvasImagePinsEventDetail>).detail;
+      if (!detail?.id || !Array.isArray(detail.pins)) return;
+      updateImagePins(detail);
+    };
     const onContentAutoSize = (event: Event) => {
       const detail = (event as CustomEvent<CanvasContentAutoSizeDetail>).detail;
       if (detail?.id) fitTextOrShapeNodeToContent(detail);
@@ -3927,6 +3596,7 @@ function InfiniteCanvasLocalShellSurface({
       "mozg:canvas-style-eyedropper-start",
       onEyedropperStart,
     );
+    window.addEventListener("mozg:canvas-image-pins", onImagePins);
     return () => {
       window.removeEventListener("mozg:canvas-text-edit", onEdit);
       window.removeEventListener("mozg:canvas-text-commit", onCommit);
@@ -3945,6 +3615,7 @@ function InfiniteCanvasLocalShellSurface({
         "mozg:canvas-style-eyedropper-start",
         onEyedropperStart,
       );
+      window.removeEventListener("mozg:canvas-image-pins", onImagePins);
     };
   }, [
     commitShapeNode,
@@ -3955,6 +3626,7 @@ function InfiniteCanvasLocalShellSurface({
     updateShapeStyle,
     updateArticleStyle,
     updateTextStyle,
+    updateImagePins,
   ]);
 
   const ingest = useCallback(
@@ -4554,6 +4226,27 @@ function InfiniteCanvasLocalShellSurface({
       shellWorkspaceId,
       syncState,
     ],
+  );
+
+  const previewGroupScale = useCallback(
+    (nextNodes: CanvasFlowNode[]) => {
+      nodesRef.current = nextNodes;
+      setNodes(nextNodes);
+    },
+    [setNodes],
+  );
+
+  const commitGroupScale = useCallback(
+    (nextNodes: CanvasFlowNode[]) => {
+      nodesRef.current = nextNodes;
+      setNodes(nextNodes);
+      controller.setRuntimeNodes(nextNodes);
+      // Edges are not rewritten: their existing manual endpoint sides and bends
+      // remain canonical while React Flow recalculates their visible geometry.
+      syncState();
+      scheduleSave();
+    },
+    [controller, scheduleSave, setNodes, syncState],
   );
 
   const openPdfNode = useCallback(
@@ -5756,6 +5449,11 @@ function InfiniteCanvasLocalShellSurface({
                 />
               ) : null}
               <CanvasEdgeMarkerDefinitions />
+              <CanvasGroupScaleOverlay
+                nodes={renderedNodes}
+                onCommit={commitGroupScale}
+                onPreview={previewGroupScale}
+              />
             </ReactFlow>
             {!viewportVisible ? (
               <div className={styles.canvasLoading} role="status">
@@ -6180,6 +5878,11 @@ function InfiniteCanvasLocalShellSurface({
               />
             ) : null}
             <CanvasEdgeMarkerDefinitions />
+            <CanvasGroupScaleOverlay
+              nodes={renderedNodes}
+              onCommit={commitGroupScale}
+              onPreview={previewGroupScale}
+            />
           </ReactFlow>
           {!viewportVisible ? (
             <div className={styles.canvasLoading} role="status">

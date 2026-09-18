@@ -260,6 +260,56 @@
   background: transparent;
   border-radius: 0;
 }
+.imagePinLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+.imagePin {
+  position: absolute;
+  z-index: 1;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: #ea580c;
+  box-shadow: 0 2px 9px rgb(28 25 23 / 32%);
+  color: #fff;
+  cursor: grab;
+  font:
+    700 11px/1 system-ui,
+    sans-serif;
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+}
+.imagePin:active {
+  cursor: grabbing;
+}
+.imagePin:focus-visible {
+  outline: 3px solid #0f766e;
+  outline-offset: 2px;
+}
+.imagePinToolbar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px;
+  border: 1px solid #d6d3d1;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(28, 25, 23, 0.16);
+  pointer-events: all;
+}
+.imagePinToolbarHint {
+  padding-right: 4px;
+  color: #78716c;
+  font-size: 11px;
+  white-space: nowrap;
+}
 .textNodeFrame {
   --node-visual-border: 0;
   --node-visual-radius: 0;
@@ -697,6 +747,20 @@
   stroke: #0f766e;
   stroke-width: 3;
 }
+.edgeBendHandle {
+  fill: #fff;
+  stroke: #0f766e;
+  stroke-width: 3;
+  cursor: grab;
+  pointer-events: all;
+}
+.edgeBendHandle:active {
+  cursor: grabbing;
+}
+.edgeBendHandle:focus-visible {
+  outline: none;
+  stroke: #ea580c;
+}
 .edgeToolbar {
   display: flex;
   align-items: center;
@@ -732,6 +796,38 @@
   outline: none;
   background: #e6fffb;
   color: #0f766e;
+}
+.edgeToolButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+.groupScaleBounds {
+  position: absolute;
+  z-index: 8;
+  box-sizing: border-box;
+  border: 1px dashed #0f766e;
+  pointer-events: none;
+}
+.groupScaleHandle {
+  position: absolute;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 2px solid #0f766e;
+  border-radius: 3px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(28 25 23 / 18%);
+  cursor: nwse-resize;
+  pointer-events: auto;
+}
+.groupScaleHandleNorthWest {
+  top: -8px;
+  left: -8px;
+}
+.groupScaleHandleSouthEast {
+  right: -8px;
+  bottom: -8px;
 }
 .edgeToolbar > label {
   display: none;

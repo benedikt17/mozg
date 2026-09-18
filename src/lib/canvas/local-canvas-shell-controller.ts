@@ -19,6 +19,7 @@ import {
   runtimeNodesToCanvasDocument,
   type CanvasFlowNode,
   type CanvasEdgeFlow,
+  type CanvasEdgeFlowUpdate,
   type CanvasImageFlowNode,
   type CanvasTaskFlowNode,
   type CanvasTextFlowNode,
@@ -534,7 +535,7 @@ export class LocalCanvasShellController {
 
   updateCanvasEdge(
     edgeId: string,
-    update: Pick<CanvasEdgeV2, "routing" | "arrows">,
+    update: CanvasEdgeFlowUpdate,
   ): LocalCanvasShellState {
     if (!this.stateValue.canvasId) return this.state;
     const edge = this.stateValue.document.edges.find(
@@ -544,9 +545,12 @@ export class LocalCanvasShellController {
     return this.markDocumentPendingSave(
       parseCanvasDocumentV2({
         ...this.stateValue.document,
-        edges: this.stateValue.document.edges.map((current) =>
-          current.id === edgeId ? { ...current, ...update } : current,
-        ),
+        edges: this.stateValue.document.edges.map((current) => {
+          if (current.id !== edgeId) return current;
+          const next = { ...current, ...update };
+          if (update.bend === null) delete next.bend;
+          return next;
+        }),
       }),
     );
   }
