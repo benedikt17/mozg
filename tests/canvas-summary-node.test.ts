@@ -88,14 +88,31 @@ function documentWithSummary() {
 }
 
 describe("Canvas summary nodes", () => {
-  it("keeps a connection's persistent insertion order while presenting sequential entries", () => {
+  it("orders sources by vertical position and then horizontal position", () => {
     const document = documentWithSummary();
 
     expect(canvasSummaryEntries(document, "summary-1")).toEqual([
-      { nodeId: "shape-1", markdown: "Второй абзац", order: 1 },
       { nodeId: "text-1", markdown: "Первый абзац", order: 4 },
+      { nodeId: "shape-1", markdown: "Второй абзац", order: 1 },
     ]);
     expect(nextCanvasSummaryOrder(document, "summary-1")).toBe(5);
+  });
+
+  it("updates ordering when a block moves above another block", () => {
+    const document = documentWithSummary();
+    document.nodes.find((node) => node.id === "shape-1")!.position.y = -100;
+    expect(canvasSummaryEntries(document, "summary-1").map((entry) => entry.nodeId)).toEqual(["shape-1", "text-1"]);
+  });
+
+  it("emits a shared textual parent once as a heading", () => {
+    const document = documentWithSummary();
+    document.nodes.push({id: "parent", kind: "text", markdown: "Заголовок", position: {x: 0, y: -200}, size: {width: 240, height: 80}, zIndex: 4});
+    for (const child of ["text-1", "shape-1"]) {
+      document.edges.push({id: `parent-${child}`, sourceNodeId: "parent", targetNodeId: child, sourceHandle: "bottom", targetHandle: "top", routing: "curved", arrows: "none"});
+    }
+    const entries = canvasSummaryEntries(document, "summary-1");
+    expect(entries.map((entry) => entry.nodeId)).toEqual(["parent", "text-1", "shape-1"]);
+    expect(entries[0]).toMatchObject({role: "heading", markdown: "Заголовок"});
   });
 
   it("projects summaries to React Flow and preserves their geometry", () => {
