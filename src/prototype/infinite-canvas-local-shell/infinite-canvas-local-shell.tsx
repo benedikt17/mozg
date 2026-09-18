@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 56768)
-Total output lines: 6809
-
 "use client";
 
 import {
@@ -3103,7 +3100,777 @@ function InfiniteCanvasLocalShellSurface({
         nodesRef.current = translated;
         setNodes(translated);
         controller.setRuntimeNodes(translated);
-        …6768 tokens truncated… { ...node.data, isEditing } }
+        controller.setRuntimeEdges(edgesRef.current);
+        syncState();
+        scheduleSave();
+        return;
+      }
+
+      window.setTimeout(() => {
+        if (!shellStateRef.current.canvasId) return;
+        controller.setRuntimeEdges(edgesRef.current);
+        syncState();
+        scheduleSave();
+      }, 0);
+    },
+    [controller, scheduleSave, setNodes, syncState],
+  );
+
+  const handleTaskNodeContentHeightChange = useCallback((): void => {
+    // Task projection is runtime-only; it must never resize canonical bounds.
+  }, []);
+
+  const restoreForCanvas = useCallback(
+    async (nextState: LocalCanvasShellState) => {
+      const preserveWarmImagePayloads = preserveWarmImagePayloadsRef.current;
+      preserveWarmImagePayloadsRef.current = false;
+      restoreControllerRef.current?.abort();
+      variantRefreshControllerRef.current?.abort();
+      pendingContentHeightSaveRef.current = false;
+      if (variantRefreshFrameRef.current !== null) {
+        window.cancelAnimationFrame(variantRefreshFrameRef.current);
+        variantRefreshFrameRef.current = null;
+      }
+      if (variantDowngradeTimerRef.current !== null) {
+        clearTimeout(variantDowngradeTimerRef.current);
+        variantDowngradeTimerRef.current = null;
+      }
+      if (imageLoadCacheCanvasIdRef.current !== nextState.canvasId) {
+        if (imageLoadCacheCanvasIdRef.current) {
+          pyramidSchedulerRef.current.cancelScope(
+            {
+              userId: shellUserId,
+              workspaceId: shellWorkspaceId,
+              canvasId: imageLoadCacheCanvasIdRef.current,
+            },
+            true,
+          );
+        }
+        imageLoadCacheRef.current.clear();
+        imageLoadCacheCanvasIdRef.current = nextState.canvasId;
+      }
+      if (preserveWarmImagePayloads) {
+        // The runtime snapshot has already mounted the matching document with
+        // live object URLs. Keep that scene intact while the post-save
+        // reconciliation completes; rebuilding it would blank images before
+        // their cached payloads can be painted again.
+        hydratingRef.current = false;
+        setRestoreStats(EMPTY_RESTORE_STATS);
+        setLoadingLifecycle("ready");
+        return;
+      }
+      restoreControllerRef.current = new AbortController();
+      variantPayloadsRef.current.clear();
+      objectUrls.revokeAll();
+      const signal = restoreControllerRef.current.signal;
+      const placeholders: CanvasFlowNode[] = [
+        ...canvasDocumentToImageNodes(nextState.document),
+        ...canvasDocumentToPdfNodes(nextState.document),
+        ...canvasDocumentToArticleNodes(nextState.document),
+        ...canvasDocumentToTaskNodes(nextState.document, {
+          onContentHeightChange: handleTaskNodeContentHeightChange,
+          taskBridge: taskBridgeRef.current,
+          taskWorkspaceId: taskWorkspaceIdRef.current,
+        }),
+        ...canvasDocumentToTextNodes(nextState.document),
+        ...canvasDocumentToShapeNodes(nextState.document),
+        ...canvasDocumentToSummaryNodes(nextState.document),
+      ];
+      const restoredEdges = canvasDocumentToEdges(
+        nextState.document,
+        handleEdgeUpdate,
+      );
+      const projected = projectCanvasBranchCollapse(
+        placeholders,
+        restoredEdges,
+        undefined,
+        canvasBranchCollapsedNodeIds(nextState.document.nodes),
+      );
+      setNodes(projected.nodes);
+      setEdges(projected.edges);
+      hydratingRef.current = true;
+      setRestoreStats(EMPTY_RESTORE_STATS);
+      setLoadingLifecycle("skeleton-ready");
+      setLoadingLifecycle("content-hydrating");
+      const restoreDependencies = canvasImageAdapterDependenciesForCanvas(
+        adapterDependencies,
+        nextState.canvasId,
+      );
+      const applyRestoredNode = (node: CanvasImageFlowNode): void => {
+        if (signal.aborted) return;
+        setNodes((current) => {
+          const index = current.findIndex((item) => item.id === node.id);
+          if (index < 0) return [...current, node];
+          const copy = [...current];
+          const existing = copy[index];
+          if (existing?.type !== CANVAS_IMAGE_NODE_TYPE) return current;
+          rememberImageRuntimePayload(variantPayloadsRef.current, node, {
+            workspaceId: shellWorkspaceId,
+            canvasId: nextState.canvasId ?? "",
+          });
+          copy[index] = {
+            ...existing,
+            data: { ...existing.data, ...node.data },
+          };
+          return copy;
+        });
+      };
+      const result = await restoreCanvasImageNodes(
+        nextState.document,
+        restoreDependencies,
+        {
+          signal,
+          concurrency: 4,
+          viewportZoom: nextState.viewport.zoom,
+          onNode: applyRestoredNode,
+        },
+      );
+      const projectFileDependencies = nextState.canvasId
+        ? projectFileImageDependenciesForCanvas(nextState.canvasId)
+        : null;
+      const projectFileResult = projectFileDependencies
+        ? await restoreProjectFileCanvasImageNodes(
+            nextState.document,
+            projectFileDependencies,
+            {
+              signal,
+              concurrency: 4,
+              viewportZoom: nextState.viewport.zoom,
+              cachedAssetPayloads: variantPayloadsRef.current,
+              onNode: applyRestoredNode,
+            },
+          )
+        : {
+            nodes: [],
+            missingFileIds: [],
+            fileReadCount: 0,
+            maxConcurrentFileReads: 0,
+          };
+      if (signal.aborted) return;
+      setRestoreStats({
+        reads: result.assetReadCount + projectFileResult.fileReadCount,
+        maxConcurrency: Math.max(
+          result.maxConcurrentAssetReads,
+          projectFileResult.maxConcurrentFileReads,
+        ),
+        missing:
+          result.missingAssetIds.length +
+          projectFileResult.missingFileIds.length,
+      });
+      hydratingRef.current = false;
+      if (pendingContentHeightSaveRef.current) {
+        pendingContentHeightSaveRef.current = false;
+      }
+      setLoadingLifecycle("ready");
+    },
+    [
+      adapterDependencies,
+      handleEdgeUpdate,
+      handleTaskNodeContentHeightChange,
+      objectUrls,
+      projectFileImageDependenciesForCanvas,
+      setEdges,
+      setNodes,
+      shellUserId,
+      shellWorkspaceId,
+    ],
+  );
+
+  const restoreForCanvasRef = useRef(restoreForCanvas);
+  restoreForCanvasRef.current = restoreForCanvas;
+
+  const applyCanvasHistory = useCallback(
+    (direction: "undo" | "redo") => {
+      const nextState =
+        direction === "undo"
+          ? controller.undoDocument()
+          : controller.redoDocument();
+      if (!nextState) return;
+      setShellState(nextState);
+      void restoreForCanvas(nextState)
+        .then(() => {
+          syncState();
+          scheduleSave();
+        })
+        .catch((error: unknown) => {
+          hydratingRef.current = false;
+          setLoadingLifecycle("error");
+          setShellState({
+            ...controller.state,
+            status: "error",
+            error:
+              error instanceof Error
+                ? error.message
+                : "Canvas history restore failed.",
+          });
+        });
+    },
+    [controller, restoreForCanvas, scheduleSave, syncState],
+  );
+
+  useEffect(() => {
+    const onHistoryKeyDown = (event: KeyboardEvent): void => {
+      if (
+        !clipboardActive ||
+        eventTouchesEditingSurface(event) ||
+        !(event.ctrlKey || event.metaKey)
+      )
+        return;
+      const key = event.key.toLowerCase();
+      const direction =
+        key === "y" || (key === "z" && event.shiftKey)
+          ? "redo"
+          : key === "z"
+            ? "undo"
+            : null;
+      if (!direction) return;
+      if (direction === "undo" ? !controller.canUndo : !controller.canRedo)
+        return;
+      event.preventDefault();
+      applyCanvasHistory(direction);
+    };
+    window.addEventListener("keydown", onHistoryKeyDown, true);
+    return () => window.removeEventListener("keydown", onHistoryKeyDown, true);
+  }, [applyCanvasHistory, clipboardActive, controller]);
+
+  const openCanvas = useCallback(
+    async (canvasId: string) => {
+      const generation = ++canvasGenerationRef.current;
+      hydratingRef.current = true;
+      setLoadingLifecycle("canvas-selected");
+      programmaticViewportRef.current = null;
+      setViewportInitialization(null);
+      setViewportVisible(false);
+      setShellState((current) => ({
+        ...current,
+        status: "loading",
+        error: null,
+      }));
+      setLoadingLifecycle("document-loading");
+      const nextState = await controller.openCanvas(canvasId);
+      if (generation !== canvasGenerationRef.current) return;
+      repository.setActiveCanvas?.(canvasId);
+      latestViewportRef.current = { ...nextState.viewport };
+      setShellState(nextState);
+      setRenameTitle(nextState.title);
+      setViewportInitialization({
+        canvasId,
+        generation,
+        viewport: { ...nextState.viewport },
+      });
+      void restoreForCanvas(nextState).catch((error: unknown) => {
+        if (generation !== canvasGenerationRef.current) return;
+        setLoadingLifecycle("error");
+        setShellState((current) => ({
+          ...current,
+          status: "error",
+          error:
+            error instanceof Error
+              ? error.message
+              : "Canvas content loading failed.",
+        }));
+      });
+    },
+    [controller, repository, restoreForCanvas],
+  );
+
+  const openCanvasRef = useRef(openCanvas);
+  openCanvasRef.current = openCanvas;
+
+  useEffect(() => {
+    const request = canvasOpenRequest;
+    if (
+      !request ||
+      request.canvasId === excludedCanvasId ||
+      request.canvasId === shellStateRef.current.canvasId
+    )
+      return;
+    void openCanvas(request.canvasId);
+  }, [canvasOpenRequest, excludedCanvasId, openCanvas]);
+
+  const refreshImageVariants = useCallback(
+    (viewportZoom: number, allowDowngrade: boolean): void => {
+      if (
+        hydratingRef.current ||
+        !adapterDependencies.variantRepository ||
+        !adapterDependencies.canvasId
+      )
+        return;
+      variantRefreshControllerRef.current?.abort();
+      const controller = new AbortController();
+      const sequence = ++variantRefreshSequenceRef.current;
+      variantRefreshControllerRef.current = controller;
+      const projectFileDependencies = adapterDependencies.canvasId
+        ? projectFileImageDependenciesForCanvas(adapterDependencies.canvasId)
+        : null;
+      if (projectFileDependencies) {
+        void restoreProjectFileCanvasImageNodes(
+          shellStateRef.current.document,
+          projectFileDependencies,
+          {
+            signal: controller.signal,
+            viewportZoom,
+            devicePixelRatio: window.devicePixelRatio,
+            renderedCssSizes: renderedImageCssSizes(),
+            currentResolutionSources: new Map(
+              nodesRef.current.flatMap((node) =>
+                node.type === CANVAS_IMAGE_NODE_TYPE && node.data.fileId
+                  ? [
+                      [
+                        node.id,
+                        node.data.resolutionSource ??
+                          canvasImageResolutionSourceFromLegacyKind(
+                            node.data.variantKind ?? "original",
+                          ),
+                      ] as const,
+                    ]
+                  : [],
+              ),
+            ),
+            cachedAssetPayloads: variantPayloadsRef.current,
+            allowDowngrade,
+            concurrency: 4,
+            onNode: (node) => {
+              if (
+                controller.signal.aborted ||
+                sequence !== variantRefreshSequenceRef.current
+              )
+                return;
+              setNodes((current) => {
+                const index = current.findIndex((item) => item.id === node.id);
+                const existing = current[index];
+                if (index < 0 || existing?.type !== CANVAS_IMAGE_NODE_TYPE)
+                  return current;
+                rememberImageRuntimePayload(variantPayloadsRef.current, node, {
+                  workspaceId: shellWorkspaceId,
+                  canvasId: adapterDependencies.canvasId ?? "",
+                });
+                const next = [...current];
+                next[index] = {
+                  ...existing,
+                  data: { ...existing.data, ...node.data },
+                };
+                return next;
+              });
+            },
+          },
+        ).catch(() => undefined);
+      }
+      void restoreCanvasImageNodes(
+        shellStateRef.current.document,
+        adapterDependencies,
+        {
+          signal: controller.signal,
+          viewportZoom,
+          devicePixelRatio: window.devicePixelRatio,
+          renderedCssSizes: renderedImageCssSizes(),
+          currentResolutionSources: new Map(
+            nodesRef.current.flatMap((node) =>
+              node.type === CANVAS_IMAGE_NODE_TYPE
+                ? [
+                    [
+                      node.id,
+                      node.data.resolutionSource ??
+                        canvasImageResolutionSourceFromLegacyKind(
+                          node.data.variantKind ?? "original",
+                        ),
+                    ] as const,
+                  ]
+                : [],
+            ),
+          ),
+          cachedAssetPayloads: variantPayloadsRef.current,
+          allowDowngrade,
+          concurrency: 4,
+          onNode: (node) => {
+            if (
+              controller.signal.aborted ||
+              sequence !== variantRefreshSequenceRef.current
+            )
+              return;
+            setNodes((current) => {
+              const index = current.findIndex((item) => item.id === node.id);
+              const existing = current[index];
+              if (index < 0 || existing?.type !== CANVAS_IMAGE_NODE_TYPE)
+                return current;
+              rememberImageRuntimePayload(variantPayloadsRef.current, node, {
+                workspaceId: shellWorkspaceId,
+                canvasId: adapterDependencies.canvasId ?? "",
+              });
+              const next = [...current];
+              next[index] = {
+                ...existing,
+                data: { ...existing.data, ...node.data },
+              };
+              return next;
+            });
+          },
+        },
+      )
+        .catch(() => undefined)
+        .finally(() => {
+          if (variantRefreshControllerRef.current === controller)
+            variantRefreshControllerRef.current = null;
+        });
+    },
+    [
+      adapterDependencies,
+      projectFileImageDependenciesForCanvas,
+      setNodes,
+      shellWorkspaceId,
+    ],
+  );
+  refreshImageVariantsRef.current = refreshImageVariants;
+
+  const scheduleImageVariantRefresh = useCallback(
+    (viewportZoom: number, allowDowngrade: boolean): void => {
+      if (variantRefreshFrameRef.current !== null)
+        window.cancelAnimationFrame(variantRefreshFrameRef.current);
+      variantRefreshFrameRef.current = window.requestAnimationFrame(() => {
+        variantRefreshFrameRef.current = null;
+        refreshImageVariants(viewportZoom, allowDowngrade);
+      });
+    },
+    [refreshImageVariants],
+  );
+
+  const restoreCachedScene = useCallback(
+    (snapshot: CloudCanvasRuntimeSnapshot): void => {
+      const cachedState = controller.restoreRuntimeState(snapshot.shellState);
+      if (!cachedState.canvasId) return;
+      const generation = ++canvasGenerationRef.current;
+      variantPayloadsRef.current = new Map(snapshot.assetPayloads);
+      const skeleton = canvasDocumentToRuntimeSkeleton(cachedState.document, {
+        onContentHeightChange: handleTaskNodeContentHeightChange,
+        taskBridge: taskBridgeRef.current,
+        taskWorkspaceId: taskWorkspaceIdRef.current,
+      });
+      // Keep the runtime-cache composition contract explicit for desktop-shell checks:
+      // setNodes(withCachedAssetPayloads(skeleton, snapshot.assetPayloads))
+      const cachedEdges = canvasDocumentToEdges(
+        cachedState.document,
+        handleEdgeUpdate,
+      );
+      const projected = projectCanvasBranchCollapse(
+        withCachedAssetPayloads(skeleton, snapshot.assetPayloads, {
+          workspaceId: shellWorkspaceId,
+          canvasId: cachedState.canvasId,
+        }),
+        cachedEdges,
+        undefined,
+        canvasBranchCollapsedNodeIds(cachedState.document.nodes),
+      );
+      setNodes(projected.nodes);
+      setEdges(projected.edges);
+      setShellState(cachedState);
+      setRenameTitle(cachedState.title);
+      hydratingRef.current = false;
+      setLoadingLifecycle("ready");
+      setViewportInitialization({
+        canvasId: cachedState.canvasId,
+        generation,
+        viewport: { ...cachedState.viewport },
+      });
+    },
+    [
+      controller,
+      handleEdgeUpdate,
+      handleTaskNodeContentHeightChange,
+      shellWorkspaceId,
+      setEdges,
+      setNodes,
+    ],
+  );
+
+  useEffect(
+    () => () => {
+      setOpenPdf((current) => {
+        if (current) URL.revokeObjectURL(current.objectUrl);
+        return null;
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    let active = true;
+    const pyramidScheduler = pyramidSchedulerRef.current;
+    if (initialRuntime) restoreCachedScene(initialRuntime);
+    const groupLoad = groupsRepository
+      ? groupsRepository
+          .listCanvasGroups(shellWorkspaceId)
+          .catch((error: unknown) => {
+            if (active) {
+              setGroupsError(
+                error instanceof Error
+                  ? error.message
+                  : "Canvas groups failed to load.",
+              );
+            }
+            return [] as CanvasGroup[];
+          })
+      : Promise.resolve([] as CanvasGroup[]);
+    void Promise.all([controller.listCanvases(), groupLoad])
+      .then(async ([items, nextGroups]) => {
+        if (!active) return;
+        setSummaries(items);
+        setGroups(nextGroups);
+        const cachedCanvasId = initialRuntime?.shellState.canvasId;
+        const cachedSummary = cachedCanvasId
+          ? items.find((item) => item.id === cachedCanvasId)
+          : undefined;
+        if (cachedSummary && initialRuntime) {
+          const unchanged =
+            cachedSummary.revision === initialRuntime.shellState.revision;
+
+          if (initialRuntime.shellState.status !== "saved" && unchanged) {
+            const saveResult = await controller.save();
+            if (
+              saveResult?.status !== "conflict" &&
+              controller.state.status === "saved"
+            ) {
+              const savedState = controller.state;
+              setShellState(savedState);
+              setRenameTitle(savedState.title);
+              await restoreForCanvasRef.current(savedState);
+              return;
+            }
+          }
+
+          if (initialRuntime.shellState.status !== "saved") {
+            const latest = await repository.loadCanvas({
+              workspaceId: shellWorkspaceId,
+              canvasId: cachedSummary.id,
+            });
+            if (
+              serverCanvasMatchesCachedRuntime(
+                latest,
+                initialRuntime.shellState,
+              )
+            ) {
+              const reconciled = controller.restoreRuntimeState(
+                reconcileCachedRuntimeWithServer(
+                  latest,
+                  initialRuntime.shellState,
+                ),
+              );
+              setShellState(reconciled);
+              setRenameTitle(reconciled.title);
+              await restoreForCanvasRef.current(reconciled);
+              return;
+            }
+            setLoadingLifecycle("error");
+            setShellState((current) => ({
+              ...current,
+              status: "conflict",
+              autosaveBlocked: true,
+              conflictRevision: cachedSummary.revision,
+              error: "Canvas changed elsewhere. Reload to continue.",
+            }));
+            return;
+          }
+
+          if (unchanged) {
+            const cachedNodes = canvasDocumentToRuntimeSkeleton(
+              initialRuntime.shellState.document,
+              {
+                onContentHeightChange: handleTaskNodeContentHeightChange,
+                taskBridge: taskBridgeRef.current,
+                taskWorkspaceId: taskWorkspaceIdRef.current,
+              },
+            );
+            preserveWarmImagePayloadsRef.current =
+              hasCachedPayloadForEveryImageNode(
+                cachedNodes,
+                initialRuntime.assetPayloads,
+                {
+                  workspaceId: shellWorkspaceId,
+                  canvasId: cachedSummary.id,
+                },
+              );
+            // Keep the safe post-save reconciliation call. When every image
+            // is already present in the runtime snapshot it consumes the warm
+            // mode above instead of tearing that snapshot down and rebuilding
+            // images one at a time.
+            await restoreForCanvasRef.current(controller.state);
+            return;
+          }
+          await openCanvasRef.current(cachedSummary.id);
+          return;
+        }
+        const firstAvailable = items.find(
+          (item) => item.id !== initialExcludedCanvasIdRef.current,
+        );
+        if (firstAvailable) await openCanvasRef.current(firstAvailable.id);
+        else {
+          hydratingRef.current = false;
+          setShellState(emptyShellState());
+          setLoadingLifecycle("empty-confirmed");
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setLoadingLifecycle("error");
+          setShellState((current) => ({
+            ...current,
+            status: "error",
+            error:
+              error instanceof Error ? error.message : "Canvas loading failed.",
+          }));
+        }
+      });
+    return () => {
+      active = false;
+      restoreControllerRef.current?.abort();
+      variantRefreshControllerRef.current?.abort();
+      if (variantRefreshFrameRef.current !== null) {
+        window.cancelAnimationFrame(variantRefreshFrameRef.current);
+        variantRefreshFrameRef.current = null;
+      }
+      if (variantDowngradeTimerRef.current !== null) {
+        clearTimeout(variantDowngradeTimerRef.current);
+        variantDowngradeTimerRef.current = null;
+      }
+      let latestState = controller.state;
+      // Viewport persistence is intentionally debounced during panning.  On a
+      // route change there may be no time for that debounce to fire, so flush
+      // the latest rendered position into the controller before creating the
+      // in-memory snapshot for this pane.
+      const latestViewport = latestViewportRef.current;
+      if (latestState.canvasId && latestViewport) {
+        void controller.saveViewport(latestViewport).catch(() => undefined);
+        latestState = controller.state;
+      }
+      if (saveTimerRef.current) {
+        controller.setRuntimeNodes(nodesRef.current);
+        latestState = controller.setRuntimeEdges(edgesRef.current);
+      }
+      if (latestState.canvasId) {
+        pyramidScheduler.cancelScope(
+          {
+            userId: shellUserId,
+            workspaceId: shellWorkspaceId,
+            canvasId: latestState.canvasId,
+          },
+          true,
+        );
+      }
+      // Keep in-flight work alive across a StrictMode-style cleanup/setup pair.
+      // The cache is component-owned and becomes unreachable on a real unmount;
+      // clearing it here would allow an aborted original request to be started
+      // again while the first browser request is still downloading.
+      if (runtimeCache && latestState.canvasId) {
+        runtimeCache.set({
+          workspaceId: shellWorkspaceId,
+          userId: shellUserId,
+          canvasId: latestState.canvasId,
+          summaries: summariesRef.current,
+          shellState: latestState,
+          assetPayloads: new Map(variantPayloadsRef.current),
+          objectUrls,
+        });
+      } else {
+        objectUrls.revokeAll();
+      }
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      if (viewportTimerRef.current) clearTimeout(viewportTimerRef.current);
+      repository.close?.();
+    };
+  }, [
+    controller,
+    groupsRepository,
+    shellWorkspaceId,
+    initialRuntime,
+    objectUrls,
+    repository,
+    restoreCachedScene,
+    runtimeCache,
+    shellUserId,
+  ]);
+
+  useEffect(() => {
+    if (!viewportInitialization) return;
+    let active = true;
+    let cancelReveal: () => void = () => undefined;
+    programmaticViewportRef.current = viewportInitialization;
+    void (async () => {
+      const applied = await reactFlow.setViewport(
+        viewportInitialization.viewport,
+        { duration: 0 },
+      );
+      if (
+        !active ||
+        !applied ||
+        !isCurrentViewportInitialization(
+          viewportInitialization,
+          canvasGenerationRef.current,
+        )
+      )
+        return;
+      cancelReveal = scheduleViewportReveal(() => {
+        if (
+          !active ||
+          !isCurrentViewportInitialization(
+            viewportInitialization,
+            canvasGenerationRef.current,
+          )
+        )
+          return;
+        setViewportVisible(true);
+      });
+    })();
+    return () => {
+      active = false;
+      cancelReveal();
+    };
+  }, [flowInstanceEpoch, reactFlow, viewportInitialization]);
+
+  useEffect(() => {
+    const root = wrapperRef.current;
+    const viewport = root?.querySelector<HTMLElement>(".react-flow__viewport");
+    if (!root || !viewport) return;
+    let settleTimer: ReturnType<typeof setTimeout> | null = null;
+    let previousTransition = viewport.style.transition;
+    const clearSmoothing = (): void => {
+      if (settleTimer) {
+        clearTimeout(settleTimer);
+        settleTimer = null;
+      }
+      viewport.style.transition = previousTransition;
+    };
+    const onWheel = (): void => {
+      if (settleTimer === null) previousTransition = viewport.style.transition;
+      viewport.style.transition = "transform 55ms linear";
+      if (settleTimer) clearTimeout(settleTimer);
+      settleTimer = setTimeout(clearSmoothing, 75);
+    };
+    const onPointerDown = (): void => clearSmoothing();
+    root.addEventListener("wheel", onWheel, { capture: true, passive: true });
+    root.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      clearSmoothing();
+      root.removeEventListener("wheel", onWheel, true);
+      root.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [flowInstanceEpoch]);
+
+  const centerPosition = useCallback(() => {
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    return screenToFlowRef.current({
+      x: (rect?.left ?? 0) + (rect?.width ?? 800) / 2,
+      y: (rect?.top ?? 0) + (rect?.height ?? 600) / 2,
+    });
+  }, []);
+
+  const setTextEditing = useCallback(
+    (id: string, isEditing: boolean) => {
+      setNodes((current) =>
+        current.map((node) =>
+          node.id === id && node.type === CANVAS_TEXT_NODE_TYPE
+            ? { ...node, data: { ...node.data, isEditing } }
             : node,
         ),
       );
