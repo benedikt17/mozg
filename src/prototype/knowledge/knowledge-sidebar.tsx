@@ -353,11 +353,6 @@ function KnowledgeTreeNodeView({
               aria-expanded={expanded}
               className={folderClassName}
               onClick={toggleFolder}
-              onPointerUp={(event) => {
-                if (event.pointerType !== "touch") return;
-                event.preventDefault();
-                toggleFolder();
-              }}
               type="button"
             >
               <UiIcon name={expanded ? "chevron-down" : "chevron-right"} />

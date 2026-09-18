@@ -141,17 +141,29 @@ function ApplicationSectionNavigation({
 }
 
 function isInsideMobileSectionDrawer(target: EventTarget | null): boolean {
+  const element =
+    target instanceof Element
+      ? target
+      : target instanceof Node
+        ? target.parentElement
+        : null;
   return (
-    target instanceof Element &&
+    element !== null &&
     Boolean(
-      target.closest(".tool-sidebar, [data-mobile-section-drawer='true']"),
+      element.closest(".tool-sidebar, [data-mobile-section-drawer='true']"),
     )
   );
 }
 
 function isMobileSidebarNavigationButton(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
-  const button = target.closest<HTMLButtonElement>("button");
+  const element =
+    target instanceof Element
+      ? target
+      : target instanceof Node
+        ? target.parentElement
+        : null;
+  if (!element) return false;
+  const button = element.closest<HTMLButtonElement>("button");
   if (!button || !isInsideMobileSectionDrawer(button)) return false;
   if (button.closest('[role="menu"]') || button.hasAttribute("aria-haspopup"))
     return false;
@@ -170,12 +182,21 @@ function isMobileSidebarImmediateTouchButton(
   target: EventTarget | null,
 ): boolean {
   if (isMobileSidebarNavigationButton(target)) return true;
-  if (!(target instanceof Element)) return false;
-  const button = target.closest<HTMLButtonElement>("button");
+  const element =
+    target instanceof Element
+      ? target
+      : target instanceof Node
+        ? target.parentElement
+        : null;
+  if (!element) return false;
+  const button = element.closest<HTMLButtonElement>("button");
   if (!button || !isInsideMobileSectionDrawer(button)) return false;
   if (button.closest('[role="menu"]') || button.hasAttribute("aria-haspopup"))
     return false;
-  return false;
+  return (
+    button.classList.contains("knowledge-tree-row") &&
+    button.classList.contains("folder")
+  );
 }
 
 export function ApplicationHeader({
@@ -374,8 +395,14 @@ export function ApplicationHeader({
     const activateImmediateTouchButton = (target: EventTarget | null): void => {
       if (!drawerIsOpen() || !isMobileSidebarImmediateTouchButton(target))
         return;
-      if (!(target instanceof Element)) return;
-      const button = target.closest<HTMLButtonElement>("button");
+      const element =
+        target instanceof Element
+          ? target
+          : target instanceof Node
+            ? target.parentElement
+            : null;
+      if (!element) return;
+      const button = element.closest<HTMLButtonElement>("button");
       if (!button || button.disabled) return;
       button.click();
     };
