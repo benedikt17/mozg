@@ -141,17 +141,29 @@ function ApplicationSectionNavigation({
 }
 
 function isInsideMobileSectionDrawer(target: EventTarget | null): boolean {
+  const element =
+    target instanceof Element
+      ? target
+      : target instanceof Node
+        ? target.parentElement
+        : null;
   return (
-    target instanceof Element &&
+    element !== null &&
     Boolean(
-      target.closest(".tool-sidebar, [data-mobile-section-drawer='true']"),
+      element.closest(".tool-sidebar, [data-mobile-section-drawer='true']"),
     )
   );
 }
 
 function isMobileSidebarNavigationButton(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
-  const button = target.closest<HTMLButtonElement>("button");
+  const element =
+    target instanceof Element
+      ? target
+      : target instanceof Node
+        ? target.parentElement
+        : null;
+  if (!element) return false;
+  const button = element.closest<HTMLButtonElement>("button");
   if (!button || !isInsideMobileSectionDrawer(button)) return false;
   if (button.closest('[role="menu"]') || button.hasAttribute("aria-haspopup"))
     return false;
@@ -170,8 +182,14 @@ function isMobileSidebarImmediateTouchButton(
   target: EventTarget | null,
 ): boolean {
   if (isMobileSidebarNavigationButton(target)) return true;
-  if (!(target instanceof Element)) return false;
-  const button = target.closest<HTMLButtonElement>("button");
+  const element =
+    target instanceof Element
+      ? target
+      : target instanceof Node
+        ? target.parentElement
+        : null;
+  if (!element) return false;
+  const button = element.closest<HTMLButtonElement>("button");
   if (!button || !isInsideMobileSectionDrawer(button)) return false;
   if (button.closest('[role="menu"]') || button.hasAttribute("aria-haspopup"))
     return false;
@@ -374,17 +392,37 @@ export function ApplicationHeader({
       pointerGesture = null;
     };
 
+    const activateImmediateTouchButton = (target: EventTarget | null): void => {
+      if (!drawerIsOpen() || !isMobileSidebarImmediateTouchButton(target))
+        return;
+      const element =
+        target instanceof Element
+          ? target
+          : target instanceof Node
+            ? target.parentElement
+            : null;
+      if (!element) return;
+      const button = element.closest<HTMLButtonElement>("button");
+      if (!button || button.disabled) return;
+      button.click();
+    };
+
     const onPointerUp = (event: PointerEvent): void => {
       const current = pointerGesture;
       clearPointerGesture();
       if (!current || current.pointerId !== event.pointerId) return;
-      applySwipe({
+      const handledSwipe = applySwipe({
         endX: event.clientX,
         endY: event.clientY,
         startedInsideDrawer: current.startedInsideDrawer,
         startX: current.startX,
         startY: current.startY,
       });
+      if (handledSwipe) return;
+      const deltaX = event.clientX - current.startX;
+      const deltaY = event.clientY - current.startY;
+      if (Math.abs(deltaX) <= 12 && Math.abs(deltaY) <= 12)
+        activateImmediateTouchButton(event.target);
     };
 
     const findTouch = (
@@ -459,11 +497,8 @@ export function ApplicationHeader({
         !isMobileSidebarImmediateTouchButton(current.startTarget)
       )
         return;
-      if (!(current.startTarget instanceof Element)) return;
-      const button = current.startTarget.closest<HTMLButtonElement>("button");
-      if (!button || button.disabled) return;
       event.preventDefault();
-      button.click();
+      activateImmediateTouchButton(current.startTarget);
     };
 
     const clearTouchGesture = (): void => {

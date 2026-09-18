@@ -172,7 +172,6 @@ import {
   CANVAS_DOCUMENT_LIMITS,
   CANVAS_VIEWPORT_LIMITS,
   type CanvasEdgeArrows,
-  type CanvasEdgeV2,
   type CanvasEdgeRouting,
   type CanvasHandleSide,
   type CanvasShapeNode,
@@ -195,11 +194,7 @@ import {
   canvasNodePerimeterAnchor,
   type CanvasNodeBounds,
 } from "@/lib/canvas/canvas-edge-geometry";
-import {
-  findShortestCanvasHandlePair,
-  recomputeCanvasRuntimeEdgeHandles,
-  type CanvasNodeBoundsRecord,
-} from "@/lib/canvas/canvas-shortest-handle-pair";
+import { reconnectCanvasEdgeSide } from "@/lib/canvas/canvas-manual-connection";
 import {
   createCanvasTextId,
   hasMeaningfulPlainText,
@@ -382,21 +377,6 @@ function hasCachedPayloadForEveryImageNode(
   });
 }
 
-function canvasFlowNodeBounds(
-  node: CanvasFlowNode,
-): CanvasNodeBoundsRecord | null {
-  const width = node.measured?.width ?? node.width ?? node.style?.width;
-  const height = node.measured?.height ?? node.height ?? node.style?.height;
-  if (typeof width !== "number" || typeof height !== "number") return null;
-  return {
-    id: node.id,
-    x: node.position.x,
-    y: node.position.y,
-    width,
-    height,
-  };
-}
-
 function canvasInternalNodeBounds(
   node: InternalNode<CanvasFlowNode> | undefined,
 ): CanvasNodeBounds | null {
@@ -412,15 +392,6 @@ function canvasInternalNodeBounds(
   };
 }
 
-function canvasFlowNodeBoundsRecords(
-  nodes: readonly CanvasFlowNode[],
-): CanvasNodeBoundsRecord[] {
-  return nodes.flatMap((node) => {
-    const bounds = canvasFlowNodeBounds(node);
-    return bounds ? [bounds] : [];
-  });
-}
-
 function snapshotCanvasTouchGestureNodes(
   nodes: readonly CanvasFlowNode[],
 ): CanvasFlowNode[] {
@@ -430,22 +401,6 @@ function snapshotCanvasTouchGestureNodes(
     ...(node.measured ? { measured: { ...node.measured } } : {}),
     ...(node.style ? { style: { ...node.style } } : {}),
   }));
-}
-
-function autoAttachCanvasEdge(
-  edge: CanvasEdgeV2,
-  bounds: readonly CanvasNodeBoundsRecord[],
-): CanvasEdgeV2 {
-  const boundsById = new Map(bounds.map((node) => [node.id, node]));
-  const sourceBounds = boundsById.get(edge.sourceNodeId);
-  const targetBounds = boundsById.get(edge.targetNodeId);
-  if (!sourceBounds || !targetBounds) return edge;
-  const pair = findShortestCanvasHandlePair(sourceBounds, targetBounds);
-  return {
-    ...edge,
-    sourceHandle: pair.sourceHandle,
-    targetHandle: pair.targetHandle,
-  };
 }
 
 function transferPayload(
@@ -1866,7 +1821,6 @@ function InfiniteCanvasLocalShellSurface({
   );
   const preserveWarmImagePayloadsRef = useRef(false);
   const pendingContentHeightSaveRef = useRef(false);
-  const nodeGeometrySignatureRef = useRef("");
   const nodeDragActiveRef = useRef(false);
   const collapsedBranchDragRef = useRef<{
     descendantNodeIds: Set<string>;
@@ -2526,29 +2480,6 @@ function InfiniteCanvasLocalShellSurface({
       );
   }, [controller, scheduleSave, syncState]);
 
-  useEffect(() => {
-    const bounds = canvasFlowNodeBoundsRecords(nodes);
-    const signature = bounds
-      .map(
-        (node) => `${node.id}:${node.x}:${node.y}:${node.width}:${node.height}`,
-      )
-      .join("|");
-    if (signature === nodeGeometrySignatureRef.current) return;
-    nodeGeometrySignatureRef.current = signature;
-
-    const nextEdges = recomputeCanvasRuntimeEdgeHandles(
-      edgesRef.current,
-      bounds,
-    );
-    const handlesChanged = nextEdges.some(
-      (edge, index) =>
-        edge.sourceHandle !== edgesRef.current[index]?.sourceHandle ||
-        edge.targetHandle !== edgesRef.current[index]?.targetHandle,
-    );
-    if (!handlesChanged) return;
-    setEdges((current) => recomputeCanvasRuntimeEdgeHandles(current, bounds));
-  }, [nodes, setEdges]);
-
   const handleEdgeUpdate = useCallback(
     (
       edgeId: string,
@@ -2591,17 +2522,34 @@ function InfiniteCanvasLocalShellSurface({
             : null
           : edge;
       if (!orderedEdge) return;
-      const attachedEdge = autoAttachCanvasEdge(
-        orderedEdge,
-        canvasFlowNodeBoundsRecords(nodesRef.current),
-      );
       const previousEdgeCount = controller.state.document.edges.length;
-      const nextState = controller.insertCanvasEdge(attachedEdge);
+      const nextState = controller.insertCanvasEdge(orderedEdge);
       if (nextState.document.edges.length > previousEdgeCount) {
         setEdges(canvasDocumentToEdges(nextState.document, handleEdgeUpdate));
         setShellState(nextState);
         scheduleSave();
       }
+    },
+    [controller, handleEdgeUpdate, scheduleSave, setEdges],
+  );
+
+  const handleReconnect = useCallback(
+    (runtime: CanvasEdgeFlow, connection: Connection) => {
+      if (touchViewportGestureActiveRef.current) return;
+      const document = controller.state.document;
+      const edge = document.edges.find((item) => item.id === runtime.id);
+      if (!edge) return;
+      const reconnected = reconnectCanvasEdgeSide(edge, connection);
+      if (!reconnected) return;
+      const next = controller.setDocument({
+        ...document,
+        edges: document.edges.map((item) =>
+          item.id === edge.id ? reconnected : item,
+        ),
+      });
+      setEdges(canvasDocumentToEdges(next.document, handleEdgeUpdate));
+      setShellState(next);
+      scheduleSave();
     },
     [controller, handleEdgeUpdate, scheduleSave, setEdges],
   );
@@ -4568,25 +4516,6 @@ function InfiniteCanvasLocalShellSurface({
         (change) =>
           change.type !== "dimensions" || change.setAttributes === true,
       );
-      if (safeChanges.some((change) => change.type === "position")) {
-        const transientNodes = applyNodeChanges(
-          renderChanges,
-          nodesRef.current,
-        );
-        const transientBounds = canvasFlowNodeBoundsRecords(transientNodes);
-        setEdges((current) => {
-          const canonical = canvasDocumentToEdges(
-            controller.state.document,
-            handleEdgeUpdate,
-          );
-          const source = current.length > 0 ? current : canonical;
-          const known = new Set(source.map((edge) => edge.id));
-          return recomputeCanvasRuntimeEdgeHandles(
-            [...source, ...canonical.filter((edge) => !known.has(edge.id))],
-            transientBounds,
-          );
-        });
-      }
       // React Flow must receive dimensions changes as well as positions. Filtering
       // them here leaves nodes uninitialized during a drag and causes connected
       // edges to be removed by the library's connection lifecycle.
@@ -4617,7 +4546,6 @@ function InfiniteCanvasLocalShellSurface({
     },
     [
       controller,
-      handleEdgeUpdate,
       objectUrls,
       openPdf?.nodeId,
       onNodesChange,
@@ -5785,6 +5713,8 @@ function InfiniteCanvasLocalShellSurface({
                 openSummaryNode(node);
               }}
               onConnect={handleConnect}
+              onReconnect={handleReconnect}
+              edgesReconnectable
               connectionMode={ConnectionMode.Loose}
               connectionLineComponent={CanvasConnectionLine}
               minZoom={CANVAS_VIEWPORT_LIMITS.minZoom}
@@ -5952,11 +5882,23 @@ function InfiniteCanvasLocalShellSurface({
               {openSummaryEntries.length > 0 ? (
                 <ol className={styles.summaryReaderList}>
                   {openSummaryEntries.map((entry) => (
-                    <li key={entry.nodeId}>
-                      <MarkdownStringPreview
-                        contentId={`summary:${openSummary.id}:${entry.nodeId}`}
-                        markdown={entry.markdown}
-                      />
+                    <li
+                      key={entry.nodeId}
+                      className={
+                        entry.role === "heading"
+                          ? styles.summaryReaderHeading
+                          : undefined
+                      }
+                    >
+                      <div
+                        aria-level={entry.role === "heading" ? 2 : undefined}
+                        role={entry.role === "heading" ? "heading" : undefined}
+                      >
+                        <MarkdownStringPreview
+                          contentId={`summary:${openSummary.id}:${entry.nodeId}`}
+                          markdown={entry.markdown}
+                        />
+                      </div>
                     </li>
                   ))}
                 </ol>
@@ -6199,6 +6141,8 @@ function InfiniteCanvasLocalShellSurface({
               openSummaryNode(node);
             }}
             onConnect={handleConnect}
+            onReconnect={handleReconnect}
+            edgesReconnectable
             connectionMode={ConnectionMode.Loose}
             connectionLineComponent={CanvasConnectionLine}
             minZoom={CANVAS_VIEWPORT_LIMITS.minZoom}

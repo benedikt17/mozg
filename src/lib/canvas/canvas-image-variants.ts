@@ -372,9 +372,10 @@ export function chooseCanvasImageResolutionSource(input: {
   ): boolean =>
     candidate.pixelWidth >= required.width * multiplier &&
     candidate.pixelHeight >= required.height * multiplier;
-  const desired = candidates.find((candidate) => covers(candidate))?.source ?? {
-    type: "original" as const,
-  };
+  const desired = candidates.find((candidate) => covers(candidate))?.source ??
+    candidates.at(-1)?.source ?? {
+      type: "original" as const,
+    };
   const current = input.currentSource;
   if (!current || sourceEquals(current, desired)) return desired;
   if (sourceResolution(desired) >= sourceResolution(current)) return desired;

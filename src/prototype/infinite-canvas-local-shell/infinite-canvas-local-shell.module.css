@@ -1889,3 +1889,14 @@
     box-shadow: none;
   }
 }
+
+.summaryReaderHeading {
+  list-style: none;
+  counter-increment: list-item 0;
+  margin-top: 1.25rem;
+}
+
+.summaryReaderHeading {
+  font-size: 1.25em;
+  font-weight: 700;
+}

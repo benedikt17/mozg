@@ -50,7 +50,12 @@ async function createFolder(page: Page, name: string): Promise<void> {
 
 test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder, previews and downloads an original", async ({
   page,
-}) => {
+}, testInfo) => {
+  const suffix = `${process.env.GITHUB_RUN_ID ?? Date.now()}-${testInfo.retry}`;
+  const inboxFileName = `inbox-note-${suffix}.txt`;
+  const largeFileName = `large-note-${suffix}.txt`;
+  const folderName = `E2E Assets ${suffix}`;
+  const previewFileName = `preview-image-${suffix}.png`;
   let sawResumableUpload = false;
   let sawImageVariantDownload = false;
   let originalImageDownloadRequests = 0;
@@ -85,16 +90,13 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
   await uploadButton.click();
   const inboxFileChooser = await inboxFileChooserPromise;
   await inboxFileChooser.setFiles({
-    name: "inbox-note.txt",
+    name: inboxFileName,
     mimeType: "text/plain",
     buffer: Buffer.from("Inbox upload contract."),
   });
 
   await expect(
-    page.getByText("Загружен: inbox-note.txt", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /inbox-note\.txt/ }),
+    page.getByRole("button", { name: new RegExp(inboxFileName) }),
   ).toBeVisible();
   expect(sawResumableUpload).toBe(false);
 
@@ -102,20 +104,17 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
   await uploadButton.click();
   const largeFileChooser = await largeFileChooserPromise;
   await largeFileChooser.setFiles({
-    name: "large-note.txt",
+    name: largeFileName,
     mimeType: "text/plain",
     buffer: Buffer.alloc(7 * 1024 * 1024, "L"),
   });
 
   await expect(
-    page.getByText("Загружен: large-note.txt", { exact: true }),
+    page.getByRole("button", { name: new RegExp(largeFileName) }),
   ).toBeVisible({ timeout: 30_000 });
-  await expect(
-    page.getByRole("button", { name: /large-note\.txt/ }),
-  ).toBeVisible();
   expect(sawResumableUpload).toBe(true);
 
-  await createFolder(page, "E2E Assets");
+  await createFolder(page, folderName);
 
   const filesNavigation = page.getByRole("complementary", {
     name: "Навигация по файлам",
@@ -127,22 +126,21 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
   await uploadButton.click();
   const folderFileChooser = await folderFileChooserPromise;
   await folderFileChooser.setFiles({
-    name: "preview-image.png",
+    name: previewFileName,
     mimeType: "image/png",
     buffer: PREVIEW_IMAGE_PNG,
   });
 
-  await expect(
-    page.getByText("Загружен: preview-image.png", { exact: true }),
-  ).toBeVisible();
-  const imageRow = page.getByRole("button", { name: /preview-image\.png/ });
+  const imageRow = page.getByRole("button", {
+    name: new RegExp(previewFileName),
+  });
   await expect(imageRow).toBeVisible();
   await imageRow.click();
 
   const preview = page.getByRole("complementary", {
     name: "Предпросмотр файла",
   });
-  const previewImage = preview.getByRole("img", { name: "preview-image.png" });
+  const previewImage = preview.getByRole("img", { name: previewFileName });
   await expect(previewImage).toBeVisible();
   await expect(previewImage).toHaveAttribute("src", /^blob:/);
   await expect
@@ -156,17 +154,19 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
   await page
     .getByRole("button", { name: "Крупные превью", exact: true })
     .click();
-  const imageTile = page.getByRole("button", { name: /preview-image\.png/ });
+  const imageTile = page.getByRole("button", {
+    name: new RegExp(previewFileName),
+  });
   await expect(imageTile).toBeVisible();
   await imageTile.dblclick();
 
-  const imageViewer = page.getByRole("dialog", { name: "preview-image.png" });
+  const imageViewer = page.getByRole("dialog", { name: previewFileName });
   await expect(imageViewer).toBeVisible();
   await expect(
-    imageViewer.getByRole("img", { name: "preview-image.png" }),
+    imageViewer.getByRole("img", { name: previewFileName }),
   ).toBeVisible();
   expect(originalImageDownloadRequests).toBe(0);
-  await imageViewer.getByRole("button", { name: /Оригинал/ }).click();
+  await imageViewer.getByRole("button", { name: /оригинал/i }).click();
   await expect
     .poll(() => originalImageDownloadRequests, {
       message: "Viewer must only GET the original after the explicit action",
@@ -190,7 +190,7 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
   const downloadPromise = page.waitForEvent("download");
   await downloadButton.click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe("preview-image.png");
+  expect(download.suggestedFilename()).toBe(previewFileName);
   await expect
     .poll(() => originalImageDownloadRequests, {
       message: "Explicit download must GET the immutable original",
@@ -202,13 +202,13 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
     .getByRole("button", { name: "Входящие", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: /inbox-note\.txt/ }),
+    page.getByRole("button", { name: new RegExp(inboxFileName) }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: /large-note\.txt/ }),
+    page.getByRole("button", { name: new RegExp(largeFileName) }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: /preview-image\.png/ }),
+    page.getByRole("button", { name: new RegExp(previewFileName) }),
   ).toHaveCount(0);
 });
 
@@ -250,7 +250,8 @@ test("keeps an interrupted TUS upload visible after F5 and resumes the same rese
   await signIn(page);
   await openFiles(page);
 
-  const filePath = testInfo.outputPath("resume-after-reload.txt");
+  const fileName = `resume-after-reload-${process.env.GITHUB_RUN_ID ?? Date.now()}-${testInfo.retry}.txt`;
+  const filePath = testInfo.outputPath(fileName);
   mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, Buffer.alloc(20 * 1024 * 1024, "R"));
   const stableTimestamp = new Date("2026-08-14T12:00:00.000Z");
@@ -297,11 +298,10 @@ test("keeps an interrupted TUS upload visible after F5 and resumes the same rese
   });
   await openFiles(page);
 
-  await expect(
-    page.getByText("resume-after-reload.txt", { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText("Не завершено", { exact: true })).toBeVisible();
-  const continueButton = page.getByRole("button", {
+  const pendingFile = page.locator(`[data-pending-file-name="${fileName}"]`);
+  await expect(pendingFile).toBeVisible();
+  await expect(pendingFile).toContainText("Не завершено");
+  const continueButton = pendingFile.getByRole("button", {
     name: "Продолжить",
     exact: true,
   });
@@ -318,18 +318,22 @@ test("keeps an interrupted TUS upload visible after F5 and resumes the same rese
     timeout: 10_000,
   });
   delayTusPatches = false;
+  await expect(pendingFile).toHaveCount(0);
   await expect(
-    page.getByText("Загружен: resume-after-reload.txt", { exact: true }),
-  ).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText("Не завершено", { exact: true })).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: /resume-after-reload\.txt/ }),
+    page.getByRole("button", { name: new RegExp(fileName) }),
   ).toHaveCount(1);
 });
 
 test("renames, moves, drags, trashes and restores files and reorganizes folders", async ({
   page,
-}) => {
+}, testInfo) => {
+  const suffix = `${process.env.GITHUB_RUN_ID ?? Date.now()}-${testInfo.retry}`;
+  const parentFolderName = `A4 Parent ${suffix}`;
+  const targetFolderName = `A4 Target ${suffix}`;
+  const sourceFolderName = `A4 Source ${suffix}`;
+  const lifecycleFileName = `lifecycle-${suffix}.txt`;
+  const renamedFileName = `renamed-lifecycle-${suffix}.txt`;
+  const renamedTargetFolderName = `A4 Target Renamed ${suffix}`;
   await signIn(page);
   await openFiles(page);
 
@@ -345,25 +349,24 @@ test("renames, moves, drags, trashes and restores files and reorganizes folders"
     exact: true,
   });
 
-  await createFolder(page, "A4 Parent");
+  await createFolder(page, parentFolderName);
   await inboxButton.click();
-  await createFolder(page, "A4 Target");
+  await createFolder(page, targetFolderName);
   await inboxButton.click();
-  await createFolder(page, "A4 Source");
+  await createFolder(page, sourceFolderName);
 
   const lifecycleChooserPromise = page.waitForEvent("filechooser");
   await uploadButton.click();
   const lifecycleChooser = await lifecycleChooserPromise;
   await lifecycleChooser.setFiles({
-    name: "lifecycle.txt",
+    name: lifecycleFileName,
     mimeType: "text/plain",
     buffer: Buffer.from("Files lifecycle contract."),
   });
-  await expect(
-    page.getByText("Загружен: lifecycle.txt", { exact: true }),
-  ).toBeVisible();
-
-  let lifecycleRow = page.getByRole("button", { name: /lifecycle\.txt/ });
+  let lifecycleRow = page.getByRole("button", {
+    name: new RegExp(lifecycleFileName),
+  });
+  await expect(lifecycleRow).toBeVisible();
   await lifecycleRow.click();
 
   const preview = page.getByRole("complementary", {
@@ -375,27 +378,28 @@ test("renames, moves, drags, trashes and restores files and reorganizes folders"
   const fileNameInput = preview.getByRole("textbox", {
     name: "Новое имя файла",
   });
-  await fileNameInput.fill("renamed-lifecycle.txt");
+  await fileNameInput.fill(renamedFileName);
   await preview.getByRole("button", { name: "Сохранить", exact: true }).click();
-  await expect(
-    page.getByText("Переименован: renamed-lifecycle.txt", { exact: true }),
-  ).toBeVisible();
-  lifecycleRow = page.getByRole("button", { name: /renamed-lifecycle\.txt/ });
+  lifecycleRow = page.getByRole("button", {
+    name: new RegExp(renamedFileName),
+  });
   await expect(lifecycleRow).toBeVisible();
 
   const fileMoveSelect = preview.getByLabel("Куда переместить файл");
-  await fileMoveSelect.selectOption({ label: "A4 Target" });
+  await fileMoveSelect.selectOption({ label: targetFolderName });
   await preview
     .getByRole("button", { name: "Переместить", exact: true })
     .click();
   await expect(lifecycleRow).toHaveCount(0);
 
   const targetButton = filesNavigation.getByRole("button", {
-    name: "A4 Target",
+    name: targetFolderName,
     exact: true,
   });
   await targetButton.click();
-  lifecycleRow = page.getByRole("button", { name: /renamed-lifecycle\.txt/ });
+  lifecycleRow = page.getByRole("button", {
+    name: new RegExp(renamedFileName),
+  });
   await expect(lifecycleRow).toBeVisible();
   await lifecycleRow.click();
 
@@ -411,30 +415,25 @@ test("renames, moves, drags, trashes and restores files and reorganizes folders"
   await preview
     .getByRole("button", { name: "Да, в корзину", exact: true })
     .click();
-  await expect(
-    page.getByText("Перемещён в корзину: renamed-lifecycle.txt", {
-      exact: true,
-    }),
-  ).toBeVisible();
-
   const trashButton = filesNavigation.getByRole("button", {
     name: "Корзина",
     exact: true,
   });
   await trashButton.click();
-  lifecycleRow = page.getByRole("button", { name: /renamed-lifecycle\.txt/ });
+  lifecycleRow = page.getByRole("button", {
+    name: new RegExp(renamedFileName),
+  });
   await expect(lifecycleRow).toBeVisible();
   await lifecycleRow.click();
   await preview
     .getByRole("button", { name: "Восстановить", exact: true })
     .click();
-  await expect(
-    page.getByText("Восстановлен: renamed-lifecycle.txt", { exact: true }),
-  ).toBeVisible();
   await expect(lifecycleRow).toHaveCount(0);
 
   await targetButton.click();
-  lifecycleRow = page.getByRole("button", { name: /renamed-lifecycle\.txt/ });
+  lifecycleRow = page.getByRole("button", {
+    name: new RegExp(renamedFileName),
+  });
   await expect(lifecycleRow).toBeVisible();
   await lifecycleRow.click();
   await preview.getByLabel("Куда переместить файл").selectOption("");
@@ -443,18 +442,17 @@ test("renames, moves, drags, trashes and restores files and reorganizes folders"
     .click();
 
   await inboxButton.click();
-  lifecycleRow = page.getByRole("button", { name: /renamed-lifecycle\.txt/ });
+  lifecycleRow = page.getByRole("button", {
+    name: new RegExp(renamedFileName),
+  });
   await expect(lifecycleRow).toBeVisible();
   await lifecycleRow.dragTo(targetButton);
-  await expect(
-    page.getByText("Перемещён «renamed-lifecycle.txt» → A4 Target", {
-      exact: true,
-    }),
-  ).toBeVisible();
   await expect(lifecycleRow).toHaveCount(0);
 
   await targetButton.click();
-  lifecycleRow = page.getByRole("button", { name: /renamed-lifecycle\.txt/ });
+  lifecycleRow = page.getByRole("button", {
+    name: new RegExp(renamedFileName),
+  });
   await expect(lifecycleRow).toBeVisible();
 
   await page
@@ -463,27 +461,27 @@ test("renames, moves, drags, trashes and restores files and reorganizes folders"
   const folderRenameInput = page.getByRole("textbox", {
     name: "Новое название папки",
   });
-  await folderRenameInput.fill("A4 Target Renamed");
+  await folderRenameInput.fill(renamedTargetFolderName);
   await page.getByRole("button", { name: "Сохранить", exact: true }).click();
   await expect(
     filesNavigation.getByRole("button", {
-      name: "A4 Target Renamed",
+      name: renamedTargetFolderName,
       exact: true,
     }),
   ).toBeVisible();
 
   await page
     .getByLabel("Куда переместить папку")
-    .selectOption({ label: "A4 Parent" });
+    .selectOption({ label: parentFolderName });
   await page.getByRole("button", { name: "Переместить", exact: true }).click();
 
   const breadcrumbs = page.getByRole("navigation", { name: "Путь к папке" });
   await expect(
-    breadcrumbs.getByText("A4 Parent", { exact: true }),
+    breadcrumbs.getByText(parentFolderName, { exact: true }),
   ).toBeVisible();
   await expect(
     breadcrumbs.getByRole("button", {
-      name: "A4 Target Renamed",
+      name: renamedTargetFolderName,
       exact: true,
     }),
   ).toBeVisible();

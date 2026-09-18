@@ -1179,7 +1179,7 @@ describe("production-shaped local Canvas shell", () => {
     expect(repository.saveCalls).toBe(0);
   });
 
-  it("loads the original once only when the selected numeric source cannot cover demand", async () => {
+  it("uses an available numeric source before requesting the immutable original", async () => {
     const repository = new MemoryCanvasRepository();
     await repository.storeImage({
       id: "asset-1",
@@ -1240,16 +1240,17 @@ describe("production-shaped local Canvas shell", () => {
     );
 
     expect(restored.nodes[0]?.data.resolutionSource).toEqual({
-      type: "original",
+      type: "variant",
+      targetMaxEdge: 512,
     });
-    expect(repository.assetLoadCalls).toBe(1);
-    expect(enqueue).toHaveBeenCalledWith(
-      expect.objectContaining({
-        assetId: "asset-1",
-        originalAsset: expect.objectContaining({ id: "asset-1" }),
-      }),
-    );
-    expect(variantRepository.loadVariantTier).not.toHaveBeenCalled();
+    expect(repository.assetLoadCalls).toBe(0);
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(variantRepository.loadVariantTier).toHaveBeenCalledWith({
+      workspaceId: WORKSPACE_A,
+      canvasId: "canvas-1",
+      assetId: "asset-1",
+      targetMaxEdge: 512,
+    });
   });
 
   it("does not emit a stale lower-resolution completion after abort", async () => {

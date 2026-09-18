@@ -1342,6 +1342,7 @@ export function FilesWorkspace({
                 {pendingFiles.map((file) => (
                   <div
                     className={`${styles.entryRow} ${styles.pendingEntryRow}`}
+                    data-pending-file-name={file.name}
                     key={`pending-${file.id}`}
                   >
                     <span className={styles.nameCell}>
@@ -1413,6 +1414,7 @@ export function FilesWorkspace({
               {pendingFiles.map((file) => (
                 <div
                   className={`${styles.fileTile} ${styles.fileTilePending}`}
+                  data-pending-file-name={file.name}
                   key={`pending-${file.id}`}
                 >
                   <span className={styles.tileFallback} aria-hidden="true">
@@ -1422,6 +1424,17 @@ export function FilesWorkspace({
                     {file.name}
                   </span>
                   <span className={styles.tileMeta}>Не завершено</span>
+                  <button
+                    className={styles.pendingResumeButton}
+                    disabled={!canMutate}
+                    onClick={() => {
+                      resumeTargetFileRef.current = file;
+                      resumeInputRef.current?.click();
+                    }}
+                    type="button"
+                  >
+                    Продолжить
+                  </button>
                 </div>
               ))}
               {files.map((file) => (

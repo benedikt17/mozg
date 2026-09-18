@@ -323,6 +323,8 @@ export function chooseProjectFilePreviewVariant(
     .slice()
     .sort((left, right) => left.targetMaxEdge - right.targetMaxEdge);
   return (
-    sorted.find((variant) => variant.targetMaxEdge >= preferredMaxEdge) ?? null
+    sorted.find((variant) => variant.targetMaxEdge >= preferredMaxEdge) ??
+    sorted.at(-1) ??
+    null
   );
 }

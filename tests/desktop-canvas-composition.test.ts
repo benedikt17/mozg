@@ -91,7 +91,8 @@ describe("desktop Canvas composition", () => {
     expect(toolbar).toContain("createPortal(");
     expect(toolbar).toContain("taskPickerPanelRef");
     expect(toolbar).toContain('window.addEventListener("pointerdown"');
-    expect(shell).toContain("const transientNodes = applyNodeChanges(");
+    expect(shell).toContain("onReconnect={handleReconnect}");
+    expect(shell).not.toContain("recomputeCanvasRuntimeEdgeHandles(");
     expect(shell).toContain("canvasDocumentToEdges(");
     expect(shell).toContain("canonical.filter((edge) => !known.has(edge.id))");
     expect(toolbar).toContain('label="Открыть статью"');
