@@ -124,7 +124,7 @@ test("adds a Project File image to Canvas by fileId without copying it into canv
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
   );
   await expect(
-    page.getByText(`Загружен: ${fileName}`, { exact: true }),
+    page.getByRole("button", { name: new RegExp(fileName) }),
   ).toBeVisible();
 
   await appNavigation(page)

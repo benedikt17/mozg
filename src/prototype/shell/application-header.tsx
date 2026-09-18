@@ -374,17 +374,31 @@ export function ApplicationHeader({
       pointerGesture = null;
     };
 
+    const activateImmediateTouchButton = (target: EventTarget | null): void => {
+      if (!drawerIsOpen() || !isMobileSidebarImmediateTouchButton(target))
+        return;
+      if (!(target instanceof Element)) return;
+      const button = target.closest<HTMLButtonElement>("button");
+      if (!button || button.disabled) return;
+      button.click();
+    };
+
     const onPointerUp = (event: PointerEvent): void => {
       const current = pointerGesture;
       clearPointerGesture();
       if (!current || current.pointerId !== event.pointerId) return;
-      applySwipe({
+      const handledSwipe = applySwipe({
         endX: event.clientX,
         endY: event.clientY,
         startedInsideDrawer: current.startedInsideDrawer,
         startX: current.startX,
         startY: current.startY,
       });
+      if (handledSwipe) return;
+      const deltaX = event.clientX - current.startX;
+      const deltaY = event.clientY - current.startY;
+      if (Math.abs(deltaX) <= 12 && Math.abs(deltaY) <= 12)
+        activateImmediateTouchButton(event.target);
     };
 
     const findTouch = (
@@ -459,11 +473,8 @@ export function ApplicationHeader({
         !isMobileSidebarImmediateTouchButton(current.startTarget)
       )
         return;
-      if (!(current.startTarget instanceof Element)) return;
-      const button = current.startTarget.closest<HTMLButtonElement>("button");
-      if (!button || button.disabled) return;
       event.preventDefault();
-      button.click();
+      activateImmediateTouchButton(current.startTarget);
     };
 
     const clearTouchGesture = (): void => {
