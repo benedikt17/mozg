@@ -1,5 +1,6 @@
 import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { deflateSync } from "node:zlib";
 
 import { expect, test, type Page } from "@playwright/test";
 
@@ -9,6 +10,55 @@ const PREVIEW_IMAGE_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAyAAAAJYCAIAAAAVFBUnAAAIzUlEQVR42u3WMREAAAjEMMC/2JeACY4pkdCpnaQAALgzEgAAGCwAAIMFAGCwAAAwWAAABgsAwGABAGCwAAAMFgCAwQIAwGABABgsAACDBQBgsAAAMFgAAAYLAMBgAQBgsAAADBYAgMECAMBgAQAYLAAAgwUAgMECADBYAAAGCwDAYAEAYLAAAAwWAIDBAgDAYAEAGCwAAIMFAIDBAgAwWAAABgsAAIMFAGCwAAAMFgCAwQIAwGABABgsAACDBQCAwQIAMFgAAAYLAACDBQBgsAAADBYAAAYLAMBgAQAYLAAAgwUAgMECADBYAAAGCwAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAIMFAIDBAgAwWAAABgsAAIMFAGCwAAAMFgAABgsAwGABABgsAAAMFgCAwQIAMFgAAAYLAACDBQBgsAAADBYAAAYLAMBgAQAYLAAADBYAgMECADBYAAAYLAAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAAwWAIDBAgAwWAAAGCwAAIMFAGCwAAAwWAAABgsAwGABABgsAAAMFgCAwQIAMFgAABgsAACDBQBgsAAAMFgAAAYLAMBgAQAYLAAADBYAgMECADBYAAAYLAAAgwUAYLAAADBYAAAGCwDAYAEAYLAAAAwWAIDBAgAwWAAAGCwAAIMFAGCwAAAwWAAABgsAwGABAGCwAAAMFgCAwQIAwGABABgsAACDBQBgsAAAMFgAAAYLAMBgAQBgsAAADBYAgMECAMBgAQAYLAAAgwUAgMECADBYAAAGCwDAYAEAYLAAAAwWAIDBAgDAYAEAGCwAAIMFAIDBAgAwWAAABgsAwGABAGCwAAAMFgCAwQIAwGABABgsAACDBQBgsAAAMFgAAAYLAMBgAQBgsAAADBYAgMECAMBgAQAYLAAAgwUAgMECADBYAAAGCwAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAIMFAIDBAgAwWAAABgsAAIMFAGCwAAAMFgAABgsAwGABABgsAAAMFgCAwQIAMFgAAAYLAACDBQBgsAAADBYAAAYLAMBgAQAYLAAADBYAgMECADBYAAAGCwAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAAwWAIDBAgAwWAAAGCwAAIMFAGCwAAAMFgAABgsAwGABABgsAAAMFgCAwQIAMFgAABgsAACDBQBgsAAAMFgAAAYLAMBgAQAYLAAADBYAgMECADBYAAAYLAAAgwUAYLAAADBYAAAGCwDAYAEAYLAAAAwWAIDBAgAwWAAAGCwAAIMFAGCwAAAwWAAABgsAwGABAGCwAAAMFgCAwQIAwGABABgsAACDBQCAwQIAMFgAAAYLAMBgAQBgsAAADBYAgMECAMBgAQAYLAAAgwUAgMECADBYAAAGCwDAYAEAYLAAAAwWAIDBAgDAYAEAGCwAAIMFAIDBAgAwWAAABgsAAIMFAGCwAAAMFgCAwQIAwGABABgsAACDBQCAwQIAMFgAAAYLAACDBQBgsAAADBYAAAYLAMBgAQAYLAAAgwUAgMECADBYAAAGCwAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAAwWAIDBAgAwWAAABgsAAIMFAGCwAAAMFgAABgsAwGABABgsAAAMFgCAwQIAMFgAAAYLAACDBQBgsAAADBYAAAYLAMBgAQAYLAAADBYAgMECADBYAAAYLAAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAAwWAIDBAgAwWAAAGCwAAIMFAGCwAAAwWAAABgsAwGABABgsAAAMFgCAwQIAMFgAABgsAACDBQBgsAAAMFgAAAYLAMBgAQBgsAAADBYAgMECADBYAAAYLAAAgwUAYLAAADBYAAAGCwDAYAEAYLAAAAwWAIDBAgAwWBIAABgsAACDBQBgsAAAMFgAAAYLAMBgAQBgsAAADBYAgMECAMBgAQAYLAAAgwUAYLAAADBYAAAGCwDAYAEAYLAAAAwWAIDBAgDAYAEAGCwAAIMFAIDBAgAwWAAABgsAwGABAGCwAAAMFgCAwQIAwGABABgsAACDBQCAwQIAMFgAAAYLAACDBQBgsAAADBYAgMECAMBgAQAYLAAAgwUAgMECADBYAAAGCwAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAIMFAIDBAgAwWAAABgsAAIMFAGCwAAAMFgAABgsAwGABABgsAACDBQCAwQIAMFgAAAYLAACDBQBgsAAADBYAAAYLAMBgAQAYLAAADBYAgMECADBYAAAGCwAAgwUAYLAAAAwWAAAGCwDAYAEAGCwAAAwWAMCfBZlEB4Aye4RvAAAAAElFTkSuQmCC",
   "base64",
 );
+
+function crc32(buffer: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const typeBytes = Buffer.from(type, "ascii");
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length, 0);
+  const checksum = Buffer.alloc(4);
+  checksum.writeUInt32BE(crc32(Buffer.concat([typeBytes, data])), 0);
+  return Buffer.concat([length, typeBytes, data, checksum]);
+}
+
+function solidPng(width: number, height: number): Buffer {
+  const signature = Buffer.from("89504e470d0a1a0a", "hex");
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 6;
+
+  const row = Buffer.alloc(1 + width * 4);
+  row[0] = 0;
+  for (let offset = 1; offset < row.length; offset += 4) {
+    row[offset] = 42;
+    row[offset + 1] = 118;
+    row[offset + 2] = 204;
+    row[offset + 3] = 255;
+  }
+  const raw = Buffer.concat(Array.from({ length: height }, () => row));
+  return Buffer.concat([
+    signature,
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", deflateSync(raw)),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+const LARGE_PREVIEW_IMAGE_PNG = PREVIEW_IMAGE_PNG.length
+  ? solidPng(1200, 900)
+  : PREVIEW_IMAGE_PNG;
 
 async function signIn(page: Page): Promise<void> {
   await page.goto("/prototype/desktop");
@@ -50,7 +100,12 @@ async function createFolder(page: Page, name: string): Promise<void> {
 
 test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder, previews and downloads an original", async ({
   page,
-}) => {
+}, testInfo) => {
+  const suffix = `${process.env.GITHUB_RUN_ID ?? Date.now()}-${testInfo.retry}`;
+  const inboxFileName = `inbox-note-${suffix}.txt`;
+  const largeFileName = `large-note-${suffix}.txt`;
+  const folderName = `E2E Assets ${suffix}`;
+  const previewFileName = `preview-image-${suffix}.png`;
   let sawResumableUpload = false;
   let sawImageVariantDownload = false;
   let originalImageDownloadRequests = 0;
@@ -85,16 +140,16 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
   await uploadButton.click();
   const inboxFileChooser = await inboxFileChooserPromise;
   await inboxFileChooser.setFiles({
-    name: "inbox-note.txt",
+    name: inboxFileName,
     mimeType: "text/plain",
     buffer: Buffer.from("Inbox upload contract."),
   });
 
   await expect(
-    page.getByText("Загружен: inbox-note.txt", { exact: true }),
+    page.getByText(`Загружен: ${inboxFileName}`, { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: /inbox-note\.txt/ }),
+    page.getByRole("button", { name: new RegExp(inboxFileName) }),
   ).toBeVisible();
   expect(sawResumableUpload).toBe(false);
 
@@ -102,20 +157,20 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
   await uploadButton.click();
   const largeFileChooser = await largeFileChooserPromise;
   await largeFileChooser.setFiles({
-    name: "large-note.txt",
+    name: largeFileName,
     mimeType: "text/plain",
     buffer: Buffer.alloc(7 * 1024 * 1024, "L"),
   });
 
   await expect(
-    page.getByText("Загружен: large-note.txt", { exact: true }),
+    page.getByText(`Загружен: ${largeFileName}`, { exact: true }),
   ).toBeVisible({ timeout: 30_000 });
   await expect(
-    page.getByRole("button", { name: /large-note\.txt/ }),
+    page.getByRole("button", { name: new RegExp(largeFileName) }),
   ).toBeVisible();
   expect(sawResumableUpload).toBe(true);
 
-  await createFolder(page, "E2E Assets");
+  await createFolder(page, folderName);
 
   const filesNavigation = page.getByRole("complementary", {
     name: "Навигация по файлам",
@@ -127,22 +182,24 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
   await uploadButton.click();
   const folderFileChooser = await folderFileChooserPromise;
   await folderFileChooser.setFiles({
-    name: "preview-image.png",
+    name: previewFileName,
     mimeType: "image/png",
-    buffer: PREVIEW_IMAGE_PNG,
+    buffer: LARGE_PREVIEW_IMAGE_PNG,
   });
 
   await expect(
-    page.getByText("Загружен: preview-image.png", { exact: true }),
+    page.getByText(`Загружен: ${previewFileName}`, { exact: true }),
   ).toBeVisible();
-  const imageRow = page.getByRole("button", { name: /preview-image\.png/ });
+  const imageRow = page.getByRole("button", {
+    name: new RegExp(previewFileName),
+  });
   await expect(imageRow).toBeVisible();
   await imageRow.click();
 
   const preview = page.getByRole("complementary", {
     name: "Предпросмотр файла",
   });
-  const previewImage = preview.getByRole("img", { name: "preview-image.png" });
+  const previewImage = preview.getByRole("img", { name: previewFileName });
   await expect(previewImage).toBeVisible();
   await expect(previewImage).toHaveAttribute("src", /^blob:/);
   await expect
@@ -156,14 +213,16 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
   await page
     .getByRole("button", { name: "Крупные превью", exact: true })
     .click();
-  const imageTile = page.getByRole("button", { name: /preview-image\.png/ });
+  const imageTile = page.getByRole("button", {
+    name: new RegExp(previewFileName),
+  });
   await expect(imageTile).toBeVisible();
   await imageTile.dblclick();
 
-  const imageViewer = page.getByRole("dialog", { name: "preview-image.png" });
+  const imageViewer = page.getByRole("dialog", { name: previewFileName });
   await expect(imageViewer).toBeVisible();
   await expect(
-    imageViewer.getByRole("img", { name: "preview-image.png" }),
+    imageViewer.getByRole("img", { name: previewFileName }),
   ).toBeVisible();
   expect(originalImageDownloadRequests).toBe(0);
   await imageViewer.getByRole("button", { name: /Оригинал/ }).click();
@@ -190,7 +249,7 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
   const downloadPromise = page.waitForEvent("download");
   await downloadButton.click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe("preview-image.png");
+  expect(download.suggestedFilename()).toBe(previewFileName);
   await expect
     .poll(() => originalImageDownloadRequests, {
       message: "Explicit download must GET the immutable original",
@@ -202,13 +261,13 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
     .getByRole("button", { name: "Входящие", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: /inbox-note\.txt/ }),
+    page.getByRole("button", { name: new RegExp(inboxFileName) }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: /large-note\.txt/ }),
+    page.getByRole("button", { name: new RegExp(largeFileName) }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: /preview-image\.png/ }),
+    page.getByRole("button", { name: new RegExp(previewFileName) }),
   ).toHaveCount(0);
 });
 
@@ -250,7 +309,8 @@ test("keeps an interrupted TUS upload visible after F5 and resumes the same rese
   await signIn(page);
   await openFiles(page);
 
-  const filePath = testInfo.outputPath("resume-after-reload.txt");
+  const fileName = `resume-after-reload-${process.env.GITHUB_RUN_ID ?? Date.now()}-${testInfo.retry}.txt`;
+  const filePath = testInfo.outputPath(fileName);
   mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, Buffer.alloc(20 * 1024 * 1024, "R"));
   const stableTimestamp = new Date("2026-08-14T12:00:00.000Z");
@@ -297,9 +357,7 @@ test("keeps an interrupted TUS upload visible after F5 and resumes the same rese
   });
   await openFiles(page);
 
-  await expect(
-    page.getByText("resume-after-reload.txt", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText(fileName, { exact: true })).toBeVisible();
   await expect(page.getByText("Не завершено", { exact: true })).toBeVisible();
   const continueButton = page.getByRole("button", {
     name: "Продолжить",
@@ -319,11 +377,11 @@ test("keeps an interrupted TUS upload visible after F5 and resumes the same rese
   });
   delayTusPatches = false;
   await expect(
-    page.getByText("Загружен: resume-after-reload.txt", { exact: true }),
+    page.getByText(`Загружен: ${fileName}`, { exact: true }),
   ).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("Не завершено", { exact: true })).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: /resume-after-reload\.txt/ }),
+    page.getByRole("button", { name: new RegExp(fileName) }),
   ).toHaveCount(1);
 });
 

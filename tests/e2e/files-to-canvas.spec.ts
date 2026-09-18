@@ -112,7 +112,7 @@ test("adds a Project File image to Canvas by fileId without copying it into canv
   await chooser.setFiles({
     name: fileName,
     mimeType: "image/png",
-    buffer: solidPng(800, 600),
+    buffer: solidPng(1200, 900),
   });
   const reserve = await reserveRequest;
   const reserveBody = requestJson(reserve);
