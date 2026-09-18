@@ -4,6 +4,8 @@ import {
   createCanvasImagePin,
   moveCanvasImagePin,
   removeCanvasImagePin,
+  setCanvasImagePinColor,
+  setCanvasImagePinRadius,
 } from "@/lib/canvas/canvas-image-pins";
 import {
   canvasDocumentToImageNodes,
@@ -13,7 +15,13 @@ import {
 describe("Canvas image pins", () => {
   it("keeps pins inside the image and removes only the requested pin", () => {
     const first = createCanvasImagePin([], () => "first");
-    expect(first).toEqual({ id: "image-pin-first", x: 0.5, y: 0.5 });
+    expect(first).toEqual({
+      id: "image-pin-first",
+      x: 0.5,
+      y: 0.5,
+      color: "red",
+      radius: 13,
+    });
     const moved = moveCanvasImagePin(
       [first as NonNullable<typeof first>],
       first!.id,
@@ -22,8 +30,22 @@ describe("Canvas image pins", () => {
         y: 2,
       },
     );
-    expect(moved).toEqual([{ id: "image-pin-first", x: 0, y: 1 }]);
+    expect(moved).toEqual([
+      { id: "image-pin-first", x: 0, y: 1, color: "red", radius: 13 },
+    ]);
     expect(removeCanvasImagePin(moved, first!.id)).toEqual([]);
+  });
+
+  it("updates the pin color and bounds the radius", () => {
+    const pins = [
+      { id: "pin-1", x: 0.5, y: 0.5, color: "red" as const, radius: 13 },
+    ];
+    expect(setCanvasImagePinColor(pins, "pin-1", "green")).toMatchObject([
+      { color: "green" },
+    ]);
+    expect(setCanvasImagePinRadius(pins, "pin-1", 999)).toMatchObject([
+      { radius: 32 },
+    ]);
   });
 
   it("round-trips pin metadata through the React Flow projection", () => {
@@ -35,7 +57,9 @@ describe("Canvas image pins", () => {
           kind: "image",
           fileId: "file-1",
           aspectRatioLocked: true,
-          pins: [{ id: "pin-1", x: 0.25, y: 0.75 }],
+          pins: [
+            { id: "pin-1", x: 0.25, y: 0.75, color: "yellow", radius: 18 },
+          ],
           position: { x: 100, y: 120 },
           size: { width: 400, height: 200 },
           zIndex: 1,
@@ -44,19 +68,21 @@ describe("Canvas image pins", () => {
       edges: [],
     });
     const runtime = canvasDocumentToImageNodes(document);
-    expect(runtime[0].data.pins).toEqual([{ id: "pin-1", x: 0.25, y: 0.75 }]);
+    expect(runtime[0].data.pins).toEqual([
+      { id: "pin-1", x: 0.25, y: 0.75, color: "yellow", radius: 18 },
+    ]);
 
     const next = runtimeNodesToCanvasDocument(document, [
       {
         ...runtime[0],
         data: {
           ...runtime[0].data,
-          pins: [{ id: "pin-1", x: 0.6, y: 0.4 }],
+          pins: [{ id: "pin-1", x: 0.6, y: 0.4, color: "green", radius: 22 }],
         },
       },
     ]);
     expect(next.nodes[0]).toMatchObject({
-      pins: [{ id: "pin-1", x: 0.6, y: 0.4 }],
+      pins: [{ id: "pin-1", x: 0.6, y: 0.4, color: "green", radius: 22 }],
     });
   });
 
@@ -79,5 +105,47 @@ describe("Canvas image pins", () => {
         edges: [],
       }),
     ).toThrow("Image pins must stay inside image bounds");
+  });
+
+  it("normalizes old pins and rejects unsupported pin presentation", () => {
+    const legacy = parseCanvasDocumentV2({
+      schemaVersion: 2,
+      nodes: [
+        {
+          id: "image",
+          kind: "image",
+          assetId: "asset-1",
+          aspectRatioLocked: true,
+          pins: [{ id: "pin-1", x: 0.5, y: 0.5 }],
+          position: { x: 0, y: 0 },
+          size: { width: 100, height: 100 },
+          zIndex: 1,
+        },
+      ],
+      edges: [],
+    });
+    expect(legacy.nodes[0]).toMatchObject({
+      pins: [{ color: "red", radius: 13 }],
+    });
+    expect(() =>
+      parseCanvasDocumentV2({
+        schemaVersion: 2,
+        nodes: [
+          {
+            id: "image",
+            kind: "image",
+            assetId: "asset-1",
+            aspectRatioLocked: true,
+            pins: [
+              { id: "pin-1", x: 0.5, y: 0.5, color: "purple", radius: 13 },
+            ],
+            position: { x: 0, y: 0 },
+            size: { width: 100, height: 100 },
+            zIndex: 1,
+          },
+        ],
+        edges: [],
+      }),
+    ).toThrow("Expected a supported image pin color");
   });
 });

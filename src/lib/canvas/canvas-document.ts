@@ -134,13 +134,25 @@ export type CanvasImagePin = {
   /** Normalized coordinates inside the image bounds, from 0 through 1. */
   x: number;
   y: number;
+  /** Visual pin color. Old documents without it are normalized to red. */
+  color: CanvasImagePinColor;
+  /** Radius in Canvas pixels; old documents are normalized to 13. */
+  radius: number;
 };
+
+export const CANVAS_IMAGE_PIN_COLORS = ["red", "yellow", "green"] as const;
+
+export type CanvasImagePinColor = (typeof CANVAS_IMAGE_PIN_COLORS)[number];
+
+export const CANVAS_IMAGE_PIN_DEFAULT_RADIUS = 13;
+export const CANVAS_IMAGE_PIN_MIN_RADIUS = 8;
+export const CANVAS_IMAGE_PIN_MAX_RADIUS = 32;
 
 export type CanvasEdgeRouting = "orthogonal" | "curved" | "straight";
 
 export type CanvasEdgeArrows = "none" | "start" | "end" | "both";
 
-/** Absolute Canvas control point for a user-adjusted curved connection. */
+/** Absolute Canvas point through which a user-adjusted connection passes. */
 export type CanvasEdgeBend = CanvasPoint;
 
 export type CanvasEdgeV2 = {
@@ -151,7 +163,7 @@ export type CanvasEdgeV2 = {
   targetHandle: CanvasHandleSide;
   routing: CanvasEdgeRouting;
   arrows: CanvasEdgeArrows;
-  /** Optional manual control point; only rendered for the curved line type. */
+  /** Optional manual point; respected by each supported line type. */
   bend?: CanvasEdgeBend;
   /** Persistent insertion order for a text/shape edge entering a summary. */
   summaryOrder?: number;
@@ -431,7 +443,7 @@ function requireCanvasImagePins(
   return value.map((candidate, index) => {
     const pinPath = `${path}[${index}]`;
     const pin = requireRecord(candidate, pinPath);
-    requireExactKeys(pin, ["id", "x", "y"], [], pinPath);
+    requireExactKeys(pin, ["id", "x", "y"], ["color", "radius"], pinPath);
     const id = requireIdentifier(pin.id, `${pinPath}.id`);
     if (ids.has(id)) {
       fail(
@@ -450,8 +462,44 @@ function requireCanvasImagePins(
         "Image pins must stay inside image bounds",
       );
     }
-    return { id, x, y };
+    const color =
+      pin.color === undefined
+        ? "red"
+        : requireCanvasImagePinColor(pin.color, `${pinPath}.color`);
+    const radius =
+      pin.radius === undefined
+        ? CANVAS_IMAGE_PIN_DEFAULT_RADIUS
+        : requireCanvasImagePinRadius(pin.radius, `${pinPath}.radius`);
+    return { id, x, y, color, radius };
   });
+}
+
+function requireCanvasImagePinColor(
+  value: unknown,
+  path: string,
+): CanvasImagePinColor {
+  if (
+    typeof value !== "string" ||
+    !CANVAS_IMAGE_PIN_COLORS.includes(value as CanvasImagePinColor)
+  ) {
+    fail(
+      "invalid_image_pin_color",
+      path,
+      "Expected a supported image pin color",
+    );
+  }
+  return value as CanvasImagePinColor;
+}
+
+function requireCanvasImagePinRadius(value: unknown, path: string): number {
+  const radius = requireFiniteNumber(value, path);
+  if (
+    radius < CANVAS_IMAGE_PIN_MIN_RADIUS ||
+    radius > CANVAS_IMAGE_PIN_MAX_RADIUS
+  ) {
+    fail("invalid_image_pin_radius", path, "Image pin radius is out of bounds");
+  }
+  return radius;
 }
 
 function requireCanvasTextColor(value: unknown, path: string): string {

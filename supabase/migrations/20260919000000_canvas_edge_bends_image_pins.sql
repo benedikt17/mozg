@@ -55,7 +55,11 @@ begin
       end if;
 
       for pin_item in select value from jsonb_array_elements(node_item -> 'pins') loop
-        if not private.canvas_object_has_exact_keys(pin_item, array['id', 'x', 'y'])
+        if not private.canvas_object_has_exact_keys(
+             pin_item,
+             array['id', 'x', 'y'],
+             array['color', 'radius']
+           )
            or jsonb_typeof(pin_item -> 'x') is distinct from 'number'
            or jsonb_typeof(pin_item -> 'y') is distinct from 'number' then
           raise exception using errcode = '22023', message = 'invalid Canvas image pin';
@@ -64,6 +68,21 @@ begin
            or (pin_item ->> 'x')::numeric > 1
            or (pin_item ->> 'y')::numeric < 0
            or (pin_item ->> 'y')::numeric > 1 then
+          raise exception using errcode = '22023', message = 'invalid Canvas image pin';
+        end if;
+        if pin_item ? 'color'
+           and (
+             jsonb_typeof(pin_item -> 'color') is distinct from 'string'
+             or pin_item ->> 'color' not in ('red', 'yellow', 'green')
+           ) then
+          raise exception using errcode = '22023', message = 'invalid Canvas image pin';
+        end if;
+        if pin_item ? 'radius'
+           and (
+             jsonb_typeof(pin_item -> 'radius') is distinct from 'number'
+             or (pin_item ->> 'radius')::numeric < 8
+             or (pin_item ->> 'radius')::numeric > 32
+           ) then
           raise exception using errcode = '22023', message = 'invalid Canvas image pin';
         end if;
         perform private.assert_canvas_identifier(pin_item -> 'id');

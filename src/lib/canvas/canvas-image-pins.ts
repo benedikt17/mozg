@@ -1,4 +1,10 @@
-import type { CanvasImagePin } from "@/lib/canvas/canvas-document";
+import {
+  CANVAS_IMAGE_PIN_DEFAULT_RADIUS,
+  CANVAS_IMAGE_PIN_MAX_RADIUS,
+  CANVAS_IMAGE_PIN_MIN_RADIUS,
+  type CanvasImagePin,
+  type CanvasImagePinColor,
+} from "@/lib/canvas/canvas-document";
 
 export const CANVAS_IMAGE_PIN_LIMIT = 200;
 
@@ -13,6 +19,8 @@ export function createCanvasImagePin(
     id: `image-pin-${idGenerator()}`,
     x: 0.5,
     y: 0.5,
+    color: "red",
+    radius: CANVAS_IMAGE_PIN_DEFAULT_RADIUS,
   };
 }
 
@@ -31,4 +39,26 @@ export function removeCanvasImagePin(
   id: string,
 ): CanvasImagePin[] {
   return pins.filter((pin) => pin.id !== id).map((pin) => ({ ...pin }));
+}
+
+export function setCanvasImagePinColor(
+  pins: readonly CanvasImagePin[],
+  id: string,
+  color: CanvasImagePinColor,
+): CanvasImagePin[] {
+  return pins.map((pin) => (pin.id === id ? { ...pin, color } : { ...pin }));
+}
+
+export function setCanvasImagePinRadius(
+  pins: readonly CanvasImagePin[],
+  id: string,
+  radius: number,
+): CanvasImagePin[] {
+  const safeRadius = Math.min(
+    CANVAS_IMAGE_PIN_MAX_RADIUS,
+    Math.max(CANVAS_IMAGE_PIN_MIN_RADIUS, radius),
+  );
+  return pins.map((pin) =>
+    pin.id === id ? { ...pin, radius: safeRadius } : { ...pin },
+  );
 }

@@ -261,22 +261,25 @@
   border-radius: 0;
 }
 .imagePinLayer {
+  --image-pin-red: #dc2626;
+  --image-pin-yellow: #ca8a04;
+  --image-pin-green: #16a34a;
   position: absolute;
   inset: 0;
-  z-index: 6;
+  z-index: 12;
   pointer-events: none;
 }
 .imagePin {
   position: absolute;
-  z-index: 1;
+  z-index: 2;
   display: grid;
-  width: 26px;
-  height: 26px;
+  width: var(--image-pin-diameter, 26px);
+  height: var(--image-pin-diameter, 26px);
   place-items: center;
   padding: 0;
   border: 2px solid #fff;
   border-radius: 999px;
-  background: #ea580c;
+  background: var(--image-pin-color, var(--image-pin-red));
   box-shadow: 0 2px 9px rgb(28 25 23 / 32%);
   color: #fff;
   cursor: grab;
@@ -293,22 +296,101 @@
   outline: 3px solid #0f766e;
   outline-offset: 2px;
 }
-.imagePinToolbar {
+.imagePinAdd {
+  position: absolute;
+  top: -34px;
+  right: -34px;
+  z-index: 12;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  padding: 0;
+  border: 2px solid #0f766e;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgb(28 25 23 / 18%);
+  color: #0f766e;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+.imagePinAdd:hover,
+.imagePinAdd:focus-visible {
+  outline: none;
+  background: #e6fffb;
+}
+.imagePinMenu {
+  position: absolute;
+  z-index: 4;
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
   padding: 4px;
   border: 1px solid #d6d3d1;
   border-radius: 8px;
   background: #fff;
   box-shadow: 0 8px 24px rgba(28, 25, 23, 0.16);
   pointer-events: all;
+  transform: translate(16px, -50%);
 }
-.imagePinToolbarHint {
-  padding-right: 4px;
-  color: #78716c;
+.imagePinMenuSection {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.imagePinColorButton,
+.imagePinMenuButton {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #d6d3d1;
+  border-radius: 5px;
+  background: #fff;
+  color: #44403c;
+  cursor: pointer;
+}
+.imagePinColorButton {
+  border-radius: 999px;
+}
+.imagePinColorButton[data-color="red"] {
+  background: var(--image-pin-red);
+}
+.imagePinColorButton[data-color="yellow"] {
+  background: var(--image-pin-yellow);
+}
+.imagePinColorButton[data-color="green"] {
+  background: var(--image-pin-green);
+}
+.imagePinColorButton[aria-checked="true"] {
+  outline: 2px solid #0f766e;
+  outline-offset: 2px;
+}
+.imagePinMenuButton:hover,
+.imagePinMenuButton:focus-visible {
+  outline: none;
+  border-color: #0f766e;
+  background: #e6fffb;
+}
+.imagePinMenuButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+.imagePinRadiusLabel {
+  min-width: 18px;
+  color: #57534e;
   font-size: 11px;
-  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.imagePinDeleteButton {
+  width: auto;
+  padding: 0 7px;
+  border-color: #fecaca;
+  color: #b91c1c;
+  font-size: 11px;
 }
 .textNodeFrame {
   --node-visual-border: 0;

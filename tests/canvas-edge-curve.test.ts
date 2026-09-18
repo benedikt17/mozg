@@ -1,27 +1,28 @@
 import { describe, expect, it } from "vitest";
 import {
   canvasEdgeDefaultBend,
-  canvasManualCurveMidpoint,
   canvasManualCurvePath,
+  canvasManualOrthogonalPath,
+  canvasManualStraightPath,
 } from "@/lib/canvas/canvas-edge-curve";
 import { parseCanvasDocumentV2 } from "@/lib/canvas/canvas-document";
 
 describe("manual Canvas edge curves", () => {
-  it("uses a stable absolute control point and derives its midpoint", () => {
+  it("keeps the visible connection point on each manual path", () => {
     const source = { x: 10, y: 20 };
     const target = { x: 210, y: 120 };
     const bend = canvasEdgeDefaultBend(source, target);
 
     expect(bend).toEqual({ x: 110, y: 70 });
     expect(canvasManualCurvePath(source, { x: 80, y: 190 }, target)).toBe(
-      "M 10,20 Q 80,190 210,120",
+      "M 10,20 Q 50,310 210,120",
     );
-    expect(
-      canvasManualCurveMidpoint(source, { x: 80, y: 190 }, target),
-    ).toEqual({
-      x: 95,
-      y: 130,
-    });
+    expect(canvasManualStraightPath(source, { x: 80, y: 190 }, target)).toBe(
+      "M 10,20 L 80,190 L 210,120",
+    );
+    expect(canvasManualOrthogonalPath(source, { x: 80, y: 190 }, target)).toBe(
+      "M 10,20 L 80,20 L 80,190 L 210,190 L 210,120",
+    );
   });
 
   it("round-trips a manual bend without changing the manually chosen sides", () => {

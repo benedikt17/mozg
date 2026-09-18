@@ -198,14 +198,16 @@ import {
 } from "@/lib/canvas/canvas-edge-geometry";
 import { reconnectCanvasEdgeSide } from "@/lib/canvas/canvas-manual-connection";
 import {
-  canvasEdgeDefaultBend,
-  canvasManualCurveMidpoint,
   canvasManualCurvePath,
+  canvasManualOrthogonalPath,
+  canvasManualStraightPath,
 } from "@/lib/canvas/canvas-edge-curve";
 import {
   createCanvasImagePin,
   moveCanvasImagePin,
   removeCanvasImagePin,
+  setCanvasImagePinColor,
+  setCanvasImagePinRadius,
 } from "@/lib/canvas/canvas-image-pins";
 import {
   canvasGroupBounds,
@@ -513,102 +515,191 @@ function ImagePins({
   id: string;
   pins: readonly CanvasImagePin[];
 }): React.JSX.Element | null {
+  const [menuPinId, setMenuPinId] = useState<string | null>(null);
   if (pins.length === 0) return null;
   return (
     <div className={`${styles.imagePinLayer} nodrag nopan nowheel`}>
-      {pins.map((pin, index) => (
-        <button
-          key={pin.id}
-          aria-label={`Пин ${index + 1}. Перетащите для перемещения, двойной клик удаляет.`}
-          className={`${styles.imagePin} nodrag nopan nowheel`}
-          onDoubleClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            dispatchCanvasImagePins({
-              id,
-              pins: removeCanvasImagePin(pins, pin.id),
-              commit: true,
-            });
-          }}
-          onPointerCancel={(event) => {
-            event.stopPropagation();
-            const position = imagePinPosition(event);
-            if (!position) return;
-            dispatchCanvasImagePins({
-              id,
-              pins: moveCanvasImagePin(pins, pin.id, position),
-              commit: true,
-            });
-          }}
-          onPointerDown={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            event.currentTarget.setPointerCapture(event.pointerId);
-          }}
-          onPointerMove={(event) => {
-            if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-            event.preventDefault();
-            event.stopPropagation();
-            const position = imagePinPosition(event);
-            if (!position) return;
-            dispatchCanvasImagePins({
-              id,
-              pins: moveCanvasImagePin(pins, pin.id, position),
-              commit: false,
-            });
-          }}
-          onPointerUp={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            const position = imagePinPosition(event);
-            if (!position) return;
-            dispatchCanvasImagePins({
-              id,
-              pins: moveCanvasImagePin(pins, pin.id, position),
-              commit: true,
-            });
-          }}
-          style={{ left: `${pin.x * 100}%`, top: `${pin.y * 100}%` }}
-          title={`Пин ${index + 1}: перетащить · двойной клик удалить`}
-          type="button"
-        >
-          {index + 1}
-        </button>
-      ))}
+      {pins.map((pin, index) => {
+        const position = { left: `${pin.x * 100}%`, top: `${pin.y * 100}%` };
+        const menuOpen = menuPinId === pin.id;
+        const update = (nextPins: CanvasImagePin[]) => {
+          dispatchCanvasImagePins({ id, pins: nextPins, commit: true });
+        };
+        return (
+          <div key={pin.id}>
+            <button
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+              aria-label={`Пин ${index + 1}. Перетащите для перемещения, двойной клик открывает меню.`}
+              className={`${styles.imagePin} nodrag nopan nowheel`}
+              onDoubleClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setMenuPinId((current) => (current === pin.id ? null : pin.id));
+              }}
+              onPointerCancel={(event) => {
+                event.stopPropagation();
+                const position = imagePinPosition(event);
+                if (!position) return;
+                dispatchCanvasImagePins({
+                  id,
+                  pins: moveCanvasImagePin(pins, pin.id, position),
+                  commit: true,
+                });
+              }}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                if (!event.currentTarget.hasPointerCapture(event.pointerId))
+                  return;
+                event.preventDefault();
+                event.stopPropagation();
+                const position = imagePinPosition(event);
+                if (!position) return;
+                dispatchCanvasImagePins({
+                  id,
+                  pins: moveCanvasImagePin(pins, pin.id, position),
+                  commit: false,
+                });
+              }}
+              onPointerUp={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const position = imagePinPosition(event);
+                if (!position) return;
+                dispatchCanvasImagePins({
+                  id,
+                  pins: moveCanvasImagePin(pins, pin.id, position),
+                  commit: true,
+                });
+              }}
+              style={
+                {
+                  ...position,
+                  "--image-pin-color": `var(--image-pin-${pin.color})`,
+                  "--image-pin-diameter": `${pin.radius * 2}px`,
+                } as CSSProperties
+              }
+              title={`Пин ${index + 1}: перетащить · двойной клик открыть меню`}
+              type="button"
+            >
+              {index + 1}
+            </button>
+            {menuOpen ? (
+              <div
+                aria-label={`Меню пина ${index + 1}`}
+                className={`${styles.imagePinMenu} nodrag nopan nowheel`}
+                role="menu"
+                style={position}
+                onDoubleClick={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <div className={styles.imagePinMenuSection}>
+                  {(["red", "yellow", "green"] as const).map((color) => (
+                    <button
+                      key={color}
+                      aria-label={`Сделать пин ${
+                        color === "red"
+                          ? "красным"
+                          : color === "yellow"
+                            ? "жёлтым"
+                            : "зелёным"
+                      }`}
+                      aria-checked={pin.color === color}
+                      className={styles.imagePinColorButton}
+                      data-color={color}
+                      onClick={() =>
+                        update(setCanvasImagePinColor(pins, pin.id, color))
+                      }
+                      role="menuitemradio"
+                      type="button"
+                    />
+                  ))}
+                </div>
+                <div className={styles.imagePinMenuSection}>
+                  <button
+                    aria-label="Уменьшить размер пина"
+                    className={styles.imagePinMenuButton}
+                    disabled={pin.radius <= 8}
+                    onClick={() =>
+                      update(
+                        setCanvasImagePinRadius(pins, pin.id, pin.radius - 2),
+                      )
+                    }
+                    type="button"
+                  >
+                    −
+                  </button>
+                  <span className={styles.imagePinRadiusLabel}>
+                    {pin.radius}
+                  </span>
+                  <button
+                    aria-label="Увеличить размер пина"
+                    className={styles.imagePinMenuButton}
+                    disabled={pin.radius >= 32}
+                    onClick={() =>
+                      update(
+                        setCanvasImagePinRadius(pins, pin.id, pin.radius + 2),
+                      )
+                    }
+                    type="button"
+                  >
+                    +
+                  </button>
+                </div>
+                <button
+                  className={`${styles.imagePinDeleteButton} ${styles.imagePinMenuButton}`}
+                  onClick={() => {
+                    update(removeCanvasImagePin(pins, pin.id));
+                    setMenuPinId(null);
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  Удалить
+                </button>
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function ImagePinToolbar({
+function ImagePinAddControl({
   id,
   pins,
+  selected,
 }: {
   id: string;
   pins: readonly CanvasImagePin[];
-}): React.JSX.Element {
+  selected: boolean;
+}): React.JSX.Element | null {
+  if (!selected) return null;
   return (
-    <div className={styles.imagePinToolbar} aria-label="Пины изображения">
-      <button
-        aria-label="Добавить пин на изображение"
-        className={styles.textToolbarButton}
-        onClick={() => {
-          const pin = createCanvasImagePin(pins);
-          if (!pin) return;
-          dispatchCanvasImagePins({
-            id,
-            pins: [...pins, pin],
-            commit: true,
-          });
-        }}
-        title="Добавить пин на изображение"
-        type="button"
-      >
-        + Пин
-      </button>
-      {pins.length > 0 ? (
-        <span className={styles.imagePinToolbarHint}>Перетащите пин</span>
-      ) : null}
-    </div>
+    <button
+      aria-label="Добавить пин на изображение"
+      className={`${styles.imagePinAdd} nodrag nopan nowheel`}
+      onClick={(event) => {
+        event.stopPropagation();
+        const pin = createCanvasImagePin(pins);
+        if (!pin) return;
+        dispatchCanvasImagePins({
+          id,
+          pins: [...pins, pin],
+          commit: true,
+        });
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
+      title="Добавить пин"
+      type="button"
+    >
+      +
+    </button>
   );
 }
 
@@ -625,7 +716,9 @@ function ImageNodeBody({
       minHeight={80}
       keepAspectRatio
       className={styles.imageNodeFrame}
-      toolbar={<ImagePinToolbar id={id} pins={pins} />}
+      contextMenu={
+        <ImagePinAddControl id={id} pins={pins} selected={selected} />
+      }
       connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
     >
       {data.objectUrl ? (
@@ -1548,49 +1641,62 @@ export function CanvasEdgeBody({
       : null;
   const routing = data?.routing ?? "curved";
   const arrows = data?.arrows ?? "none";
-  const manualBend = routing === "curved" ? data?.bend : undefined;
+  const manualBend = data?.bend;
   const computedPath = geometry
-    ? manualBend
-      ? (() => {
-          const midpoint = canvasManualCurveMidpoint(
+    ? routing === "curved" && manualBend
+      ? ([
+          canvasManualCurvePath(
             geometry.sourceAnchor,
             manualBend,
             geometry.targetAnchor,
-          );
-          return [
-            canvasManualCurvePath(
+          ),
+          manualBend.x,
+          manualBend.y,
+        ] as const)
+      : routing === "straight" && manualBend
+        ? ([
+            canvasManualStraightPath(
               geometry.sourceAnchor,
               manualBend,
               geometry.targetAnchor,
             ),
-            midpoint.x,
-            midpoint.y,
-          ] as const;
-        })()
-      : routing === "orthogonal"
-        ? getSmoothStepPath({
-            sourceX: geometry.sourceAnchor.x,
-            sourceY: geometry.sourceAnchor.y,
-            sourcePosition,
-            targetX: geometry.targetAnchor.x,
-            targetY: geometry.targetAnchor.y,
-            targetPosition,
-          })
-        : routing === "straight"
-          ? getStraightPath({
-              sourceX: geometry.sourceAnchor.x,
-              sourceY: geometry.sourceAnchor.y,
-              targetX: geometry.targetAnchor.x,
-              targetY: geometry.targetAnchor.y,
-            })
-          : getBezierPath({
-              sourceX: geometry.sourceAnchor.x,
-              sourceY: geometry.sourceAnchor.y,
-              sourcePosition,
-              targetX: geometry.targetAnchor.x,
-              targetY: geometry.targetAnchor.y,
-              targetPosition,
-            })
+            manualBend.x,
+            manualBend.y,
+          ] as const)
+        : routing === "orthogonal" && manualBend
+          ? ([
+              canvasManualOrthogonalPath(
+                geometry.sourceAnchor,
+                manualBend,
+                geometry.targetAnchor,
+              ),
+              manualBend.x,
+              manualBend.y,
+            ] as const)
+          : routing === "orthogonal"
+            ? getSmoothStepPath({
+                sourceX: geometry.sourceAnchor.x,
+                sourceY: geometry.sourceAnchor.y,
+                sourcePosition,
+                targetX: geometry.targetAnchor.x,
+                targetY: geometry.targetAnchor.y,
+                targetPosition,
+              })
+            : routing === "straight"
+              ? getStraightPath({
+                  sourceX: geometry.sourceAnchor.x,
+                  sourceY: geometry.sourceAnchor.y,
+                  targetX: geometry.targetAnchor.x,
+                  targetY: geometry.targetAnchor.y,
+                })
+              : getBezierPath({
+                  sourceX: geometry.sourceAnchor.x,
+                  sourceY: geometry.sourceAnchor.y,
+                  sourcePosition,
+                  targetX: geometry.targetAnchor.x,
+                  targetY: geometry.targetAnchor.y,
+                  targetPosition,
+                })
     : null;
   const computedPathValue = computedPath?.[0] ?? null;
   useEffect(() => {
@@ -1598,7 +1704,7 @@ export function CanvasEdgeBody({
     const timer = window.setTimeout(() => setLastPath(computedPathValue), 0);
     return () => window.clearTimeout(timer);
   }, [computedPathValue, lastPath]);
-  if (!computedPath) {
+  if (!computedPath || !geometry) {
     return (
       <g
         data-canvas-edge-id={id}
@@ -1617,6 +1723,7 @@ export function CanvasEdgeBody({
     );
   }
   const [path, labelX, labelY] = computedPath;
+  const visibleBend = manualBend ?? { x: labelX, y: labelY };
   const endpointArrows = canvasArrowsToEndpointArrows(arrows);
   const stopToolbarEvent = (event: React.SyntheticEvent): void => {
     event.stopPropagation();
@@ -1626,7 +1733,6 @@ export function CanvasEdgeBody({
     event: ReactPointerEvent<SVGCircleElement>,
     commit: boolean,
   ): void => {
-    if (!manualBend || routing !== "curved") return;
     event.preventDefault();
     event.stopPropagation();
     const bend = reactFlow.screenToFlowPosition({
@@ -1651,12 +1757,12 @@ export function CanvasEdgeBody({
           markerEnd={markerEnd}
           interactionWidth={24}
         />
-        {toolbarVisible && manualBend ? (
+        {toolbarVisible ? (
           <circle
-            aria-label="Ручной изгиб связи"
+            aria-label="Точка конфигурации связи"
             className={`${styles.edgeBendHandle} nodrag nopan nowheel`}
-            cx={manualBend.x}
-            cy={manualBend.y}
+            cx={visibleBend.x}
+            cy={visibleBend.y}
             onPointerCancel={(event) => updateManualBend(event, true)}
             onPointerDown={(event) => {
               event.preventDefault();
@@ -1669,7 +1775,7 @@ export function CanvasEdgeBody({
               updateManualBend(event, false);
             }}
             onPointerUp={(event) => updateManualBend(event, true)}
-            r={8}
+            r={9}
             role="slider"
             tabIndex={0}
           />
@@ -1678,8 +1784,8 @@ export function CanvasEdgeBody({
       {toolbarVisible ? (
         <EdgeToolbar
           edgeId={id}
-          x={labelX}
-          y={labelY}
+          x={geometry.sourceAnchor.x}
+          y={geometry.sourceAnchor.y - 50}
           isVisible={toolbarVisible}
           alignY="top"
           className={`${styles.edgeToolbar} nodrag nopan nowheel`}
@@ -1754,39 +1860,6 @@ export function CanvasEdgeBody({
               : routing === "straight"
                 ? "／"
                 : "⌒"}
-          </button>
-          <button
-            type="button"
-            className={`${styles.edgeToolButton} nodrag nopan nowheel`}
-            aria-label={
-              manualBend
-                ? "Сбросить ручной изгиб связи"
-                : "Настроить изгиб связи"
-            }
-            aria-pressed={Boolean(manualBend)}
-            disabled={routing !== "curved" || !geometry}
-            title={
-              routing !== "curved"
-                ? "Ручной изгиб доступен для дугообразной линии"
-                : manualBend
-                  ? "Сбросить ручной изгиб"
-                  : "Настроить изгиб: появится перетаскиваемая точка"
-            }
-            onClick={() => {
-              if (!geometry || routing !== "curved") return;
-              data?.onUpdate?.(id, {
-                routing,
-                arrows,
-                bend: manualBend
-                  ? null
-                  : canvasEdgeDefaultBend(
-                      geometry.sourceAnchor,
-                      geometry.targetAnchor,
-                    ),
-              });
-            }}
-          >
-            {manualBend ? "×⌒" : "⌒·"}
           </button>
           {lineTypeOpen ? (
             <div className={styles.edgeLinePopover} role="menu">
@@ -1907,8 +1980,11 @@ type CanvasGroupScaleSession = {
 };
 
 function scalableCanvasNode(node: CanvasFlowNode): CanvasScalableNode | null {
-  const width = node.width ?? node.style?.width;
-  const height = node.height ?? node.style?.height;
+  const measured = node as CanvasFlowNode & {
+    measured?: { width?: number; height?: number };
+  };
+  const width = node.width ?? measured.measured?.width ?? node.style?.width;
+  const height = node.height ?? measured.measured?.height ?? node.style?.height;
   if (
     typeof width !== "number" ||
     typeof height !== "number" ||
@@ -1935,9 +2011,17 @@ function CanvasGroupScaleOverlay({
   onPreview: (nodes: CanvasFlowNode[]) => void;
 }): React.JSX.Element | null {
   const reactFlow = useReactFlow();
+  const runtimeNodes = useStore((state) => state.nodes);
   const sessionRef = useRef<CanvasGroupScaleSession | null>(null);
+  const selectedNodeIds = useMemo(
+    () =>
+      new Set(
+        runtimeNodes.filter((node) => node.selected).map((node) => node.id),
+      ),
+    [runtimeNodes],
+  );
   const selected = nodes
-    .filter((node) => node.selected)
+    .filter((node) => node.selected || selectedNodeIds.has(node.id))
     .map(scalableCanvasNode)
     .filter((node): node is CanvasScalableNode => node !== null);
   const bounds = canvasGroupBounds(selected);
