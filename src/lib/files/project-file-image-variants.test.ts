@@ -72,14 +72,16 @@ describe("Project File image variants", () => {
     ).toBe(2048);
   });
 
-  it("returns null when only undersized or pending tiers exist", () => {
+  it("uses the largest ready tier when every available derivative is undersized", () => {
     const pending = { ...variant(1024), readyAt: null };
     expect(
       chooseProjectFilePreviewVariant([variant(256), variant(512), pending]),
-    ).toBeNull();
+    ).toMatchObject({ targetMaxEdge: 512 });
   });
 
-  it("returns null when the Files viewer needs 2048 but only 1024 is ready", () => {
-    expect(chooseProjectFilePreviewVariant([variant(1024)], 2048)).toBeNull();
+  it("uses a ready derivative in the Files viewer before falling back to the original", () => {
+    expect(
+      chooseProjectFilePreviewVariant([variant(1024)], 2048),
+    ).toMatchObject({ targetMaxEdge: 1024 });
   });
 });

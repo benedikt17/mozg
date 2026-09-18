@@ -186,6 +186,23 @@ describe("Canvas image variants", () => {
     ).toEqual({ type: "variant", targetMaxEdge: 2560 });
   });
 
+  it("uses the largest available derivative before the immutable original", () => {
+    expect(
+      chooseCanvasImageResolutionSource({
+        nodeWidth: 1400,
+        nodeHeight: 800,
+        viewportZoom: 1,
+        candidates: [
+          {
+            source: { type: "variant", targetMaxEdge: 512 },
+            pixelWidth: 512,
+            pixelHeight: 286,
+          },
+        ],
+      }),
+    ).toEqual({ type: "variant", targetMaxEdge: 512 });
+  });
+
   it("uses numeric cache identities while keeping original separate", () => {
     expect(
       canvasImageResolutionSourceCacheKey({
