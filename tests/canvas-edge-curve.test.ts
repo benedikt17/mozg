@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canvasEdgeDefaultBend,
+  canvasEdgeToolbarPosition,
   canvasManualCurvePath,
   canvasManualOrthogonalPath,
   canvasManualStraightPath,
@@ -8,6 +9,15 @@ import {
 import { parseCanvasDocumentV2 } from "@/lib/canvas/canvas-document";
 
 describe("manual Canvas edge curves", () => {
+  it("centers the toolbar between blocks and clears the higher connection", () => {
+    expect(
+      canvasEdgeToolbarPosition({ x: 360, y: 286 }, { x: 727, y: 470 }),
+    ).toEqual({ x: 543.5, y: 216 });
+    expect(
+      canvasEdgeToolbarPosition({ x: 129, y: 474 }, { x: 947, y: 264 }),
+    ).toEqual({ x: 538, y: 194 });
+  });
+
   it("keeps the visible connection point on each manual path", () => {
     const source = { x: 10, y: 20 };
     const target = { x: 210, y: 120 };
