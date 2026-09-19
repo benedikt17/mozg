@@ -928,31 +928,33 @@
 }
 .groupScaleBounds {
   position: absolute;
-  z-index: 8;
+  /* Keep group controls above selected node surfaces and their interaction layers. */
+  z-index: 30;
   box-sizing: border-box;
   border: 1px dashed #0f766e;
   pointer-events: none;
 }
 .groupScaleHandle {
   position: absolute;
-  z-index: 1;
-  width: 14px;
-  height: 14px;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
   padding: 0;
   border: 2px solid #0f766e;
-  border-radius: 3px;
+  border-radius: 5px;
   background: #fff;
   box-shadow: 0 1px 4px rgb(28 25 23 / 18%);
   cursor: nwse-resize;
   pointer-events: auto;
+  touch-action: none;
 }
 .groupScaleHandleNorthWest {
-  top: -8px;
-  left: -8px;
+  top: -34px;
+  left: -34px;
 }
 .groupScaleHandleSouthEast {
-  right: -8px;
-  bottom: -8px;
+  right: -34px;
+  bottom: -34px;
 }
 .edgeToolbar > label {
   display: none;
