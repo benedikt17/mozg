@@ -27,6 +27,7 @@ import {
   type InternalNode,
   type NodeChange,
   type NodeProps,
+  type OnSelectionChangeParams,
 } from "@xyflow/react";
 import {
   CanvasDesktopSidebar,
@@ -795,7 +796,12 @@ function ImagePinAddControl({
   pins: readonly CanvasImagePin[];
   selected: boolean;
 }): React.JSX.Element | null {
-  if (!selected) return null;
+  const selectedNodeCount = useStore((state) =>
+    state.nodes.reduce((count, node) => count + (node.selected ? 1 : 0), 0),
+  );
+  // A pin belongs to one picture. Keeping the control out of multi-selection
+  // prevents adding an ambiguous pin when several images share a selection.
+  if (!selected || selectedNodeCount !== 1) return null;
   return (
     <button
       aria-label="Добавить пин на изображение"
@@ -2117,25 +2123,23 @@ function scalableCanvasNode(node: CanvasFlowNode): CanvasScalableNode | null {
 /** A selection becomes a temporary group without adding another persisted node type. */
 function CanvasGroupScaleOverlay({
   nodes,
+  selectedNodeIds,
   onCommit,
   onPreview,
 }: {
   nodes: readonly CanvasFlowNode[];
+  selectedNodeIds: readonly string[];
   onCommit: (nodes: CanvasFlowNode[]) => void;
   onPreview: (nodes: CanvasFlowNode[]) => void;
 }): React.JSX.Element | null {
   const reactFlow = useReactFlow();
-  const runtimeNodes = useStore((state) => state.nodes);
   const sessionRef = useRef<CanvasGroupScaleSession | null>(null);
-  const selectedNodeIds = useMemo(
-    () =>
-      new Set(
-        runtimeNodes.filter((node) => node.selected).map((node) => node.id),
-      ),
-    [runtimeNodes],
+  const selectedIds = useMemo(
+    () => new Set(selectedNodeIds),
+    [selectedNodeIds],
   );
   const selected = nodes
-    .filter((node) => node.selected || selectedNodeIds.has(node.id))
+    .filter((node) => selectedIds.has(node.id) && !node.hidden)
     .map(scalableCanvasNode)
     .filter((node): node is CanvasScalableNode => node !== null);
   const bounds = canvasGroupBounds(selected);
@@ -2459,6 +2463,9 @@ function InfiniteCanvasLocalShellSurface({
   >(() => ({ x: 0, y: 0 }));
   const [nodes, setNodes, onNodesChange] = useNodesState<CanvasFlowNode>([]);
   const [edges, setEdges] = useEdgesState<CanvasEdgeFlow>([]);
+  const [selectedCanvasNodeIds, setSelectedCanvasNodeIds] = useState<
+    readonly string[]
+  >([]);
   const [summaries, setSummaries] = useState<CanvasSummary[]>(
     initialRuntime?.summaries ?? [],
   );
@@ -5193,6 +5200,13 @@ function InfiniteCanvasLocalShellSurface({
     ],
   );
 
+  const handleSelectionChange = useCallback(
+    ({ nodes: selectedNodes }: OnSelectionChangeParams<CanvasFlowNode>) => {
+      setSelectedCanvasNodeIds(selectedNodes.map((node) => node.id));
+    },
+    [],
+  );
+
   const previewGroupScale = useCallback(
     (nextNodes: CanvasFlowNode[]) => {
       nodesRef.current = nextNodes;
@@ -6352,6 +6366,7 @@ function InfiniteCanvasLocalShellSurface({
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
               onNodesChange={handleNodesChange}
+              onSelectionChange={handleSelectionChange}
               onEdgesChange={handleEdgesChange}
               onNodeDragStart={handleNodeDragStart}
               onNodeDragStop={handleNodeDragStop}
@@ -6416,6 +6431,7 @@ function InfiniteCanvasLocalShellSurface({
               <CanvasEdgeMarkerDefinitions />
               <CanvasGroupScaleOverlay
                 nodes={renderedNodes}
+                selectedNodeIds={selectedCanvasNodeIds}
                 onCommit={commitGroupScale}
                 onPreview={previewGroupScale}
               />
@@ -6785,6 +6801,7 @@ function InfiniteCanvasLocalShellSurface({
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             onNodesChange={handleNodesChange}
+            onSelectionChange={handleSelectionChange}
             onEdgesChange={handleEdgesChange}
             onNodeDragStart={handleNodeDragStart}
             onNodeDragStop={handleNodeDragStop}
@@ -6845,6 +6862,7 @@ function InfiniteCanvasLocalShellSurface({
             <CanvasEdgeMarkerDefinitions />
             <CanvasGroupScaleOverlay
               nodes={renderedNodes}
+              selectedNodeIds={selectedCanvasNodeIds}
               onCommit={commitGroupScale}
               onPreview={previewGroupScale}
             />
