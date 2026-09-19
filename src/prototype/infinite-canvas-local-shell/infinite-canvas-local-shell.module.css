@@ -1059,6 +1059,8 @@
 
 .canvasViewport :global(.react-flow__nodesselection-rect),
 .canvasViewport :global(.react-flow__nodesselection-rect:active) {
+  background: transparent;
+  border: 0;
   cursor: default !important;
 }
 
