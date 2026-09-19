@@ -499,7 +499,9 @@ function dispatchCanvasImagePins(detail: CanvasImagePinsEventDetail): void {
 function imagePinPosition(
   event: ReactPointerEvent<HTMLButtonElement>,
 ): { x: number; y: number } | null {
-  const layer = event.currentTarget.parentElement;
+  const layer = event.currentTarget.closest<HTMLElement>(
+    "[data-canvas-image-pin-layer]",
+  );
   const rect = layer?.getBoundingClientRect();
   if (!rect || rect.width <= 0 || rect.height <= 0) return null;
   return {
@@ -516,9 +518,27 @@ function ImagePins({
   pins: readonly CanvasImagePin[];
 }): React.JSX.Element | null {
   const [menuPinId, setMenuPinId] = useState<string | null>(null);
+  const layerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuPinId) return;
+    const closeMenuOutsideImage = (event: PointerEvent): void => {
+      const imageBounds = layerRef.current?.parentElement;
+      if (imageBounds?.contains(event.target as Node)) return;
+      setMenuPinId(null);
+    };
+    document.addEventListener("pointerdown", closeMenuOutsideImage, true);
+    return () =>
+      document.removeEventListener("pointerdown", closeMenuOutsideImage, true);
+  }, [menuPinId]);
+
   if (pins.length === 0) return null;
   return (
-    <div className={`${styles.imagePinLayer} nodrag nopan nowheel`}>
+    <div
+      ref={layerRef}
+      className={`${styles.imagePinLayer} nodrag nopan nowheel`}
+      data-canvas-image-pin-layer="true"
+    >
       {pins.map((pin, index) => {
         const position = { left: `${pin.x * 100}%`, top: `${pin.y * 100}%` };
         const menuOpen = menuPinId === pin.id;
