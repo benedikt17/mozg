@@ -63,7 +63,21 @@ describe("Canvas Miro-style selection interaction", () => {
     const css = fs.readFileSync(shellCssPath, "utf8");
 
     expect(css).toContain(".react-flow__nodesselection-rect");
+    expect(css).toContain("background: transparent");
+    expect(css).toContain("border: 0");
     expect(css).toContain("cursor: default !important");
+  });
+
+  it("uses the committed React Flow selection for group-scale controls", () => {
+    const source = readShell();
+
+    expect(source).toContain("selectedCanvasNodeIds");
+    expect(source).toContain("onSelectionChange={handleSelectionChange}");
+    expect(
+      source.match(/onSelectionChange=\{handleSelectionChange\}/g),
+    ).toHaveLength(2);
+    expect(source).toContain("selectedNodeIds={selectedCanvasNodeIds}");
+    expect(source).toContain("selectedIds.has(node.id) && !node.hidden");
   });
 
   it("does not re-enable unconditional pointer-drag panning", () => {
