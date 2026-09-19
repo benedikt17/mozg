@@ -35,6 +35,10 @@ describe("CanvasNodeFrame composition", () => {
     );
     expect(frame).toContain("<NodeToolbarSlot selected={toolbarVisible}>");
     expect(frame).toContain("isVisible={selected}");
+    expect(frame).toContain("selected={selected && selectedNodeCount === 1}");
+    expect(frame).toContain(
+      "A multi-selection is resized solely by the shared Canvas group",
+    );
     expect(frame).toContain(
       "selected text or shape node still exposes its own formatting tools",
     );
