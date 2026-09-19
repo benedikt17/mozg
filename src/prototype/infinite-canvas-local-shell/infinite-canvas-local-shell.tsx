@@ -200,7 +200,7 @@ import {
   canvasNodePerimeterAnchor,
   type CanvasNodeBounds,
 } from "@/lib/canvas/canvas-edge-geometry";
-import { reconnectCanvasEdgeSide } from "@/lib/canvas/canvas-manual-connection";
+import { reconnectCanvasEdge } from "@/lib/canvas/canvas-manual-connection";
 import {
   canvasEdgeToolbarPosition,
   canvasManualCurvePath,
@@ -3183,7 +3183,7 @@ function InfiniteCanvasLocalShellSurface({
       const document = controller.state.document;
       const edge = document.edges.find((item) => item.id === runtime.id);
       if (!edge) return;
-      const reconnected = reconnectCanvasEdgeSide(edge, connection);
+      const reconnected = reconnectCanvasEdge(edge, connection, document.edges);
       if (!reconnected) return;
       const next = controller.setDocument({
         ...document,
