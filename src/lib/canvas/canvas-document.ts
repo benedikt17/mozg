@@ -136,7 +136,7 @@ export type CanvasImagePin = {
   y: number;
   /** Visual pin color. Old documents without it are normalized to red. */
   color: CanvasImagePinColor;
-  /** Radius in Canvas pixels; old documents are normalized to 13. */
+  /** Radius in Canvas pixels; old documents are normalized to 20. */
   radius: number;
   /** Optional custom number shown in the pin; omitted uses its list number. */
   label?: string;
@@ -146,7 +146,7 @@ export const CANVAS_IMAGE_PIN_COLORS = ["red", "yellow", "green"] as const;
 
 export type CanvasImagePinColor = (typeof CANVAS_IMAGE_PIN_COLORS)[number];
 
-export const CANVAS_IMAGE_PIN_DEFAULT_RADIUS = 13;
+export const CANVAS_IMAGE_PIN_DEFAULT_RADIUS = 20;
 export const CANVAS_IMAGE_PIN_MIN_RADIUS = 8;
 export const CANVAS_IMAGE_PIN_MAX_RADIUS = 32;
 

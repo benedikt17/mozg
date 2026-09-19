@@ -21,7 +21,7 @@ describe("Canvas image pins", () => {
       x: 0.5,
       y: 0.5,
       color: "red",
-      radius: 13,
+      radius: 20,
     });
     const moved = moveCanvasImagePin(
       [first as NonNullable<typeof first>],
@@ -32,7 +32,7 @@ describe("Canvas image pins", () => {
       },
     );
     expect(moved).toEqual([
-      { id: "image-pin-first", x: 0, y: 1, color: "red", radius: 13 },
+      { id: "image-pin-first", x: 0, y: 1, color: "red", radius: 20 },
     ]);
     expect(removeCanvasImagePin(moved, first!.id)).toEqual([]);
   });
@@ -164,7 +164,7 @@ describe("Canvas image pins", () => {
       edges: [],
     });
     expect(legacy.nodes[0]).toMatchObject({
-      pins: [{ color: "red", radius: 13 }],
+      pins: [{ color: "red", radius: 20 }],
     });
     expect(() =>
       parseCanvasDocumentV2({

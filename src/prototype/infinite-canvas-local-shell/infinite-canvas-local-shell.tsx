@@ -813,9 +813,7 @@ function ImagePinAddControl({
       onPointerDown={(event) => event.stopPropagation()}
       title="Добавить пин"
       type="button"
-    >
-      +
-    </button>
+    />
   );
 }
 
