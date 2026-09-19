@@ -5,6 +5,7 @@ import {
   moveCanvasImagePin,
   removeCanvasImagePin,
   setCanvasImagePinColor,
+  setCanvasImagePinLabel,
   setCanvasImagePinRadius,
 } from "@/lib/canvas/canvas-image-pins";
 import {
@@ -36,7 +37,7 @@ describe("Canvas image pins", () => {
     expect(removeCanvasImagePin(moved, first!.id)).toEqual([]);
   });
 
-  it("updates the pin color and bounds the radius", () => {
+  it("updates the pin color, label, and bounds the radius", () => {
     const pins = [
       { id: "pin-1", x: 0.5, y: 0.5, color: "red" as const, radius: 13 },
     ];
@@ -46,6 +47,12 @@ describe("Canvas image pins", () => {
     expect(setCanvasImagePinRadius(pins, "pin-1", 999)).toMatchObject([
       { radius: 32 },
     ]);
+    expect(setCanvasImagePinLabel(pins, "pin-1", "42")).toMatchObject([
+      { label: "42" },
+    ]);
+    expect(
+      setCanvasImagePinLabel(pins, "pin-1", undefined)[0],
+    ).not.toHaveProperty("label");
   });
 
   it("round-trips pin metadata through the React Flow projection", () => {
@@ -58,7 +65,14 @@ describe("Canvas image pins", () => {
           fileId: "file-1",
           aspectRatioLocked: true,
           pins: [
-            { id: "pin-1", x: 0.25, y: 0.75, color: "yellow", radius: 18 },
+            {
+              id: "pin-1",
+              x: 0.25,
+              y: 0.75,
+              color: "yellow",
+              radius: 18,
+              label: "12",
+            },
           ],
           position: { x: 100, y: 120 },
           size: { width: 400, height: 200 },
@@ -69,7 +83,14 @@ describe("Canvas image pins", () => {
     });
     const runtime = canvasDocumentToImageNodes(document);
     expect(runtime[0].data.pins).toEqual([
-      { id: "pin-1", x: 0.25, y: 0.75, color: "yellow", radius: 18 },
+      {
+        id: "pin-1",
+        x: 0.25,
+        y: 0.75,
+        color: "yellow",
+        radius: 18,
+        label: "12",
+      },
     ]);
 
     const next = runtimeNodesToCanvasDocument(document, [
@@ -77,12 +98,30 @@ describe("Canvas image pins", () => {
         ...runtime[0],
         data: {
           ...runtime[0].data,
-          pins: [{ id: "pin-1", x: 0.6, y: 0.4, color: "green", radius: 22 }],
+          pins: [
+            {
+              id: "pin-1",
+              x: 0.6,
+              y: 0.4,
+              color: "green",
+              radius: 22,
+              label: "123",
+            },
+          ],
         },
       },
     ]);
     expect(next.nodes[0]).toMatchObject({
-      pins: [{ id: "pin-1", x: 0.6, y: 0.4, color: "green", radius: 22 }],
+      pins: [
+        {
+          id: "pin-1",
+          x: 0.6,
+          y: 0.4,
+          color: "green",
+          radius: 22,
+          label: "123",
+        },
+      ],
     });
   });
 
@@ -147,5 +186,23 @@ describe("Canvas image pins", () => {
         edges: [],
       }),
     ).toThrow("Expected a supported image pin color");
+    expect(() =>
+      parseCanvasDocumentV2({
+        schemaVersion: 2,
+        nodes: [
+          {
+            id: "image",
+            kind: "image",
+            assetId: "asset-1",
+            aspectRatioLocked: true,
+            pins: [{ id: "pin-1", x: 0.5, y: 0.5, label: "1234" }],
+            position: { x: 0, y: 0 },
+            size: { width: 100, height: 100 },
+            zIndex: 1,
+          },
+        ],
+        edges: [],
+      }),
+    ).toThrow("Image pin label must contain from one to three digits");
   });
 });

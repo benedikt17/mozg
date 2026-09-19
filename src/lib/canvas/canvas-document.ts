@@ -138,6 +138,8 @@ export type CanvasImagePin = {
   color: CanvasImagePinColor;
   /** Radius in Canvas pixels; old documents are normalized to 13. */
   radius: number;
+  /** Optional custom number shown in the pin; omitted uses its list number. */
+  label?: string;
 };
 
 export const CANVAS_IMAGE_PIN_COLORS = ["red", "yellow", "green"] as const;
@@ -443,7 +445,12 @@ function requireCanvasImagePins(
   return value.map((candidate, index) => {
     const pinPath = `${path}[${index}]`;
     const pin = requireRecord(candidate, pinPath);
-    requireExactKeys(pin, ["id", "x", "y"], ["color", "radius"], pinPath);
+    requireExactKeys(
+      pin,
+      ["id", "x", "y"],
+      ["color", "radius", "label"],
+      pinPath,
+    );
     const id = requireIdentifier(pin.id, `${pinPath}.id`);
     if (ids.has(id)) {
       fail(
@@ -470,7 +477,18 @@ function requireCanvasImagePins(
       pin.radius === undefined
         ? CANVAS_IMAGE_PIN_DEFAULT_RADIUS
         : requireCanvasImagePinRadius(pin.radius, `${pinPath}.radius`);
-    return { id, x, y, color, radius };
+    const label =
+      pin.label === undefined
+        ? undefined
+        : requireCanvasImagePinLabel(pin.label, `${pinPath}.label`);
+    return {
+      id,
+      x,
+      y,
+      color,
+      radius,
+      ...(label === undefined ? {} : { label }),
+    };
   });
 }
 
@@ -500,6 +518,17 @@ function requireCanvasImagePinRadius(value: unknown, path: string): number {
     fail("invalid_image_pin_radius", path, "Image pin radius is out of bounds");
   }
   return radius;
+}
+
+function requireCanvasImagePinLabel(value: unknown, path: string): string {
+  if (typeof value !== "string" || !/^\d{1,3}$/.test(value)) {
+    fail(
+      "invalid_image_pin_label",
+      path,
+      "Image pin label must contain from one to three digits",
+    );
+  }
+  return value;
 }
 
 function requireCanvasTextColor(value: unknown, path: string): string {

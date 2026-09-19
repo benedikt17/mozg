@@ -251,6 +251,7 @@
   border-radius: var(--node-visual-radius);
   background: transparent;
   box-shadow: none;
+  overflow: visible;
 }
 .image {
   display: block;
@@ -262,11 +263,12 @@
 }
 .imagePinLayer {
   --image-pin-red: #dc2626;
-  --image-pin-yellow: #ca8a04;
+  --image-pin-yellow: #facc15;
   --image-pin-green: #16a34a;
   position: absolute;
   inset: 0;
   z-index: 12;
+  overflow: visible;
   pointer-events: none;
 }
 .imagePin {
@@ -282,15 +284,15 @@
   background: var(--image-pin-color, var(--image-pin-red));
   box-shadow: 0 2px 9px rgb(28 25 23 / 32%);
   color: #fff;
-  cursor: grab;
+  cursor: default;
   font:
-    700 11px/1 system-ui,
+    700 var(--image-pin-font-size, 11px) / 1 system-ui,
     sans-serif;
   pointer-events: auto;
   transform: translate(-50%, -50%);
 }
 .imagePin:active {
-  cursor: grabbing;
+  cursor: default;
 }
 .imagePin:focus-visible {
   outline: 3px solid #0f766e;
@@ -332,7 +334,10 @@
   background: #fff;
   box-shadow: 0 8px 24px rgba(28, 25, 23, 0.16);
   pointer-events: all;
-  transform: translate(16px, -50%);
+  transform: translate(
+    -50%,
+    calc(-100% - var(--image-pin-radius, 13px) - 12px)
+  );
 }
 .imagePinMenuSection {
   display: flex;
@@ -384,6 +389,29 @@
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   text-align: center;
+}
+.imagePinLabelControl {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #57534e;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.imagePinLabelControl input {
+  width: 30px;
+  height: 24px;
+  box-sizing: border-box;
+  padding: 0 4px;
+  border: 1px solid #d6d3d1;
+  border-radius: 5px;
+  color: #44403c;
+  font: inherit;
+  text-align: center;
+}
+.imagePinLabelControl input:focus-visible {
+  outline: 2px solid #0f766e;
+  outline-offset: 1px;
 }
 .imagePinDeleteButton {
   width: auto;

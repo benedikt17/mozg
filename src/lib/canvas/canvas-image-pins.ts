@@ -62,3 +62,19 @@ export function setCanvasImagePinRadius(
     pin.id === id ? { ...pin, radius: safeRadius } : { ...pin },
   );
 }
+
+export function setCanvasImagePinLabel(
+  pins: readonly CanvasImagePin[],
+  id: string,
+  label: string | undefined,
+): CanvasImagePin[] {
+  return pins.map((pin) => {
+    if (pin.id !== id) return { ...pin };
+    if (label === undefined) {
+      const pinWithoutLabel = { ...pin };
+      delete pinWithoutLabel.label;
+      return pinWithoutLabel;
+    }
+    return { ...pin, label };
+  });
+}

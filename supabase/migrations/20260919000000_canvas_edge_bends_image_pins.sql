@@ -58,7 +58,7 @@ begin
         if not private.canvas_object_has_exact_keys(
              pin_item,
              array['id', 'x', 'y'],
-             array['color', 'radius']
+             array['color', 'radius', 'label']
            )
            or jsonb_typeof(pin_item -> 'x') is distinct from 'number'
            or jsonb_typeof(pin_item -> 'y') is distinct from 'number' then
@@ -82,6 +82,13 @@ begin
              jsonb_typeof(pin_item -> 'radius') is distinct from 'number'
              or (pin_item ->> 'radius')::numeric < 8
              or (pin_item ->> 'radius')::numeric > 32
+           ) then
+          raise exception using errcode = '22023', message = 'invalid Canvas image pin';
+        end if;
+        if pin_item ? 'label'
+           and (
+             jsonb_typeof(pin_item -> 'label') is distinct from 'string'
+             or pin_item ->> 'label' !~ '^[0-9]{1,3}$'
            ) then
           raise exception using errcode = '22023', message = 'invalid Canvas image pin';
         end if;
