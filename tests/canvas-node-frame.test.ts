@@ -35,6 +35,10 @@ describe("CanvasNodeFrame composition", () => {
     );
     expect(frame).toContain("<NodeToolbarSlot selected={toolbarVisible}>");
     expect(frame).toContain("isVisible={selected}");
+    expect(frame).toContain("selected={selected && selectedNodeCount === 1}");
+    expect(frame).toContain(
+      "A multi-selection is resized solely by the shared Canvas group",
+    );
     expect(frame).toContain(
       "selected text or shape node still exposes its own formatting tools",
     );
@@ -136,6 +140,8 @@ describe("CanvasNodeFrame composition", () => {
     expect(shell).not.toContain("recomputeCanvasRuntimeEdgeHandles");
     expect(shell).toContain("onReconnect={handleReconnect}");
     expect(shell).toContain("edgesReconnectable");
+    expect(shell).toContain("reconnectRadius={CANVAS_EDGE_RECONNECT_RADIUS}");
+    expect(shell).toContain("styles.edgeReconnectHandle");
     expect(shell).toContain("controller.setRuntimeNodes");
     expect(shell).toContain("controller.setRuntimeEdges(edgesRef.current)");
     expect(styles).toContain("--connection-handle-center-offset");

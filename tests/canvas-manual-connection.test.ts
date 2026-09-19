@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { CanvasEdgeV2 } from "@/lib/canvas/canvas-document";
-import { reconnectCanvasEdgeSide } from "@/lib/canvas/canvas-manual-connection";
+import {
+  reconnectCanvasEdge,
+  reconnectCanvasEdgeSide,
+} from "@/lib/canvas/canvas-manual-connection";
 
 const edge: CanvasEdgeV2 = {
   id: "edge",
@@ -41,6 +44,60 @@ describe("manual connection sides", () => {
         sourceHandle: null,
         targetHandle: "top",
       }),
+    ).toBeNull();
+  });
+
+  it("moves an endpoint to another block without losing edge metadata", () => {
+    expect(
+      reconnectCanvasEdge(
+        edge,
+        {
+          source: "text",
+          target: "other-summary",
+          sourceHandle: "bottom",
+          targetHandle: "top",
+        },
+        [edge],
+      ),
+    ).toEqual({
+      ...edge,
+      sourceHandle: "bottom",
+      targetNodeId: "other-summary",
+      targetHandle: "top",
+    });
+  });
+
+  it("does not create a self-link or duplicate endpoint pair", () => {
+    expect(
+      reconnectCanvasEdge(
+        edge,
+        {
+          source: "text",
+          target: "text",
+          sourceHandle: "right",
+          targetHandle: "left",
+        },
+        [edge],
+      ),
+    ).toBeNull();
+    expect(
+      reconnectCanvasEdge(
+        edge,
+        {
+          source: "different",
+          target: "summary",
+          sourceHandle: "right",
+          targetHandle: "left",
+        },
+        [
+          edge,
+          {
+            ...edge,
+            id: "other-edge",
+            sourceNodeId: "different",
+          },
+        ],
+      ),
     ).toBeNull();
   });
 });

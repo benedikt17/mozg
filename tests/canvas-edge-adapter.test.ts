@@ -171,4 +171,24 @@ describe("Canvas edge React Flow adapter", () => {
     expect(updated.markerStart).toBe(CANVAS_EDGE_MARKER_START_ID);
     expect(updated.markerEnd).toBe(CANVAS_EDGE_MARKER_END_ID);
   });
+
+  it("keeps a manual bend in runtime state and supports clearing it", () => {
+    const [edge] = canvasDocumentToEdges(
+      parseCanvasDocumentV2({
+        ...document,
+        edges: [{ ...document.edges[0], bend: { x: 180, y: 220 } }],
+      }),
+      vi.fn(),
+    );
+    expect(edge.data?.bend).toEqual({ x: 180, y: 220 });
+
+    const cleared = updateCanvasEdgeFlowRuntime(edge, {
+      routing: "curved",
+      arrows: "start",
+      bend: null,
+    });
+    expect(cleared.data?.bend).toBeUndefined();
+    expect(cleared.sourceHandle).toBe("right");
+    expect(cleared.targetHandle).toBe("left");
+  });
 });

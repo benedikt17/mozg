@@ -6,6 +6,12 @@ export const CANVAS_CONNECTION_HANDLE_RADIUS =
 export const CANVAS_CONNECTION_HANDLE_GAP = 4;
 export const CANVAS_CONNECTION_HANDLE_CENTER_OFFSET =
   CANVAS_CONNECTION_HANDLE_GAP + CANVAS_CONNECTION_HANDLE_RADIUS;
+/**
+ * React Flow owns the hit target for reconnecting an existing edge. Keep this
+ * radius shared with the visible endpoint affordance so a user can drag the
+ * exact circle they see while editing a line.
+ */
+export const CANVAS_EDGE_RECONNECT_RADIUS = 18;
 
 export type CanvasNodeBounds = {
   x: number;
@@ -82,5 +88,27 @@ export function canvasHandleCenterToPerimeter(
       return { x: point.x, y: point.y - centerOffset };
     case "left":
       return { x: point.x + centerOffset, y: point.y };
+  }
+}
+
+/**
+ * React Flow places an existing-edge reconnect target one radius beyond the
+ * corresponding node handle. This derives the same centre for the visible
+ * editing affordance.
+ */
+export function canvasEdgeReconnectControlCenter(
+  handleCenter: CanvasEdgePoint,
+  side: CanvasHandleSide,
+  radius = CANVAS_EDGE_RECONNECT_RADIUS,
+): CanvasEdgePoint {
+  switch (side) {
+    case "top":
+      return { x: handleCenter.x, y: handleCenter.y - radius };
+    case "right":
+      return { x: handleCenter.x + radius, y: handleCenter.y };
+    case "bottom":
+      return { x: handleCenter.x, y: handleCenter.y + radius };
+    case "left":
+      return { x: handleCenter.x - radius, y: handleCenter.y };
   }
 }

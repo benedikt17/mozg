@@ -23,6 +23,7 @@ export const CANVAS_DOCUMENT_LIMITS = {
   maxAbsoluteCoordinate: 1_000_000_000,
   minNodeDimension: 1,
   maxNodeDimension: 100_000,
+  maxImagePinsPerNode: 200,
   minZIndex: -1_000_000,
   maxZIndex: 1_000_000,
 } as const;
@@ -90,12 +91,16 @@ export type CanvasLegacyImageNode = CanvasNodeBase & {
   kind: "image";
   assetId: string;
   aspectRatioLocked: boolean;
+  /** Pins are normalized to the image bounds, so resizing keeps them in place. */
+  pins?: CanvasImagePin[];
 };
 
 export type CanvasProjectFileImageNode = CanvasNodeBase & {
   kind: "image";
   fileId: string;
   aspectRatioLocked: boolean;
+  /** Pins are normalized to the image bounds, so resizing keeps them in place. */
+  pins?: CanvasImagePin[];
 };
 
 export type CanvasImageNode =
@@ -124,9 +129,33 @@ export type CanvasEdge = {
 
 export type CanvasHandleSide = "top" | "right" | "bottom" | "left";
 
+export type CanvasImagePin = {
+  id: string;
+  /** Normalized coordinates inside the image bounds, from 0 through 1. */
+  x: number;
+  y: number;
+  /** Visual pin color. Old documents without it are normalized to red. */
+  color: CanvasImagePinColor;
+  /** Radius in Canvas pixels; old documents are normalized to 20. */
+  radius: number;
+  /** Optional custom number shown in the pin; omitted uses its list number. */
+  label?: string;
+};
+
+export const CANVAS_IMAGE_PIN_COLORS = ["red", "yellow", "green"] as const;
+
+export type CanvasImagePinColor = (typeof CANVAS_IMAGE_PIN_COLORS)[number];
+
+export const CANVAS_IMAGE_PIN_DEFAULT_RADIUS = 20;
+export const CANVAS_IMAGE_PIN_MIN_RADIUS = 8;
+export const CANVAS_IMAGE_PIN_MAX_RADIUS = 32;
+
 export type CanvasEdgeRouting = "orthogonal" | "curved" | "straight";
 
 export type CanvasEdgeArrows = "none" | "start" | "end" | "both";
+
+/** Absolute Canvas point through which a user-adjusted connection passes. */
+export type CanvasEdgeBend = CanvasPoint;
 
 export type CanvasEdgeV2 = {
   id: string;
@@ -136,6 +165,8 @@ export type CanvasEdgeV2 = {
   targetHandle: CanvasHandleSide;
   routing: CanvasEdgeRouting;
   arrows: CanvasEdgeArrows;
+  /** Optional manual point; respected by each supported line type. */
+  bend?: CanvasEdgeBend;
   /** Persistent insertion order for a text/shape edge entering a summary. */
   summaryOrder?: number;
 };
@@ -400,6 +431,106 @@ function requireBoolean(value: unknown, path: string): boolean {
   return value;
 }
 
+function requireCanvasImagePins(
+  value: unknown,
+  path: string,
+): CanvasImagePin[] {
+  if (!Array.isArray(value)) {
+    fail("array_required", path, "Expected an array of image pins");
+  }
+  if (value.length > CANVAS_DOCUMENT_LIMITS.maxImagePinsPerNode) {
+    fail("too_many_image_pins", path, "Image has too many Canvas pins");
+  }
+  const ids = new Set<string>();
+  return value.map((candidate, index) => {
+    const pinPath = `${path}[${index}]`;
+    const pin = requireRecord(candidate, pinPath);
+    requireExactKeys(
+      pin,
+      ["id", "x", "y"],
+      ["color", "radius", "label"],
+      pinPath,
+    );
+    const id = requireIdentifier(pin.id, `${pinPath}.id`);
+    if (ids.has(id)) {
+      fail(
+        "duplicate_image_pin_id",
+        `${pinPath}.id`,
+        "Image pin IDs must be unique",
+      );
+    }
+    ids.add(id);
+    const x = requireFiniteNumber(pin.x, `${pinPath}.x`);
+    const y = requireFiniteNumber(pin.y, `${pinPath}.y`);
+    if (x < 0 || x > 1 || y < 0 || y > 1) {
+      fail(
+        "image_pin_out_of_bounds",
+        pinPath,
+        "Image pins must stay inside image bounds",
+      );
+    }
+    const color =
+      pin.color === undefined
+        ? "red"
+        : requireCanvasImagePinColor(pin.color, `${pinPath}.color`);
+    const radius =
+      pin.radius === undefined
+        ? CANVAS_IMAGE_PIN_DEFAULT_RADIUS
+        : requireCanvasImagePinRadius(pin.radius, `${pinPath}.radius`);
+    const label =
+      pin.label === undefined
+        ? undefined
+        : requireCanvasImagePinLabel(pin.label, `${pinPath}.label`);
+    return {
+      id,
+      x,
+      y,
+      color,
+      radius,
+      ...(label === undefined ? {} : { label }),
+    };
+  });
+}
+
+function requireCanvasImagePinColor(
+  value: unknown,
+  path: string,
+): CanvasImagePinColor {
+  if (
+    typeof value !== "string" ||
+    !CANVAS_IMAGE_PIN_COLORS.includes(value as CanvasImagePinColor)
+  ) {
+    fail(
+      "invalid_image_pin_color",
+      path,
+      "Expected a supported image pin color",
+    );
+  }
+  return value as CanvasImagePinColor;
+}
+
+function requireCanvasImagePinRadius(value: unknown, path: string): number {
+  const radius = requireFiniteNumber(value, path);
+  if (
+    radius < CANVAS_IMAGE_PIN_MIN_RADIUS ||
+    radius > CANVAS_IMAGE_PIN_MAX_RADIUS
+  ) {
+    fail("invalid_image_pin_radius", path, "Image pin radius is out of bounds");
+  }
+  return radius;
+}
+
+function requireCanvasImagePinLabel(value: unknown, path: string): string {
+  if (typeof value !== "string" || !/^\d{1,3}$/.test(value)) {
+    fail(
+      "invalid_image_pin_label",
+      path,
+      "Image pin label must contain from one to three digits",
+    );
+  }
+  return value;
+}
+
 function requireCanvasTextColor(value: unknown, path: string): string {
   const color = requireString(value, path);
   if (color !== "transparent" && !/^#[0-9a-f]{6}$/iu.test(color)) {
@@ -557,7 +688,9 @@ function parseNode(
           ? ["style", ...branchCollapseOptionalKey]
           : kind === "pdf"
             ? ["lastKnownName", ...branchCollapseOptionalKey]
-            : branchCollapseOptionalKey;
+            : kind === "image"
+              ? ["pins", ...branchCollapseOptionalKey]
+              : branchCollapseOptionalKey;
   const hasImageAssetId =
     kind === "image" && Object.prototype.hasOwnProperty.call(node, "assetId");
   const hasImageFileId =
@@ -767,6 +900,9 @@ function parseNode(
       ? { fileId: requireIdentifier(node.fileId, `${path}.fileId`) }
       : { assetId: requireIdentifier(node.assetId, `${path}.assetId`) }),
     aspectRatioLocked,
+    ...(Object.prototype.hasOwnProperty.call(node, "pins")
+      ? { pins: requireCanvasImagePins(node.pins, `${path}.pins`) }
+      : {}),
   };
 }
 
@@ -798,7 +934,7 @@ function enumValue<T extends string>(
 
 function parseEdgeV2(value: unknown, path: string): CanvasEdgeV2 {
   const edge = requireRecord(value, path);
-  requireExactKeys(edge, EDGE_V2_KEYS, ["summaryOrder"], path);
+  requireExactKeys(edge, EDGE_V2_KEYS, ["summaryOrder", "bend"], path);
   const summaryOrder = Object.prototype.hasOwnProperty.call(
     edge,
     "summaryOrder",
@@ -815,6 +951,9 @@ function parseEdgeV2(value: unknown, path: string): CanvasEdgeV2 {
       "Canvas summary order must be a positive safe integer",
     );
   }
+  const bend = Object.prototype.hasOwnProperty.call(edge, "bend")
+    ? requirePoint(edge.bend, `${path}.bend`)
+    : undefined;
   return {
     id: requireIdentifier(edge.id, `${path}.id`),
     sourceNodeId: requireIdentifier(edge.sourceNodeId, `${path}.sourceNodeId`),
@@ -843,6 +982,7 @@ function parseEdgeV2(value: unknown, path: string): CanvasEdgeV2 {
       `${path}.arrows`,
       "arrow placement",
     ),
+    ...(bend === undefined ? {} : { bend }),
     ...(summaryOrder === undefined ? {} : { summaryOrder }),
   };
 }

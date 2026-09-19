@@ -251,6 +251,7 @@
   border-radius: var(--node-visual-radius);
   background: transparent;
   box-shadow: none;
+  overflow: visible;
 }
 .image {
   display: block;
@@ -259,6 +260,180 @@
   object-fit: contain;
   background: transparent;
   border-radius: 0;
+}
+.imagePinLayer {
+  --image-pin-red: #dc2626;
+  --image-pin-yellow: #facc15;
+  --image-pin-green: #16a34a;
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  overflow: visible;
+  pointer-events: none;
+}
+.imagePin {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  width: var(--image-pin-diameter, 26px);
+  height: var(--image-pin-diameter, 26px);
+  place-items: center;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: var(--image-pin-color, var(--image-pin-red));
+  box-shadow: 0 2px 9px rgb(28 25 23 / 32%);
+  color: #fff;
+  cursor: default;
+  font:
+    700 var(--image-pin-font-size, 11px) / 1 system-ui,
+    sans-serif;
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+}
+.imagePin:active {
+  cursor: default;
+}
+.imagePin:focus-visible {
+  outline: 3px solid #0f766e;
+  outline-offset: 2px;
+}
+.imagePinAdd {
+  position: absolute;
+  top: -34px;
+  right: -34px;
+  z-index: 12;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 2px solid #0f766e;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgb(28 25 23 / 18%);
+  color: #0f766e;
+  cursor: pointer;
+}
+.imagePinAdd::before,
+.imagePinAdd::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  border-radius: 999px;
+  background: currentColor;
+  content: "";
+  transform: translate(-50%, -50%);
+}
+.imagePinAdd::before {
+  width: 15px;
+  height: 3px;
+}
+.imagePinAdd::after {
+  width: 3px;
+  height: 15px;
+}
+.imagePinAdd:hover,
+.imagePinAdd:focus-visible {
+  outline: none;
+  background: #e6fffb;
+}
+.imagePinMenu {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px;
+  border: 1px solid #d6d3d1;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(28, 25, 23, 0.16);
+  pointer-events: all;
+  transform: translate(
+    -50%,
+    calc(-100% - var(--image-pin-radius, 13px) - 12px)
+  );
+}
+.imagePinMenuSection {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.imagePinColorButton,
+.imagePinMenuButton {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #d6d3d1;
+  border-radius: 5px;
+  background: #fff;
+  color: #44403c;
+  cursor: pointer;
+}
+.imagePinColorButton {
+  border-radius: 999px;
+}
+.imagePinColorButton[data-color="red"] {
+  background: var(--image-pin-red);
+}
+.imagePinColorButton[data-color="yellow"] {
+  background: var(--image-pin-yellow);
+}
+.imagePinColorButton[data-color="green"] {
+  background: var(--image-pin-green);
+}
+.imagePinColorButton[aria-checked="true"] {
+  outline: 2px solid #0f766e;
+  outline-offset: 2px;
+}
+.imagePinMenuButton:hover,
+.imagePinMenuButton:focus-visible {
+  outline: none;
+  border-color: #0f766e;
+  background: #e6fffb;
+}
+.imagePinMenuButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+.imagePinRadiusLabel {
+  min-width: 18px;
+  color: #57534e;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.imagePinLabelControl {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #57534e;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.imagePinLabelControl input {
+  width: 30px;
+  height: 24px;
+  box-sizing: border-box;
+  padding: 0 4px;
+  border: 1px solid #d6d3d1;
+  border-radius: 5px;
+  color: #44403c;
+  font: inherit;
+  text-align: center;
+}
+.imagePinLabelControl input:focus-visible {
+  outline: 2px solid #0f766e;
+  outline-offset: 1px;
+}
+.imagePinDeleteButton {
+  width: auto;
+  padding: 0 7px;
+  border-color: #fecaca;
+  color: #b91c1c;
+  font-size: 11px;
 }
 .textNodeFrame {
   --node-visual-border: 0;
@@ -697,6 +872,26 @@
   stroke: #0f766e;
   stroke-width: 3;
 }
+.edgeBendHandle {
+  fill: #fff;
+  stroke: #0f766e;
+  stroke-width: 3;
+  cursor: grab;
+  pointer-events: all;
+}
+.edgeBendHandle:active {
+  cursor: grabbing;
+}
+.edgeBendHandle:focus-visible {
+  outline: none;
+  stroke: #ea580c;
+}
+.edgeReconnectHandle {
+  fill: #fff;
+  stroke: #0f766e;
+  stroke-width: 3;
+  pointer-events: none;
+}
 .edgeToolbar {
   display: flex;
   align-items: center;
@@ -732,6 +927,40 @@
   outline: none;
   background: #e6fffb;
   color: #0f766e;
+}
+.edgeToolButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+.groupScaleBounds {
+  position: absolute;
+  /* Keep group controls above selected node surfaces and their interaction layers. */
+  z-index: 30;
+  box-sizing: border-box;
+  border: 1px dashed #0f766e;
+  pointer-events: none;
+}
+.groupScaleHandle {
+  position: absolute;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 2px solid #0f766e;
+  border-radius: 5px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(28 25 23 / 18%);
+  cursor: nwse-resize;
+  pointer-events: auto;
+  touch-action: none;
+}
+.groupScaleHandleNorthWest {
+  top: -34px;
+  left: -34px;
+}
+.groupScaleHandleSouthEast {
+  right: -34px;
+  bottom: -34px;
 }
 .edgeToolbar > label {
   display: none;
@@ -838,6 +1067,8 @@
 
 .canvasViewport :global(.react-flow__nodesselection-rect),
 .canvasViewport :global(.react-flow__nodesselection-rect:active) {
+  background: transparent;
+  border: 0;
   cursor: default !important;
 }
 

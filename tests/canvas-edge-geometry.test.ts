@@ -4,6 +4,8 @@ import {
   CANVAS_CONNECTION_HANDLE_DIAMETER,
   CANVAS_CONNECTION_HANDLE_GAP,
   CANVAS_CONNECTION_HANDLE_RADIUS,
+  CANVAS_EDGE_RECONNECT_RADIUS,
+  canvasEdgeReconnectControlCenter,
   canvasHandleCenterToPerimeter,
   canvasNodeHandleCenter,
   canvasNodePerimeterAnchor,
@@ -58,5 +60,22 @@ describe("canvas edge geometry", () => {
       x: 40,
       y: 47,
     });
+  });
+
+  it("places visible reconnect controls on React Flow's edge hit targets", () => {
+    expect(CANVAS_EDGE_RECONNECT_RADIUS).toBe(18);
+    expect(
+      (["top", "right", "bottom", "left"] as const).map((side) =>
+        canvasEdgeReconnectControlCenter(
+          canvasNodeHandleCenter(bounds, side),
+          side,
+        ),
+      ),
+    ).toEqual([
+      { x: 250, y: 169 },
+      { x: 431, y: 290 },
+      { x: 250, y: 411 },
+      { x: 69, y: 290 },
+    ]);
   });
 });

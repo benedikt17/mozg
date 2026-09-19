@@ -9,6 +9,7 @@ import {
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
+  ViewportPortal,
   applyEdgeChanges,
   applyNodeChanges,
   getBezierPath,
@@ -26,6 +27,7 @@ import {
   type InternalNode,
   type NodeChange,
   type NodeProps,
+  type OnSelectionChangeParams,
 } from "@xyflow/react";
 import {
   CanvasDesktopSidebar,
@@ -157,7 +159,7 @@ import {
   type CanvasImageAdapterDependencies,
   type CanvasFlowNode,
   type CanvasEdgeFlow,
-  type CanvasEdgeFlowData,
+  type CanvasEdgeFlowUpdate,
   type CanvasImageFlowNode,
   type CanvasArticleFlowNode,
   type CanvasShapeFlowNode,
@@ -174,6 +176,7 @@ import {
   type CanvasEdgeArrows,
   type CanvasEdgeRouting,
   type CanvasHandleSide,
+  type CanvasImagePin,
   type CanvasShapeNode,
   type CanvasShapeVariant,
   type CanvasSummaryNode,
@@ -190,11 +193,33 @@ import {
   swapCanvasEdgeArrows,
 } from "@/lib/canvas/canvas-edge-controls";
 import {
+  CANVAS_EDGE_RECONNECT_RADIUS,
+  canvasEdgeReconnectControlCenter,
   canvasHandleCenterToPerimeter,
+  canvasNodeHandleCenter,
   canvasNodePerimeterAnchor,
   type CanvasNodeBounds,
 } from "@/lib/canvas/canvas-edge-geometry";
-import { reconnectCanvasEdgeSide } from "@/lib/canvas/canvas-manual-connection";
+import { reconnectCanvasEdge } from "@/lib/canvas/canvas-manual-connection";
+import {
+  canvasEdgeToolbarPosition,
+  canvasManualCurvePath,
+  canvasManualOrthogonalPath,
+  canvasManualStraightPath,
+} from "@/lib/canvas/canvas-edge-curve";
+import {
+  createCanvasImagePin,
+  moveCanvasImagePin,
+  removeCanvasImagePin,
+  setCanvasImagePinColor,
+  setCanvasImagePinLabel,
+  setCanvasImagePinRadius,
+} from "@/lib/canvas/canvas-image-pins";
+import {
+  canvasGroupBounds,
+  scaleCanvasGroup,
+  type CanvasScalableNode,
+} from "@/lib/canvas/canvas-group-scaling";
 import {
   createCanvasTextId,
   hasMeaningfulPlainText,
@@ -466,11 +491,348 @@ function DecodedCanvasImage({
   );
 }
 
+type CanvasImagePinsEventDetail = {
+  id: string;
+  pins: CanvasImagePin[];
+  /** Pointer moves only update the live projection; pointer release persists it. */
+  commit: boolean;
+};
+
+function dispatchCanvasImagePins(detail: CanvasImagePinsEventDetail): void {
+  window.dispatchEvent(new CustomEvent("mozg:canvas-image-pins", { detail }));
+}
+
+function imagePinPosition(
+  event: ReactPointerEvent<HTMLButtonElement>,
+): { x: number; y: number } | null {
+  const layer = event.currentTarget.closest<HTMLElement>(
+    "[data-canvas-image-pin-layer]",
+  );
+  const rect = layer?.getBoundingClientRect();
+  if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+  const pinRect = event.currentTarget.getBoundingClientRect();
+  const minX = Math.min(0.5, pinRect.width / 2 / rect.width);
+  const minY = Math.min(0.5, pinRect.height / 2 / rect.height);
+  return {
+    x: Math.min(
+      1 - minX,
+      Math.max(minX, (event.clientX - rect.left) / rect.width),
+    ),
+    y: Math.min(
+      1 - minY,
+      Math.max(minY, (event.clientY - rect.top) / rect.height),
+    ),
+  };
+}
+
+type ImagePinDragState = {
+  startX: number;
+  startY: number;
+  moved: boolean;
+};
+
+function ImagePins({
+  id,
+  pins,
+}: {
+  id: string;
+  pins: readonly CanvasImagePin[];
+}): React.JSX.Element | null {
+  const [menuPinId, setMenuPinId] = useState<string | null>(null);
+  const [labelDraft, setLabelDraft] = useState("");
+  const layerRef = useRef<HTMLDivElement>(null);
+  const pinDragRef = useRef(new Map<string, ImagePinDragState>());
+
+  useEffect(() => {
+    if (!menuPinId) return;
+    const closeMenuOutsideImage = (event: PointerEvent): void => {
+      const imageBounds = layerRef.current?.parentElement;
+      if (imageBounds?.contains(event.target as Node)) return;
+      setMenuPinId(null);
+    };
+    document.addEventListener("pointerdown", closeMenuOutsideImage, true);
+    return () =>
+      document.removeEventListener("pointerdown", closeMenuOutsideImage, true);
+  }, [menuPinId]);
+
+  if (pins.length === 0) return null;
+  return (
+    <div
+      ref={layerRef}
+      className={`${styles.imagePinLayer} nodrag nopan nowheel`}
+      data-canvas-image-pin-layer="true"
+    >
+      {pins.map((pin, index) => {
+        const position = { left: `${pin.x * 100}%`, top: `${pin.y * 100}%` };
+        const menuOpen = menuPinId === pin.id;
+        const defaultLabel = String(index + 1);
+        const persistedLabel =
+          labelDraft === "" || labelDraft === defaultLabel
+            ? undefined
+            : labelDraft;
+        const pinsWithLabelDraft = (nextPins: readonly CanvasImagePin[]) =>
+          menuOpen
+            ? setCanvasImagePinLabel(nextPins, pin.id, persistedLabel)
+            : [...nextPins];
+        const update = (nextPins: CanvasImagePin[]) => {
+          dispatchCanvasImagePins({ id, pins: nextPins, commit: true });
+        };
+        return (
+          <div key={pin.id}>
+            <button
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+              aria-label={`Пин ${index + 1}. Перетащите для перемещения, двойной клик открывает меню.`}
+              className={`${styles.imagePin} nodrag nopan nowheel`}
+              onDoubleClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (menuOpen) {
+                  setMenuPinId(null);
+                  return;
+                }
+                setLabelDraft(pin.label ?? defaultLabel);
+                setMenuPinId(pin.id);
+              }}
+              onPointerCancel={(event) => {
+                event.stopPropagation();
+                const drag = pinDragRef.current.get(pin.id);
+                pinDragRef.current.delete(pin.id);
+                if (!drag?.moved) return;
+                const position = imagePinPosition(event);
+                if (!position) return;
+                dispatchCanvasImagePins({
+                  id,
+                  pins: moveCanvasImagePin(pins, pin.id, position),
+                  commit: true,
+                });
+              }}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                pinDragRef.current.set(pin.id, {
+                  startX: event.clientX,
+                  startY: event.clientY,
+                  moved: false,
+                });
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                if (!event.currentTarget.hasPointerCapture(event.pointerId))
+                  return;
+                event.preventDefault();
+                event.stopPropagation();
+                const drag = pinDragRef.current.get(pin.id);
+                if (!drag) return;
+                if (!drag.moved) {
+                  drag.moved =
+                    Math.hypot(
+                      event.clientX - drag.startX,
+                      event.clientY - drag.startY,
+                    ) >= 4;
+                }
+                if (!drag.moved) return;
+                const position = imagePinPosition(event);
+                if (!position) return;
+                dispatchCanvasImagePins({
+                  id,
+                  pins: moveCanvasImagePin(pins, pin.id, position),
+                  commit: false,
+                });
+              }}
+              onPointerUp={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const drag = pinDragRef.current.get(pin.id);
+                pinDragRef.current.delete(pin.id);
+                if (!drag?.moved) return;
+                const position = imagePinPosition(event);
+                if (!position) return;
+                dispatchCanvasImagePins({
+                  id,
+                  pins: moveCanvasImagePin(pins, pin.id, position),
+                  commit: true,
+                });
+              }}
+              style={
+                {
+                  ...position,
+                  "--image-pin-color": `var(--image-pin-${pin.color})`,
+                  "--image-pin-diameter": `${pin.radius * 2}px`,
+                  "--image-pin-font-size": `${Math.max(
+                    9,
+                    Math.round(pin.radius * 0.85),
+                  )}px`,
+                  "--image-pin-radius": `${pin.radius}px`,
+                } as CSSProperties
+              }
+              title={`Пин ${index + 1}: перетащить · двойной клик открыть меню`}
+              type="button"
+            >
+              {pin.label ?? defaultLabel}
+            </button>
+            {menuOpen ? (
+              <div
+                aria-label={`Меню пина ${index + 1}`}
+                className={`${styles.imagePinMenu} nodrag nopan nowheel`}
+                role="menu"
+                style={
+                  {
+                    ...position,
+                    "--image-pin-radius": `${pin.radius}px`,
+                  } as CSSProperties
+                }
+                onDoubleClick={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <div className={styles.imagePinMenuSection}>
+                  {(["red", "yellow", "green"] as const).map((color) => (
+                    <button
+                      key={color}
+                      aria-label={`Сделать пин ${
+                        color === "red"
+                          ? "красным"
+                          : color === "yellow"
+                            ? "жёлтым"
+                            : "зелёным"
+                      }`}
+                      aria-checked={pin.color === color}
+                      className={styles.imagePinColorButton}
+                      data-color={color}
+                      onClick={() =>
+                        update(
+                          pinsWithLabelDraft(
+                            setCanvasImagePinColor(pins, pin.id, color),
+                          ),
+                        )
+                      }
+                      role="menuitemradio"
+                      type="button"
+                    />
+                  ))}
+                </div>
+                <label className={styles.imagePinLabelControl}>
+                  Цифра
+                  <input
+                    aria-label="Цифра на пине"
+                    inputMode="numeric"
+                    maxLength={3}
+                    onChange={(event) => {
+                      const nextLabel = event.target.value
+                        .replace(/\D/g, "")
+                        .slice(0, 3);
+                      setLabelDraft(nextLabel);
+                      update(
+                        setCanvasImagePinLabel(
+                          pins,
+                          pin.id,
+                          nextLabel === "" || nextLabel === defaultLabel
+                            ? undefined
+                            : nextLabel,
+                        ),
+                      );
+                    }}
+                    type="text"
+                    value={labelDraft}
+                  />
+                </label>
+                <div className={styles.imagePinMenuSection}>
+                  <button
+                    aria-label="Уменьшить размер пина"
+                    className={styles.imagePinMenuButton}
+                    disabled={pin.radius <= 8}
+                    onClick={() =>
+                      update(
+                        pinsWithLabelDraft(
+                          setCanvasImagePinRadius(pins, pin.id, pin.radius - 2),
+                        ),
+                      )
+                    }
+                    type="button"
+                  >
+                    −
+                  </button>
+                  <span className={styles.imagePinRadiusLabel}>
+                    {pin.radius}
+                  </span>
+                  <button
+                    aria-label="Увеличить размер пина"
+                    className={styles.imagePinMenuButton}
+                    disabled={pin.radius >= 32}
+                    onClick={() =>
+                      update(
+                        pinsWithLabelDraft(
+                          setCanvasImagePinRadius(pins, pin.id, pin.radius + 2),
+                        ),
+                      )
+                    }
+                    type="button"
+                  >
+                    +
+                  </button>
+                </div>
+                <button
+                  className={`${styles.imagePinDeleteButton} ${styles.imagePinMenuButton}`}
+                  onClick={() => {
+                    update(removeCanvasImagePin(pins, pin.id));
+                    setMenuPinId(null);
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  Удалить
+                </button>
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ImagePinAddControl({
+  id,
+  pins,
+  selected,
+}: {
+  id: string;
+  pins: readonly CanvasImagePin[];
+  selected: boolean;
+}): React.JSX.Element | null {
+  const selectedNodeCount = useStore((state) =>
+    state.nodes.reduce((count, node) => count + (node.selected ? 1 : 0), 0),
+  );
+  // A pin belongs to one picture. Keeping the control out of multi-selection
+  // prevents adding an ambiguous pin when several images share a selection.
+  if (!selected || selectedNodeCount !== 1) return null;
+  return (
+    <button
+      aria-label="Добавить пин на изображение"
+      className={`${styles.imagePinAdd} nodrag nopan nowheel`}
+      onClick={(event) => {
+        event.stopPropagation();
+        const pin = createCanvasImagePin(pins);
+        if (!pin) return;
+        dispatchCanvasImagePins({
+          id,
+          pins: [...pins, pin],
+          commit: true,
+        });
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
+      title="Добавить пин"
+      type="button"
+    />
+  );
+}
+
 function ImageNodeBody({
   id,
   data,
   selected,
 }: NodeProps<CanvasImageFlowNode>): React.JSX.Element {
+  const pins = data.pins ?? [];
   return (
     <CanvasNodeFrame
       selected={selected}
@@ -478,6 +840,9 @@ function ImageNodeBody({
       minHeight={80}
       keepAspectRatio
       className={styles.imageNodeFrame}
+      contextMenu={
+        <ImagePinAddControl id={id} pins={pins} selected={selected} />
+      }
       connectionHandleLayer={<ConnectionHandleLayer selected={selected} />}
     >
       {data.objectUrl ? (
@@ -489,6 +854,7 @@ function ImageNodeBody({
       ) : (
         <div className={styles.image} aria-label="Loading canvas image" />
       )}
+      <ImagePins id={id} pins={pins} />
     </CanvasNodeFrame>
   );
 }
@@ -1372,6 +1738,7 @@ export function CanvasEdgeBody({
 }: EdgeProps<CanvasEdgeFlow>): React.JSX.Element | null {
   const [lineTypeOpen, setLineTypeOpen] = useState(false);
   const [lastPath, setLastPath] = useState("M0,0 L0,0");
+  const reactFlow = useReactFlow();
   const selectedElementCount = useStore(
     (state) =>
       state.nodes.filter((node) => node.selected).length +
@@ -1396,31 +1763,64 @@ export function CanvasEdgeBody({
           ),
         }
       : null;
+  const routing = data?.routing ?? "curved";
+  const arrows = data?.arrows ?? "none";
+  const manualBend = data?.bend;
   const computedPath = geometry
-    ? data?.routing === "orthogonal"
-      ? getSmoothStepPath({
-          sourceX: geometry.sourceAnchor.x,
-          sourceY: geometry.sourceAnchor.y,
-          sourcePosition,
-          targetX: geometry.targetAnchor.x,
-          targetY: geometry.targetAnchor.y,
-          targetPosition,
-        })
-      : data?.routing === "straight"
-        ? getStraightPath({
-            sourceX: geometry.sourceAnchor.x,
-            sourceY: geometry.sourceAnchor.y,
-            targetX: geometry.targetAnchor.x,
-            targetY: geometry.targetAnchor.y,
-          })
-        : getBezierPath({
-            sourceX: geometry.sourceAnchor.x,
-            sourceY: geometry.sourceAnchor.y,
-            sourcePosition,
-            targetX: geometry.targetAnchor.x,
-            targetY: geometry.targetAnchor.y,
-            targetPosition,
-          })
+    ? routing === "curved" && manualBend
+      ? ([
+          canvasManualCurvePath(
+            geometry.sourceAnchor,
+            manualBend,
+            geometry.targetAnchor,
+          ),
+          manualBend.x,
+          manualBend.y,
+        ] as const)
+      : routing === "straight" && manualBend
+        ? ([
+            canvasManualStraightPath(
+              geometry.sourceAnchor,
+              manualBend,
+              geometry.targetAnchor,
+            ),
+            manualBend.x,
+            manualBend.y,
+          ] as const)
+        : routing === "orthogonal" && manualBend
+          ? ([
+              canvasManualOrthogonalPath(
+                geometry.sourceAnchor,
+                manualBend,
+                geometry.targetAnchor,
+              ),
+              manualBend.x,
+              manualBend.y,
+            ] as const)
+          : routing === "orthogonal"
+            ? getSmoothStepPath({
+                sourceX: geometry.sourceAnchor.x,
+                sourceY: geometry.sourceAnchor.y,
+                sourcePosition,
+                targetX: geometry.targetAnchor.x,
+                targetY: geometry.targetAnchor.y,
+                targetPosition,
+              })
+            : routing === "straight"
+              ? getStraightPath({
+                  sourceX: geometry.sourceAnchor.x,
+                  sourceY: geometry.sourceAnchor.y,
+                  targetX: geometry.targetAnchor.x,
+                  targetY: geometry.targetAnchor.y,
+                })
+              : getBezierPath({
+                  sourceX: geometry.sourceAnchor.x,
+                  sourceY: geometry.sourceAnchor.y,
+                  sourcePosition,
+                  targetX: geometry.targetAnchor.x,
+                  targetY: geometry.targetAnchor.y,
+                  targetPosition,
+                })
     : null;
   const computedPathValue = computedPath?.[0] ?? null;
   useEffect(() => {
@@ -1428,7 +1828,7 @@ export function CanvasEdgeBody({
     const timer = window.setTimeout(() => setLastPath(computedPathValue), 0);
     return () => window.clearTimeout(timer);
   }, [computedPathValue, lastPath]);
-  if (!computedPath) {
+  if (!computedPath || !geometry || !sourceBounds || !targetBounds) {
     return (
       <g
         data-canvas-edge-id={id}
@@ -1447,13 +1847,37 @@ export function CanvasEdgeBody({
     );
   }
   const [path, labelX, labelY] = computedPath;
-  const arrows = data?.arrows ?? "none";
+  const visibleBend = manualBend ?? { x: labelX, y: labelY };
+  const toolbarPosition = canvasEdgeToolbarPosition(
+    geometry.sourceAnchor,
+    geometry.targetAnchor,
+  );
+  const sourceReconnectControl = canvasEdgeReconnectControlCenter(
+    canvasNodeHandleCenter(sourceBounds, sourcePositionSide),
+    sourcePositionSide,
+  );
+  const targetReconnectControl = canvasEdgeReconnectControlCenter(
+    canvasNodeHandleCenter(targetBounds, targetPositionSide),
+    targetPositionSide,
+  );
   const endpointArrows = canvasArrowsToEndpointArrows(arrows);
-  const routing = data?.routing ?? "curved";
   const stopToolbarEvent = (event: React.SyntheticEvent): void => {
     event.stopPropagation();
   };
   const toolbarVisible = selected && selectedElementCount === 1;
+  const updateManualBend = (
+    event: ReactPointerEvent<SVGCircleElement>,
+    commit: boolean,
+  ): void => {
+    event.preventDefault();
+    event.stopPropagation();
+    const bend = reactFlow.screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY,
+    });
+    data?.onUpdate?.(id, { routing, arrows, bend });
+    if (commit) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
   return (
     <>
       <g
@@ -1469,12 +1893,53 @@ export function CanvasEdgeBody({
           markerEnd={markerEnd}
           interactionWidth={24}
         />
+        {toolbarVisible ? (
+          <>
+            <circle
+              aria-hidden="true"
+              className={styles.edgeReconnectHandle}
+              cx={sourceReconnectControl.x}
+              cy={sourceReconnectControl.y}
+              data-endpoint="source"
+              r={9}
+            />
+            <circle
+              aria-hidden="true"
+              className={styles.edgeReconnectHandle}
+              cx={targetReconnectControl.x}
+              cy={targetReconnectControl.y}
+              data-endpoint="target"
+              r={9}
+            />
+            <circle
+              aria-label="Точка конфигурации связи"
+              className={`${styles.edgeBendHandle} nodrag nopan nowheel`}
+              cx={visibleBend.x}
+              cy={visibleBend.y}
+              onPointerCancel={(event) => updateManualBend(event, true)}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                if (!event.currentTarget.hasPointerCapture(event.pointerId))
+                  return;
+                updateManualBend(event, false);
+              }}
+              onPointerUp={(event) => updateManualBend(event, true)}
+              r={9}
+              role="slider"
+              tabIndex={0}
+            />
+          </>
+        ) : null}
       </g>
       {toolbarVisible ? (
         <EdgeToolbar
           edgeId={id}
-          x={labelX}
-          y={labelY}
+          x={toolbarPosition.x}
+          y={toolbarPosition.y}
           isVisible={toolbarVisible}
           alignY="top"
           className={`${styles.edgeToolbar} nodrag nopan nowheel`}
@@ -1656,6 +2121,185 @@ function CanvasConnectionLine({
       className={styles.connectionPreview}
       data-status={connectionStatus ?? "pending"}
     />
+  );
+}
+
+type CanvasGroupScaleSession = {
+  anchor: { x: number; y: number };
+  bounds: { x: number; y: number; width: number; height: number };
+  corner: "north-west" | "south-east";
+  nodes: CanvasFlowNode[];
+  selected: CanvasScalableNode[];
+  start: { x: number; y: number };
+};
+
+function scalableCanvasNode(node: CanvasFlowNode): CanvasScalableNode | null {
+  const measured = node as CanvasFlowNode & {
+    measured?: { width?: number; height?: number };
+  };
+  const width = node.width ?? measured.measured?.width ?? node.style?.width;
+  const height = node.height ?? measured.measured?.height ?? node.style?.height;
+  if (
+    typeof width !== "number" ||
+    typeof height !== "number" ||
+    width <= 0 ||
+    height <= 0
+  )
+    return null;
+  return {
+    id: node.id,
+    position: { ...node.position },
+    width,
+    height,
+  };
+}
+
+/** A selection becomes a temporary group without adding another persisted node type. */
+function CanvasGroupScaleOverlay({
+  nodes,
+  selectedNodeIds,
+  onCommit,
+  onPreview,
+}: {
+  nodes: readonly CanvasFlowNode[];
+  selectedNodeIds: readonly string[];
+  onCommit: (nodes: CanvasFlowNode[]) => void;
+  onPreview: (nodes: CanvasFlowNode[]) => void;
+}): React.JSX.Element | null {
+  const reactFlow = useReactFlow();
+  const sessionRef = useRef<CanvasGroupScaleSession | null>(null);
+  const selectedIds = useMemo(
+    () => new Set(selectedNodeIds),
+    [selectedNodeIds],
+  );
+  const selected = nodes
+    .filter((node) => selectedIds.has(node.id) && !node.hidden)
+    .map(scalableCanvasNode)
+    .filter((node): node is CanvasScalableNode => node !== null);
+  const bounds = canvasGroupBounds(selected);
+  if (!bounds) return null;
+
+  const apply = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    commit: boolean,
+  ) => {
+    const session = sessionRef.current;
+    if (!session) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const point = reactFlow.screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY,
+    });
+    const delta = {
+      x: point.x - session.start.x,
+      y: point.y - session.start.y,
+    };
+    const xScale =
+      session.corner === "south-east"
+        ? (session.bounds.width + delta.x) / session.bounds.width
+        : (session.bounds.width - delta.x) / session.bounds.width;
+    const yScale =
+      session.corner === "south-east"
+        ? (session.bounds.height + delta.y) / session.bounds.height
+        : (session.bounds.height - delta.y) / session.bounds.height;
+    // Use the axis the pointer moved furthest along. Uniform scaling preserves
+    // image aspect ratios and all relative distances inside the group.
+    const scale =
+      Math.abs(xScale - 1) >= Math.abs(yScale - 1) ? xScale : yScale;
+    const scaled = scaleCanvasGroup(session.selected, session.anchor, scale);
+    const byId = new Map(scaled.map((node) => [node.id, node]));
+    const next = session.nodes.map((node) => {
+      const projected = byId.get(node.id);
+      if (!projected) return node;
+      return {
+        ...node,
+        position: { ...projected.position },
+        width: projected.width,
+        height: projected.height,
+        style: {
+          ...node.style,
+          width: projected.width,
+          height: projected.height,
+        },
+      } as CanvasFlowNode;
+    });
+    onPreview(next);
+    if (!commit) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    sessionRef.current = null;
+    onCommit(next);
+  };
+
+  const begin = (
+    corner: CanvasGroupScaleSession["corner"],
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ): void => {
+    event.preventDefault();
+    event.stopPropagation();
+    const point = reactFlow.screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY,
+    });
+    sessionRef.current = {
+      corner,
+      bounds,
+      anchor:
+        corner === "south-east"
+          ? { x: bounds.x, y: bounds.y }
+          : { x: bounds.x + bounds.width, y: bounds.y + bounds.height },
+      nodes: nodes.map((node) => ({
+        ...node,
+        position: { ...node.position },
+        style: { ...node.style },
+      })),
+      selected,
+      start: point,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  return (
+    <ViewportPortal>
+      <div
+        aria-label="Группа выделенных объектов. Потяните за угол для пропорционального масштабирования."
+        className={styles.groupScaleBounds}
+        style={{
+          left: bounds.x,
+          top: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+        }}
+      >
+        <button
+          aria-label="Масштабировать группу от верхнего левого угла"
+          className={`${styles.groupScaleHandle} ${styles.groupScaleHandleNorthWest} nodrag nopan nowheel`}
+          onPointerCancel={(event) => apply(event, true)}
+          onPointerDown={(event) => begin("north-west", event)}
+          onPointerMove={(event) => {
+            if (event.currentTarget.hasPointerCapture(event.pointerId))
+              apply(event, false);
+          }}
+          onPointerUp={(event) => apply(event, true)}
+          title="Масштабировать выделенную группу"
+          type="button"
+        />
+        <button
+          aria-label="Масштабировать группу от нижнего правого угла"
+          className={`${styles.groupScaleHandle} ${styles.groupScaleHandleSouthEast} nodrag nopan nowheel`}
+          onPointerCancel={(event) => apply(event, true)}
+          onPointerDown={(event) => begin("south-east", event)}
+          onPointerMove={(event) => {
+            if (event.currentTarget.hasPointerCapture(event.pointerId))
+              apply(event, false);
+          }}
+          onPointerUp={(event) => apply(event, true)}
+          title="Масштабировать выделенную группу"
+          type="button"
+        />
+      </div>
+    </ViewportPortal>
   );
 }
 
@@ -1853,6 +2497,9 @@ function InfiniteCanvasLocalShellSurface({
   >(() => ({ x: 0, y: 0 }));
   const [nodes, setNodes, onNodesChange] = useNodesState<CanvasFlowNode>([]);
   const [edges, setEdges] = useEdgesState<CanvasEdgeFlow>([]);
+  const [selectedCanvasNodeIds, setSelectedCanvasNodeIds] = useState<
+    readonly string[]
+  >([]);
   const [summaries, setSummaries] = useState<CanvasSummary[]>(
     initialRuntime?.summaries ?? [],
   );
@@ -2481,10 +3128,7 @@ function InfiniteCanvasLocalShellSurface({
   }, [controller, scheduleSave, syncState]);
 
   const handleEdgeUpdate = useCallback(
-    (
-      edgeId: string,
-      update: Pick<CanvasEdgeFlowData, "routing" | "arrows">,
-    ) => {
+    (edgeId: string, update: CanvasEdgeFlowUpdate) => {
       const nextState = controller.updateCanvasEdge(edgeId, update);
       setEdges((current) =>
         current.map((edge) =>
@@ -2539,7 +3183,7 @@ function InfiniteCanvasLocalShellSurface({
       const document = controller.state.document;
       const edge = document.edges.find((item) => item.id === runtime.id);
       if (!edge) return;
-      const reconnected = reconnectCanvasEdgeSide(edge, connection);
+      const reconnected = reconnectCanvasEdge(edge, connection, document.edges);
       if (!reconnected) return;
       const next = controller.setDocument({
         ...document,
@@ -3561,6 +4205,32 @@ function InfiniteCanvasLocalShellSurface({
     [controller, scheduleSave, setNodes, syncState],
   );
 
+  const updateImagePins = useCallback(
+    (detail: CanvasImagePinsEventDetail) => {
+      let found = false;
+      const nextNodes = nodesRef.current.map((node) => {
+        if (node.id !== detail.id || node.type !== CANVAS_IMAGE_NODE_TYPE)
+          return node;
+        found = true;
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            pins: detail.pins.map((pin) => ({ ...pin })),
+          },
+        };
+      });
+      if (!found) return;
+      nodesRef.current = nextNodes;
+      setNodes(nextNodes);
+      if (!detail.commit) return;
+      controller.setRuntimeNodes(nextNodes);
+      syncState();
+      scheduleSave();
+    },
+    [controller, scheduleSave, setNodes, syncState],
+  );
+
   const createTextNode = useCallback(
     (client: FlowPosition | null, markdown: string, editing = true) => {
       if (!shellState.canvasId) return;
@@ -3909,6 +4579,11 @@ function InfiniteCanvasLocalShellSurface({
       const id = (event as CustomEvent<{ id?: string }>).detail?.id;
       if (id) setStyleEyedropperSourceId(id);
     };
+    const onImagePins = (event: Event) => {
+      const detail = (event as CustomEvent<CanvasImagePinsEventDetail>).detail;
+      if (!detail?.id || !Array.isArray(detail.pins)) return;
+      updateImagePins(detail);
+    };
     const onContentAutoSize = (event: Event) => {
       const detail = (event as CustomEvent<CanvasContentAutoSizeDetail>).detail;
       if (detail?.id) fitTextOrShapeNodeToContent(detail);
@@ -3927,6 +4602,7 @@ function InfiniteCanvasLocalShellSurface({
       "mozg:canvas-style-eyedropper-start",
       onEyedropperStart,
     );
+    window.addEventListener("mozg:canvas-image-pins", onImagePins);
     return () => {
       window.removeEventListener("mozg:canvas-text-edit", onEdit);
       window.removeEventListener("mozg:canvas-text-commit", onCommit);
@@ -3945,6 +4621,7 @@ function InfiniteCanvasLocalShellSurface({
         "mozg:canvas-style-eyedropper-start",
         onEyedropperStart,
       );
+      window.removeEventListener("mozg:canvas-image-pins", onImagePins);
     };
   }, [
     commitShapeNode,
@@ -3955,6 +4632,7 @@ function InfiniteCanvasLocalShellSurface({
     updateShapeStyle,
     updateArticleStyle,
     updateTextStyle,
+    updateImagePins,
   ]);
 
   const ingest = useCallback(
@@ -4554,6 +5232,34 @@ function InfiniteCanvasLocalShellSurface({
       shellWorkspaceId,
       syncState,
     ],
+  );
+
+  const handleSelectionChange = useCallback(
+    ({ nodes: selectedNodes }: OnSelectionChangeParams<CanvasFlowNode>) => {
+      setSelectedCanvasNodeIds(selectedNodes.map((node) => node.id));
+    },
+    [],
+  );
+
+  const previewGroupScale = useCallback(
+    (nextNodes: CanvasFlowNode[]) => {
+      nodesRef.current = nextNodes;
+      setNodes(nextNodes);
+    },
+    [setNodes],
+  );
+
+  const commitGroupScale = useCallback(
+    (nextNodes: CanvasFlowNode[]) => {
+      nodesRef.current = nextNodes;
+      setNodes(nextNodes);
+      controller.setRuntimeNodes(nextNodes);
+      // Edges are not rewritten: their existing manual endpoint sides and bends
+      // remain canonical while React Flow recalculates their visible geometry.
+      syncState();
+      scheduleSave();
+    },
+    [controller, scheduleSave, setNodes, syncState],
   );
 
   const openPdfNode = useCallback(
@@ -5694,6 +6400,7 @@ function InfiniteCanvasLocalShellSurface({
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
               onNodesChange={handleNodesChange}
+              onSelectionChange={handleSelectionChange}
               onEdgesChange={handleEdgesChange}
               onNodeDragStart={handleNodeDragStart}
               onNodeDragStop={handleNodeDragStop}
@@ -5715,6 +6422,7 @@ function InfiniteCanvasLocalShellSurface({
               onConnect={handleConnect}
               onReconnect={handleReconnect}
               edgesReconnectable
+              reconnectRadius={CANVAS_EDGE_RECONNECT_RADIUS}
               connectionMode={ConnectionMode.Loose}
               connectionLineComponent={CanvasConnectionLine}
               minZoom={CANVAS_VIEWPORT_LIMITS.minZoom}
@@ -5756,6 +6464,12 @@ function InfiniteCanvasLocalShellSurface({
                 />
               ) : null}
               <CanvasEdgeMarkerDefinitions />
+              <CanvasGroupScaleOverlay
+                nodes={renderedNodes}
+                selectedNodeIds={selectedCanvasNodeIds}
+                onCommit={commitGroupScale}
+                onPreview={previewGroupScale}
+              />
             </ReactFlow>
             {!viewportVisible ? (
               <div className={styles.canvasLoading} role="status">
@@ -6122,6 +6836,7 @@ function InfiniteCanvasLocalShellSurface({
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             onNodesChange={handleNodesChange}
+            onSelectionChange={handleSelectionChange}
             onEdgesChange={handleEdgesChange}
             onNodeDragStart={handleNodeDragStart}
             onNodeDragStop={handleNodeDragStop}
@@ -6143,6 +6858,7 @@ function InfiniteCanvasLocalShellSurface({
             onConnect={handleConnect}
             onReconnect={handleReconnect}
             edgesReconnectable
+            reconnectRadius={CANVAS_EDGE_RECONNECT_RADIUS}
             connectionMode={ConnectionMode.Loose}
             connectionLineComponent={CanvasConnectionLine}
             minZoom={CANVAS_VIEWPORT_LIMITS.minZoom}
@@ -6180,6 +6896,12 @@ function InfiniteCanvasLocalShellSurface({
               />
             ) : null}
             <CanvasEdgeMarkerDefinitions />
+            <CanvasGroupScaleOverlay
+              nodes={renderedNodes}
+              selectedNodeIds={selectedCanvasNodeIds}
+              onCommit={commitGroupScale}
+              onPreview={previewGroupScale}
+            />
           </ReactFlow>
           {!viewportVisible ? (
             <div className={styles.canvasLoading} role="status">
