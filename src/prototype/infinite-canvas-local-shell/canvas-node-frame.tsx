@@ -457,7 +457,10 @@ export function CanvasNodeFrame({
     >
       <SelectionLayer selected={selected} />
       <ResizeLayer
-        selected={selected}
+        // A multi-selection is resized solely by the shared Canvas group
+        // frame. Individual NodeResizer handles would otherwise overlap the
+        // group handle at an object's corner and make the gesture ambiguous.
+        selected={selected && selectedNodeCount === 1}
         keepAspectRatio={keepAspectRatio}
         minWidth={minWidth}
         minHeight={minHeight}
