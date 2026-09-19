@@ -1,5 +1,30 @@
 import type { CanvasEdgeBend, CanvasPoint } from "@/lib/canvas/canvas-document";
 
+/**
+ * The edge toolbar is 50px tall at its compact size. Keep its lower edge
+ * 20px clear of either block connection point, regardless of edge routing.
+ */
+const CANVAS_EDGE_TOOLBAR_HEIGHT = 50;
+const CANVAS_EDGE_TOOLBAR_GAP = 20;
+
+/**
+ * Positions the connection menu between the linked blocks instead of beside
+ * the source block. Its top edge remains above the higher connection point,
+ * leaving enough space for the complete toolbar and a visible gap.
+ */
+export function canvasEdgeToolbarPosition(
+  source: CanvasPoint,
+  target: CanvasPoint,
+): CanvasPoint {
+  return {
+    x: (source.x + target.x) / 2,
+    y:
+      Math.min(source.y, target.y) -
+      CANVAS_EDGE_TOOLBAR_HEIGHT -
+      CANVAS_EDGE_TOOLBAR_GAP,
+  };
+}
+
 /** Returns the midpoint used before the user pulls a connection point. */
 export function canvasEdgeDefaultBend(
   source: CanvasPoint,
