@@ -80,6 +80,17 @@ describe("Canvas Miro-style selection interaction", () => {
     expect(source).toContain("selectedIds.has(node.id) && !node.hidden");
   });
 
+  it("keeps group-scale handles clear of selected node corners", () => {
+    const css = fs.readFileSync(shellCssPath, "utf8");
+
+    expect(css).toContain("z-index: 30");
+    expect(css).toContain("width: 22px");
+    expect(css).toContain("height: 22px");
+    expect(css).toContain("top: -34px");
+    expect(css).toContain("right: -34px");
+    expect(css).toContain("touch-action: none");
+  });
+
   it("does not re-enable unconditional pointer-drag panning", () => {
     const source = readShell();
 
