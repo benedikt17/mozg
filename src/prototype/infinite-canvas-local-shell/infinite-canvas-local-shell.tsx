@@ -193,7 +193,10 @@ import {
   swapCanvasEdgeArrows,
 } from "@/lib/canvas/canvas-edge-controls";
 import {
+  CANVAS_EDGE_RECONNECT_RADIUS,
+  canvasEdgeReconnectControlCenter,
   canvasHandleCenterToPerimeter,
+  canvasNodeHandleCenter,
   canvasNodePerimeterAnchor,
   type CanvasNodeBounds,
 } from "@/lib/canvas/canvas-edge-geometry";
@@ -1825,7 +1828,7 @@ export function CanvasEdgeBody({
     const timer = window.setTimeout(() => setLastPath(computedPathValue), 0);
     return () => window.clearTimeout(timer);
   }, [computedPathValue, lastPath]);
-  if (!computedPath || !geometry) {
+  if (!computedPath || !geometry || !sourceBounds || !targetBounds) {
     return (
       <g
         data-canvas-edge-id={id}
@@ -1848,6 +1851,14 @@ export function CanvasEdgeBody({
   const toolbarPosition = canvasEdgeToolbarPosition(
     geometry.sourceAnchor,
     geometry.targetAnchor,
+  );
+  const sourceReconnectControl = canvasEdgeReconnectControlCenter(
+    canvasNodeHandleCenter(sourceBounds, sourcePositionSide),
+    sourcePositionSide,
+  );
+  const targetReconnectControl = canvasEdgeReconnectControlCenter(
+    canvasNodeHandleCenter(targetBounds, targetPositionSide),
+    targetPositionSide,
   );
   const endpointArrows = canvasArrowsToEndpointArrows(arrows);
   const stopToolbarEvent = (event: React.SyntheticEvent): void => {
@@ -1883,27 +1894,45 @@ export function CanvasEdgeBody({
           interactionWidth={24}
         />
         {toolbarVisible ? (
-          <circle
-            aria-label="Точка конфигурации связи"
-            className={`${styles.edgeBendHandle} nodrag nopan nowheel`}
-            cx={visibleBend.x}
-            cy={visibleBend.y}
-            onPointerCancel={(event) => updateManualBend(event, true)}
-            onPointerDown={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              event.currentTarget.setPointerCapture(event.pointerId);
-            }}
-            onPointerMove={(event) => {
-              if (!event.currentTarget.hasPointerCapture(event.pointerId))
-                return;
-              updateManualBend(event, false);
-            }}
-            onPointerUp={(event) => updateManualBend(event, true)}
-            r={9}
-            role="slider"
-            tabIndex={0}
-          />
+          <>
+            <circle
+              aria-hidden="true"
+              className={styles.edgeReconnectHandle}
+              cx={sourceReconnectControl.x}
+              cy={sourceReconnectControl.y}
+              data-endpoint="source"
+              r={9}
+            />
+            <circle
+              aria-hidden="true"
+              className={styles.edgeReconnectHandle}
+              cx={targetReconnectControl.x}
+              cy={targetReconnectControl.y}
+              data-endpoint="target"
+              r={9}
+            />
+            <circle
+              aria-label="Точка конфигурации связи"
+              className={`${styles.edgeBendHandle} nodrag nopan nowheel`}
+              cx={visibleBend.x}
+              cy={visibleBend.y}
+              onPointerCancel={(event) => updateManualBend(event, true)}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                if (!event.currentTarget.hasPointerCapture(event.pointerId))
+                  return;
+                updateManualBend(event, false);
+              }}
+              onPointerUp={(event) => updateManualBend(event, true)}
+              r={9}
+              role="slider"
+              tabIndex={0}
+            />
+          </>
         ) : null}
       </g>
       {toolbarVisible ? (
@@ -6393,6 +6422,7 @@ function InfiniteCanvasLocalShellSurface({
               onConnect={handleConnect}
               onReconnect={handleReconnect}
               edgesReconnectable
+              reconnectRadius={CANVAS_EDGE_RECONNECT_RADIUS}
               connectionMode={ConnectionMode.Loose}
               connectionLineComponent={CanvasConnectionLine}
               minZoom={CANVAS_VIEWPORT_LIMITS.minZoom}
@@ -6828,6 +6858,7 @@ function InfiniteCanvasLocalShellSurface({
             onConnect={handleConnect}
             onReconnect={handleReconnect}
             edgesReconnectable
+            reconnectRadius={CANVAS_EDGE_RECONNECT_RADIUS}
             connectionMode={ConnectionMode.Loose}
             connectionLineComponent={CanvasConnectionLine}
             minZoom={CANVAS_VIEWPORT_LIMITS.minZoom}

@@ -140,6 +140,8 @@ describe("CanvasNodeFrame composition", () => {
     expect(shell).not.toContain("recomputeCanvasRuntimeEdgeHandles");
     expect(shell).toContain("onReconnect={handleReconnect}");
     expect(shell).toContain("edgesReconnectable");
+    expect(shell).toContain("reconnectRadius={CANVAS_EDGE_RECONNECT_RADIUS}");
+    expect(shell).toContain("styles.edgeReconnectHandle");
     expect(shell).toContain("controller.setRuntimeNodes");
     expect(shell).toContain("controller.setRuntimeEdges(edgesRef.current)");
     expect(styles).toContain("--connection-handle-center-offset");

@@ -886,6 +886,12 @@
   outline: none;
   stroke: #ea580c;
 }
+.edgeReconnectHandle {
+  fill: #fff;
+  stroke: #0f766e;
+  stroke-width: 3;
+  pointer-events: none;
+}
 .edgeToolbar {
   display: flex;
   align-items: center;
