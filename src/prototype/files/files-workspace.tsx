@@ -336,6 +336,13 @@ export function FilesWorkspace({
   const [pendingFiles, setPendingFiles] = useState<ProjectFileRecord[]>([]);
   const [location, setLocation] = useState<FilesLocation>({ kind: "inbox" });
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+  const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
+  const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(
+    null,
+  );
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [draggingFileIds, setDraggingFileIds] = useState<string[]>([]);
+  const [fileDropTarget, setFileDropTarget] = useState<string | null>(null);
   const [openedFileId, setOpenedFileId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<FilesViewMode>("grid");
   const [query, setQuery] = useState("");
@@ -350,9 +357,11 @@ export function FilesWorkspace({
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [isDropTarget, setIsDropTarget] = useState(false);
-  const [collapsedFolderIds, setCollapsedFolderIds] = useState<string[]>([]);
-  const [collapsedBeforeAll, setCollapsedBeforeAll] = useState<string[] | null>(
+  const [collapsedFolderIds, setCollapsedFolderIds] = useState<string[] | null>(
     null,
+  );
+  const [collapsedBeforeAll, setCollapsedBeforeAll] = useState<string[] | null>(
+    [],
   );
 
   const activeFolderId = location.kind === "folder" ? location.folderId : null;
@@ -397,6 +406,9 @@ export function FilesWorkspace({
             ? currentFileId
             : null,
         );
+        setSelectedFileIds((current) =>
+          current.filter((id) => nextFiles.some((file) => file.id === id)),
+        );
         setOpenedFileId((currentFileId) =>
           currentFileId && nextFiles.some((file) => file.id === currentFileId)
             ? currentFileId
@@ -410,6 +422,7 @@ export function FilesWorkspace({
         setFiles([]);
         setPendingFiles([]);
         setSelectedFileId(null);
+        setSelectedFileIds([]);
         setStatus("error");
       });
 
@@ -438,7 +451,9 @@ export function FilesWorkspace({
     () => files.filter(isProjectFilePreviewable),
     [files],
   );
-  const folderTree = getProjectFolderTree(folders, collapsedFolderIds);
+  const effectiveCollapsedFolderIds =
+    collapsedFolderIds ?? folders.map((folder) => folder.id);
+  const folderTree = getProjectFolderTree(folders, effectiveCollapsedFolderIds);
   const folderIdsWithChildren = new Set(
     folders
       .filter((folder) => !folder.deletedAt && folder.parentFolderId)
@@ -469,6 +484,7 @@ export function FilesWorkspace({
     setStatus("loading");
     setQuery("");
     setSelectedFileId(null);
+    setSelectedFileIds([]);
     setActionMessage(null);
     setLocation({ kind: "inbox" });
   };
@@ -477,6 +493,7 @@ export function FilesWorkspace({
     setStatus("loading");
     setQuery("");
     setSelectedFileId(null);
+    setSelectedFileIds([]);
     setActionMessage(null);
     setLocation({ kind: "folder", folderId });
   };
@@ -485,6 +502,7 @@ export function FilesWorkspace({
     setStatus("loading");
     setQuery("");
     setSelectedFileId(null);
+    setSelectedFileIds([]);
     setActionMessage(null);
     setLocation({ kind: "trash" });
   };
@@ -495,18 +513,19 @@ export function FilesWorkspace({
       setCollapsedBeforeAll(null);
       return;
     }
-    setCollapsedBeforeAll(collapsedFolderIds);
+    setCollapsedBeforeAll(effectiveCollapsedFolderIds);
     setCollapsedFolderIds(
       getProjectFolderTree(folders).map(({ folder }) => folder.id),
     );
   };
 
   const toggleFolder = (folderId: string) => {
-    setCollapsedFolderIds((current) =>
-      current.includes(folderId)
-        ? current.filter((id) => id !== folderId)
-        : [...current, folderId],
-    );
+    setCollapsedFolderIds((current) => {
+      const collapsed = current ?? folders.map((folder) => folder.id);
+      return collapsed.includes(folderId)
+        ? collapsed.filter((id) => id !== folderId)
+        : [...collapsed, folderId];
+    });
     setCollapsedBeforeAll(null);
   };
 
@@ -525,9 +544,10 @@ export function FilesWorkspace({
         parentFolderId: activeFolderId,
       });
       setFolders((current) => [...current, folder]);
-      setCollapsedFolderIds((current) =>
-        current.filter((folderId) => folderId !== activeFolderId),
-      );
+      setCollapsedFolderIds((current) => {
+        const collapsed = current ?? folders.map((item) => item.id);
+        return collapsed.filter((folderId) => folderId !== activeFolderId);
+      });
       setCollapsedBeforeAll(null);
       setIsCreatingFolder(false);
       setNewFolderName("");
@@ -647,6 +667,7 @@ export function FilesWorkspace({
 
       if (lastUploadedFile) {
         setSelectedFileId(lastUploadedFile.id);
+        setSelectedFileIds([lastUploadedFile.id]);
         setActionMessage({
           kind: "info",
           text:
@@ -743,6 +764,11 @@ export function FilesWorkspace({
           : current.filter((row) => row.id !== updated.id),
       );
       if (!staysVisible) setSelectedFileId(null);
+      if (!staysVisible) {
+        setSelectedFileIds((current) =>
+          current.filter((id) => id !== updated.id),
+        );
+      }
       const targetName =
         targetFolderId === null
           ? "Входящие"
@@ -776,6 +802,7 @@ export function FilesWorkspace({
       });
       setFiles((current) => current.filter((row) => row.id !== file.id));
       setSelectedFileId(null);
+      setSelectedFileIds((current) => current.filter((id) => id !== file.id));
       setActionMessage({
         kind: "info",
         text: `Перемещён в корзину: ${file.name}`,
@@ -804,6 +831,7 @@ export function FilesWorkspace({
       });
       setFiles((current) => current.filter((row) => row.id !== restored.id));
       setSelectedFileId(null);
+      setSelectedFileIds((current) => current.filter((id) => id !== file.id));
       setActionMessage({
         kind: "info",
         text: `Восстановлен: ${restored.name}`,
@@ -893,20 +921,115 @@ export function FilesWorkspace({
     }
   };
 
-  const moveDraggedFile = (fileId: string, targetFolderId: string | null) => {
-    if (!canMutate) return;
-    const file = files.find((row) => row.id === fileId);
-    if (!file) return;
-    void moveFile(file, targetFolderId);
+  const canDropFiles = (targetFolderId: string | null) =>
+    canMutate &&
+    draggingFileIds.some((id) =>
+      files.some((file) => file.id === id && file.folderId !== targetFolderId),
+    );
+
+  const moveDraggedFiles = async (
+    ids: readonly string[],
+    targetFolderId: string | null,
+  ) => {
+    setFileDropTarget(null);
+    setDraggingFileIds([]);
+    if (!workspaceId || !canMutate) return;
+    const movingFiles = files.filter(
+      (file) => ids.includes(file.id) && file.folderId !== targetFolderId,
+    );
+    if (movingFiles.length === 0) return;
+    if (movingFiles.length === 1) {
+      await moveFile(movingFiles[0], targetFolderId);
+      return;
+    }
+
+    setActionState("moving-file");
+    setActionMessage(null);
+    const movedIds: string[] = [];
+    try {
+      for (const file of movingFiles) {
+        try {
+          await repository.moveFile({
+            workspaceId,
+            projectId,
+            fileId: file.id,
+            folderId: targetFolderId,
+          });
+          movedIds.push(file.id);
+        } catch {
+          // Continue with the other files; report the partial result below.
+        }
+      }
+      setFiles((current) =>
+        current.filter((file) => !movedIds.includes(file.id)),
+      );
+      setSelectedFileIds((current) =>
+        current.filter((id) => !movedIds.includes(id)),
+      );
+      setSelectedFileId((current) =>
+        current && movedIds.includes(current) ? null : current,
+      );
+      const targetName =
+        targetFolderId === null
+          ? "Входящие"
+          : (folders.find((folder) => folder.id === targetFolderId)?.name ??
+            "папку");
+      setActionMessage({
+        kind: movedIds.length === movingFiles.length ? "info" : "error",
+        text:
+          movedIds.length === movingFiles.length
+            ? `Перемещено ${movedIds.length} файлов → ${targetName}`
+            : `Перемещено ${movedIds.length} из ${movingFiles.length} файлов. Остальные остались в этой папке.`,
+      });
+    } finally {
+      setActionState("idle");
+    }
   };
 
   const selectFile = (fileId: string) => {
     setSelectedFileId(fileId);
+    setSelectedFileIds([fileId]);
+    setSelectionAnchorId(fileId);
+  };
+
+  const selectFileWithModifiers = (
+    file: ProjectFileRecord,
+    event: React.MouseEvent<HTMLButtonElement>,
+  ) => {
+    if (event.shiftKey && selectionAnchorId) {
+      const start = files.findIndex((item) => item.id === selectionAnchorId);
+      const end = files.findIndex((item) => item.id === file.id);
+      if (start >= 0 && end >= 0) {
+        const range = files
+          .slice(Math.min(start, end), Math.max(start, end) + 1)
+          .map((item) => item.id);
+        setSelectedFileIds((current) =>
+          event.ctrlKey || event.metaKey
+            ? [...new Set([...current, ...range])]
+            : range,
+        );
+        setSelectedFileId(file.id);
+        return;
+      }
+    }
+    if (multiSelectMode || event.ctrlKey || event.metaKey) {
+      const next = selectedFileIds.includes(file.id)
+        ? selectedFileIds.filter((id) => id !== file.id)
+        : [...selectedFileIds, file.id];
+      setSelectedFileIds(next);
+      setSelectedFileId(
+        next.includes(file.id) ? file.id : (next.at(-1) ?? null),
+      );
+      setSelectionAnchorId(file.id);
+      return;
+    }
+    activateFile(file);
   };
 
   const openFile = (file: ProjectFileRecord) => {
     if (!isProjectFilePreviewable(file)) return;
     setSelectedFileId(file.id);
+    setSelectedFileIds([file.id]);
     setOpenedFileId(file.id);
   };
 
@@ -917,6 +1040,7 @@ export function FilesWorkspace({
     const nextFile = viewerFiles[currentIndex + delta];
     if (!nextFile) return;
     setSelectedFileId(nextFile.id);
+    setSelectedFileIds([nextFile.id]);
     setOpenedFileId(nextFile.id);
   };
 
@@ -1032,6 +1156,7 @@ export function FilesWorkspace({
             onChange={(event) => {
               setStatus("loading");
               setSelectedFileId(null);
+              setSelectedFileIds([]);
               setActionMessage(null);
               setQuery(event.currentTarget.value);
             }}
@@ -1050,18 +1175,27 @@ export function FilesWorkspace({
             aria-current={location.kind === "inbox" ? "page" : undefined}
             className={`${styles.sidebarRow} ${
               location.kind === "inbox" ? styles.sidebarRowActive : ""
-            }`}
+            } ${fileDropTarget === "inbox" ? styles.sidebarRowDropTarget : ""}`}
             onClick={openInbox}
             onDragOver={(event) => {
-              if (!hasProjectFileDrag(event.dataTransfer) || !canMutate) return;
+              if (
+                !hasProjectFileDrag(event.dataTransfer) ||
+                !canDropFiles(null)
+              )
+                return;
               event.preventDefault();
               event.dataTransfer.dropEffect = "move";
+              setFileDropTarget("inbox");
+            }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node))
+                setFileDropTarget(null);
             }}
             onDrop={(event) => {
-              const fileId = projectFileDragId(event.dataTransfer);
-              if (!fileId || !canMutate) return;
+              const ids = projectFileDragIds(event.dataTransfer);
+              if (!ids.length || !canDropFiles(null)) return;
               event.preventDefault();
-              moveDraggedFile(fileId, null);
+              void moveDraggedFiles(ids, null);
             }}
             type="button"
           >
@@ -1104,30 +1238,45 @@ export function FilesWorkspace({
             {folderTree.length > 0 ? (
               folderTree.map(({ folder, depth }) => {
                 const hasChildren = folderIdsWithChildren.has(folder.id);
-                const expanded = !collapsedFolderIds.includes(folder.id);
+                const expanded = !effectiveCollapsedFolderIds.includes(
+                  folder.id,
+                );
                 const active =
                   location.kind === "folder" && location.folderId === folder.id;
                 return (
                   <div
                     className={`${styles.folderRow} ${
                       active ? styles.folderRowActive : ""
+                    } ${
+                      fileDropTarget === folder.id
+                        ? styles.folderRowDropTarget
+                        : ""
                     }`}
                     key={folder.id}
                     onDragOver={(event) => {
                       if (
                         !hasProjectFileDrag(event.dataTransfer) ||
-                        !canMutate
+                        !canDropFiles(folder.id)
                       ) {
                         return;
                       }
                       event.preventDefault();
                       event.dataTransfer.dropEffect = "move";
+                      setFileDropTarget(folder.id);
+                    }}
+                    onDragLeave={(event) => {
+                      if (
+                        !event.currentTarget.contains(
+                          event.relatedTarget as Node,
+                        )
+                      )
+                        setFileDropTarget(null);
                     }}
                     onDrop={(event) => {
-                      const fileId = projectFileDragId(event.dataTransfer);
-                      if (!fileId || !canMutate) return;
+                      const ids = projectFileDragIds(event.dataTransfer);
+                      if (!ids.length || !canDropFiles(folder.id)) return;
                       event.preventDefault();
-                      moveDraggedFile(fileId, folder.id);
+                      void moveDraggedFiles(ids, folder.id);
                     }}
                     style={{ paddingLeft: `${8 + depth * 14}px` }}
                   >
@@ -1190,12 +1339,49 @@ export function FilesWorkspace({
         <header className={styles.contentHeader}>
           <div className={styles.headingBlock}>
             <h2>{title}</h2>
+            {selectedFileIds.length > 1 ? (
+              <span className={styles.selectionCount}>
+                Выбрано: {selectedFileIds.length} · перетащите в папку
+              </span>
+            ) : null}
           </div>
           <div
             className={styles.viewControls}
             aria-label="Вид файлов"
             role="group"
           >
+            {location.kind !== "trash" && !query.trim() ? (
+              <button
+                aria-pressed={multiSelectMode}
+                className={styles.multiSelectButton}
+                onClick={() => {
+                  setMultiSelectMode((current) => !current);
+                  setSelectedFileIds([]);
+                  setSelectedFileId(null);
+                }}
+                type="button"
+              >
+                {multiSelectMode ? "Готово" : "Выбрать несколько"}
+              </button>
+            ) : null}
+            {multiSelectMode && files.length > 0 ? (
+              <button
+                className={styles.multiSelectButton}
+                onClick={() => {
+                  const next =
+                    selectedFileIds.length === files.length
+                      ? []
+                      : files.map((file) => file.id);
+                  setSelectedFileIds(next);
+                  setSelectedFileId(next.at(-1) ?? null);
+                }}
+                type="button"
+              >
+                {selectedFileIds.length === files.length
+                  ? "Снять выбор"
+                  : "Выбрать все"}
+              </button>
+            ) : null}
             <IconButton
               icon={<UiIcon name="list" />}
               label="Список"
@@ -1446,25 +1632,48 @@ export function FilesWorkspace({
                 ))}
                 {files.map((file) => (
                   <button
-                    aria-pressed={file.id === selectedFileId}
+                    aria-pressed={selectedFileIds.includes(file.id)}
                     className={`${styles.entryRow} ${
-                      file.id === selectedFileId ? styles.entryRowSelected : ""
+                      selectedFileIds.includes(file.id)
+                        ? styles.entryRowSelected
+                        : ""
                     }`}
                     draggable={canMutate}
                     key={file.id}
-                    onClick={() => activateFile(file)}
-                    onDoubleClick={() => openFile(file)}
+                    onClick={(event) => selectFileWithModifiers(file, event)}
+                    onDoubleClick={() => {
+                      if (!multiSelectMode) openFile(file);
+                    }}
                     onDragStart={(event) => {
                       if (!canMutate) {
                         event.preventDefault();
                         return;
                       }
                       event.dataTransfer.effectAllowed = "move";
-                      event.dataTransfer.setData(MOZG_FILE_DRAG_TYPE, file.id);
+                      const ids = selectedFileIds.includes(file.id)
+                        ? selectedFileIds
+                        : [file.id];
+                      setDraggingFileIds(ids);
+                      event.dataTransfer.setData(
+                        MOZG_FILE_DRAG_TYPE,
+                        JSON.stringify(ids),
+                      );
+                    }}
+                    onDragEnd={() => {
+                      setDraggingFileIds([]);
+                      setFileDropTarget(null);
                     }}
                     type="button"
                   >
                     <span className={styles.nameCell}>
+                      {multiSelectMode ? (
+                        <span
+                          className={styles.selectionMark}
+                          aria-hidden="true"
+                        >
+                          {selectedFileIds.includes(file.id) ? "✓" : ""}
+                        </span>
+                      ) : null}
                       <span className={styles.entryIcon} aria-hidden="true">
                         {file.mimeType.startsWith("image/") ? "▧" : "▤"}
                       </span>
@@ -1515,24 +1724,47 @@ export function FilesWorkspace({
               ))}
               {files.map((file) => (
                 <button
-                  aria-pressed={file.id === selectedFileId}
+                  aria-pressed={selectedFileIds.includes(file.id)}
                   className={`${styles.fileTile} ${
-                    file.id === selectedFileId ? styles.fileTileSelected : ""
+                    selectedFileIds.includes(file.id)
+                      ? styles.fileTileSelected
+                      : ""
                   }`}
                   draggable={canMutate}
                   key={file.id}
-                  onClick={() => activateFile(file)}
-                  onDoubleClick={() => openFile(file)}
+                  onClick={(event) => selectFileWithModifiers(file, event)}
+                  onDoubleClick={() => {
+                    if (!multiSelectMode) openFile(file);
+                  }}
                   onDragStart={(event) => {
                     if (!canMutate) {
                       event.preventDefault();
                       return;
                     }
                     event.dataTransfer.effectAllowed = "move";
-                    event.dataTransfer.setData(MOZG_FILE_DRAG_TYPE, file.id);
+                    const ids = selectedFileIds.includes(file.id)
+                      ? selectedFileIds
+                      : [file.id];
+                    setDraggingFileIds(ids);
+                    event.dataTransfer.setData(
+                      MOZG_FILE_DRAG_TYPE,
+                      JSON.stringify(ids),
+                    );
+                  }}
+                  onDragEnd={() => {
+                    setDraggingFileIds([]);
+                    setFileDropTarget(null);
                   }}
                   type="button"
                 >
+                  {multiSelectMode ? (
+                    <span
+                      className={styles.tileSelectionMark}
+                      aria-hidden="true"
+                    >
+                      {selectedFileIds.includes(file.id) ? "✓" : ""}
+                    </span>
+                  ) : null}
                   <ProjectFileThumbnail
                     file={file}
                     imageVariantRepository={imageVariantRepository}
@@ -1561,7 +1793,12 @@ export function FilesWorkspace({
         <header className={styles.previewHeader}>
           <strong>Предпросмотр</strong>
         </header>
-        {selectedFile && workspaceId ? (
+        {selectedFileIds.length > 1 ? (
+          <div className={styles.previewEmpty}>
+            <strong>Выбрано {selectedFileIds.length} файлов</strong>
+            <span>Перетащите выделенные файлы в папку слева.</span>
+          </div>
+        ) : selectedFile && workspaceId ? (
           location.kind === "trash" ? (
             <TrashFilePreview file={selectedFile} onRestore={restoreFile} />
           ) : (
@@ -2604,10 +2841,18 @@ function hasProjectFileDrag(dataTransfer: DataTransfer): boolean {
   return dataTransfer.types.includes(MOZG_FILE_DRAG_TYPE);
 }
 
-function projectFileDragId(dataTransfer: DataTransfer): string | null {
-  if (!hasProjectFileDrag(dataTransfer)) return null;
-  const fileId = dataTransfer.getData(MOZG_FILE_DRAG_TYPE).trim();
-  return fileId || null;
+function projectFileDragIds(dataTransfer: DataTransfer): string[] {
+  if (!hasProjectFileDrag(dataTransfer)) return [];
+  const value = dataTransfer.getData(MOZG_FILE_DRAG_TYPE).trim();
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) && parsed.every((id) => typeof id === "string")
+      ? parsed
+      : [];
+  } catch {
+    return [value];
+  }
 }
 
 export function getProjectFolderBreadcrumbs(
