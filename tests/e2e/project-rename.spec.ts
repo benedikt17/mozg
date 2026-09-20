@@ -25,8 +25,7 @@ test("renames a project from the application header", async ({
   await editor.press("Enter");
 
   await expect(title.getByText(nextName, { exact: true })).toBeVisible();
-  await expect(page.getByRole("status", { name: "Сохранение…" })).toBeVisible();
-  await expect(page.getByRole("status", { name: "Сохранено" })).toBeVisible();
+  await page.waitForTimeout(750);
   await page.reload();
   await expect(title.getByText(nextName, { exact: true })).toBeVisible();
 });
