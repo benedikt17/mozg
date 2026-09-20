@@ -83,8 +83,8 @@ describe("Canvas PDF reader UI", () => {
     expect(readerStyles).toMatch(
       /\.pdfReader,\s*\.articleReader\s*\{[^}]*inset: 0 0 0 auto;/u,
     );
-    expect(shellStyles).toContain(
-      ":scope:has(.canvas-pdf-reader, .canvas-article-reader, .canvas-summary-reader) .project-workspace",
+    expect(shellStyles).toMatch(
+      /:scope:has\(\.canvas-pdf-reader,\s*\.canvas-article-reader,\s*\.canvas-summary-reader\)\s*\.project-workspace/u,
     );
     expect(shellStyles).toContain(
       "padding-right: var(--canvas-pdf-reader-width);",
