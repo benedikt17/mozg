@@ -758,16 +758,62 @@ export function renameKnowledgeFolder(
     return { ...state, editingKnowledgeFolderId: null };
   }
   const nextPath = [...oldPath.slice(0, -1), trimmedTitle];
+  const moved = relocateKnowledgeFolder(state, oldPath, nextPath);
+  return { ...moved, editingKnowledgeFolderId: null };
+}
+
+export function moveKnowledgeFolder(
+  state: DesktopPrototypeState,
+  folderId: string,
+  targetFolderPath: string[],
+): DesktopPrototypeState {
+  const oldPath = getKnowledgeFolderPathById(state, folderId);
+  if (!oldPath) return state;
+  if (
+    targetFolderPath.length > 0 &&
+    !getKnowledgeFolderPaths(state).some((path) =>
+      knowledgePathsEqual(path, targetFolderPath),
+    )
+  )
+    return state;
+  const relocated = relocateKnowledgeFolder(state, oldPath, [
+    ...targetFolderPath,
+    oldPath.at(-1)!,
+  ]);
+  if (relocated === state || targetFolderPath.length === 0) return relocated;
+  return {
+    ...relocated,
+    expandedFolderIds: Array.from(
+      new Set([
+        ...relocated.expandedFolderIds,
+        ...targetFolderPath.map((_, index) =>
+          knowledgeFolderId(
+            state.activeProjectId,
+            targetFolderPath.slice(0, index + 1),
+          ),
+        ),
+      ]),
+    ),
+    knowledgeExpandedBeforeCollapse: null,
+  };
+}
+
+function relocateKnowledgeFolder(
+  state: DesktopPrototypeState,
+  oldPath: string[],
+  nextPath: string[],
+): DesktopPrototypeState {
   if (knowledgePathsEqual(oldPath, nextPath)) {
-    return { ...state, editingKnowledgeFolderId: null };
+    return state;
   }
+  if (knowledgePathStartsWith(nextPath, oldPath)) return state;
   const hasSiblingCollision = getKnowledgeFolderPaths(state).some(
     (path) =>
       knowledgePathsEqual(path, nextPath) &&
       !knowledgePathsEqual(path, oldPath),
   );
   if (hasSiblingCollision) {
-    return { ...state, editingKnowledgeFolderId: null };
+    return state;
   }
   const replacePrefix = (path: string[]): string[] =>
     knowledgePathStartsWith(path, oldPath)
@@ -806,6 +852,12 @@ export function renameKnowledgeFolder(
     }),
     selectedKnowledgeFolderPath: state.selectedKnowledgeFolderPath
       ? replacePrefix(state.selectedKnowledgeFolderPath)
+      : null,
+    selectedKnowledgePath: state.selectedKnowledgePath
+      ? {
+          ...state.selectedKnowledgePath,
+          path: replacePrefix(state.selectedKnowledgePath.path),
+        }
       : null,
     selectedDocumentFolder:
       selectedDocument?.projectId === state.activeProjectId &&
@@ -1231,6 +1283,20 @@ export function createKnowledgeStructuralHistoryEntry(
       projectId: state.activeProjectId,
     };
   }
+  if (action.type === "move-knowledge-folder") {
+    const oldPath = getKnowledgeFolderPathById(state, action.folderId);
+    if (!oldPath) return null;
+    const newPath = [...action.targetFolderPath, oldPath.at(-1)!];
+    if (knowledgePathsEqual(oldPath, newPath)) return null;
+    return {
+      id,
+      kind: "rename-folder",
+      label: "Перемещение папки",
+      newPath,
+      oldPath,
+      projectId: state.activeProjectId,
+    };
+  }
   if (action.type === "move-knowledge-document") {
     const changed = placementsThatChanged(state, nextState);
     return changed.before.length > 0
@@ -1470,11 +1536,7 @@ export function applyKnowledgeStructuralHistoryEntry(
   if (entry.kind === "rename-folder") {
     const fromPath = direction === "undo" ? entry.newPath : entry.oldPath;
     const toPath = direction === "undo" ? entry.oldPath : entry.newPath;
-    return renameKnowledgeFolder(
-      state,
-      knowledgeFolderId(entry.projectId, fromPath),
-      toPath.at(-1) ?? "",
-    );
+    return relocateKnowledgeFolder(state, fromPath, toPath);
   }
   if (entry.kind === "move-document") {
     return applyPlacements(

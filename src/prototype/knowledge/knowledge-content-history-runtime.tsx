@@ -86,6 +86,7 @@ export type KnowledgeStructuralAction = Extract<
       | "create-knowledge-document"
       | "create-knowledge-folder"
       | "rename-knowledge-folder"
+      | "move-knowledge-folder"
       | "delete-knowledge-folder"
       | "soft-delete-knowledge-document"
       | "restore-knowledge-document"
@@ -101,6 +102,7 @@ function isStructuralAction(
     "create-knowledge-document",
     "create-knowledge-folder",
     "rename-knowledge-folder",
+    "move-knowledge-folder",
     "delete-knowledge-folder",
     "soft-delete-knowledge-document",
     "restore-knowledge-document",

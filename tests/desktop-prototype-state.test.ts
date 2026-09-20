@@ -3310,6 +3310,126 @@ describe("desktop structural prototype state", () => {
     expect(JSON.stringify(getKnowledgeTree(renamed))).toContain("Черновики");
   });
 
+  it("moves a Knowledge folder subtree between parents and back to the root", () => {
+    const initial = freshState();
+    const document = initial.documents.find(
+      (item) => item.projectId === initial.activeProjectId,
+    );
+    if (!document) throw new Error("Missing project document");
+    const state = {
+      ...initial,
+      knowledgeFolders: [
+        ...initial.knowledgeFolders,
+        {
+          id: "move-parent",
+          projectId: initial.activeProjectId,
+          path: ["Источник"],
+        },
+        {
+          id: "move-child",
+          projectId: initial.activeProjectId,
+          path: ["Источник", "Вложенная"],
+        },
+        {
+          id: "move-destination",
+          projectId: initial.activeProjectId,
+          path: ["Назначение"],
+        },
+      ],
+      documents: initial.documents.map((item) =>
+        item.id === document.id
+          ? {
+              ...item,
+              folder: "Вложенная",
+              folderPath: ["Источник", "Вложенная"],
+            }
+          : item,
+      ),
+      selectedKnowledgeFolderPath: ["Источник", "Вложенная"],
+      selectedKnowledgePath: {
+        kind: "folder" as const,
+        path: ["Источник", "Вложенная"],
+      },
+      expandedFolderIds: [
+        `${initial.activeProjectId}:Источник`,
+        `${initial.activeProjectId}:Источник/Вложенная`,
+      ],
+    };
+    const moved = desktopPrototypeReducer(state, {
+      type: "move-knowledge-folder",
+      folderId: `${initial.activeProjectId}:Источник`,
+      targetFolderPath: ["Назначение"],
+    });
+    expect(
+      moved.knowledgeFolders.find((folder) => folder.id === "move-child")?.path,
+    ).toEqual(["Назначение", "Источник", "Вложенная"]);
+    expect(getDocumentFolderPath(getDocumentById(moved, document.id)!)).toEqual(
+      ["Назначение", "Источник", "Вложенная"],
+    );
+    expect(moved.selectedKnowledgeFolderPath).toEqual([
+      "Назначение",
+      "Источник",
+      "Вложенная",
+    ]);
+    expect(moved.selectedKnowledgePath?.path).toEqual([
+      "Назначение",
+      "Источник",
+      "Вложенная",
+    ]);
+    expect(moved.expandedFolderIds).toContain(
+      `${initial.activeProjectId}:Назначение/Источник/Вложенная`,
+    );
+    expect(moved.expandedFolderIds).toContain(
+      `${initial.activeProjectId}:Назначение`,
+    );
+    expect(getDocumentById(moved, document.id)?.content).toEqual(
+      document.content,
+    );
+
+    const rooted = desktopPrototypeReducer(moved, {
+      type: "move-knowledge-folder",
+      folderId: `${initial.activeProjectId}:Назначение/Источник`,
+      targetFolderPath: [],
+    });
+    expect(
+      rooted.knowledgeFolders.find((folder) => folder.id === "move-child")
+        ?.path,
+    ).toEqual(["Источник", "Вложенная"]);
+    expect(
+      getDocumentFolderPath(getDocumentById(rooted, document.id)!),
+    ).toEqual(["Источник", "Вложенная"]);
+    expect(
+      desktopPrototypeReducer(state, {
+        type: "move-knowledge-folder",
+        folderId: `${initial.activeProjectId}:Источник`,
+        targetFolderPath: ["Источник", "Вложенная"],
+      }),
+    ).toBe(state);
+    expect(
+      desktopPrototypeReducer(state, {
+        type: "move-knowledge-folder",
+        folderId: `${initial.activeProjectId}:Источник`,
+        targetFolderPath: [],
+      }),
+    ).toBe(state);
+    const withCollision = {
+      ...state,
+      knowledgeFolders: [
+        ...state.knowledgeFolders,
+        {
+          id: "duplicate-name",
+          projectId: initial.activeProjectId,
+          path: ["Назначение", "Источник"],
+        },
+      ],
+    };
+    expect(desktopPrototypeReducer(withCollision, {
+      type: "move-knowledge-folder",
+      folderId: `${initial.activeProjectId}:Источник`,
+      targetFolderPath: ["Назначение"],
+    })).toBe(withCollision);
+  });
+
   it("starts renaming folders that are represented by document paths", () => {
     const state = freshState();
     const folderId = getKnowledgeTree(state).find(

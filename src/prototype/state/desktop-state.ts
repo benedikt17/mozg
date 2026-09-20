@@ -58,6 +58,7 @@ import {
   knowledgeFolderId,
   finishEditingKnowledgeFolder,
   moveKnowledgeDocument,
+  moveKnowledgeFolder,
   renameKnowledgeFolder,
   revealCurrentKnowledgeDocument,
   selectKnowledgeFolder,
@@ -1234,6 +1235,12 @@ export function desktopPrototypeReducer(
       return startEditingKnowledgeFolder(state, action.folderId);
     case "rename-knowledge-folder":
       return renameKnowledgeFolder(state, action.folderId, action.title);
+    case "move-knowledge-folder":
+      return moveKnowledgeFolder(
+        state,
+        action.folderId,
+        action.targetFolderPath,
+      );
     case "delete-knowledge-folder":
       return deleteKnowledgeFolder(state, action.folderId);
     case "soft-delete-knowledge-document":

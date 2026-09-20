@@ -72,6 +72,7 @@ type ActiveProjectFileUpload = {
 };
 
 const MOZG_FILE_DRAG_TYPE = "application/x-mozg-project-file-id";
+const MOZG_FOLDER_DRAG_TYPE = "application/x-mozg-project-folder-id";
 const PROJECT_FILE_PREVIEW_CACHE_LIMIT_BYTES = 96 * 1024 * 1024;
 const PROJECT_FILE_PREVIEW_CACHE_LIMIT_ENTRIES = 160;
 
@@ -343,6 +344,8 @@ export function FilesWorkspace({
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [draggingFileIds, setDraggingFileIds] = useState<string[]>([]);
   const [fileDropTarget, setFileDropTarget] = useState<string | null>(null);
+  const [draggingFolderId, setDraggingFolderId] = useState<string | null>(null);
+  const [folderDropTarget, setFolderDropTarget] = useState<string | null>(null);
   const [openedFileId, setOpenedFileId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<FilesViewMode>("grid");
   const [query, setQuery] = useState("");
@@ -905,6 +908,14 @@ export function FilesWorkspace({
       setFolders((current) =>
         current.map((row) => (row.id === updated.id ? updated : row)),
       );
+      if (targetParentFolderId) {
+        setCollapsedFolderIds((current) =>
+          (current ?? folders.map((item) => item.id)).filter(
+            (id) => id !== targetParentFolderId,
+          ),
+        );
+        setCollapsedBeforeAll(null);
+      }
       setActionMessage({
         kind: "info",
         text: `Папка перемещена: ${updated.name}`,
@@ -926,6 +937,30 @@ export function FilesWorkspace({
     draggingFileIds.some((id) =>
       files.some((file) => file.id === id && file.folderId !== targetFolderId),
     );
+
+  const canDropFolder = (targetParentFolderId: string | null) => {
+    if (!canMutate || !draggingFolderId) return false;
+    const moving = folders.find((folder) => folder.id === draggingFolderId);
+    if (!moving || moving.parentFolderId === targetParentFolderId) return false;
+    return (
+      targetParentFolderId === null ||
+      getProjectFolderMoveTargets(folders, moving.id).some(
+        ({ folder }) => folder.id === targetParentFolderId,
+      )
+    );
+  };
+
+  const dropFolder = (
+    folderId: string,
+    targetParentFolderId: string | null,
+  ) => {
+    if (folderId !== draggingFolderId || !canDropFolder(targetParentFolderId))
+      return;
+    const folder = folders.find((item) => item.id === folderId);
+    setFolderDropTarget(null);
+    setDraggingFolderId(null);
+    if (folder) void moveFolder(folder, targetParentFolderId);
+  };
 
   const moveDraggedFiles = async (
     ids: readonly string[],
@@ -1171,6 +1206,31 @@ export function FilesWorkspace({
         </label>
 
         <nav className={styles.sidebarNavigation} aria-label="Разделы файлов">
+          {draggingFolderId && canDropFolder(null) ? (
+            <div
+              className={`${styles.folderRootTarget} ${
+                folderDropTarget === "root" ? styles.folderRowDropTarget : ""
+              }`}
+              onDragOver={(event) => {
+                if (!event.dataTransfer.types.includes(MOZG_FOLDER_DRAG_TYPE))
+                  return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                setFolderDropTarget("root");
+              }}
+              onDragLeave={() => setFolderDropTarget(null)}
+              onDrop={(event) => {
+                const folderId = event.dataTransfer.getData(
+                  MOZG_FOLDER_DRAG_TYPE,
+                );
+                if (!folderId) return;
+                event.preventDefault();
+                dropFolder(folderId, null);
+              }}
+            >
+              Переместить папку на верхний уровень
+            </div>
+          ) : null}
           <button
             aria-current={location.kind === "inbox" ? "page" : undefined}
             className={`${styles.sidebarRow} ${
@@ -1251,9 +1311,25 @@ export function FilesWorkspace({
                       fileDropTarget === folder.id
                         ? styles.folderRowDropTarget
                         : ""
+                    } ${
+                      folderDropTarget === folder.id
+                        ? styles.folderRowDropTarget
+                        : ""
                     }`}
                     key={folder.id}
                     onDragOver={(event) => {
+                      if (
+                        event.dataTransfer.types.includes(MOZG_FOLDER_DRAG_TYPE)
+                      ) {
+                        if (!canDropFolder(folder.id)) {
+                          setFolderDropTarget(null);
+                          return;
+                        }
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                        setFolderDropTarget(folder.id);
+                        return;
+                      }
                       if (
                         !hasProjectFileDrag(event.dataTransfer) ||
                         !canDropFiles(folder.id)
@@ -1269,10 +1345,20 @@ export function FilesWorkspace({
                         !event.currentTarget.contains(
                           event.relatedTarget as Node,
                         )
-                      )
+                      ) {
                         setFileDropTarget(null);
+                        setFolderDropTarget(null);
+                      }
                     }}
                     onDrop={(event) => {
+                      const folderId = event.dataTransfer.getData(
+                        MOZG_FOLDER_DRAG_TYPE,
+                      );
+                      if (folderId) {
+                        event.preventDefault();
+                        dropFolder(folderId, folder.id);
+                        return;
+                      }
                       const ids = projectFileDragIds(event.dataTransfer);
                       if (!ids.length || !canDropFiles(folder.id)) return;
                       event.preventDefault();
@@ -1301,6 +1387,19 @@ export function FilesWorkspace({
                     <button
                       aria-current={active ? "page" : undefined}
                       className={`${styles.sidebarRow} ${styles.folderName}`}
+                      draggable={canMutate}
+                      onDragStart={(event) => {
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData(
+                          MOZG_FOLDER_DRAG_TYPE,
+                          folder.id,
+                        );
+                        setDraggingFolderId(folder.id);
+                      }}
+                      onDragEnd={() => {
+                        setDraggingFolderId(null);
+                        setFolderDropTarget(null);
+                      }}
                       onClick={() => openFolder(folder.id)}
                       type="button"
                     >
@@ -1517,20 +1616,34 @@ export function FilesWorkspace({
             isDropTarget ? styles.contentDropTarget : ""
           }`}
           onDragEnter={(event) => {
-            if (!canMutate || hasProjectFileDrag(event.dataTransfer)) return;
+            if (
+              !canMutate ||
+              hasProjectFileDrag(event.dataTransfer) ||
+              event.dataTransfer.types.includes(MOZG_FOLDER_DRAG_TYPE)
+            )
+              return;
             if (!event.dataTransfer.types.includes("Files")) return;
             event.preventDefault();
             setIsDropTarget(true);
           }}
           onDragLeave={() => setIsDropTarget(false)}
           onDragOver={(event) => {
-            if (!canMutate || hasProjectFileDrag(event.dataTransfer)) return;
+            if (
+              !canMutate ||
+              hasProjectFileDrag(event.dataTransfer) ||
+              event.dataTransfer.types.includes(MOZG_FOLDER_DRAG_TYPE)
+            )
+              return;
             if (!event.dataTransfer.types.includes("Files")) return;
             event.preventDefault();
             event.dataTransfer.dropEffect = "copy";
           }}
           onDrop={(event) => {
-            if (hasProjectFileDrag(event.dataTransfer)) return;
+            if (
+              hasProjectFileDrag(event.dataTransfer) ||
+              event.dataTransfer.types.includes(MOZG_FOLDER_DRAG_TYPE)
+            )
+              return;
             event.preventDefault();
             setIsDropTarget(false);
             if (!canMutate) return;

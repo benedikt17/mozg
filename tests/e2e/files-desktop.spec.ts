@@ -184,6 +184,77 @@ test("highlights a file folder and moves multiple selected files in one drag", a
   for (const row of rows) await expect(row).toBeVisible();
 });
 
+test("drags a nested folder into another folder and back to the top level", async ({
+  page,
+}, testInfo) => {
+  const suffix = `${process.env.GITHUB_RUN_ID ?? Date.now()}-${testInfo.retry}`;
+  const sourceName = `Drag Source ${suffix}`;
+  const childName = `Drag Child ${suffix}`;
+  const targetName = `Drag Target ${suffix}`;
+  await signIn(page);
+  await openFiles(page);
+  await createFolder(page, sourceName);
+  await createFolder(page, childName);
+
+  const navigation = page.getByRole("complementary", {
+    name: "Навигация по файлам",
+  });
+  await navigation.getByRole("button", { name: "Входящие" }).click();
+  await createFolder(page, targetName);
+  const child = navigation.getByRole("button", {
+    name: childName,
+    exact: true,
+  });
+  const target = navigation.getByRole("button", {
+    name: targetName,
+    exact: true,
+  });
+  await expect(child).toBeVisible();
+
+  const dragTo = async (source: typeof child, destination: typeof target) => {
+    const from = await source.boundingBox();
+    const to = await destination.boundingBox();
+    if (!from || !to) throw new Error("Missing folder drag target");
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, {
+      steps: 15,
+    });
+  };
+
+  await dragTo(child, target);
+  await expect(target.locator("..")).toHaveClass(/folderRowDropTarget/);
+  await page.mouse.up();
+  await expect(child.locator("..")).toHaveCSS("padding-left", "22px");
+  await navigation
+    .getByRole("button", { name: `Свернуть папку ${targetName}` })
+    .click();
+  await expect(child).toHaveCount(0);
+  await navigation
+    .getByRole("button", { name: `Развернуть папку ${targetName}` })
+    .click();
+
+  const childBox = await child.boundingBox();
+  if (!childBox) throw new Error("Missing nested folder");
+  await page.mouse.move(
+    childBox.x + childBox.width / 2,
+    childBox.y + childBox.height / 2,
+  );
+  await page.mouse.down();
+  const root = navigation.getByText("Переместить папку на верхний уровень");
+  await expect(root).toBeVisible();
+  const rootBox = await root.boundingBox();
+  if (!rootBox) throw new Error("Missing root folder target");
+  await page.mouse.move(
+    rootBox.x + rootBox.width / 2,
+    rootBox.y + rootBox.height / 2,
+    { steps: 15 },
+  );
+  await expect(root).toHaveClass(/folderRowDropTarget/);
+  await page.mouse.up();
+  await expect(child.locator("..")).toHaveCSS("padding-left", "8px");
+});
+
 test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder, previews and downloads an original", async ({
   page,
 }, testInfo) => {
