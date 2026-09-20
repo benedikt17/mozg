@@ -350,6 +350,10 @@ export function FilesWorkspace({
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [isDropTarget, setIsDropTarget] = useState(false);
+  const [collapsedFolderIds, setCollapsedFolderIds] = useState<string[]>([]);
+  const [collapsedBeforeAll, setCollapsedBeforeAll] = useState<string[] | null>(
+    null,
+  );
 
   const activeFolderId = location.kind === "folder" ? location.folderId : null;
 
@@ -434,7 +438,8 @@ export function FilesWorkspace({
     () => files.filter(isProjectFilePreviewable),
     [files],
   );
-  const folderTree = getProjectFolderTree(folders);
+  const folderTree = getProjectFolderTree(folders, collapsedFolderIds);
+  const allFoldersCollapsed = collapsedBeforeAll !== null;
   const title = query.trim()
     ? "Результаты поиска"
     : location.kind === "inbox"
@@ -479,6 +484,18 @@ export function FilesWorkspace({
     setLocation({ kind: "trash" });
   };
 
+  const toggleAllFolders = () => {
+    if (collapsedBeforeAll !== null) {
+      setCollapsedFolderIds(collapsedBeforeAll);
+      setCollapsedBeforeAll(null);
+      return;
+    }
+    setCollapsedBeforeAll(collapsedFolderIds);
+    setCollapsedFolderIds(
+      getProjectFolderTree(folders).map(({ folder }) => folder.id),
+    );
+  };
+
   const createFolder = async () => {
     if (!workspaceId || !canMutate) return;
     const name = newFolderName.trim();
@@ -494,6 +511,10 @@ export function FilesWorkspace({
         parentFolderId: activeFolderId,
       });
       setFolders((current) => [...current, folder]);
+      setCollapsedFolderIds((current) =>
+        current.filter((folderId) => folderId !== activeFolderId),
+      );
+      setCollapsedBeforeAll(null);
       setIsCreatingFolder(false);
       setNewFolderName("");
       setStatus("loading");
@@ -925,6 +946,24 @@ export function FilesWorkspace({
             className={styles.sidebarToolbar}
             aria-label="Действия с папками"
           >
+            <IconButton
+              disabled={folderTree.length === 0}
+              icon={
+                <UiIcon name={allFoldersCollapsed ? "expand" : "collapse"} />
+              }
+              label={
+                allFoldersCollapsed
+                  ? "Восстановить папки"
+                  : "Свернуть все папки"
+              }
+              onClick={toggleAllFolders}
+              title={
+                allFoldersCollapsed
+                  ? "Восстановить папки"
+                  : "Свернуть все папки"
+              }
+              variant="ghost"
+            />
             <IconButton
               disabled={!canMutate || isCreatingFolder}
               icon={<UiIcon name="folder-plus" />}
@@ -2557,6 +2596,7 @@ export function getProjectFolderBreadcrumbs(
 
 export function getProjectFolderTree(
   folders: readonly ProjectFolderRecord[],
+  collapsedFolderIds: readonly string[] = [],
 ): Array<{ folder: ProjectFolderRecord; depth: number }> {
   const activeFolders = folders.filter((folder) => !folder.deletedAt);
   const childrenByParent = new Map<string | null, ProjectFolderRecord[]>();
@@ -2574,12 +2614,13 @@ export function getProjectFolderTree(
 
   const result: Array<{ folder: ProjectFolderRecord; depth: number }> = [];
   const visited = new Set<string>();
+  const collapsed = new Set(collapsedFolderIds);
   const visit = (parentFolderId: string | null, depth: number) => {
     for (const folder of childrenByParent.get(parentFolderId) ?? []) {
       if (visited.has(folder.id)) continue;
       visited.add(folder.id);
       result.push({ folder, depth });
-      visit(folder.id, depth + 1);
+      if (!collapsed.has(folder.id)) visit(folder.id, depth + 1);
     }
   };
   visit(null, 0);

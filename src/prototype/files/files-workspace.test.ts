@@ -67,6 +67,25 @@ describe("getProjectFolderTree", () => {
       ["c", 1],
     ]);
   });
+
+  it("keeps only root folders visible when every folder is collapsed", () => {
+    const folders = [
+      folder("a", "Персонажи", null),
+      folder("b", "Яга", "a"),
+      folder("c", "Концепты", "b"),
+      folder("d", "Мир", null),
+    ];
+
+    expect(
+      getProjectFolderTree(
+        folders,
+        folders.map((item) => item.id),
+      ).map(({ folder: item, depth }) => [item.id, depth]),
+    ).toEqual([
+      ["d", 0],
+      ["a", 0],
+    ]);
+  });
 });
 
 describe("getProjectFolderMoveTargets", () => {
