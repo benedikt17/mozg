@@ -3423,11 +3423,13 @@ describe("desktop structural prototype state", () => {
         },
       ],
     };
-    expect(desktopPrototypeReducer(withCollision, {
-      type: "move-knowledge-folder",
-      folderId: `${initial.activeProjectId}:Источник`,
-      targetFolderPath: ["Назначение"],
-    })).toBe(withCollision);
+    expect(
+      desktopPrototypeReducer(withCollision, {
+        type: "move-knowledge-folder",
+        folderId: `${initial.activeProjectId}:Источник`,
+        targetFolderPath: ["Назначение"],
+      }),
+    ).toBe(withCollision);
   });
 
   it("starts renaming folders that are represented by document paths", () => {
