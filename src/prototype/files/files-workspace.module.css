@@ -160,6 +160,14 @@
   font-weight: 600;
 }
 
+.sidebarRowDropTarget,
+.sidebarRowDropTarget:hover,
+.sidebarRowDropTarget:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--focus) 18%, var(--surface) 82%);
+}
+
 .sidebarDivider {
   height: 1px;
   margin: 8px 0;
@@ -199,6 +207,75 @@
 .folderTree {
   display: grid;
   gap: 2px;
+}
+
+.folderRow {
+  display: flex;
+  align-items: center;
+  min-height: var(--sidebar-row-regular-height);
+  border-radius: var(--sidebar-row-radius);
+  color: var(--text-2);
+}
+
+.folderRow:hover,
+.folderRow:focus-within {
+  background: var(--sidebar-hover-surface);
+  color: var(--text);
+}
+
+.folderRowActive,
+.folderRowActive:hover,
+.folderRowActive:focus-within {
+  background: color-mix(in srgb, #ff5200 12%, var(--surface) 88%);
+  color: #ff5200;
+  font-weight: 600;
+}
+
+.folderRowDropTarget,
+.folderRowDropTarget:hover,
+.folderRowDropTarget:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--focus) 18%, var(--surface) 82%);
+}
+
+.folderToggle {
+  display: flex;
+  flex: 0 0 20px;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  min-height: 28px;
+  border: 0;
+  border-radius: var(--sidebar-row-radius);
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+.folderToggle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.folderToggle :global(.ui-icon) {
+  width: 14px;
+  height: 14px;
+}
+
+.folderName {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-left: 2px;
+  color: inherit;
+  font-weight: inherit;
+}
+
+.folderName:hover,
+.folderName:focus-visible {
+  background: transparent;
+  color: inherit;
 }
 
 .sidebarEmpty {
@@ -262,10 +339,30 @@
   height: 17px;
 }
 
+.multiSelectButton {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  padding: 5px 7px;
+  color: var(--text-2);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.multiSelectButton:hover,
+.multiSelectButton:focus-visible,
+.multiSelectButton[aria-pressed="true"] {
+  background: var(--sidebar-hover-surface);
+}
+
 .headingBlock {
   display: flex;
   min-width: 0;
   align-items: center;
+  gap: 8px;
 }
 
 .headingBlock h2 {
@@ -275,6 +372,14 @@
   font-size: 13px;
   line-height: 18px;
   font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selectionCount {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -409,6 +514,7 @@
 }
 
 .fileTile {
+  position: relative;
   min-width: 0;
   display: grid;
   grid-template-rows: auto auto auto;
@@ -420,6 +526,36 @@
   color: var(--text-2);
   font: inherit;
   text-align: left;
+}
+
+.tileSelectionMark,
+.selectionMark {
+  display: grid;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.tileSelectionMark {
+  position: absolute;
+  z-index: 1;
+  top: 12px;
+  left: 12px;
+  box-shadow: 0 1px 4px #0002;
+}
+
+.fileTileSelected .tileSelectionMark,
+.entryRowSelected .selectionMark {
+  border-color: #ff5200;
+  background: #ff5200;
+  color: white;
 }
 
 .fileTile:hover,

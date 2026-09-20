@@ -48,6 +48,142 @@ async function createFolder(page: Page, name: string): Promise<void> {
   ).toHaveAttribute("aria-current", "page");
 }
 
+test("collapses all file folders and expands individual branches", async ({
+  page,
+}, testInfo) => {
+  const suffix = `${process.env.GITHUB_RUN_ID ?? Date.now()}-${testInfo.retry}`;
+  const parentName = `Tree Parent ${suffix}`;
+  const childName = `Tree Child ${suffix}`;
+  const grandchildName = `Tree Grandchild ${suffix}`;
+  await signIn(page);
+  await openFiles(page);
+
+  await createFolder(page, parentName);
+  await createFolder(page, childName);
+  await createFolder(page, grandchildName);
+
+  const navigation = page.getByRole("complementary", {
+    name: "Навигация по файлам",
+  });
+  const parent = navigation.getByRole("button", {
+    name: parentName,
+    exact: true,
+  });
+  const child = navigation.getByRole("button", {
+    name: childName,
+    exact: true,
+  });
+  const grandchild = navigation.getByRole("button", {
+    name: grandchildName,
+    exact: true,
+  });
+  const collapseAll = navigation.getByRole("button", {
+    name: "Свернуть все папки",
+  });
+  await expect(grandchild).toBeVisible();
+  await collapseAll.click();
+  await expect(child).toHaveCount(0);
+
+  const expandParent = navigation.getByRole("button", {
+    name: `Развернуть папку ${parentName}`,
+  });
+  await expect(expandParent).toHaveAttribute("aria-expanded", "false");
+  await expandParent.click();
+  await expect(child).toBeVisible();
+  await expect(grandchild).toHaveCount(0);
+
+  await navigation
+    .getByRole("button", { name: `Развернуть папку ${childName}` })
+    .click();
+  await expect(grandchild).toBeVisible();
+  await navigation
+    .getByRole("button", { name: `Свернуть папку ${parentName}` })
+    .click();
+  await expect(child).toHaveCount(0);
+  await expandParent.click();
+  await expect(grandchild).toBeVisible();
+
+  await parent.click();
+  await expect(parent).toHaveAttribute("aria-current", "page");
+  await expect(child).toBeVisible();
+  await expect(collapseAll).toBeVisible();
+
+  await page.reload();
+  await openFiles(page);
+  await expect(parent).toBeVisible();
+  await expect(child).toHaveCount(0);
+  await navigation.getByRole("button", { name: "Восстановить папки" }).click();
+  await expect(grandchild).toBeVisible();
+});
+
+test("highlights a file folder and moves multiple selected files in one drag", async ({
+  page,
+}, testInfo) => {
+  const suffix = `${process.env.GITHUB_RUN_ID ?? Date.now()}-${testInfo.retry}`;
+  const targetName = `Batch Target ${suffix}`;
+  const names = [`batch-one-${suffix}.txt`, `batch-two-${suffix}.txt`];
+  await signIn(page);
+  await openFiles(page);
+  await createFolder(page, targetName);
+
+  const navigation = page.getByRole("complementary", {
+    name: "Навигация по файлам",
+  });
+  const target = navigation.getByRole("button", {
+    name: targetName,
+    exact: true,
+  });
+  await navigation.getByRole("button", { name: "Входящие" }).click();
+
+  const upload = page.getByRole("button", {
+    name: "Загрузить файл",
+    exact: true,
+  });
+  const chooserPromise = page.waitForEvent("filechooser");
+  await upload.click();
+  const chooser = await chooserPromise;
+  await chooser.setFiles(
+    names.map((name) => ({
+      name,
+      mimeType: "text/plain",
+      buffer: Buffer.from(name),
+    })),
+  );
+
+  const rows = names.map((name) =>
+    page.getByRole("button", { name: new RegExp(name) }),
+  );
+  for (const row of rows) await expect(row).toBeVisible();
+  await page.getByRole("button", { name: "Выбрать несколько" }).click();
+  for (const row of rows) {
+    await row.click();
+    await expect(row).toHaveAttribute("aria-pressed", "true");
+  }
+  await expect(page.getByText("Выбрано: 2")).toBeVisible();
+  await page.getByRole("button", { name: "Список", exact: true }).click();
+  await expect(rows[0]).toHaveAttribute("aria-pressed", "true");
+
+  const sourceBox = await rows[0].boundingBox();
+  const targetBox = await target.boundingBox();
+  if (!sourceBox || !targetBox) throw new Error("Missing drag target");
+  await page.mouse.move(
+    sourceBox.x + sourceBox.width / 2,
+    sourceBox.y + sourceBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    targetBox.x + targetBox.width / 2,
+    targetBox.y + targetBox.height / 2,
+    { steps: 15 },
+  );
+  await expect(target.locator("..")).toHaveClass(/folderRowDropTarget/);
+  await page.mouse.up();
+  for (const row of rows) await expect(row).toHaveCount(0);
+
+  await target.click();
+  for (const row of rows) await expect(row).toBeVisible();
+});
+
 test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder, previews and downloads an original", async ({
   page,
 }, testInfo) => {
