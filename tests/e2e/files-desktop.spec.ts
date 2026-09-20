@@ -48,6 +48,67 @@ async function createFolder(page: Page, name: string): Promise<void> {
   ).toHaveAttribute("aria-current", "page");
 }
 
+test("collapses all file folders and expands individual branches", async ({
+  page,
+}, testInfo) => {
+  const suffix = `${process.env.GITHUB_RUN_ID ?? Date.now()}-${testInfo.retry}`;
+  const parentName = `Tree Parent ${suffix}`;
+  const childName = `Tree Child ${suffix}`;
+  const grandchildName = `Tree Grandchild ${suffix}`;
+  await signIn(page);
+  await openFiles(page);
+
+  await createFolder(page, parentName);
+  await createFolder(page, childName);
+  await createFolder(page, grandchildName);
+
+  const navigation = page.getByRole("complementary", {
+    name: "Навигация по файлам",
+  });
+  const parent = navigation.getByRole("button", {
+    name: parentName,
+    exact: true,
+  });
+  const child = navigation.getByRole("button", {
+    name: childName,
+    exact: true,
+  });
+  const grandchild = navigation.getByRole("button", {
+    name: grandchildName,
+    exact: true,
+  });
+  const collapseAll = navigation.getByRole("button", {
+    name: "Свернуть все папки",
+  });
+  await expect(grandchild).toBeVisible();
+  await collapseAll.click();
+  await expect(child).toHaveCount(0);
+
+  const expandParent = navigation.getByRole("button", {
+    name: `Развернуть папку ${parentName}`,
+  });
+  await expect(expandParent).toHaveAttribute("aria-expanded", "false");
+  await expandParent.click();
+  await expect(child).toBeVisible();
+  await expect(grandchild).toHaveCount(0);
+
+  await navigation
+    .getByRole("button", { name: `Развернуть папку ${childName}` })
+    .click();
+  await expect(grandchild).toBeVisible();
+  await navigation
+    .getByRole("button", { name: `Свернуть папку ${parentName}` })
+    .click();
+  await expect(child).toHaveCount(0);
+  await expandParent.click();
+  await expect(grandchild).toBeVisible();
+
+  await parent.click();
+  await expect(parent).toHaveAttribute("aria-current", "page");
+  await expect(child).toBeVisible();
+  await expect(collapseAll).toBeVisible();
+});
+
 test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder, previews and downloads an original", async ({
   page,
 }, testInfo) => {

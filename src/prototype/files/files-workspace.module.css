@@ -201,6 +201,67 @@
   gap: 2px;
 }
 
+.folderRow {
+  display: flex;
+  align-items: center;
+  min-height: var(--sidebar-row-regular-height);
+  border-radius: var(--sidebar-row-radius);
+  color: var(--text-2);
+}
+
+.folderRow:hover,
+.folderRow:focus-within {
+  background: var(--sidebar-hover-surface);
+  color: var(--text);
+}
+
+.folderRowActive,
+.folderRowActive:hover,
+.folderRowActive:focus-within {
+  background: color-mix(in srgb, #ff5200 12%, var(--surface) 88%);
+  color: #ff5200;
+  font-weight: 600;
+}
+
+.folderToggle {
+  display: flex;
+  flex: 0 0 20px;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  min-height: 28px;
+  border: 0;
+  border-radius: var(--sidebar-row-radius);
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+.folderToggle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.folderToggle :global(.ui-icon) {
+  width: 14px;
+  height: 14px;
+}
+
+.folderName {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-left: 2px;
+  color: inherit;
+  font-weight: inherit;
+}
+
+.folderName:hover,
+.folderName:focus-visible {
+  background: transparent;
+  color: inherit;
+}
+
 .sidebarEmpty {
   padding: 5px 8px;
   color: var(--text-3);

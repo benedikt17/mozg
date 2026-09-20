@@ -439,6 +439,11 @@ export function FilesWorkspace({
     [files],
   );
   const folderTree = getProjectFolderTree(folders, collapsedFolderIds);
+  const folderIdsWithChildren = new Set(
+    folders
+      .filter((folder) => !folder.deletedAt && folder.parentFolderId)
+      .map((folder) => folder.parentFolderId),
+  );
   const allFoldersCollapsed = collapsedBeforeAll !== null;
   const title = query.trim()
     ? "Результаты поиска"
@@ -494,6 +499,15 @@ export function FilesWorkspace({
     setCollapsedFolderIds(
       getProjectFolderTree(folders).map(({ folder }) => folder.id),
     );
+  };
+
+  const toggleFolder = (folderId: string) => {
+    setCollapsedFolderIds((current) =>
+      current.includes(folderId)
+        ? current.filter((id) => id !== folderId)
+        : [...current, folderId],
+    );
+    setCollapsedBeforeAll(null);
   };
 
   const createFolder = async () => {
@@ -1088,42 +1102,65 @@ export function FilesWorkspace({
 
           <div className={styles.folderTree}>
             {folderTree.length > 0 ? (
-              folderTree.map(({ folder, depth }) => (
-                <button
-                  aria-current={
-                    location.kind === "folder" &&
-                    location.folderId === folder.id
-                      ? "page"
-                      : undefined
-                  }
-                  className={`${styles.sidebarRow} ${
-                    location.kind === "folder" &&
-                    location.folderId === folder.id
-                      ? styles.sidebarRowActive
-                      : ""
-                  }`}
-                  key={folder.id}
-                  onClick={() => openFolder(folder.id)}
-                  onDragOver={(event) => {
-                    if (!hasProjectFileDrag(event.dataTransfer) || !canMutate) {
-                      return;
-                    }
-                    event.preventDefault();
-                    event.dataTransfer.dropEffect = "move";
-                  }}
-                  onDrop={(event) => {
-                    const fileId = projectFileDragId(event.dataTransfer);
-                    if (!fileId || !canMutate) return;
-                    event.preventDefault();
-                    moveDraggedFile(fileId, folder.id);
-                  }}
-                  style={{ paddingLeft: `${8 + depth * 14}px` }}
-                  type="button"
-                >
-                  <UiIcon name="folder" />
-                  <span>{folder.name}</span>
-                </button>
-              ))
+              folderTree.map(({ folder, depth }) => {
+                const hasChildren = folderIdsWithChildren.has(folder.id);
+                const expanded = !collapsedFolderIds.includes(folder.id);
+                const active =
+                  location.kind === "folder" && location.folderId === folder.id;
+                return (
+                  <div
+                    className={`${styles.folderRow} ${
+                      active ? styles.folderRowActive : ""
+                    }`}
+                    key={folder.id}
+                    onDragOver={(event) => {
+                      if (
+                        !hasProjectFileDrag(event.dataTransfer) ||
+                        !canMutate
+                      ) {
+                        return;
+                      }
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                    }}
+                    onDrop={(event) => {
+                      const fileId = projectFileDragId(event.dataTransfer);
+                      if (!fileId || !canMutate) return;
+                      event.preventDefault();
+                      moveDraggedFile(fileId, folder.id);
+                    }}
+                    style={{ paddingLeft: `${8 + depth * 14}px` }}
+                  >
+                    {hasChildren ? (
+                      <button
+                        aria-expanded={expanded}
+                        aria-label={`${expanded ? "Свернуть" : "Развернуть"} папку ${folder.name}`}
+                        className={styles.folderToggle}
+                        onClick={() => toggleFolder(folder.id)}
+                        type="button"
+                      >
+                        <UiIcon
+                          name={expanded ? "chevron-down" : "chevron-right"}
+                        />
+                      </button>
+                    ) : (
+                      <span
+                        aria-hidden="true"
+                        className={styles.folderToggle}
+                      />
+                    )}
+                    <button
+                      aria-current={active ? "page" : undefined}
+                      className={`${styles.sidebarRow} ${styles.folderName}`}
+                      onClick={() => openFolder(folder.id)}
+                      type="button"
+                    >
+                      <UiIcon name="folder" />
+                      <span>{folder.name}</span>
+                    </button>
+                  </div>
+                );
+              })
             ) : isCreatingFolder ? null : (
               <div className={styles.sidebarEmpty}>Папок пока нет</div>
             )}
