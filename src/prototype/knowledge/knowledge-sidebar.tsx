@@ -6,6 +6,7 @@ import {
   getKnowledgeTrashDocuments,
   getKnowledgeTree,
   knowledgePathsEqual,
+  knowledgePathStartsWith,
   type DesktopPrototypeAction,
   type DesktopPrototypeState,
   type KnowledgeTreeNode,
@@ -47,6 +48,9 @@ export function KnowledgeSidebar({
   const treeRef = useRef<HTMLElement>(null);
   const [knowledgeDropTarget, setKnowledgeDropTarget] =
     useState<KnowledgeDropTarget>(null);
+  const [draggingFolderPath, setDraggingFolderPath] = useState<string[] | null>(
+    null,
+  );
   const [revealDocumentId, setRevealDocumentId] = useState<string | null>(null);
   const [openKnowledgeMenu, setOpenKnowledgeMenu] =
     useState<KnowledgeMenuTarget>(null);
@@ -186,6 +190,49 @@ export function KnowledgeSidebar({
         aria-label="Иерархия документов"
         ref={treeRef}
       >
+        <div
+          className={`knowledge-folder-root-target ${
+            knowledgeDropTarget?.kind === "root" ? "is-drop-target" : ""
+          }`}
+          onDragOver={(event) => {
+            if (
+              !event.dataTransfer.types.includes(knowledgeFolderDragType) ||
+              !draggingFolderPath ||
+              draggingFolderPath.length < 2 ||
+              tree.some(
+                (node) =>
+                  node.kind === "folder" &&
+                  node.title === draggingFolderPath.at(-1),
+              )
+            )
+              return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            setKnowledgeDropTarget({ kind: "root" });
+          }}
+          onDragLeave={() => setKnowledgeDropTarget(null)}
+          onDrop={(event) => {
+            const folderId = event.dataTransfer.getData(
+              knowledgeFolderDragType,
+            );
+            if (
+              !folderId ||
+              !draggingFolderPath ||
+              draggingFolderPath.length < 2
+            )
+              return;
+            event.preventDefault();
+            dispatch({
+              type: "move-knowledge-folder",
+              folderId,
+              targetFolderPath: [],
+            });
+            setKnowledgeDropTarget(null);
+            setDraggingFolderPath(null);
+          }}
+        >
+          Переместить папку на верхний уровень
+        </div>
         {tree.length > 0 ? (
           tree.map((node) => (
             <KnowledgeTreeNodeView
@@ -196,6 +243,8 @@ export function KnowledgeSidebar({
               node={node}
               onKnowledgeMenuChange={setOpenKnowledgeMenu}
               onDropTargetChange={setKnowledgeDropTarget}
+              draggingFolderPath={draggingFolderPath}
+              onDraggingFolderPathChange={setDraggingFolderPath}
               openKnowledgeMenu={openKnowledgeMenu}
               state={state}
               linkPickerSourceDocumentId={linkPickerSourceDocumentId}
@@ -234,6 +283,7 @@ export function KnowledgeSidebar({
 
 type KnowledgeDropTarget =
   | { kind: "folder"; id: string }
+  | { kind: "root" }
   | { kind: "document"; id: string; position: "before" | "after" }
   | null;
 
@@ -243,6 +293,7 @@ type KnowledgeMenuTarget = {
 } | null;
 
 const knowledgeDocumentDragType = "application/x-mozg-knowledge-document";
+const knowledgeFolderDragType = "application/x-mozg-knowledge-folder";
 
 function KnowledgeTreeNodeView({
   node,
@@ -250,6 +301,8 @@ function KnowledgeTreeNodeView({
   activeDocumentId,
   dispatch,
   dropTarget,
+  draggingFolderPath,
+  onDraggingFolderPathChange,
   onKnowledgeMenuChange,
   onDropTargetChange,
   openKnowledgeMenu,
@@ -261,6 +314,8 @@ function KnowledgeTreeNodeView({
   activeDocumentId: string | undefined;
   dispatch: Dispatch;
   dropTarget: KnowledgeDropTarget;
+  draggingFolderPath: string[] | null;
+  onDraggingFolderPathChange: (path: string[] | null) => void;
   onKnowledgeMenuChange: (target: KnowledgeMenuTarget) => void;
   onDropTargetChange: (target: KnowledgeDropTarget) => void;
   openKnowledgeMenu: KnowledgeMenuTarget;
@@ -293,6 +348,25 @@ function KnowledgeTreeNodeView({
     const handleFolderDragOver = (
       event: React.DragEvent<HTMLElement>,
     ): void => {
+      if (event.dataTransfer.types.includes(knowledgeFolderDragType)) {
+        if (
+          !draggingFolderPath ||
+          knowledgePathStartsWith(node.path, draggingFolderPath) ||
+          knowledgePathsEqual(node.path, draggingFolderPath.slice(0, -1)) ||
+          node.children.some(
+            (child) =>
+              child.kind === "folder" &&
+              child.title === draggingFolderPath.at(-1),
+          )
+        ) {
+          onDropTargetChange(null);
+          return;
+        }
+      } else if (
+        !event.dataTransfer.types.includes(knowledgeDocumentDragType)
+      ) {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       event.dataTransfer.dropEffect = "move";
@@ -301,6 +375,19 @@ function KnowledgeTreeNodeView({
     const handleFolderDrop = (event: React.DragEvent<HTMLElement>): void => {
       event.preventDefault();
       event.stopPropagation();
+      const folderId = event.dataTransfer.getData(knowledgeFolderDragType);
+      if (folderId) {
+        if (dropTarget?.kind === "folder" && dropTarget.id === node.id) {
+          dispatch({
+            type: "move-knowledge-folder",
+            folderId,
+            targetFolderPath: node.path,
+          });
+        }
+        onDropTargetChange(null);
+        onDraggingFolderPathChange(null);
+        return;
+      }
       const documentId = event.dataTransfer.getData(knowledgeDocumentDragType);
       onDropTargetChange(null);
       if (!documentId) return;
@@ -352,6 +439,16 @@ function KnowledgeTreeNodeView({
             <button
               aria-expanded={expanded}
               className={folderClassName}
+              draggable={!linkPickerSourceDocumentId}
+              onDragStart={(event) => {
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData(knowledgeFolderDragType, node.id);
+                onDraggingFolderPathChange(node.path);
+              }}
+              onDragEnd={() => {
+                onDropTargetChange(null);
+                onDraggingFolderPathChange(null);
+              }}
               onClick={toggleFolder}
               type="button"
             >
@@ -403,6 +500,8 @@ function KnowledgeTreeNodeView({
                 node={child}
                 onKnowledgeMenuChange={onKnowledgeMenuChange}
                 onDropTargetChange={onDropTargetChange}
+                draggingFolderPath={draggingFolderPath}
+                onDraggingFolderPathChange={onDraggingFolderPathChange}
                 openKnowledgeMenu={openKnowledgeMenu}
                 state={state}
                 linkPickerSourceDocumentId={linkPickerSourceDocumentId}
@@ -456,6 +555,8 @@ function KnowledgeTreeNodeView({
         draggable={!linkPickerSourceDocumentId}
         onDragEnd={() => onDropTargetChange(null)}
         onDragOver={(event) => {
+          if (!event.dataTransfer.types.includes(knowledgeDocumentDragType))
+            return;
           event.preventDefault();
           event.stopPropagation();
           event.dataTransfer.dropEffect = "move";

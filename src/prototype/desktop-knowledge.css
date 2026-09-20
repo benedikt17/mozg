@@ -215,6 +215,25 @@
     padding: 6px 8px 12px;
   }
 
+  .knowledge-folder-root-target {
+    position: sticky;
+    z-index: 2;
+    top: 0;
+    margin: 2px 0 8px;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-md);
+    padding: 8px;
+    color: var(--text-2);
+    font-size: 12px;
+    text-align: center;
+  }
+
+  .knowledge-folder-root-target.is-drop-target {
+    border-color: var(--accent);
+    background: var(--surface-selected);
+    color: var(--accent-2);
+  }
+
   .knowledge-tree-branch,
   .knowledge-tree-children {
     display: grid;

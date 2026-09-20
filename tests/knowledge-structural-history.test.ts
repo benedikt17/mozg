@@ -160,6 +160,40 @@ describe("Knowledge structural history", () => {
     expect(redoRename.selectedKnowledgeFolderPath).toEqual(movedPath);
   });
 
+  it("undoes and redoes moving a nested Knowledge folder", () => {
+    const history = new KnowledgeStructuralHistory();
+    const initial = freshState();
+    const created = perform(
+      { ...initial, selectedKnowledgeFolderPath: ["Мир"] },
+      history,
+      {
+        type: "create-knowledge-folder",
+      },
+    );
+    const folderId = `${initial.activeProjectId}:Мир/Новая папка`;
+    const moved = perform(created, history, {
+      type: "move-knowledge-folder",
+      folderId,
+      targetFolderPath: ["Персонажи"],
+    });
+    expect(
+      moved.knowledgeFolders.find(
+        (folder) => folder.id === created.knowledgeFolders.at(-1)?.id,
+      )?.path,
+    ).toEqual(["Персонажи", "Новая папка"]);
+    expect(history.getUndoEntry()?.label).toBe("Перемещение папки");
+    const undone = undo(moved, history);
+    expect(undone.knowledgeFolders.at(-1)?.path).toEqual([
+      "Мир",
+      "Новая папка",
+    ]);
+    const redone = redo(undone, history);
+    expect(redone.knowledgeFolders.at(-1)?.path).toEqual([
+      "Персонажи",
+      "Новая папка",
+    ]);
+  });
+
   it("moves a document back to its exact parent and order without changing Markdown", () => {
     const history = new KnowledgeStructuralHistory();
     const initial = freshState();

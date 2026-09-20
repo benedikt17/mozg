@@ -58,6 +58,7 @@ import {
   knowledgeFolderId,
   finishEditingKnowledgeFolder,
   moveKnowledgeDocument,
+  moveKnowledgeFolder,
   renameKnowledgeFolder,
   revealCurrentKnowledgeDocument,
   selectKnowledgeFolder,
@@ -710,6 +711,19 @@ export function desktopPrototypeReducer(
       return hydrateDesktopDomain(state, action.snapshot);
     case "switch-project":
       return switchToProject(state, action.projectId);
+    case "rename-project": {
+      const project = state.projects.find(
+        (candidate) => candidate.id === action.projectId,
+      );
+      const name = action.name.trim();
+      if (!project || !name || project.name === name) return state;
+      return {
+        ...state,
+        projects: state.projects.map((candidate) =>
+          candidate.id === project.id ? { ...candidate, name } : candidate,
+        ),
+      };
+    }
     case "toggle-project-rail":
       return {
         ...state,
@@ -1234,6 +1248,12 @@ export function desktopPrototypeReducer(
       return startEditingKnowledgeFolder(state, action.folderId);
     case "rename-knowledge-folder":
       return renameKnowledgeFolder(state, action.folderId, action.title);
+    case "move-knowledge-folder":
+      return moveKnowledgeFolder(
+        state,
+        action.folderId,
+        action.targetFolderPath,
+      );
     case "delete-knowledge-folder":
       return deleteKnowledgeFolder(state, action.folderId);
     case "soft-delete-knowledge-document":

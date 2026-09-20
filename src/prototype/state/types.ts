@@ -162,6 +162,7 @@ export type DesktopPrototypeState = {
 export type DesktopPrototypeAction =
   | { type: "hydrate-domain"; snapshot: DesktopDomainSnapshot }
   | { type: "switch-project"; projectId: string }
+  | { type: "rename-project"; projectId: string; name: string }
   | { type: "toggle-project-rail" }
   | { type: "create-project" }
   | { type: "switch-section"; section: ProjectSection }
@@ -301,6 +302,11 @@ export type DesktopPrototypeAction =
   | { type: "create-knowledge-folder" }
   | { type: "start-editing-knowledge-folder"; folderId: string }
   | { type: "rename-knowledge-folder"; folderId: string; title: string }
+  | {
+      type: "move-knowledge-folder";
+      folderId: string;
+      targetFolderPath: string[];
+    }
   | { type: "delete-knowledge-folder"; folderId: string }
   | {
       type: "soft-delete-knowledge-document";

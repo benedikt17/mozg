@@ -209,6 +209,19 @@
   gap: 2px;
 }
 
+.folderRootTarget {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  margin: 2px 0 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--sidebar-row-radius);
+  padding: 8px;
+  color: var(--text-2);
+  font-size: 12px;
+  text-align: center;
+}
+
 .folderRow {
   display: flex;
   align-items: center;
