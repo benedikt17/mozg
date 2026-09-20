@@ -190,42 +190,49 @@ export function KnowledgeSidebar({
         aria-label="Иерархия документов"
         ref={treeRef}
       >
-        {draggingFolderPath &&
-        draggingFolderPath.length > 1 &&
-        !tree.some(
-          (node) =>
-            node.kind === "folder" && node.title === draggingFolderPath.at(-1),
-        ) ? (
-          <div
-            className={`knowledge-folder-root-target ${
-              knowledgeDropTarget?.kind === "root" ? "is-drop-target" : ""
-            }`}
-            onDragOver={(event) => {
-              if (!event.dataTransfer.types.includes(knowledgeFolderDragType))
-                return;
-              event.preventDefault();
-              event.dataTransfer.dropEffect = "move";
-              setKnowledgeDropTarget({ kind: "root" });
-            }}
-            onDragLeave={() => setKnowledgeDropTarget(null)}
-            onDrop={(event) => {
-              const folderId = event.dataTransfer.getData(
-                knowledgeFolderDragType,
-              );
-              if (!folderId) return;
-              event.preventDefault();
-              dispatch({
-                type: "move-knowledge-folder",
-                folderId,
-                targetFolderPath: [],
-              });
-              setKnowledgeDropTarget(null);
-              setDraggingFolderPath(null);
-            }}
-          >
-            Переместить папку на верхний уровень
-          </div>
-        ) : null}
+        <div
+          className={`knowledge-folder-root-target ${
+            knowledgeDropTarget?.kind === "root" ? "is-drop-target" : ""
+          }`}
+          onDragOver={(event) => {
+            if (
+              !event.dataTransfer.types.includes(knowledgeFolderDragType) ||
+              !draggingFolderPath ||
+              draggingFolderPath.length < 2 ||
+              tree.some(
+                (node) =>
+                  node.kind === "folder" &&
+                  node.title === draggingFolderPath.at(-1),
+              )
+            )
+              return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            setKnowledgeDropTarget({ kind: "root" });
+          }}
+          onDragLeave={() => setKnowledgeDropTarget(null)}
+          onDrop={(event) => {
+            const folderId = event.dataTransfer.getData(
+              knowledgeFolderDragType,
+            );
+            if (
+              !folderId ||
+              !draggingFolderPath ||
+              draggingFolderPath.length < 2
+            )
+              return;
+            event.preventDefault();
+            dispatch({
+              type: "move-knowledge-folder",
+              folderId,
+              targetFolderPath: [],
+            });
+            setKnowledgeDropTarget(null);
+            setDraggingFolderPath(null);
+          }}
+        >
+          Переместить папку на верхний уровень
+        </div>
         {tree.length > 0 ? (
           tree.map((node) => (
             <KnowledgeTreeNodeView

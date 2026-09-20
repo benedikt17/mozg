@@ -1206,31 +1206,32 @@ export function FilesWorkspace({
         </label>
 
         <nav className={styles.sidebarNavigation} aria-label="Разделы файлов">
-          {draggingFolderId && canDropFolder(null) ? (
-            <div
-              className={`${styles.folderRootTarget} ${
-                folderDropTarget === "root" ? styles.folderRowDropTarget : ""
-              }`}
-              onDragOver={(event) => {
-                if (!event.dataTransfer.types.includes(MOZG_FOLDER_DRAG_TYPE))
-                  return;
-                event.preventDefault();
-                event.dataTransfer.dropEffect = "move";
-                setFolderDropTarget("root");
-              }}
-              onDragLeave={() => setFolderDropTarget(null)}
-              onDrop={(event) => {
-                const folderId = event.dataTransfer.getData(
-                  MOZG_FOLDER_DRAG_TYPE,
-                );
-                if (!folderId) return;
-                event.preventDefault();
-                dropFolder(folderId, null);
-              }}
-            >
-              Переместить папку на верхний уровень
-            </div>
-          ) : null}
+          <div
+            className={`${styles.folderRootTarget} ${
+              folderDropTarget === "root" ? styles.folderRowDropTarget : ""
+            }`}
+            onDragOver={(event) => {
+              if (
+                !event.dataTransfer.types.includes(MOZG_FOLDER_DRAG_TYPE) ||
+                !canDropFolder(null)
+              )
+                return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+              setFolderDropTarget("root");
+            }}
+            onDragLeave={() => setFolderDropTarget(null)}
+            onDrop={(event) => {
+              const folderId = event.dataTransfer.getData(
+                MOZG_FOLDER_DRAG_TYPE,
+              );
+              if (!folderId || !canDropFolder(null)) return;
+              event.preventDefault();
+              dropFolder(folderId, null);
+            }}
+          >
+            Переместить папку на верхний уровень
+          </div>
           <button
             aria-current={location.kind === "inbox" ? "page" : undefined}
             className={`${styles.sidebarRow} ${
