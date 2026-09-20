@@ -11,11 +11,13 @@ async function signIn(page: Page): Promise<void> {
   await expect(page).toHaveURL(/\/prototype\/desktop$/);
 }
 
-test("renames a project from the application header", async ({ page }) => {
+test("renames a project from the application header", async ({
+  page,
+}, testInfo) => {
   await signIn(page);
 
   const title = page.locator(".application-project-title");
-  const nextName = `Проект ${process.env.GITHUB_RUN_ID ?? Date.now()}`;
+  const nextName = `Проект ${process.env.GITHUB_RUN_ID ?? Date.now()}-${testInfo.retry}`;
   await title.dblclick();
   const editor = page.getByRole("textbox", { name: "Название проекта" });
   await expect(editor).toBeFocused();
