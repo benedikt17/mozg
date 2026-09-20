@@ -218,7 +218,12 @@ export function ApplicationHeader({
 }): React.JSX.Element {
   const router = useRouter();
   const suppressMobileDrawerClickRef = useRef(false);
+  const projectTitleClickTimerRef = useRef<number | null>(null);
+  const ignoreProjectTitleBlurRef = useRef(false);
   const [canvasDrawerOpen, setCanvasDrawerOpen] = useState(false);
+  const [projectTitleEditing, setProjectTitleEditing] = useState(false);
+  const [projectTitleDraft, setProjectTitleDraft] = useState("");
+  const activeProject = getActiveProject(state);
   const logout = async (): Promise<void> => {
     await createClient().auth.signOut();
     router.replace("/sign-in");
@@ -242,6 +247,46 @@ export function ApplicationHeader({
     state.activeSection === "knowledge"
       ? (getKnowledgePaneState(state).activeDocument?.title ?? null)
       : null;
+
+  const openOverviewFromProjectTitle = (): void => {
+    if (
+      state.activeSection === "overview" &&
+      state.overviewArticlePreviewDocumentId !== null
+    ) {
+      dispatch({ type: "close-overview-article-preview" });
+      return;
+    }
+    dispatch({ type: "switch-section", section: "overview" });
+  };
+
+  const clearProjectTitleClickTimer = (): void => {
+    if (projectTitleClickTimerRef.current === null) return;
+    window.clearTimeout(projectTitleClickTimerRef.current);
+    projectTitleClickTimerRef.current = null;
+  };
+
+  const beginProjectTitleEdit = (): void => {
+    setProjectTitleDraft(activeProject.name);
+    setProjectTitleEditing(true);
+  };
+
+  const commitProjectTitleEdit = (): void => {
+    const name = projectTitleDraft.trim();
+    if (name && name !== activeProject.name) {
+      dispatch({ type: "rename-project", projectId: activeProject.id, name });
+    }
+    setProjectTitleEditing(false);
+  };
+
+  const cancelProjectTitleEdit = (): void => {
+    ignoreProjectTitleBlurRef.current = true;
+    setProjectTitleDraft(activeProject.name);
+    setProjectTitleEditing(false);
+  };
+
+  useEffect(() => {
+    return () => clearProjectTitleClickTimer();
+  }, []);
 
   useEffect(() => {
     if (canvasDrawer || !canvasDrawerOpen) return;
@@ -547,26 +592,72 @@ export function ApplicationHeader({
 
   return (
     <header className="application-header">
-      <button
-        className="application-project-title"
-        onClick={() =>
-          state.activeSection === "overview" &&
-          state.overviewArticlePreviewDocumentId !== null
-            ? dispatch({ type: "close-overview-article-preview" })
-            : dispatch({ type: "switch-section", section: "overview" })
-        }
-        type="button"
-      >
-        <strong>{getActiveProject(state).name}</strong>
-        {activeKnowledgeTitle ? (
-          <span
-            className="application-article-title"
-            title={activeKnowledgeTitle}
-          >
-            {activeKnowledgeTitle}
-          </span>
-        ) : null}
-      </button>
+      {projectTitleEditing ? (
+        <div className="application-project-title is-editing">
+          <input
+            aria-label="Название проекта"
+            autoFocus
+            className="application-project-title-input"
+            onBlur={() => {
+              if (ignoreProjectTitleBlurRef.current) {
+                ignoreProjectTitleBlurRef.current = false;
+                return;
+              }
+              commitProjectTitleEdit();
+            }}
+            onChange={(event) => setProjectTitleDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                event.currentTarget.blur();
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                cancelProjectTitleEdit();
+              }
+            }}
+            type="text"
+            value={projectTitleDraft}
+          />
+          {activeKnowledgeTitle ? (
+            <span
+              className="application-article-title"
+              title={activeKnowledgeTitle}
+            >
+              {activeKnowledgeTitle}
+            </span>
+          ) : null}
+        </div>
+      ) : (
+        <button
+          aria-label={`${activeProject.name}. Дважды щёлкните, чтобы переименовать проект`}
+          className="application-project-title"
+          onClick={() => {
+            clearProjectTitleClickTimer();
+            projectTitleClickTimerRef.current = window.setTimeout(() => {
+              projectTitleClickTimerRef.current = null;
+              openOverviewFromProjectTitle();
+            }, 220);
+          }}
+          onDoubleClick={(event) => {
+            event.preventDefault();
+            clearProjectTitleClickTimer();
+            beginProjectTitleEdit();
+          }}
+          title="Дважды щёлкните, чтобы переименовать проект"
+          type="button"
+        >
+          <strong>{activeProject.name}</strong>
+          {activeKnowledgeTitle ? (
+            <span
+              className="application-article-title"
+              title={activeKnowledgeTitle}
+            >
+              {activeKnowledgeTitle}
+            </span>
+          ) : null}
+        </button>
+      )}
       {hasMobileSectionDrawer && !mobileDrawerOpen ? (
         <span className="mobile-sidebar-edge-hint" aria-hidden="true" />
       ) : null}

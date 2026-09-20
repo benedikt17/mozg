@@ -526,6 +526,24 @@
     text-align: left;
   }
 
+  .application-project-title.is-editing {
+    cursor: default;
+  }
+
+  .application-project-title-input {
+    min-width: 0;
+    width: min(100%, 360px);
+    border: 1px solid var(--focus);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    padding: 3px 6px;
+    font: inherit;
+    font-size: 20px;
+    line-height: 24px;
+    font-weight: 600;
+  }
+
   .project-selector-menu {
     position: absolute;
     top: calc(100% + 6px);

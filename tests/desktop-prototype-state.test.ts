@@ -289,6 +289,32 @@ describe("desktop structural prototype state", () => {
     expect(getActiveProject(switched)?.name).toBe("Аммонит");
   });
 
+  it("renames a project with a trimmed non-empty title and persists it", () => {
+    const initial = freshState();
+    const renamed = desktopPrototypeReducer(initial, {
+      type: "rename-project",
+      projectId: "lukomorie",
+      name: "  Новое Лукоморье  ",
+    });
+
+    expect(getActiveProject(renamed).name).toBe("Новое Лукоморье");
+    const snapshot = parseDesktopDomainSnapshot(
+      createDesktopDomainSnapshot(renamed),
+    );
+    expect(snapshot).toMatchObject({ ok: true });
+    if (!snapshot.ok) throw new Error("Expected a valid domain snapshot");
+    expect(snapshot.snapshot.projects).toContainEqual(
+      expect.objectContaining({ id: "lukomorie", name: "Новое Лукоморье" }),
+    );
+    expect(
+      desktopPrototypeReducer(renamed, {
+        type: "rename-project",
+        projectId: "lukomorie",
+        name: "   ",
+      }),
+    ).toBe(renamed);
+  });
+
   it("creates a custom list inside the active project group", () => {
     let state = desktopPrototypeReducer(freshState(), {
       type: "create-task-group",
