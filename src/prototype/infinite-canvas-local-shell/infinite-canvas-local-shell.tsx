@@ -378,30 +378,6 @@ function withCachedAssetPayloads(
   });
 }
 
-function hasCachedPayloadForEveryImageNode(
-  nodes: readonly CanvasFlowNode[],
-  assetPayloads: ReadonlyMap<string, CanvasImageRuntimePayload>,
-  scope: { workspaceId: string; canvasId: string },
-): boolean {
-  return nodes.every((node) => {
-    if (node.type !== CANVAS_IMAGE_NODE_TYPE) return true;
-    const requestedSource =
-      node.data.resolutionSource ??
-      canvasImageResolutionSourceFromLegacyKind(
-        node.data.variantKind ?? "original",
-      );
-    return Boolean(
-      findCachedCanvasImagePayload({
-        payloads: assetPayloads,
-        workspaceId: scope.workspaceId,
-        canvasId: scope.canvasId,
-        assetId: node.data.assetId,
-        requestedSource,
-      }),
-    );
-  });
-}
-
 function canvasInternalNodeBounds(
   node: InternalNode<CanvasFlowNode> | undefined,
 ): CanvasNodeBounds | null {
@@ -2463,7 +2439,6 @@ function InfiniteCanvasLocalShellSurface({
   const variantPayloadsRef = useRef<Map<string, CanvasImageRuntimePayload>>(
     new Map(initialRuntime?.assetPayloads),
   );
-  const preserveWarmImagePayloadsRef = useRef(false);
   const pendingContentHeightSaveRef = useRef(false);
   const nodeDragActiveRef = useRef(false);
   const collapsedBranchDragRef = useRef<{
@@ -3361,8 +3336,6 @@ function InfiniteCanvasLocalShellSurface({
 
   const restoreForCanvas = useCallback(
     async (nextState: LocalCanvasShellState) => {
-      const preserveWarmImagePayloads = preserveWarmImagePayloadsRef.current;
-      preserveWarmImagePayloadsRef.current = false;
       restoreControllerRef.current?.abort();
       variantRefreshControllerRef.current?.abort();
       pendingContentHeightSaveRef.current = false;
@@ -3391,16 +3364,6 @@ function InfiniteCanvasLocalShellSurface({
         // like a cold load.  Keep the bounded browser-memory cache; only
         // background pyramid work for the previous canvas is cancelled.
         imageLoadCacheCanvasIdRef.current = nextState.canvasId;
-      }
-      if (preserveWarmImagePayloads) {
-        // The runtime snapshot has already mounted the matching document with
-        // live object URLs. Keep that scene intact while the post-save
-        // reconciliation completes; rebuilding it would blank images before
-        // their cached payloads can be painted again.
-        hydratingRef.current = false;
-        setRestoreStats(EMPTY_RESTORE_STATS);
-        setLoadingLifecycle("ready");
-        return;
       }
       restoreControllerRef.current = new AbortController();
       variantPayloadsRef.current.clear();
@@ -3777,6 +3740,21 @@ function InfiniteCanvasLocalShellSurface({
     [refreshImageVariants],
   );
 
+  const keepWarmCachedScene = useCallback(
+    (state: LocalCanvasShellState): void => {
+      // restoreCachedScene has already mounted the canonical document with its
+      // live object URLs. Rebuilding the same document here would revoke every
+      // URL, blank every image at once, and then download the same content
+      // again. Keep the painted scene and let the normal variant refresher fill
+      // any genuinely missing or higher-resolution payloads in place.
+      hydratingRef.current = false;
+      setRestoreStats(EMPTY_RESTORE_STATS);
+      setLoadingLifecycle("ready");
+      scheduleImageVariantRefresh(state.viewport.zoom, false);
+    },
+    [scheduleImageVariantRefresh],
+  );
+
   const restoreCachedScene = useCallback(
     (snapshot: CloudCanvasRuntimeSnapshot): void => {
       const cachedState = controller.restoreRuntimeState(snapshot.shellState);
@@ -3875,12 +3853,12 @@ function InfiniteCanvasLocalShellSurface({
               const savedState = controller.state;
               setShellState(savedState);
               setRenameTitle(savedState.title);
-              await restoreForCanvasRef.current(savedState);
+              keepWarmCachedScene(savedState);
               return;
             }
           }
 
-          if (initialRuntime.shellState.status !== "saved") {
+          if (initialRuntime.shellState.status !== "saved" || !unchanged) {
             const latest = await repository.loadCanvas({
               workspaceId: shellWorkspaceId,
               canvasId: cachedSummary.id,
@@ -3899,7 +3877,11 @@ function InfiniteCanvasLocalShellSurface({
               );
               setShellState(reconciled);
               setRenameTitle(reconciled.title);
-              await restoreForCanvasRef.current(reconciled);
+              keepWarmCachedScene(reconciled);
+              return;
+            }
+            if (initialRuntime.shellState.status === "saved") {
+              await openCanvasRef.current(cachedSummary.id);
               return;
             }
             setLoadingLifecycle("error");
@@ -3914,28 +3896,7 @@ function InfiniteCanvasLocalShellSurface({
           }
 
           if (unchanged) {
-            const cachedNodes = canvasDocumentToRuntimeSkeleton(
-              initialRuntime.shellState.document,
-              {
-                onContentHeightChange: handleTaskNodeContentHeightChange,
-                taskBridge: taskBridgeRef.current,
-                taskWorkspaceId: taskWorkspaceIdRef.current,
-              },
-            );
-            preserveWarmImagePayloadsRef.current =
-              hasCachedPayloadForEveryImageNode(
-                cachedNodes,
-                initialRuntime.assetPayloads,
-                {
-                  workspaceId: shellWorkspaceId,
-                  canvasId: cachedSummary.id,
-                },
-              );
-            // Keep the safe post-save reconciliation call. When every image
-            // is already present in the runtime snapshot it consumes the warm
-            // mode above instead of tearing that snapshot down and rebuilding
-            // images one at a time.
-            await restoreForCanvasRef.current(controller.state);
+            keepWarmCachedScene(controller.state);
             return;
           }
           await openCanvasRef.current(cachedSummary.id);
@@ -4027,6 +3988,7 @@ function InfiniteCanvasLocalShellSurface({
     groupsRepository,
     shellWorkspaceId,
     initialRuntime,
+    keepWarmCachedScene,
     objectUrls,
     repository,
     restoreCachedScene,

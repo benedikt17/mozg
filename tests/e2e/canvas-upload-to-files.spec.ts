@@ -168,10 +168,27 @@ test("routes direct Canvas image upload through Project Files and persists fileI
   expect(canvasAssetWriteCount).toBe(0);
   expect(projectFileOriginalWriteCount).toBeGreaterThan(0);
 
+  const canvasImage = page.locator(".react-flow__node img");
+  const warmObjectUrl = await canvasImage.getAttribute("src");
+  expect(warmObjectUrl).toMatch(/^blob:/);
+  const variantGetsBeforeWarmReturn = projectFileVariantGetCount;
+
   await appNavigation(page)
     .getByRole("button", { name: "Файлы", exact: true })
     .click();
   await expect(page.getByText(fileName, { exact: true }).first()).toBeVisible();
+
+  await appNavigation(page)
+    .getByRole("button", { name: "Холсты", exact: true })
+    .click();
+  await expect(canvasImage).toHaveCount(1);
+  await expect(canvasImage).toHaveAttribute("src", warmObjectUrl as string);
+  // The server reconciliation runs after the warm scene is first painted.
+  // Wait through that second phase and prove it neither revokes the visible
+  // Blob URL nor downloads the same derivative again.
+  await page.waitForTimeout(1_200);
+  await expect(canvasImage).toHaveAttribute("src", warmObjectUrl as string);
+  expect(projectFileVariantGetCount).toBe(variantGetsBeforeWarmReturn);
 
   const variantGetsBeforeReload = projectFileVariantGetCount;
   await page.reload();
