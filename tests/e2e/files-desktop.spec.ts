@@ -446,6 +446,9 @@ test("restores the current Files folder and warm image tiles after section navig
     buffer: PREVIEW_IMAGE_PNG,
   });
 
+  await expect(
+    page.getByText(`Загружен: ${fileName}`, { exact: true }),
+  ).toBeVisible();
   const tile = page.getByRole("button", { name: new RegExp(fileName) });
   await tile.scrollIntoViewIfNeeded();
   const tileImage = tile.locator("img");
@@ -458,10 +461,6 @@ test("restores the current Files folder and warm image tiles after section navig
   await applicationNavigation
     .getByRole("button", { name: "Холсты", exact: true })
     .click();
-  await applicationNavigation
-    .getByRole("button", { name: "Файлы", exact: true })
-    .click();
-
   page.on("request", (request) => {
     if (
       request.method() === "GET" &&
@@ -470,6 +469,9 @@ test("restores the current Files folder and warm image tiles after section navig
       variantRequestsAfterReturn += 1;
     }
   });
+  await applicationNavigation
+    .getByRole("button", { name: "Файлы", exact: true })
+    .click();
 
   const filesNavigation = page.getByRole("complementary", {
     name: "Навигация по файлам",
