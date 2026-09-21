@@ -123,8 +123,23 @@ describe("Canvas dual-pane runtime composition", () => {
     const shell = fs.readFileSync(shellPath, "utf8");
 
     expect(shell).toContain("const keepWarmCachedScene = useCallback(");
-    expect(shell).toContain("keepWarmCachedScene(controller.state)");
+    expect(shell).toContain("keepWarmCachedSceneRef.current(controller.state)");
     expect(shell).toContain("scheduleImageVariantRefresh(");
     expect(shell).not.toContain("preserveWarmImagePayloadsRef");
+  });
+
+  it("does not restart the Canvas mount lifecycle when warm-refresh callbacks change", () => {
+    const shell = fs.readFileSync(shellPath, "utf8");
+    const mountEffectStart = shell.indexOf(
+      "useEffect(() => {\n    let active = true;\n    const pyramidScheduler",
+    );
+    const mountEffectEnd = shell.indexOf(
+      "useEffect(() => {",
+      mountEffectStart + 20,
+    );
+    const mountEffect = shell.slice(mountEffectStart, mountEffectEnd);
+
+    expect(mountEffect).toContain("keepWarmCachedSceneRef.current(");
+    expect(mountEffect).not.toMatch(/\n\s*keepWarmCachedScene,\n/u);
   });
 });

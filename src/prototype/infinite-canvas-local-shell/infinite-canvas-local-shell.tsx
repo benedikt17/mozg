@@ -3754,6 +3754,8 @@ function InfiniteCanvasLocalShellSurface({
     },
     [scheduleImageVariantRefresh],
   );
+  const keepWarmCachedSceneRef = useRef(keepWarmCachedScene);
+  keepWarmCachedSceneRef.current = keepWarmCachedScene;
 
   const restoreCachedScene = useCallback(
     (snapshot: CloudCanvasRuntimeSnapshot): void => {
@@ -3853,7 +3855,7 @@ function InfiniteCanvasLocalShellSurface({
               const savedState = controller.state;
               setShellState(savedState);
               setRenameTitle(savedState.title);
-              keepWarmCachedScene(savedState);
+              keepWarmCachedSceneRef.current(savedState);
               return;
             }
           }
@@ -3877,7 +3879,7 @@ function InfiniteCanvasLocalShellSurface({
               );
               setShellState(reconciled);
               setRenameTitle(reconciled.title);
-              keepWarmCachedScene(reconciled);
+              keepWarmCachedSceneRef.current(reconciled);
               return;
             }
             if (initialRuntime.shellState.status === "saved") {
@@ -3896,7 +3898,7 @@ function InfiniteCanvasLocalShellSurface({
           }
 
           if (unchanged) {
-            keepWarmCachedScene(controller.state);
+            keepWarmCachedSceneRef.current(controller.state);
             return;
           }
           await openCanvasRef.current(cachedSummary.id);
@@ -3988,7 +3990,6 @@ function InfiniteCanvasLocalShellSurface({
     groupsRepository,
     shellWorkspaceId,
     initialRuntime,
-    keepWarmCachedScene,
     objectUrls,
     repository,
     restoreCachedScene,
