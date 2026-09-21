@@ -82,8 +82,35 @@ type ProjectFilePreviewCacheEntry = {
   objectUrl: string | null;
 };
 
+type FilesWorkspaceRuntimeSnapshot = {
+  collapsedBeforeAll: string[] | null;
+  collapsedFolderIds: string[] | null;
+  files: ProjectFileRecord[];
+  folders: ProjectFolderRecord[];
+  location: FilesLocation;
+  multiSelectMode: boolean;
+  pendingFiles: ProjectFileRecord[];
+  query: string;
+  selectedFileId: string | null;
+  selectedFileIds: string[];
+  selectionAnchorId: string | null;
+  viewMode: FilesViewMode;
+};
+
 const projectFilePreviewCache = new Map<string, ProjectFilePreviewCacheEntry>();
 const projectFilePreviewLoads = new Map<string, Promise<Blob>>();
+const filesWorkspaceRuntimeCache = new Map<
+  string,
+  FilesWorkspaceRuntimeSnapshot
+>();
+const filesWorkspaceScrollCache = new Map<string, number>();
+
+function filesWorkspaceRuntimeCacheKey(
+  workspaceId: string | undefined,
+  projectId: string,
+): string | null {
+  return workspaceId ? `${workspaceId}:${projectId}` : null;
+}
 
 function projectFilePreviewCacheKey({
   workspaceId,
@@ -155,6 +182,29 @@ function cachedProjectFilePreviewUrl(key: string, blob: Blob): string | null {
   if (!entry) return null;
   if (!entry.objectUrl) entry.objectUrl = URL.createObjectURL(entry.blob);
   return entry.objectUrl;
+}
+
+function warmProjectFileThumbnailUrl({
+  workspaceId,
+  projectId,
+  fileId,
+  targetMaxEdge,
+}: {
+  workspaceId: string | undefined;
+  projectId: string;
+  fileId: string;
+  targetMaxEdge: number;
+}): string | null {
+  if (!workspaceId) return null;
+  const cacheKey = projectFilePreviewCacheKey({
+    workspaceId,
+    projectId,
+    fileId,
+    targetMaxEdge,
+    exactTarget: true,
+  });
+  const blob = getCachedProjectFilePreview(cacheKey);
+  return blob ? cachedProjectFilePreviewUrl(cacheKey, blob) : null;
 }
 
 async function loadCachedProjectFileImagePreview({
@@ -337,6 +387,10 @@ export function FilesWorkspace({
   projectId,
   projectName,
 }: FilesWorkspaceProps): React.JSX.Element {
+  const runtimeCacheKey = filesWorkspaceRuntimeCacheKey(workspaceId, projectId);
+  const initialRuntime = runtimeCacheKey
+    ? (filesWorkspaceRuntimeCache.get(runtimeCacheKey) ?? null)
+    : null;
   const { repository, imageVariantRepository, pdfPreviewRepository } =
     useMemo(() => {
       const env = getPublicEnv();
@@ -360,24 +414,43 @@ export function FilesWorkspace({
   const resumeInputRef = useRef<HTMLInputElement>(null);
   const resumeTargetFileRef = useRef<ProjectFileRecord | null>(null);
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
-  const [folders, setFolders] = useState<ProjectFolderRecord[]>([]);
-  const [files, setFiles] = useState<ProjectFileRecord[]>([]);
-  const [pendingFiles, setPendingFiles] = useState<ProjectFileRecord[]>([]);
-  const [location, setLocation] = useState<FilesLocation>({ kind: "inbox" });
-  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
-  const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
-  const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(
-    null,
+  const contentRef = useRef<HTMLElement>(null);
+  const [folders, setFolders] = useState<ProjectFolderRecord[]>(
+    () => initialRuntime?.folders ?? [],
   );
-  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [files, setFiles] = useState<ProjectFileRecord[]>(
+    () => initialRuntime?.files ?? [],
+  );
+  const [pendingFiles, setPendingFiles] = useState<ProjectFileRecord[]>(
+    () => initialRuntime?.pendingFiles ?? [],
+  );
+  const [location, setLocation] = useState<FilesLocation>(
+    () => initialRuntime?.location ?? { kind: "inbox" },
+  );
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(
+    () => initialRuntime?.selectedFileId ?? null,
+  );
+  const [selectedFileIds, setSelectedFileIds] = useState<string[]>(
+    () => initialRuntime?.selectedFileIds ?? [],
+  );
+  const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(
+    () => initialRuntime?.selectionAnchorId ?? null,
+  );
+  const [multiSelectMode, setMultiSelectMode] = useState(
+    () => initialRuntime?.multiSelectMode ?? false,
+  );
   const [draggingFileIds, setDraggingFileIds] = useState<string[]>([]);
   const [fileDropTarget, setFileDropTarget] = useState<string | null>(null);
   const [draggingFolderId, setDraggingFolderId] = useState<string | null>(null);
   const [folderDropTarget, setFolderDropTarget] = useState<string | null>(null);
   const [openedFileId, setOpenedFileId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<FilesViewMode>("grid");
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<FilesLoadStatus>("loading");
+  const [viewMode, setViewMode] = useState<FilesViewMode>(
+    () => initialRuntime?.viewMode ?? "grid",
+  );
+  const [query, setQuery] = useState(() => initialRuntime?.query ?? "");
+  const [status, setStatus] = useState<FilesLoadStatus>(() =>
+    initialRuntime ? "ready" : "loading",
+  );
   const [reloadToken, setReloadToken] = useState(0);
   const [actionState, setActionState] = useState<FilesActionState>("idle");
   const [actionMessage, setActionMessage] = useState<FilesActionMessage | null>(
@@ -389,10 +462,10 @@ export function FilesWorkspace({
   const [newFolderName, setNewFolderName] = useState("");
   const [isDropTarget, setIsDropTarget] = useState(false);
   const [collapsedFolderIds, setCollapsedFolderIds] = useState<string[] | null>(
-    null,
+    () => initialRuntime?.collapsedFolderIds ?? null,
   );
   const [collapsedBeforeAll, setCollapsedBeforeAll] = useState<string[] | null>(
-    [],
+    () => initialRuntime?.collapsedBeforeAll ?? [],
   );
 
   const activeFolderId = location.kind === "folder" ? location.folderId : null;
@@ -469,6 +542,49 @@ export function FilesWorkspace({
     repository,
     workspaceId,
   ]);
+
+  useEffect(() => {
+    if (!runtimeCacheKey || status !== "ready") return;
+    filesWorkspaceRuntimeCache.set(runtimeCacheKey, {
+      collapsedBeforeAll,
+      collapsedFolderIds,
+      files,
+      folders,
+      location,
+      multiSelectMode,
+      pendingFiles,
+      query,
+      selectedFileId,
+      selectedFileIds,
+      selectionAnchorId,
+      viewMode,
+    });
+  }, [
+    collapsedBeforeAll,
+    collapsedFolderIds,
+    files,
+    folders,
+    location,
+    multiSelectMode,
+    pendingFiles,
+    query,
+    runtimeCacheKey,
+    selectedFileId,
+    selectedFileIds,
+    selectionAnchorId,
+    status,
+    viewMode,
+  ]);
+
+  useEffect(() => {
+    if (!runtimeCacheKey) return;
+    const scrollTop = filesWorkspaceScrollCache.get(runtimeCacheKey);
+    if (scrollTop === undefined) return;
+    const frame = window.requestAnimationFrame(() => {
+      if (contentRef.current) contentRef.current.scrollTop = scrollTop;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [runtimeCacheKey]);
 
   const effectiveStatus: FilesLoadStatus = workspaceId ? status : "error";
   const breadcrumbs = getProjectFolderBreadcrumbs(folders, activeFolderId);
@@ -1654,6 +1770,14 @@ export function FilesWorkspace({
           className={`${styles.content} ${
             isDropTarget ? styles.contentDropTarget : ""
           }`}
+          onScroll={(event) => {
+            if (!runtimeCacheKey) return;
+            filesWorkspaceScrollCache.set(
+              runtimeCacheKey,
+              event.currentTarget.scrollTop,
+            );
+          }}
+          ref={contentRef}
           onDragEnter={(event) => {
             if (
               !canMutate ||
@@ -2104,7 +2228,19 @@ function ProjectFileThumbnail({
 }): React.JSX.Element {
   const targetRef = useRef<HTMLDivElement>(null);
   const [isNearViewport, setIsNearViewport] = useState(false);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  // The workspace is intentionally unmounted when moving to another product
+  // section. Seed a returning tile from the shared Blob URL synchronously so
+  // the cached image never flashes back to a loading placeholder.
+  const [imageUrl, setImageUrl] = useState<string | null>(() =>
+    file.mimeType.startsWith("image/")
+      ? warmProjectFileThumbnailUrl({
+          workspaceId,
+          projectId,
+          fileId: file.id,
+          targetMaxEdge,
+        })
+      : null,
+  );
   const [loadError, setLoadError] = useState(false);
   const isImage = file.mimeType.startsWith("image/");
   const isPdf = file.mimeType === "application/pdf";

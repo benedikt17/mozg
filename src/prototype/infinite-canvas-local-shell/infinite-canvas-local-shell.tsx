@@ -45,6 +45,7 @@ import {
   type ChangeEvent,
   type CSSProperties,
   type DragEvent as ReactDragEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -2130,6 +2131,45 @@ function scalableCanvasNode(node: CanvasFlowNode): CanvasScalableNode | null {
   };
 }
 
+type CanvasMarqueeBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+/**
+ * React Flow intentionally includes nodes whose handles have not been measured
+ * yet in a partial marquee.  That is useful during its first render, but on a
+ * busy restored canvas it can select a seemingly random extra group.  The
+ * committed selection must always agree with the rectangle the user drew.
+ */
+export function canvasNodeIntersectsMarquee(
+  node: CanvasFlowNode,
+  marquee: CanvasMarqueeBounds,
+): boolean {
+  const measurable = scalableCanvasNode(node);
+  if (!measurable) return false;
+  return (
+    measurable.position.x < marquee.x + marquee.width &&
+    measurable.position.x + measurable.width > marquee.x &&
+    measurable.position.y < marquee.y + marquee.height &&
+    measurable.position.y + measurable.height > marquee.y
+  );
+}
+
+function canvasMarqueeBounds(
+  start: FlowPosition,
+  end: FlowPosition,
+): CanvasMarqueeBounds {
+  return {
+    x: Math.min(start.x, end.x),
+    y: Math.min(start.y, end.y),
+    width: Math.abs(end.x - start.x),
+    height: Math.abs(end.y - start.y),
+  };
+}
+
 /** A selection becomes a temporary group without adding another persisted node type. */
 function CanvasGroupScaleOverlay({
   nodes,
@@ -2411,6 +2451,7 @@ function InfiniteCanvasLocalShellSurface({
   taskBridgeRef.current = taskBridge;
   taskWorkspaceIdRef.current = taskWorkspaceId;
   const pointerRef = useRef<FlowPosition | null>(null);
+  const marqueeSelectionStartRef = useRef<FlowPosition | null>(null);
   const nodesRef = useRef<CanvasFlowNode[]>([]);
   const edgesRef = useRef<CanvasEdgeFlow[]>([]);
   const summariesRef = useRef<CanvasSummary[]>([]);
@@ -5208,6 +5249,34 @@ function InfiniteCanvasLocalShellSurface({
     [],
   );
 
+  const commitExactMarqueeSelection = useCallback(
+    (event: ReactMouseEvent) => {
+      const start = marqueeSelectionStartRef.current;
+      marqueeSelectionStartRef.current = null;
+      if (!start) return;
+      const marquee = canvasMarqueeBounds(
+        start,
+        screenToFlowRef.current({
+          x: event.clientX,
+          y: event.clientY,
+        }),
+      );
+      const selectedIds = new Set(
+        nodesRef.current
+          .filter((node) => canvasNodeIntersectsMarquee(node, marquee))
+          .map((node) => node.id),
+      );
+      const nextNodes = nodesRef.current.map((node) => {
+        const selected = selectedIds.has(node.id);
+        return node.selected === selected ? node : { ...node, selected };
+      });
+      nodesRef.current = nextNodes;
+      setSelectedCanvasNodeIds([...selectedIds]);
+      setNodes(nextNodes);
+    },
+    [setNodes],
+  );
+
   const previewGroupScale = useCallback(
     (nextNodes: CanvasFlowNode[]) => {
       nodesRef.current = nextNodes;
@@ -5876,6 +5945,13 @@ function InfiniteCanvasLocalShellSurface({
 
   const handleCanvasPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
+      const selectionPane =
+        event.target instanceof Element &&
+        event.target.classList.contains("react-flow__pane");
+      marqueeSelectionStartRef.current =
+        event.button === 0 && event.isPrimary && selectionPane
+          ? screenToFlowRef.current({ x: event.clientX, y: event.clientY })
+          : null;
       if (styleEyedropperSourceId && event.button === 0) {
         const targetElement =
           event.target instanceof Element
@@ -6368,6 +6444,7 @@ function InfiniteCanvasLocalShellSurface({
               edgeTypes={edgeTypes}
               onNodesChange={handleNodesChange}
               onSelectionChange={handleSelectionChange}
+              onSelectionEnd={commitExactMarqueeSelection}
               onEdgesChange={handleEdgesChange}
               onNodeDragStart={handleNodeDragStart}
               onNodeDragStop={handleNodeDragStop}
@@ -6804,6 +6881,7 @@ function InfiniteCanvasLocalShellSurface({
             edgeTypes={edgeTypes}
             onNodesChange={handleNodesChange}
             onSelectionChange={handleSelectionChange}
+            onSelectionEnd={commitExactMarqueeSelection}
             onEdgesChange={handleEdgesChange}
             onNodeDragStart={handleNodeDragStart}
             onNodeDragStop={handleNodeDragStop}

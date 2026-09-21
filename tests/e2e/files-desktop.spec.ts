@@ -417,6 +417,68 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
   ).toHaveCount(0);
 });
 
+test("restores the current Files folder and warm image tiles after section navigation", async ({
+  page,
+}, testInfo) => {
+  const suffix = `${process.env.GITHUB_RUN_ID ?? Date.now()}-${testInfo.retry}`;
+  const folderName = `Warm Files ${suffix}`;
+  const fileName = `warm-preview-${suffix}.png`;
+  let variantRequestsAfterReturn = 0;
+
+  await signIn(page);
+  await openFiles(page);
+  await createFolder(page, folderName);
+
+  const fileChooserPromise = page.waitForEvent("filechooser");
+  await page
+    .getByRole("button", { name: "Загрузить файл", exact: true })
+    .click();
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles({
+    name: fileName,
+    mimeType: "image/png",
+    buffer: PREVIEW_IMAGE_PNG,
+  });
+
+  const tile = page.getByRole("button", { name: new RegExp(fileName) });
+  const tileImage = tile.locator("img");
+  await expect(tileImage).toHaveAttribute("src", /^blob:/);
+  const warmSrc = await tileImage.getAttribute("src");
+
+  const applicationNavigation = page.getByRole("navigation", {
+    name: "Разделы приложения",
+  });
+  await applicationNavigation
+    .getByRole("button", { name: "Холсты", exact: true })
+    .click();
+  await applicationNavigation
+    .getByRole("button", { name: "Файлы", exact: true })
+    .click();
+
+  page.on("request", (request) => {
+    if (
+      request.method() === "GET" &&
+      decodeURIComponent(request.url()).includes("/variants/edge-")
+    ) {
+      variantRequestsAfterReturn += 1;
+    }
+  });
+
+  const filesNavigation = page.getByRole("complementary", {
+    name: "Навигация по файлам",
+  });
+  await expect(
+    filesNavigation.getByRole("button", { name: folderName, exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  const returnedImage = page
+    .getByRole("button", { name: new RegExp(fileName) })
+    .locator("img");
+  await expect(returnedImage).toHaveAttribute("src", warmSrc ?? "");
+  await page.waitForTimeout(1_200);
+  await expect(returnedImage).toHaveAttribute("src", warmSrc ?? "");
+  expect(variantRequestsAfterReturn).toBe(0);
+});
+
 test("opens a PDF in the file viewer on double click", async ({ page }) => {
   await signIn(page);
   await openFiles(page);
