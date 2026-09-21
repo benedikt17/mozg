@@ -449,10 +449,8 @@ test("restores the current Files folder and warm image tiles after section navig
     buffer: Buffer.concat([PREVIEW_IMAGE_PNG, Buffer.from(suffix)]),
   });
 
-  await expect(
-    page.getByText(`Загружен: ${fileName}`, { exact: true }),
-  ).toBeVisible();
   const tile = page.getByRole("button", { name: new RegExp(fileName) });
+  await expect(tile).toBeVisible();
   await tile.scrollIntoViewIfNeeded();
   const tileImage = tile.locator("img");
   await expect(tileImage).toHaveAttribute("src", /^blob:/);
