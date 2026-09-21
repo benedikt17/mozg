@@ -428,15 +428,27 @@ test("restores the current Files folder and warm image tiles after section navig
   let countWarmVariantRequests = false;
 
   page.on("request", (request) => {
-    if (request.method() !== "GET") return;
+    if (
+      request.method() === "POST" &&
+      request.url().includes("/rpc/reserve_project_file")
+    ) {
+      const payload = request.postDataJSON() as {
+        target_file_id?: unknown;
+        target_name?: unknown;
+      };
+      if (
+        payload.target_name === fileName &&
+        typeof payload.target_file_id === "string"
+      ) {
+        warmFileId = payload.target_file_id;
+      }
+      return;
+    }
+    if (request.method() !== "GET" || warmFileId === null) return;
     const match = new URL(request.url()).pathname.match(
       /\/project-files\/[^/]+\/([^/]+)\/variants\/edge-\d+\.webp$/,
     );
     if (!match) return;
-    if (warmFileId === null) {
-      warmFileId = match[1];
-      return;
-    }
     if (countWarmVariantRequests && match[1] === warmFileId) {
       variantRequestsAfterReturn += 1;
     }
