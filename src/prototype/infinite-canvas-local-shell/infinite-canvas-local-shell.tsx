@@ -45,6 +45,7 @@ import {
   type ChangeEvent,
   type CSSProperties,
   type DragEvent as ReactDragEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -375,30 +376,6 @@ function withCachedAssetPayloads(
     return cached
       ? { ...node, data: { ...node.data, ...cached.payload } }
       : node;
-  });
-}
-
-function hasCachedPayloadForEveryImageNode(
-  nodes: readonly CanvasFlowNode[],
-  assetPayloads: ReadonlyMap<string, CanvasImageRuntimePayload>,
-  scope: { workspaceId: string; canvasId: string },
-): boolean {
-  return nodes.every((node) => {
-    if (node.type !== CANVAS_IMAGE_NODE_TYPE) return true;
-    const requestedSource =
-      node.data.resolutionSource ??
-      canvasImageResolutionSourceFromLegacyKind(
-        node.data.variantKind ?? "original",
-      );
-    return Boolean(
-      findCachedCanvasImagePayload({
-        payloads: assetPayloads,
-        workspaceId: scope.workspaceId,
-        canvasId: scope.canvasId,
-        assetId: node.data.assetId,
-        requestedSource,
-      }),
-    );
   });
 }
 
@@ -2154,6 +2131,45 @@ function scalableCanvasNode(node: CanvasFlowNode): CanvasScalableNode | null {
   };
 }
 
+type CanvasMarqueeBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+/**
+ * React Flow intentionally includes nodes whose handles have not been measured
+ * yet in a partial marquee.  That is useful during its first render, but on a
+ * busy restored canvas it can select a seemingly random extra group.  The
+ * committed selection must always agree with the rectangle the user drew.
+ */
+export function canvasNodeIntersectsMarquee(
+  node: CanvasFlowNode,
+  marquee: CanvasMarqueeBounds,
+): boolean {
+  const measurable = scalableCanvasNode(node);
+  if (!measurable) return false;
+  return (
+    measurable.position.x < marquee.x + marquee.width &&
+    measurable.position.x + measurable.width > marquee.x &&
+    measurable.position.y < marquee.y + marquee.height &&
+    measurable.position.y + measurable.height > marquee.y
+  );
+}
+
+function canvasMarqueeBounds(
+  start: FlowPosition,
+  end: FlowPosition,
+): CanvasMarqueeBounds {
+  return {
+    x: Math.min(start.x, end.x),
+    y: Math.min(start.y, end.y),
+    width: Math.abs(end.x - start.x),
+    height: Math.abs(end.y - start.y),
+  };
+}
+
 /** A selection becomes a temporary group without adding another persisted node type. */
 function CanvasGroupScaleOverlay({
   nodes,
@@ -2435,6 +2451,7 @@ function InfiniteCanvasLocalShellSurface({
   taskBridgeRef.current = taskBridge;
   taskWorkspaceIdRef.current = taskWorkspaceId;
   const pointerRef = useRef<FlowPosition | null>(null);
+  const marqueeSelectionStartRef = useRef<FlowPosition | null>(null);
   const nodesRef = useRef<CanvasFlowNode[]>([]);
   const edgesRef = useRef<CanvasEdgeFlow[]>([]);
   const summariesRef = useRef<CanvasSummary[]>([]);
@@ -2463,7 +2480,6 @@ function InfiniteCanvasLocalShellSurface({
   const variantPayloadsRef = useRef<Map<string, CanvasImageRuntimePayload>>(
     new Map(initialRuntime?.assetPayloads),
   );
-  const preserveWarmImagePayloadsRef = useRef(false);
   const pendingContentHeightSaveRef = useRef(false);
   const nodeDragActiveRef = useRef(false);
   const collapsedBranchDragRef = useRef<{
@@ -3361,8 +3377,6 @@ function InfiniteCanvasLocalShellSurface({
 
   const restoreForCanvas = useCallback(
     async (nextState: LocalCanvasShellState) => {
-      const preserveWarmImagePayloads = preserveWarmImagePayloadsRef.current;
-      preserveWarmImagePayloadsRef.current = false;
       restoreControllerRef.current?.abort();
       variantRefreshControllerRef.current?.abort();
       pendingContentHeightSaveRef.current = false;
@@ -3385,18 +3399,12 @@ function InfiniteCanvasLocalShellSurface({
             true,
           );
         }
-        imageLoadCacheRef.current.clear();
+        // Entries are already keyed by user, workspace and canvas.  Clearing
+        // all of them on every canvas switch throws away the just-loaded
+        // image blobs and makes returning through the desktop sections look
+        // like a cold load.  Keep the bounded browser-memory cache; only
+        // background pyramid work for the previous canvas is cancelled.
         imageLoadCacheCanvasIdRef.current = nextState.canvasId;
-      }
-      if (preserveWarmImagePayloads) {
-        // The runtime snapshot has already mounted the matching document with
-        // live object URLs. Keep that scene intact while the post-save
-        // reconciliation completes; rebuilding it would blank images before
-        // their cached payloads can be painted again.
-        hydratingRef.current = false;
-        setRestoreStats(EMPTY_RESTORE_STATS);
-        setLoadingLifecycle("ready");
-        return;
       }
       restoreControllerRef.current = new AbortController();
       variantPayloadsRef.current.clear();
@@ -3773,6 +3781,23 @@ function InfiniteCanvasLocalShellSurface({
     [refreshImageVariants],
   );
 
+  const keepWarmCachedScene = useCallback(
+    (state: LocalCanvasShellState): void => {
+      // restoreCachedScene has already mounted the canonical document with its
+      // live object URLs. Rebuilding the same document here would revoke every
+      // URL, blank every image at once, and then download the same content
+      // again. Keep the painted scene and let the normal variant refresher fill
+      // any genuinely missing or higher-resolution payloads in place.
+      hydratingRef.current = false;
+      setRestoreStats(EMPTY_RESTORE_STATS);
+      setLoadingLifecycle("ready");
+      scheduleImageVariantRefresh(state.viewport.zoom, false);
+    },
+    [scheduleImageVariantRefresh],
+  );
+  const keepWarmCachedSceneRef = useRef(keepWarmCachedScene);
+  keepWarmCachedSceneRef.current = keepWarmCachedScene;
+
   const restoreCachedScene = useCallback(
     (snapshot: CloudCanvasRuntimeSnapshot): void => {
       const cachedState = controller.restoreRuntimeState(snapshot.shellState);
@@ -3871,12 +3896,12 @@ function InfiniteCanvasLocalShellSurface({
               const savedState = controller.state;
               setShellState(savedState);
               setRenameTitle(savedState.title);
-              await restoreForCanvasRef.current(savedState);
+              keepWarmCachedSceneRef.current(savedState);
               return;
             }
           }
 
-          if (initialRuntime.shellState.status !== "saved") {
+          if (initialRuntime.shellState.status !== "saved" || !unchanged) {
             const latest = await repository.loadCanvas({
               workspaceId: shellWorkspaceId,
               canvasId: cachedSummary.id,
@@ -3895,7 +3920,11 @@ function InfiniteCanvasLocalShellSurface({
               );
               setShellState(reconciled);
               setRenameTitle(reconciled.title);
-              await restoreForCanvasRef.current(reconciled);
+              keepWarmCachedSceneRef.current(reconciled);
+              return;
+            }
+            if (initialRuntime.shellState.status === "saved") {
+              await openCanvasRef.current(cachedSummary.id);
               return;
             }
             setLoadingLifecycle("error");
@@ -3910,28 +3939,7 @@ function InfiniteCanvasLocalShellSurface({
           }
 
           if (unchanged) {
-            const cachedNodes = canvasDocumentToRuntimeSkeleton(
-              initialRuntime.shellState.document,
-              {
-                onContentHeightChange: handleTaskNodeContentHeightChange,
-                taskBridge: taskBridgeRef.current,
-                taskWorkspaceId: taskWorkspaceIdRef.current,
-              },
-            );
-            preserveWarmImagePayloadsRef.current =
-              hasCachedPayloadForEveryImageNode(
-                cachedNodes,
-                initialRuntime.assetPayloads,
-                {
-                  workspaceId: shellWorkspaceId,
-                  canvasId: cachedSummary.id,
-                },
-              );
-            // Keep the safe post-save reconciliation call. When every image
-            // is already present in the runtime snapshot it consumes the warm
-            // mode above instead of tearing that snapshot down and rebuilding
-            // images one at a time.
-            await restoreForCanvasRef.current(controller.state);
+            keepWarmCachedSceneRef.current(controller.state);
             return;
           }
           await openCanvasRef.current(cachedSummary.id);
@@ -5241,6 +5249,34 @@ function InfiniteCanvasLocalShellSurface({
     [],
   );
 
+  const commitExactMarqueeSelection = useCallback(
+    (event: ReactMouseEvent) => {
+      const start = marqueeSelectionStartRef.current;
+      marqueeSelectionStartRef.current = null;
+      if (!start) return;
+      const marquee = canvasMarqueeBounds(
+        start,
+        screenToFlowRef.current({
+          x: event.clientX,
+          y: event.clientY,
+        }),
+      );
+      const selectedIds = new Set(
+        nodesRef.current
+          .filter((node) => canvasNodeIntersectsMarquee(node, marquee))
+          .map((node) => node.id),
+      );
+      const nextNodes = nodesRef.current.map((node) => {
+        const selected = selectedIds.has(node.id);
+        return node.selected === selected ? node : { ...node, selected };
+      });
+      nodesRef.current = nextNodes;
+      setSelectedCanvasNodeIds([...selectedIds]);
+      setNodes(nextNodes);
+    },
+    [setNodes],
+  );
+
   const previewGroupScale = useCallback(
     (nextNodes: CanvasFlowNode[]) => {
       nodesRef.current = nextNodes;
@@ -5909,6 +5945,13 @@ function InfiniteCanvasLocalShellSurface({
 
   const handleCanvasPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
+      const selectionPane =
+        event.target instanceof Element &&
+        event.target.classList.contains("react-flow__pane");
+      marqueeSelectionStartRef.current =
+        event.button === 0 && event.isPrimary && selectionPane
+          ? screenToFlowRef.current({ x: event.clientX, y: event.clientY })
+          : null;
       if (styleEyedropperSourceId && event.button === 0) {
         const targetElement =
           event.target instanceof Element
@@ -6401,6 +6444,7 @@ function InfiniteCanvasLocalShellSurface({
               edgeTypes={edgeTypes}
               onNodesChange={handleNodesChange}
               onSelectionChange={handleSelectionChange}
+              onSelectionEnd={commitExactMarqueeSelection}
               onEdgesChange={handleEdgesChange}
               onNodeDragStart={handleNodeDragStart}
               onNodeDragStop={handleNodeDragStop}
@@ -6837,6 +6881,7 @@ function InfiniteCanvasLocalShellSurface({
             edgeTypes={edgeTypes}
             onNodesChange={handleNodesChange}
             onSelectionChange={handleSelectionChange}
+            onSelectionEnd={commitExactMarqueeSelection}
             onEdgesChange={handleEdgesChange}
             onNodeDragStart={handleNodeDragStart}
             onNodeDragStop={handleNodeDragStop}

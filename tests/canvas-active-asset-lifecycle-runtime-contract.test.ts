@@ -17,7 +17,7 @@ describe("Canvas cached image lifecycle runtime contract", () => {
     );
     expect(source).toContain("restoreForCanvasRef.current = restoreForCanvas");
     expect(source).toContain(
-      "await restoreForCanvasRef.current(controller.state)",
+      "keepWarmCachedSceneRef.current(controller.state)",
     );
     expect(source).toContain("serverCanvasMatchesCachedRuntime");
     expect(source).toContain("reconcileCachedRuntimeWithServer");

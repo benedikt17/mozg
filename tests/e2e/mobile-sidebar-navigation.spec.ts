@@ -181,11 +181,7 @@ test.describe("native mobile touch", () => {
     const folderButton = tree.locator(".knowledge-tree-row.folder").first();
     await expect(folderButton).toBeVisible();
     const before = await folderButton.getAttribute("aria-expanded");
-    const box = await folderButton.boundingBox();
-    expect(box).not.toBeNull();
-    if (!box) return;
-
-    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    await folderButton.tap();
 
     await expect(folderButton).toHaveAttribute(
       "aria-expanded",

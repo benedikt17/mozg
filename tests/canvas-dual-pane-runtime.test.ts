@@ -119,13 +119,27 @@ describe("Canvas dual-pane runtime composition", () => {
     expect(shell).toContain("setViewportVisible(true)");
   });
 
-  it("keeps warm image payloads when the cached Canvas revision is current", () => {
+  it("keeps the mounted scene warm while same-Canvas images refresh in place", () => {
     const shell = fs.readFileSync(shellPath, "utf8");
 
-    expect(shell).toContain("preserveWarmImagePayloadsRef.current =");
-    expect(shell).toContain("if (preserveWarmImagePayloads)");
-    expect(shell).toContain(
-      "await restoreForCanvasRef.current(controller.state)",
+    expect(shell).toContain("const keepWarmCachedScene = useCallback(");
+    expect(shell).toContain("keepWarmCachedSceneRef.current(controller.state)");
+    expect(shell).toContain("scheduleImageVariantRefresh(");
+    expect(shell).not.toContain("preserveWarmImagePayloadsRef");
+  });
+
+  it("does not restart the Canvas mount lifecycle when warm-refresh callbacks change", () => {
+    const shell = fs.readFileSync(shellPath, "utf8");
+    const mountEffectStart = shell.indexOf(
+      "useEffect(() => {\n    let active = true;\n    const pyramidScheduler",
     );
+    const mountEffectEnd = shell.indexOf(
+      "useEffect(() => {",
+      mountEffectStart + 20,
+    );
+    const mountEffect = shell.slice(mountEffectStart, mountEffectEnd);
+
+    expect(mountEffect).toContain("keepWarmCachedSceneRef.current(");
+    expect(mountEffect).not.toMatch(/\n\s*keepWarmCachedScene,\n/u);
   });
 });

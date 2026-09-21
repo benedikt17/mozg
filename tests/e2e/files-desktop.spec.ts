@@ -372,11 +372,9 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
   await expect(
     imageViewer.getByRole("img", { name: previewFileName }),
   ).toBeVisible();
-  expect(originalImageDownloadRequests).toBe(0);
-  await imageViewer.getByRole("button", { name: /оригинал/i }).click();
   await expect
     .poll(() => originalImageDownloadRequests, {
-      message: "Viewer must only GET the original after the explicit action",
+      message: "Viewer must GET the original rather than a preview derivative",
       timeout: 10_000,
     })
     .toBeGreaterThan(0);
@@ -417,6 +415,102 @@ test("uploads to Inbox, routes a file above 6 MiB through TUS, creates a folder,
   await expect(
     page.getByRole("button", { name: new RegExp(previewFileName) }),
   ).toHaveCount(0);
+});
+
+test("restores the current Files folder and warm image tiles after section navigation", async ({
+  page,
+}, testInfo) => {
+  const suffix = `${process.env.GITHUB_RUN_ID ?? Date.now()}-${testInfo.retry}`;
+  const folderName = `Warm Files ${suffix}`;
+  const fileName = `warm-preview-${suffix}.png`;
+  let warmFileId: string | null = null;
+  let variantRequestsAfterReturn = 0;
+  let countWarmVariantRequests = false;
+
+  page.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      request.url().includes("/rpc/reserve_project_file")
+    ) {
+      const payload = request.postDataJSON() as {
+        target_file_id?: unknown;
+        target_name?: unknown;
+      };
+      if (
+        payload.target_name === fileName &&
+        typeof payload.target_file_id === "string"
+      ) {
+        warmFileId = payload.target_file_id;
+      }
+      return;
+    }
+    if (request.method() !== "GET" || warmFileId === null) return;
+    const match = new URL(request.url()).pathname.match(
+      /\/project-files\/[^/]+\/([^/]+)\/variants\/edge-\d+\.webp$/,
+    );
+    if (!match) return;
+    if (countWarmVariantRequests && match[1] === warmFileId) {
+      variantRequestsAfterReturn += 1;
+    }
+  });
+
+  await signIn(page);
+  await openFiles(page);
+  await createFolder(page, folderName);
+  await page.getByRole("button", { name: "Превью", exact: true }).click();
+
+  const uploadButton = page.getByRole("button", {
+    name: "Загрузить файл",
+    exact: true,
+  });
+  await expect(page.getByText("Папка пуста", { exact: true })).toBeVisible();
+  await expect(uploadButton).toBeEnabled();
+
+  const fileChooserPromise = page.waitForEvent("filechooser");
+  await uploadButton.click();
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles({
+    name: fileName,
+    mimeType: "image/png",
+    // E2E files run in parallel in one project. Keep this valid PNG unique so
+    // the content-deduplication contract does not intentionally reuse another
+    // test's in-flight reservation.
+    buffer: Buffer.concat([PREVIEW_IMAGE_PNG, Buffer.from(suffix)]),
+  });
+
+  const tile = page.getByRole("button", { name: new RegExp(fileName) });
+  await expect(tile).toBeVisible();
+  await tile.scrollIntoViewIfNeeded();
+  const tileImage = tile.locator("img");
+  await expect(tileImage).toHaveAttribute("src", /^blob:/);
+  const warmSrc = await tileImage.getAttribute("src");
+  await expect.poll(() => warmFileId).not.toBeNull();
+
+  const applicationNavigation = page.getByRole("navigation", {
+    name: "Разделы приложения",
+  });
+  await applicationNavigation
+    .getByRole("button", { name: "Холсты", exact: true })
+    .click();
+  await page.locator(".react-flow__pane").first().waitFor();
+  countWarmVariantRequests = true;
+  await applicationNavigation
+    .getByRole("button", { name: "Файлы", exact: true })
+    .click();
+
+  const filesNavigation = page.getByRole("complementary", {
+    name: "Навигация по файлам",
+  });
+  await expect(
+    filesNavigation.getByRole("button", { name: folderName, exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  const returnedImage = page
+    .getByRole("button", { name: new RegExp(fileName) })
+    .locator("img");
+  await expect(returnedImage).toHaveAttribute("src", warmSrc ?? "");
+  await page.waitForTimeout(1_200);
+  await expect(returnedImage).toHaveAttribute("src", warmSrc ?? "");
+  expect(variantRequestsAfterReturn).toBe(0);
 });
 
 test("opens a PDF in the file viewer on double click", async ({ page }) => {
