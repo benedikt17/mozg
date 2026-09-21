@@ -3385,7 +3385,11 @@ function InfiniteCanvasLocalShellSurface({
             true,
           );
         }
-        imageLoadCacheRef.current.clear();
+        // Entries are already keyed by user, workspace and canvas.  Clearing
+        // all of them on every canvas switch throws away the just-loaded
+        // image blobs and makes returning through the desktop sections look
+        // like a cold load.  Keep the bounded browser-memory cache; only
+        // background pyramid work for the previous canvas is cancelled.
         imageLoadCacheCanvasIdRef.current = nextState.canvasId;
       }
       if (preserveWarmImagePayloads) {

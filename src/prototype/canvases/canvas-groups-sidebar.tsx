@@ -691,6 +691,11 @@ export function CanvasGroupsSidebar({
           </p>
         ) : null}
         {listState === "ready"
+          ? tree.roots.map((group) => (
+              <CanvasGroupTree {...groupProps(group)} key={group.id} />
+            ))
+          : null}
+        {listState === "ready"
           ? tree.rootCanvases.map((canvas) => (
               <CanvasTreeRow
                 active={activeCanvasId === canvas.id}
@@ -717,11 +722,6 @@ export function CanvasGroupsSidebar({
                   setDraft(canvas.title);
                 }}
               />
-            ))
-          : null}
-        {listState === "ready"
-          ? tree.roots.map((group) => (
-              <CanvasGroupTree {...groupProps(group)} key={group.id} />
             ))
           : null}
         {listState === "ready" &&

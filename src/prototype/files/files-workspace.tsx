@@ -79,6 +79,7 @@ const PROJECT_FILE_PREVIEW_CACHE_LIMIT_ENTRIES = 160;
 type ProjectFilePreviewCacheEntry = {
   blob: Blob;
   lastUsedAt: number;
+  objectUrl: string | null;
 };
 
 const projectFilePreviewCache = new Map<string, ProjectFilePreviewCacheEntry>();
@@ -89,13 +90,23 @@ function projectFilePreviewCacheKey({
   projectId,
   fileId,
   targetMaxEdge,
+  exactTarget = false,
 }: {
   workspaceId: string;
   projectId: string;
   fileId: string;
   targetMaxEdge: number;
+  exactTarget?: boolean;
 }): string {
-  return [workspaceId, projectId, fileId, targetMaxEdge].join(":");
+  // A tile and a viewer fallback may have the same nominal target edge but
+  // must never share an image of a different intended size.
+  return [
+    workspaceId,
+    projectId,
+    fileId,
+    exactTarget ? "exact" : "preview",
+    targetMaxEdge,
+  ].join(":");
 }
 
 function getCachedProjectFilePreview(key: string): Blob | null {
@@ -108,7 +119,13 @@ function getCachedProjectFilePreview(key: string): Blob | null {
 function cacheProjectFilePreview(key: string, blob: Blob): void {
   if (blob.size > PROJECT_FILE_PREVIEW_CACHE_LIMIT_BYTES) return;
 
-  projectFilePreviewCache.set(key, { blob, lastUsedAt: Date.now() });
+  const replaced = projectFilePreviewCache.get(key);
+  if (replaced?.objectUrl) URL.revokeObjectURL(replaced.objectUrl);
+  projectFilePreviewCache.set(key, {
+    blob,
+    lastUsedAt: Date.now(),
+    objectUrl: null,
+  });
 
   let cachedBytes = [...projectFilePreviewCache.values()].reduce(
     (total, entry) => total + entry.blob.size,
@@ -126,8 +143,18 @@ function cacheProjectFilePreview(key: string, blob: Blob): void {
   ) {
     const [oldestKey, oldestEntry] = oldestFirst.shift()!;
     projectFilePreviewCache.delete(oldestKey);
+    if (oldestEntry.objectUrl) URL.revokeObjectURL(oldestEntry.objectUrl);
     cachedBytes -= oldestEntry.blob.size;
   }
+}
+
+function cachedProjectFilePreviewUrl(key: string, blob: Blob): string | null {
+  const cached = getCachedProjectFilePreview(key);
+  if (cached !== blob) return null;
+  const entry = projectFilePreviewCache.get(key);
+  if (!entry) return null;
+  if (!entry.objectUrl) entry.objectUrl = URL.createObjectURL(entry.blob);
+  return entry.objectUrl;
 }
 
 async function loadCachedProjectFileImagePreview({
@@ -152,6 +179,7 @@ async function loadCachedProjectFileImagePreview({
     projectId,
     fileId,
     targetMaxEdge,
+    exactTarget,
   });
   const cached = getCachedProjectFilePreview(cacheKey);
   if (cached) return cached;
@@ -498,6 +526,16 @@ export function FilesWorkspace({
     setSelectedFileId(null);
     setSelectedFileIds([]);
     setActionMessage(null);
+    setCollapsedFolderIds((current) => {
+      const collapsed = current ?? folders.map((folder) => folder.id);
+      const ancestors = new Set(
+        getProjectFolderBreadcrumbs(folders, folderId).map(
+          (folder) => folder.id,
+        ),
+      );
+      return collapsed.filter((id) => !ancestors.has(id));
+    });
+    setCollapsedBeforeAll(null);
     setLocation({ kind: "folder", folderId });
   };
 
@@ -1946,7 +1984,6 @@ export function FilesWorkspace({
           file={openedFile}
           files={viewerFiles}
           key={openedFile.id}
-          imageVariantRepository={imageVariantRepository}
           onClose={() => setOpenedFileId(null)}
           onNavigate={navigateViewer}
           projectId={projectId}
@@ -2109,7 +2146,16 @@ function ProjectFileThumbnail({
           exactTarget: true,
         });
         if (cancelled) return;
-        objectUrl = URL.createObjectURL(blob);
+        const cacheKey = projectFilePreviewCacheKey({
+          workspaceId,
+          projectId,
+          fileId: file.id,
+          targetMaxEdge,
+          exactTarget: true,
+        });
+        objectUrl =
+          cachedProjectFilePreviewUrl(cacheKey, blob) ??
+          URL.createObjectURL(blob);
         setImageUrl(objectUrl);
       } catch {
         if (!cancelled) setLoadError(true);
@@ -2118,7 +2164,20 @@ function ProjectFileThumbnail({
 
     return () => {
       cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      if (
+        objectUrl &&
+        !projectFilePreviewCache.has(
+          projectFilePreviewCacheKey({
+            workspaceId,
+            projectId,
+            fileId: file.id,
+            targetMaxEdge,
+            exactTarget: true,
+          }),
+        )
+      ) {
+        URL.revokeObjectURL(objectUrl);
+      }
     };
   }, [
     file.id,
@@ -2157,7 +2216,6 @@ function ProjectFileThumbnail({
 
 function ProjectFileViewer({
   repository,
-  imageVariantRepository,
   workspaceId,
   projectId,
   file,
@@ -2166,7 +2224,6 @@ function ProjectFileViewer({
   onNavigate,
 }: {
   repository: ProjectFileRepository;
-  imageVariantRepository: ProjectFileImageVariantRepository;
   workspaceId: string;
   projectId: string;
   file: ProjectFileRecord;
@@ -2176,8 +2233,6 @@ function ProjectFileViewer({
 }): React.JSX.Element {
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [usingOriginal, setUsingOriginal] = useState(false);
-  const [loadingOriginal, setLoadingOriginal] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -2209,37 +2264,9 @@ function ProjectFileViewer({
 
     void (async () => {
       try {
-        if (isImage) {
-          let variants: ProjectFileImageVariantMetadata[] = [];
-          try {
-            variants = await imageVariantRepository.listImageVariants({
-              workspaceId,
-              projectId,
-              fileId: file.id,
-            });
-          } catch {
-            // A derivative is a cache. A ready source remains the fallback.
-          }
-          const preview = chooseProjectFilePreviewVariant(variants, 2048);
-          if (preview) {
-            try {
-              const variant = await imageVariantRepository.loadImageVariant({
-                workspaceId,
-                projectId,
-                fileId: file.id,
-                targetMaxEdge: preview.targetMaxEdge,
-              });
-              if (cancelled) return;
-              if (variant) {
-                replaceFileUrl(variant.blob);
-                setUsingOriginal(false);
-                return;
-              }
-            } catch {
-              // Stale derivative: use the immutable original below.
-            }
-          }
-        }
+        // The viewer is the full-file view, not a thumbnail surface.  Loading
+        // the canonical file avoids showing a different-sized derivative for
+        // some images while others happen to use the original.
         const download = await repository.downloadFile({
           workspaceId,
           projectId,
@@ -2247,7 +2274,6 @@ function ProjectFileViewer({
         });
         if (cancelled) return;
         replaceFileUrl(download.blob);
-        setUsingOriginal(true);
       } catch {
         if (!cancelled) setLoadError(true);
       }
@@ -2260,15 +2286,7 @@ function ProjectFileViewer({
         activeObjectUrlRef.current = null;
       }
     };
-  }, [
-    file.id,
-    imageVariantRepository,
-    isImage,
-    projectId,
-    replaceFileUrl,
-    repository,
-    workspaceId,
-  ]);
+  }, [file.id, projectId, replaceFileUrl, repository, workspaceId]);
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -2279,22 +2297,6 @@ function ProjectFileViewer({
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [onClose, onNavigate]);
-
-  const loadOriginal = async () => {
-    if (usingOriginal || loadingOriginal) return;
-    setLoadingOriginal(true);
-    try {
-      const download = await repository.downloadFile({
-        workspaceId,
-        projectId,
-        fileId: file.id,
-      });
-      replaceFileUrl(download.blob);
-      setUsingOriginal(true);
-    } finally {
-      setLoadingOriginal(false);
-    }
-  };
 
   const updateZoom = (nextZoom: number) => {
     const clampedZoom = Math.min(4, Math.max(1, nextZoom));
@@ -2487,18 +2489,6 @@ function ProjectFileViewer({
               </div>
             </dl>
           </div>
-          {isImage && !usingOriginal ? (
-            <div className={styles.viewerInfoActions}>
-              <PrototypeButton
-                disabled={loadingOriginal}
-                onClick={() => void loadOriginal()}
-                size="compact"
-                variant="quiet"
-              >
-                {loadingOriginal ? "Загрузка оригинала…" : "Открыть оригинал"}
-              </PrototypeButton>
-            </div>
-          ) : null}
         </aside>
       </section>
     </div>
@@ -2566,7 +2556,15 @@ function ProjectFilePreview({
           targetMaxEdge: PROJECT_FILE_PREVIEW_PREFERRED_MAX_EDGE,
         });
         if (cancelled) return;
-        objectUrl = URL.createObjectURL(blob);
+        const cacheKey = projectFilePreviewCacheKey({
+          workspaceId,
+          projectId,
+          fileId: file.id,
+          targetMaxEdge: PROJECT_FILE_PREVIEW_PREFERRED_MAX_EDGE,
+        });
+        objectUrl =
+          cachedProjectFilePreviewUrl(cacheKey, blob) ??
+          URL.createObjectURL(blob);
         setImageUrl(objectUrl);
       } catch {
         if (!cancelled) setLoadError(true);
@@ -2575,7 +2573,19 @@ function ProjectFilePreview({
 
     return () => {
       cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      if (
+        objectUrl &&
+        !projectFilePreviewCache.has(
+          projectFilePreviewCacheKey({
+            workspaceId,
+            projectId,
+            fileId: file.id,
+            targetMaxEdge: PROJECT_FILE_PREVIEW_PREFERRED_MAX_EDGE,
+          }),
+        )
+      ) {
+        URL.revokeObjectURL(objectUrl);
+      }
     };
   }, [
     file.id,
