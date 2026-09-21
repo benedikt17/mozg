@@ -423,7 +423,24 @@ test("restores the current Files folder and warm image tiles after section navig
   const suffix = `${process.env.GITHUB_RUN_ID ?? Date.now()}-${testInfo.retry}`;
   const folderName = `Warm Files ${suffix}`;
   const fileName = `warm-preview-${suffix}.png`;
+  let warmFileId: string | null = null;
   let variantRequestsAfterReturn = 0;
+  let countWarmVariantRequests = false;
+
+  page.on("request", (request) => {
+    if (request.method() !== "GET") return;
+    const match = new URL(request.url()).pathname.match(
+      /\/project-files\/[^/]+\/([^/]+)\/variants\/edge-\d+\.webp$/,
+    );
+    if (!match) return;
+    if (warmFileId === null) {
+      warmFileId = match[1];
+      return;
+    }
+    if (countWarmVariantRequests && match[1] === warmFileId) {
+      variantRequestsAfterReturn += 1;
+    }
+  });
 
   await signIn(page);
   await openFiles(page);
@@ -455,6 +472,7 @@ test("restores the current Files folder and warm image tiles after section navig
   const tileImage = tile.locator("img");
   await expect(tileImage).toHaveAttribute("src", /^blob:/);
   const warmSrc = await tileImage.getAttribute("src");
+  await expect.poll(() => warmFileId).not.toBeNull();
 
   const applicationNavigation = page.getByRole("navigation", {
     name: "Разделы приложения",
@@ -462,14 +480,8 @@ test("restores the current Files folder and warm image tiles after section navig
   await applicationNavigation
     .getByRole("button", { name: "Холсты", exact: true })
     .click();
-  page.on("request", (request) => {
-    if (
-      request.method() === "GET" &&
-      decodeURIComponent(request.url()).includes("/variants/edge-")
-    ) {
-      variantRequestsAfterReturn += 1;
-    }
-  });
+  await page.locator(".react-flow__pane").first().waitFor();
+  countWarmVariantRequests = true;
   await applicationNavigation
     .getByRole("button", { name: "Файлы", exact: true })
     .click();
