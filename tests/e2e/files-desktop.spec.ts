@@ -430,10 +430,15 @@ test("restores the current Files folder and warm image tiles after section navig
   await createFolder(page, folderName);
   await page.getByRole("button", { name: "Превью", exact: true }).click();
 
+  const uploadButton = page.getByRole("button", {
+    name: "Загрузить файл",
+    exact: true,
+  });
+  await expect(page.getByText("Папка пуста", { exact: true })).toBeVisible();
+  await expect(uploadButton).toBeEnabled();
+
   const fileChooserPromise = page.waitForEvent("filechooser");
-  await page
-    .getByRole("button", { name: "Загрузить файл", exact: true })
-    .click();
+  await uploadButton.click();
   const fileChooser = await fileChooserPromise;
   await fileChooser.setFiles({
     name: fileName,
