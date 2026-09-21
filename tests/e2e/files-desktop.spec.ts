@@ -443,7 +443,10 @@ test("restores the current Files folder and warm image tiles after section navig
   await fileChooser.setFiles({
     name: fileName,
     mimeType: "image/png",
-    buffer: PREVIEW_IMAGE_PNG,
+    // E2E files run in parallel in one project. Keep this valid PNG unique so
+    // the content-deduplication contract does not intentionally reuse another
+    // test's in-flight reservation.
+    buffer: Buffer.concat([PREVIEW_IMAGE_PNG, Buffer.from(suffix)]),
   });
 
   await expect(
