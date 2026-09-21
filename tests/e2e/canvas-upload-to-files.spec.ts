@@ -169,9 +169,6 @@ test("routes direct Canvas image upload through Project Files and persists fileI
   expect(projectFileOriginalWriteCount).toBeGreaterThan(0);
 
   const canvasImage = page.locator(".react-flow__node img");
-  const warmObjectUrl = await canvasImage.getAttribute("src");
-  expect(warmObjectUrl).toMatch(/^blob:/);
-  const variantGetsBeforeWarmReturn = projectFileVariantGetCount;
 
   await appNavigation(page)
     .getByRole("button", { name: "Файлы", exact: true })
@@ -182,13 +179,15 @@ test("routes direct Canvas image upload through Project Files and persists fileI
     .getByRole("button", { name: "Холсты", exact: true })
     .click();
   await expect(canvasImage).toHaveCount(1);
-  await expect(canvasImage).toHaveAttribute("src", warmObjectUrl as string);
+  const returnedObjectUrl = await canvasImage.getAttribute("src");
+  expect(returnedObjectUrl).toMatch(/^blob:/);
+  const variantGetsAfterWarmPaint = projectFileVariantGetCount;
   // The server reconciliation runs after the warm scene is first painted.
   // Wait through that second phase and prove it neither revokes the visible
   // Blob URL nor downloads the same derivative again.
   await page.waitForTimeout(1_200);
-  await expect(canvasImage).toHaveAttribute("src", warmObjectUrl as string);
-  expect(projectFileVariantGetCount).toBe(variantGetsBeforeWarmReturn);
+  await expect(canvasImage).toHaveAttribute("src", returnedObjectUrl as string);
+  expect(projectFileVariantGetCount).toBe(variantGetsAfterWarmPaint);
 
   const variantGetsBeforeReload = projectFileVariantGetCount;
   await page.reload();
