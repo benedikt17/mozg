@@ -428,6 +428,7 @@ test("restores the current Files folder and warm image tiles after section navig
   await signIn(page);
   await openFiles(page);
   await createFolder(page, folderName);
+  await page.getByRole("button", { name: "Превью", exact: true }).click();
 
   const fileChooserPromise = page.waitForEvent("filechooser");
   await page
