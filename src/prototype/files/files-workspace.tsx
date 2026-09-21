@@ -184,16 +184,18 @@ function cachedProjectFilePreviewUrl(key: string, blob: Blob): string | null {
   return entry.objectUrl;
 }
 
-function warmProjectFileThumbnailUrl({
+function warmProjectFileImagePreviewUrl({
   workspaceId,
   projectId,
   fileId,
   targetMaxEdge,
+  exactTarget = false,
 }: {
   workspaceId: string | undefined;
   projectId: string;
   fileId: string;
   targetMaxEdge: number;
+  exactTarget?: boolean;
 }): string | null {
   if (!workspaceId) return null;
   const cacheKey = projectFilePreviewCacheKey({
@@ -201,7 +203,7 @@ function warmProjectFileThumbnailUrl({
     projectId,
     fileId,
     targetMaxEdge,
-    exactTarget: true,
+    exactTarget,
   });
   const blob = getCachedProjectFilePreview(cacheKey);
   return blob ? cachedProjectFilePreviewUrl(cacheKey, blob) : null;
@@ -2233,11 +2235,12 @@ function ProjectFileThumbnail({
   // the cached image never flashes back to a loading placeholder.
   const [imageUrl, setImageUrl] = useState<string | null>(() =>
     file.mimeType.startsWith("image/")
-      ? warmProjectFileThumbnailUrl({
+      ? warmProjectFileImagePreviewUrl({
           workspaceId,
           projectId,
           fileId: file.id,
           targetMaxEdge,
+          exactTarget: true,
         })
       : null,
   );
@@ -2266,7 +2269,7 @@ function ProjectFileThumbnail({
   }, [isImage]);
 
   useEffect(() => {
-    if (!isImage || !isNearViewport || !workspaceId) return;
+    if (!isImage || imageUrl || !isNearViewport || !workspaceId) return;
     let cancelled = false;
     let objectUrl: string | null = null;
 
@@ -2317,6 +2320,7 @@ function ProjectFileThumbnail({
     };
   }, [
     file.id,
+    imageUrl,
     imageVariantRepository,
     isImage,
     isNearViewport,
@@ -2662,7 +2666,16 @@ function ProjectFilePreview({
   onOpen: (file: ProjectFileRecord) => void;
 }): React.JSX.Element {
   const [loadError, setLoadError] = useState(false);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(() =>
+    file.mimeType.startsWith("image/")
+      ? warmProjectFileImagePreviewUrl({
+          workspaceId,
+          projectId,
+          fileId: file.id,
+          targetMaxEdge: PROJECT_FILE_PREVIEW_PREFERRED_MAX_EDGE,
+        })
+      : null,
+  );
   const [downloadingOriginal, setDownloadingOriginal] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState(file.name);
@@ -2677,7 +2690,7 @@ function ProjectFilePreview({
   const isPdf = file.mimeType === "application/pdf";
 
   useEffect(() => {
-    if (!isImage) return;
+    if (!isImage || imageUrl) return;
     let cancelled = false;
     let objectUrl: string | null = null;
 
@@ -2725,6 +2738,7 @@ function ProjectFilePreview({
     };
   }, [
     file.id,
+    imageUrl,
     imageVariantRepository,
     isImage,
     projectId,
