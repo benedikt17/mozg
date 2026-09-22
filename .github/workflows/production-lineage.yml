@@ -1,0 +1,53 @@
+name: Production Lineage Guard
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PRODUCTION_BRANCH: refactor/prototype-state-root
+
+jobs:
+  lineage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require candidate to descend from current Production
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PUSH_BRANCH: ${{ github.ref_name }}
+        run: |
+          git fetch --no-tags origin \
+            "+refs/heads/$PRODUCTION_BRANCH:refs/remotes/origin/$PRODUCTION_BRANCH"
+
+          required_sha="$(git rev-parse "origin/$PRODUCTION_BRANCH")"
+          if [[ "$EVENT_NAME" == "push" && "$PUSH_BRANCH" == "$PRODUCTION_BRANCH" ]]; then
+            required_sha="$PUSH_BEFORE_SHA"
+          fi
+
+          if [[ -z "$required_sha" || "$required_sha" =~ ^0+$ ]]; then
+            echo "::error::Cannot resolve the required Production ancestor."
+            exit 1
+          fi
+
+          if ! git cat-file -e "$CANDIDATE_SHA^{commit}"; then
+            echo "::error::Candidate commit $CANDIDATE_SHA is unavailable."
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor "$required_sha" "$CANDIDATE_SHA"; then
+            echo "::error::Candidate $CANDIDATE_SHA does not contain required Production $required_sha."
+            echo "::error::Rebase or recreate the branch from origin/$PRODUCTION_BRANCH before Preview or release."
+            exit 1
+          fi
+
+          echo "Candidate $CANDIDATE_SHA contains required Production $required_sha."
