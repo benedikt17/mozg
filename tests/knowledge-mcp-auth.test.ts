@@ -62,6 +62,7 @@ describe("scoped Knowledge MCP authorization", () => {
         Response.json({
           client_id: WORK_CLIENT_ID,
           redirect_uris: [WORK_REDIRECT_URI],
+          token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
         }),
       ),
     );

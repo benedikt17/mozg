@@ -59,7 +59,9 @@ export async function validWorkClient(
     return (
       client.client_id === WORK_CLIENT_ID &&
       Array.isArray(client.redirect_uris) &&
-      client.redirect_uris.includes(WORK_REDIRECT_URI)
+      client.redirect_uris.includes(WORK_REDIRECT_URI) &&
+      Array.isArray(client.token_endpoint_auth_methods_supported) &&
+      client.token_endpoint_auth_methods_supported.includes("none")
     );
   } catch {
     return false;
