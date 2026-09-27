@@ -2,9 +2,11 @@
 
 This checkpoint exposes **active Knowledge articles only**. It does not modify
 the database, the workspace snapshot, tasks, files, or canvases. The endpoint
-uses the existing workspace snapshot and accepts a Supabase user access token.
-Every request validates the user with Supabase Auth and reads with that user's
-JWT under the existing workspace RLS policies. No service-role key is used.
+uses the existing workspace snapshot. The external MCP client receives a
+dedicated opaque access token, never a Supabase user token. Every request
+validates that token, checks that the user still exists, and checks workspace
+membership before a server-only client reads the snapshot. The server-only
+service-role key is never sent to the client.
 
 ## Tools
 
@@ -26,12 +28,11 @@ cards is outside this checkpoint.
 ## Connection status
 
 The Preview login tests only the regular application. **Do not enable the
-Supabase OAuth Server or set `MOZG_MCP_PUBLIC_URL` yet.** The existing OAuth
-path would give an external client a Supabase user token. First implement and
-test the scoped authorization boundary proposed in
-[ADR-0006](adr/0006-knowledge-mcp-scoped-authorization.md), using an isolated
-Preview environment with synthetic data. Then publish separate, verified
-instructions for connecting ChatGPT Work.
+Supabase OAuth Server or set `MOZG_MCP_PUBLIC_URL` yet.** The draft branch now
+includes the scoped OAuth implementation proposed in
+[ADR-0006](adr/0006-knowledge-mcp-scoped-authorization.md). Database and live
+OAuth connection tests are still required. Test first on an isolated Preview
+database with synthetic data. Then publish verified connection instructions.
 
 No OAuth server setting, environment variable, plugin installation, or
 Production data was changed by this code checkpoint. The draft PR creates an
@@ -39,17 +40,18 @@ automatic Vercel Preview deployment, but its MCP endpoint remains disabled.
 
 ## Security boundary before Production
 
-The **MCP tools** are read-only. A Supabase OAuth access token, however, carries
-the user's existing database permissions. Standard OAuth scopes such as
-`openid` and `profile` do not reduce database permissions. An OAuth client that
-obtains this token may call Supabase APIs directly, outside the MCP tools.
-Therefore this PR must **not** be enabled against Production. The proposed
-solution in [ADR-0006](adr/0006-knowledge-mcp-scoped-authorization.md) is to
-issue a dedicated MCP-only credential instead of handing a Supabase user token
-to the external client. This design has not been implemented yet. The consent
-page and MCP endpoint stay disabled without an explicit
-`MOZG_MCP_PUBLIC_URL` setting. An isolated Preview project with synthetic data
-is the only supported place for the first OAuth connection test.
+Supabase OAuth tokens carry the user's existing database permissions, so the
+old consent flow has been removed. The new authorization server issues only
+dedicated tokens stored as hashes; they are accepted at `/api/mcp` and are not
+Supabase JWTs. The server-only read path uses a service-role client after
+checking the user's identity and workspace membership. The endpoint stays
+disabled without **both** `MOZG_MCP_SCOPED_AUTH=enabled` and the exact
+`MOZG_MCP_PUBLIC_URL`, plus the server-only `SUPABASE_SERVICE_ROLE_KEY`.
+
+Only the official ChatGPT Work client metadata URL and callback are supported
+at this stage. The remote MCP transport itself uses a standard protocol; other
+clients can be added through an explicit client validation rule later. Do not
+enable Production until the full OAuth and workspace boundary test passes.
 
 ## Review before the next checkpoint
 

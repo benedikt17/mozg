@@ -1,5 +1,6 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import { loadKnowledgeForToken } from "@/lib/knowledge-mcp/load";
+import { loadKnowledgeForUser } from "@/lib/knowledge-mcp/load";
+import { verifyMcpToken } from "@/lib/knowledge-mcp/scoped-auth";
 import { createKnowledgeMcpServer } from "@/lib/knowledge-mcp/server";
 import { getMcpAuthChallenge } from "@/lib/knowledge-mcp/oauth";
 
@@ -13,8 +14,9 @@ export async function POST(request: Request): Promise<Response> {
     request.headers.get("authorization") ?? "",
   );
   if (!match) return unauthorized();
-  const loaded = await loadKnowledgeForToken(match[1]);
-  if (loaded.kind === "unauthorized") return unauthorized();
+  const userId = await verifyMcpToken(match[1]);
+  if (!userId) return unauthorized();
+  const loaded = await loadKnowledgeForUser(userId);
   if (loaded.kind !== "ready")
     return new Response("Knowledge unavailable", { status: 503 });
 

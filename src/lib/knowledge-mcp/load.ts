@@ -15,32 +15,25 @@ export type KnowledgeLoadResult =
     }
   | { kind: "unauthorized" | "unavailable" };
 
-export async function loadKnowledgeForToken(
-  token: string,
+/** Read as a server-only privileged client after a scoped MCP token has been
+ * verified. Explicit membership lookup mirrors the workspace RLS boundary.
+ * Do not expose this client or its credential to the OAuth caller. */
+export async function loadKnowledgeForUser(
+  userId: string,
 ): Promise<KnowledgeLoadResult> {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!key) return { kind: "unavailable" };
   const env = getPublicEnv();
-  const client = createClient<Database>(
-    env.NEXT_PUBLIC_SUPABASE_URL,
-    env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-      auth: { autoRefreshToken: false, persistSession: false },
-    },
-  );
-  const {
-    data: { user },
-    error: authError,
-  } = await client.auth.getUser(token);
-  if (authError || !user) return { kind: "unauthorized" };
-
+  const client = createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
   const { data: memberships, error: membershipError } = await client
     .from("workspace_members")
     .select("workspace_id")
-    .eq("user_id", user.id)
+    .eq("user_id", userId)
     .limit(2);
-  if (membershipError || !memberships || memberships.length !== 1) {
+  if (membershipError || !memberships || memberships.length !== 1)
     return { kind: "unavailable" };
-  }
   const workspaceId = memberships[0].workspace_id;
   const [
     { data: workspace, error: workspaceError },

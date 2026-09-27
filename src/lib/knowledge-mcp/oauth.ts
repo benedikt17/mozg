@@ -1,8 +1,13 @@
-import { getPublicEnv } from "@/lib/env";
-
 export function getMcpPublicUrl(): string | null {
   const configured = process.env.MOZG_MCP_PUBLIC_URL;
-  if (!configured) return null;
+  // The old Supabase OAuth token would carry ordinary user write privileges.
+  // Require the scoped credential implementation and server-only key.
+  if (
+    process.env.MOZG_MCP_SCOPED_AUTH !== "enabled" ||
+    !process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    !configured
+  )
+    return null;
   try {
     const url = new URL(configured);
     if (url.pathname !== "/api/mcp" || url.search || url.hash) return null;
@@ -27,5 +32,7 @@ export function getMcpAuthChallenge(): string | null {
 }
 
 export function getMcpAuthorizationServer(): string {
-  return `${getPublicEnv().NEXT_PUBLIC_SUPABASE_URL.replace(/\/$/, "")}/auth/v1`;
+  const url = getMcpPublicUrl();
+  if (!url) throw new Error("MCP is not configured");
+  return new URL("/", url).href.replace(/\/$/, "");
 }
