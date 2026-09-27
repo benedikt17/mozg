@@ -54,12 +54,13 @@ The **MCP tools** are read-only. A Supabase OAuth access token, however, carries
 the user's existing database permissions. Standard OAuth scopes such as
 `openid` and `profile` do not reduce database permissions. An OAuth client that
 obtains this token may call Supabase APIs directly, outside the MCP tools.
-Therefore this PR must **not** be enabled against Production until a separate
-security checkpoint has restricted OAuth-client writes through RLS, privileged
-RPCs, and Storage policies, with tests for ordinary browser sessions and OAuth
-sessions. The consent page and MCP endpoint stay disabled without an explicit
-`MOZG_MCP_PUBLIC_URL` setting. An isolated Preview project is the only supported
-place for the first OAuth connection test.
+Therefore this PR must **not** be enabled against Production. The proposed
+solution in [ADR-0006](adr/0006-knowledge-mcp-scoped-authorization.md) is to
+issue a dedicated MCP-only credential instead of handing a Supabase user token
+to the external client. This design has not been implemented yet. The consent
+page and MCP endpoint stay disabled without an explicit
+`MOZG_MCP_PUBLIC_URL` setting. An isolated Preview project with synthetic data
+is the only supported place for the first OAuth connection test.
 
 ## Review before the next checkpoint
 
