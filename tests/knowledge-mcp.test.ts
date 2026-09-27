@@ -126,4 +126,51 @@ describe("read-only knowledge MCP", () => {
       await server.close();
     }
   });
+
+  it("pages a long article without losing text", async () => {
+    const markdown = "Текст 🎨 ".repeat(7000);
+    const server = createKnowledgeMcpServer({
+      workspaceId: "workspace",
+      workspaceName: "Workspace",
+      revision: 18,
+      updatedAt: "2026-09-27T00:00:00Z",
+      schemaVersion: 3,
+      snapshot: {
+        projects: catalog.projects,
+        documents: [document("long", "one", [markdown])],
+      },
+    });
+    const client = new Client({ name: "test", version: "1.0.0" });
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    await Promise.all([
+      server.connect(serverTransport),
+      client.connect(clientTransport),
+    ]);
+    try {
+      let offset: number | null = 0;
+      let reconstructed = "";
+      while (offset !== null) {
+        const response = toolJson(
+          await client.callTool({
+            name: "read_knowledge_document",
+            arguments: { documentId: "long", offset, maxChars: 12000 },
+          }),
+        ) as {
+          document: {
+            markdown: string;
+            nextOffset: number | null;
+            totalChars: number;
+          };
+        };
+        expect(response.document.totalChars).toBe(markdown.length);
+        reconstructed += response.document.markdown;
+        offset = response.document.nextOffset;
+      }
+      expect(reconstructed).toBe(markdown);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
 });

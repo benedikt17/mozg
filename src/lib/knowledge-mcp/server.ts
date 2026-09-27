@@ -66,23 +66,44 @@ export function createKnowledgeMcpServer(snapshot: ReadySnapshot): McpServer {
     "read_knowledge_document",
     {
       description:
-        "Read the complete original Markdown of one active MOZG knowledge document by its exact ID.",
-      inputSchema: { documentId: z.string().min(1).max(250) },
+        "Read original Markdown by exact document ID. Follow nextOffset until null to read the entire article. Check revision across calls.",
+      inputSchema: {
+        documentId: z.string().min(1).max(250),
+        offset: z.number().int().nonnegative().default(0),
+        maxChars: z.number().int().min(100).max(50000).default(24000),
+      },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    ({ documentId }) => {
+    ({ documentId, offset, maxChars }) => {
       const entry = entries.find((item) => item.id === documentId);
-      return entry
-        ? result({ ...metadata, document: entry })
-        : {
-            isError: true,
-            content: [
-              {
-                type: "text" as const,
-                text: "Document not found or unavailable",
-              },
-            ],
-          };
+      if (!entry) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: "Document not found or unavailable",
+            },
+          ],
+        };
+      }
+      let end = Math.min(offset + maxChars, entry.markdown.length);
+      if (
+        end < entry.markdown.length &&
+        end > offset &&
+        entry.markdown.charCodeAt(end - 1) >= 0xd800 &&
+        entry.markdown.charCodeAt(end - 1) <= 0xdbff
+      )
+        end -= 1;
+      return result({
+        ...metadata,
+        document: {
+          ...entry,
+          markdown: entry.markdown.slice(offset, end),
+          totalChars: entry.markdown.length,
+          nextOffset: end < entry.markdown.length ? end : null,
+        },
+      });
     },
   );
 

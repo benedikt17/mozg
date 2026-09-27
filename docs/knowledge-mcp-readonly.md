@@ -14,7 +14,9 @@ JWT under the existing workspace RLS policies. No service-role key is used.
 - `search_knowledge_documents`: case-insensitive literal substring search in
   title, project, folder, and Markdown. Search is a convenience, not a
   comprehensive semantic contradiction detector.
-- `read_knowledge_document`: complete original Markdown of one document ID.
+- `read_knowledge_document`: original Markdown of one document ID, in chunks
+  of up to 50,000 characters. Follow `nextOffset` until null to read the whole
+  article, checking that `revision` stays the same across calls.
 
 Each response carries the workspace snapshot revision and update time. If the
 revision changes during a multi-call audit, repeat the audit on the newer
