@@ -2,8 +2,10 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getMcpPublicUrl } from "@/lib/knowledge-mcp/oauth";
 
 async function decide(formData: FormData, approved: boolean): Promise<void> {
+  if (!getMcpPublicUrl()) redirect("/oauth/consent?error=disabled");
   const authorizationId = formData.get("authorization_id");
   if (
     typeof authorizationId !== "string" ||

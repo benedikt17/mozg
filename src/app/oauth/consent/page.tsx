@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getMcpPublicUrl } from "@/lib/knowledge-mcp/oauth";
 import { approveAuthorization, denyAuthorization } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,13 @@ export default async function ConsentPage({
 }): Promise<React.JSX.Element> {
   const { authorization_id: authorizationId, error: decisionError } =
     await searchParams;
+  if (!getMcpPublicUrl()) {
+    return (
+      <main>
+        <h1>Подключение MCP пока отключено</h1>
+      </main>
+    );
+  }
   if (!authorizationId || !/^[\w-]{1,250}$/.test(authorizationId)) {
     return (
       <main>
@@ -53,9 +61,14 @@ export default async function ConsentPage({
         имени.
       </p>
       <p>
-        После разрешения этот клиент сможет читать все доступные вам статьи
-        «Знаний» во всех проектах. MCP не предоставляет ему инструментов
-        изменения данных.
+        Инструменты MCP позволяют читать все доступные вам статьи «Знаний» во
+        всех проектах и не содержат операций записи.
+      </p>
+      <p>
+        <strong>Права токена шире инструментов MCP:</strong> OAuth-токен
+        действует от вашего имени и может обращаться к другим разрешённым вам
+        данным Supabase. Разрешайте доступ только в изолированной тестовой
+        среде, пока ограничения прав OAuth-клиента не проверены.
       </p>
       <p>
         Адрес клиента:{" "}

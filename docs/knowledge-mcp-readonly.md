@@ -32,7 +32,8 @@ cards is outside this checkpoint.
    2.1 server. Set the authorization path to `/oauth/consent` and confirm its
    Site URL is the Preview application origin. Enable dynamic client
    registration only if the chosen MCP client needs it. Review the client
-   presented on the consent page before approving.
+   presented on the consent page before approving. Keep the Production OAuth
+   Server and `MOZG_MCP_PUBLIC_URL` disabled at this checkpoint.
 3. Check `GET /.well-known/oauth-protected-resource`: its `resource` must be
    the exact MCP URL, and `authorization_servers` must point to the same
    Preview Supabase project. An unauthenticated `POST /api/mcp` must return
@@ -43,8 +44,22 @@ cards is outside this checkpoint.
    another workspace. Verify list pagination and full Markdown against a few
    known articles before considering Production configuration.
 
-No OAuth server setting, environment variable, Preview deployment, plugin
-installation, or Production data was changed by this code checkpoint.
+No OAuth server setting, environment variable, plugin installation, or
+Production data was changed by this code checkpoint. The draft PR creates an
+automatic Vercel Preview deployment, but its MCP endpoint remains disabled.
+
+## Security boundary before Production
+
+The **MCP tools** are read-only. A Supabase OAuth access token, however, carries
+the user's existing database permissions. Standard OAuth scopes such as
+`openid` and `profile` do not reduce database permissions. An OAuth client that
+obtains this token may call Supabase APIs directly, outside the MCP tools.
+Therefore this PR must **not** be enabled against Production until a separate
+security checkpoint has restricted OAuth-client writes through RLS, privileged
+RPCs, and Storage policies, with tests for ordinary browser sessions and OAuth
+sessions. The consent page and MCP endpoint stay disabled without an explicit
+`MOZG_MCP_PUBLIC_URL` setting. An isolated Preview project is the only supported
+place for the first OAuth connection test.
 
 ## Review before the next checkpoint
 
