@@ -1,0 +1,51 @@
+# Read-only Knowledge MCP — first checkpoint
+
+This checkpoint exposes **active Knowledge articles only**. It does not modify
+the database, the workspace snapshot, tasks, files, or canvases. The endpoint
+uses the existing workspace snapshot and accepts a Supabase user access token.
+Every request validates the user with Supabase Auth and reads with that user's
+JWT under the existing workspace RLS policies. No service-role key is used.
+
+## Tools
+
+- `list_knowledge_documents`: complete active-document inventory, paged up to
+  50 items per call; follow `nextOffset` until null. Includes document/project
+  IDs and folder paths. Counts and snapshot revision are returned.
+- `search_knowledge_documents`: case-insensitive literal substring search in
+  title, project, folder, and Markdown. Search is a convenience, not a
+  comprehensive semantic contradiction detector.
+- `read_knowledge_document`: complete original Markdown of one document ID.
+
+Each response carries the workspace snapshot revision and update time. If the
+revision changes during a multi-call audit, repeat the audit on the newer
+snapshot. Deleted articles are excluded. Text in Files/PDFs, Canvas, and task
+cards is outside this checkpoint.
+
+## Connection prerequisites
+
+1. Deploy to an isolated Preview environment with its own Supabase project.
+   Set `MOZG_MCP_PUBLIC_URL` to the exact Preview HTTPS URL ending `/api/mcp`.
+   Without it, the endpoint and OAuth discovery are disabled (503).
+2. In that Supabase project's Authentication → OAuth Server, enable the OAuth
+   2.1 server. Set the authorization path to `/oauth/consent` and confirm its
+   Site URL is the Preview application origin. Enable dynamic client
+   registration only if the chosen MCP client needs it. Review the client
+   presented on the consent page before approving.
+3. Check `GET /.well-known/oauth-protected-resource`: its `resource` must be
+   the exact MCP URL, and `authorization_servers` must point to the same
+   Preview Supabase project. An unauthenticated `POST /api/mcp` must return
+   `401` with a `WWW-Authenticate` challenge. Authenticated calls must be
+   limited to the signed-in user's workspace.
+4. Connect the URL through ChatGPT Work's developer/plugin flow and sign in
+   with the existing MOZG account. Test with an account that cannot access
+   another workspace. Verify list pagination and full Markdown against a few
+   known articles before considering Production configuration.
+
+No OAuth server setting, environment variable, Preview deployment, plugin
+installation, or Production data was changed by this code checkpoint.
+
+## Review before the next checkpoint
+
+This endpoint has no tools for writing. Batch changes to Knowledge require a
+separate design for approval, snapshot revision conflicts, recovery, and an
+explicit user acceptance step.
