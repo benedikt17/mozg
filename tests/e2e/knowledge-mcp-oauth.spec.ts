@@ -124,16 +124,51 @@ test("Work OAuth issues an MCP-only credential, rotates it, and revokes it", asy
     parseDesktopCloudSnapshotRow(snapshot.data!, workspace.data!.name).kind,
   ).toBe("ready");
 
-  const mcp = (bearer: string) =>
+  const mcp = (
+    bearer: string,
+    method = "tools/list",
+    params: Record<string, unknown> = {},
+  ) =>
     request.post("/api/mcp", {
       headers: {
         Authorization: `Bearer ${bearer}`,
         Accept: "application/json, text/event-stream",
         "Content-Type": "application/json",
       },
-      data: { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} },
+      data: { jsonrpc: "2.0", id: 1, method, params },
     });
-  expect((await mcp(tokens.access_token)).status()).toBe(200);
+  const listedTools = await mcp(tokens.access_token);
+  expect(listedTools.status()).toBe(200);
+  const toolsResult = await listedTools.json();
+  expect(
+    toolsResult.result.tools.map((tool: { name: string }) => tool.name),
+  ).toEqual(
+    expect.arrayContaining([
+      "list_knowledge_documents",
+      "read_knowledge_document",
+      "search_knowledge_documents",
+    ]),
+  );
+  const listedDocuments = await mcp(tokens.access_token, "tools/call", {
+    name: "list_knowledge_documents",
+    arguments: { limit: 50 },
+  });
+  expect(listedDocuments.status()).toBe(200);
+  const documents = JSON.parse(
+    (await listedDocuments.json()).result.content[0].text,
+  );
+  expect(documents.total).toBeGreaterThan(0);
+  const readDocument = await mcp(tokens.access_token, "tools/call", {
+    name: "read_knowledge_document",
+    arguments: { documentId: documents.items[0].id },
+  });
+  expect(readDocument.status()).toBe(200);
+  const article = JSON.parse(
+    (await readDocument.json()).result.content[0].text,
+  );
+  expect(article.document.id).toBe(documents.items[0].id);
+  expect(typeof article.document.markdown).toBe("string");
+  expect(article.revision).toBe(documents.revision);
   const rotated = await request.post("/oauth/token", {
     form: {
       grant_type: "refresh_token",
