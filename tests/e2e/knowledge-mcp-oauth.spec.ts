@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { randomBytes } from "node:crypto";
 import { expect, test } from "@playwright/test";
+import { createClient } from "@supabase/supabase-js";
+import { parseDesktopCloudSnapshotRow } from "@/prototype/persistence/cloud-snapshot-bridge";
 import { E2E_USER_EMAIL, E2E_USER_PASSWORD } from "./test-user";
 
 test("Work OAuth issues an MCP-only credential, rotates it, and revokes it", async ({
@@ -82,6 +84,45 @@ test("Work OAuth issues an MCP-only credential, rotates it, and revokes it", asy
     },
   );
   expect(directApi.status()).toBeGreaterThanOrEqual(400);
+
+  const supabaseUrl = process.env.E2E_SUPABASE_URL!;
+  const userClient = createClient(
+    supabaseUrl,
+    process.env.E2E_SUPABASE_ANON_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+  const login = await userClient.auth.signInWithPassword({
+    email: E2E_USER_EMAIL,
+    password: E2E_USER_PASSWORD,
+  });
+  expect(login.error).toBeNull();
+  const service = createClient(
+    supabaseUrl,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+  const membership = await service
+    .from("workspace_members")
+    .select("workspace_id")
+    .eq("user_id", login.data.user!.id);
+  expect(membership.error).toBeNull();
+  expect(membership.data).toHaveLength(1);
+  const workspaceId = membership.data![0].workspace_id;
+  const workspace = await service
+    .from("workspaces")
+    .select("name")
+    .eq("id", workspaceId)
+    .single();
+  const snapshot = await service
+    .from("workspace_snapshots")
+    .select("workspace_id, schema_version, snapshot, revision, updated_at")
+    .eq("workspace_id", workspaceId)
+    .single();
+  expect(workspace.error).toBeNull();
+  expect(snapshot.error).toBeNull();
+  expect(
+    parseDesktopCloudSnapshotRow(snapshot.data!, workspace.data!.name).kind,
+  ).toBe("ready");
 
   const mcp = (bearer: string) =>
     request.post("/api/mcp", {

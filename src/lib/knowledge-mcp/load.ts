@@ -13,7 +13,10 @@ export type KnowledgeLoadResult =
         { kind: "ready" }
       >["bootstrap"];
     }
-  | { kind: "unauthorized" | "unavailable" };
+  | {
+      kind: "unauthorized" | "unavailable";
+      reason?: "credential" | "membership" | "workspace" | "snapshot";
+    };
 
 /** Read as a server-only privileged client after a scoped MCP token has been
  * verified. Explicit membership lookup mirrors the workspace RLS boundary.
@@ -22,7 +25,7 @@ export async function loadKnowledgeForUser(
   userId: string,
 ): Promise<KnowledgeLoadResult> {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!key) return { kind: "unavailable" };
+  if (!key) return { kind: "unavailable", reason: "credential" };
   const env = getPublicEnv();
   const client = createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, key, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -33,7 +36,7 @@ export async function loadKnowledgeForUser(
     .eq("user_id", userId)
     .limit(2);
   if (membershipError || !memberships || memberships.length !== 1)
-    return { kind: "unavailable" };
+    return { kind: "unavailable", reason: "membership" };
   const workspaceId = memberships[0].workspace_id;
   const [
     { data: workspace, error: workspaceError },
@@ -50,10 +53,11 @@ export async function loadKnowledgeForUser(
       .eq("workspace_id", workspaceId)
       .maybeSingle(),
   ]);
-  if (workspaceError || snapshotError || !workspace || !row)
-    return { kind: "unavailable" };
+  if (workspaceError || !workspace)
+    return { kind: "unavailable", reason: "workspace" };
+  if (snapshotError || !row) return { kind: "unavailable", reason: "snapshot" };
   const parsed = parseDesktopCloudSnapshotRow(row, workspace.name);
   return parsed.kind === "ready"
     ? { kind: "ready", snapshot: parsed.bootstrap }
-    : { kind: "unavailable" };
+    : { kind: "unavailable", reason: "snapshot" };
 }

@@ -17,8 +17,10 @@ export async function POST(request: Request): Promise<Response> {
   const userId = await verifyMcpToken(match[1]);
   if (!userId) return unauthorized();
   const loaded = await loadKnowledgeForUser(userId);
-  if (loaded.kind !== "ready")
+  if (loaded.kind !== "ready") {
+    console.error("Knowledge MCP read failed:", loaded.reason ?? "unknown");
     return new Response("Knowledge unavailable", { status: 503 });
+  }
 
   const server = createKnowledgeMcpServer(loaded.snapshot);
   const transport = new WebStandardStreamableHTTPServerTransport({
