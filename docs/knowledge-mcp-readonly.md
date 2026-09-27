@@ -23,26 +23,15 @@ revision changes during a multi-call audit, repeat the audit on the newer
 snapshot. Deleted articles are excluded. Text in Files/PDFs, Canvas, and task
 cards is outside this checkpoint.
 
-## Connection prerequisites
+## Connection status
 
-1. Deploy to an isolated Preview environment with its own Supabase project.
-   Set `MOZG_MCP_PUBLIC_URL` to the exact Preview HTTPS URL ending `/api/mcp`.
-   Without it, the endpoint and OAuth discovery are disabled (503).
-2. In that Supabase project's Authentication → OAuth Server, enable the OAuth
-   2.1 server. Set the authorization path to `/oauth/consent` and confirm its
-   Site URL is the Preview application origin. Enable dynamic client
-   registration only if the chosen MCP client needs it. Review the client
-   presented on the consent page before approving. Keep the Production OAuth
-   Server and `MOZG_MCP_PUBLIC_URL` disabled at this checkpoint.
-3. Check `GET /.well-known/oauth-protected-resource`: its `resource` must be
-   the exact MCP URL, and `authorization_servers` must point to the same
-   Preview Supabase project. An unauthenticated `POST /api/mcp` must return
-   `401` with a `WWW-Authenticate` challenge. Authenticated calls must be
-   limited to the signed-in user's workspace.
-4. Connect the URL through ChatGPT Work's developer/plugin flow and sign in
-   with the existing MOZG account. Test with an account that cannot access
-   another workspace. Verify list pagination and full Markdown against a few
-   known articles before considering Production configuration.
+The Preview login tests only the regular application. **Do not enable the
+Supabase OAuth Server or set `MOZG_MCP_PUBLIC_URL` yet.** The existing OAuth
+path would give an external client a Supabase user token. First implement and
+test the scoped authorization boundary proposed in
+[ADR-0006](adr/0006-knowledge-mcp-scoped-authorization.md), using an isolated
+Preview environment with synthetic data. Then publish separate, verified
+instructions for connecting ChatGPT Work.
 
 No OAuth server setting, environment variable, plugin installation, or
 Production data was changed by this code checkpoint. The draft PR creates an
