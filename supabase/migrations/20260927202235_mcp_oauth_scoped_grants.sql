@@ -42,3 +42,10 @@ revoke all on public.mcp_oauth_tokens from public, anon, authenticated;
 grant all on public.mcp_oauth_grants to service_role;
 grant all on public.mcp_oauth_codes to service_role;
 grant all on public.mcp_oauth_tokens to service_role;
+
+-- Existing workspace tables intentionally do not grant service_role access.
+-- The MCP server must only SELECT the membership and snapshot needed for its
+-- explicit per-user workspace check; do not widen browser or write grants.
+grant select on public.workspace_members to service_role;
+grant select on public.workspaces to service_role;
+grant select on public.workspace_snapshots to service_role;

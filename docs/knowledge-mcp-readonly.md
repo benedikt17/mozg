@@ -7,6 +7,9 @@ dedicated opaque access token, never a Supabase user token. Every request
 validates that token, checks that the user still exists, and checks workspace
 membership before a server-only client reads the snapshot. The server-only
 service-role key is never sent to the client.
+The migration grants that server role `SELECT` on the three existing tables
+needed for this read (`workspace_members`, `workspaces`, and
+`workspace_snapshots`); it changes no browser grants or existing write rules.
 
 ## Tools
 
