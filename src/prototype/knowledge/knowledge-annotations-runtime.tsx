@@ -6,6 +6,7 @@ import {
   createKnowledgeAnnotation,
   createKnowledgeAnnotationSelection,
   loadKnowledgeAnnotations,
+  resolveAppliedKnowledgeAnnotationOffset,
   resolveKnowledgeAnnotationOffset,
   updateKnowledgeAnnotation,
   type KnowledgeAnnotation,
@@ -584,6 +585,31 @@ export function KnowledgeAnnotationsRuntime({
     element?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
+  const selectAppliedText = (annotation: KnowledgeAnnotation): void => {
+    const root = activeReadingRoot();
+    if (!root || !annotation.appliedAt) return;
+    const resolved = resolveAppliedKnowledgeAnnotationOffset(
+      root.textContent ?? "",
+      annotation,
+    );
+    const range = resolved
+      ? textRangeFromOffsets(root, resolved.startOffset, resolved.endOffset)
+      : null;
+    if (!range) {
+      setError("Не удалось найти внедрённый фрагмент в текущем тексте.");
+      return;
+    }
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    const element =
+      range.startContainer instanceof Element
+        ? range.startContainer
+        : range.startContainer.parentElement;
+    element?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setError(null);
+  };
+
   return (
     <>
       {selectionAction && isReading ? (
@@ -732,6 +758,7 @@ export function KnowledgeAnnotationsRuntime({
                     annotation.resolvedAt ? styles.resolved : ""
                   }`}
                   key={annotation.id}
+                  onDoubleClick={() => selectAppliedText(annotation)}
                 >
                   {annotation.kind === "agent" ? (
                     <strong className={styles.neuroBadge}>
@@ -741,12 +768,21 @@ export function KnowledgeAnnotationsRuntime({
                   <button
                     className={styles.quoteButton}
                     disabled={
-                      annotation.resolvedAt !== null ||
-                      orphanIds.has(annotation.id) ||
+                      (annotation.resolvedAt !== null &&
+                        !annotation.appliedAt) ||
+                      (!annotation.appliedAt && orphanIds.has(annotation.id)) ||
                       !isReading
                     }
-                    onClick={() => scrollToAnnotation(annotation)}
-                    title="Перейти к фрагменту"
+                    onClick={() =>
+                      annotation.appliedAt
+                        ? selectAppliedText(annotation)
+                        : scrollToAnnotation(annotation)
+                    }
+                    title={
+                      annotation.appliedAt
+                        ? "Показать внедрённый текст"
+                        : "Перейти к фрагменту"
+                    }
                     type="button"
                   >
                     “{compactQuote(annotation.selectedText)}”

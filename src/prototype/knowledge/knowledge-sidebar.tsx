@@ -15,6 +15,7 @@ import { UiIcon } from "@/prototype/desktop-icons";
 import { IconButton } from "@/prototype/desktop-ui";
 import { getKnowledgeHistoryShortcutAction } from "./knowledge-content-history";
 import { useKnowledgeContentHistory } from "./knowledge-content-history-runtime";
+import { loadOpenNeurocommentDocumentIds } from "./knowledge-annotations";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 
@@ -27,6 +28,17 @@ function isEditableTarget(target: EventTarget | null): boolean {
   );
 }
 
+function containsOpenNeurocomment(
+  node: KnowledgeTreeNode,
+  documentIds: Set<string>,
+): boolean {
+  return node.kind === "document"
+    ? documentIds.has(node.document.id)
+    : node.children.some((child) =>
+        containsOpenNeurocomment(child, documentIds),
+      );
+}
+
 export function KnowledgeSidebar({
   state,
   dispatch,
@@ -34,6 +46,7 @@ export function KnowledgeSidebar({
   linkPickerSourceDocumentId,
   onCancelLinkPick,
   onPickLinkTarget,
+  workspaceId,
 }: {
   state: DesktopPrototypeState;
   dispatch: Dispatch;
@@ -41,6 +54,7 @@ export function KnowledgeSidebar({
   linkPickerSourceDocumentId?: string | null;
   onCancelLinkPick?: () => void;
   onPickLinkTarget?: (documentId: string) => void;
+  workspaceId?: string;
 }): React.JSX.Element {
   const contentHistory = useKnowledgeContentHistory();
   const tree = getKnowledgeTree(state);
@@ -54,8 +68,58 @@ export function KnowledgeSidebar({
   const [revealDocumentId, setRevealDocumentId] = useState<string | null>(null);
   const [openKnowledgeMenu, setOpenKnowledgeMenu] =
     useState<KnowledgeMenuTarget>(null);
+  const [neuroReviewActive, setNeuroReviewActive] = useState(false);
+  const [neuroDocumentIds, setNeuroDocumentIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [neuroLoading, setNeuroLoading] = useState(false);
+  const [neuroError, setNeuroError] = useState(false);
   const treeCollapsed = state.knowledgeExpandedBeforeCollapse !== null;
   const linkPickerActive = Boolean(linkPickerSourceDocumentId);
+
+  useEffect(() => {
+    if (!neuroReviewActive || !workspaceId) return;
+    let cancelled = false;
+    const refresh = (): void => {
+      void loadOpenNeurocommentDocumentIds(workspaceId)
+        .then((ids) => {
+          if (!cancelled) {
+            setNeuroDocumentIds(ids);
+            setNeuroError(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setNeuroError(true);
+        });
+    };
+    window.addEventListener("focus", refresh);
+    const timer = window.setInterval(refresh, 15_000);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", refresh);
+      window.clearInterval(timer);
+    };
+  }, [neuroReviewActive, workspaceId]);
+
+  const toggleNeuroReview = async (): Promise<void> => {
+    if (neuroReviewActive) {
+      setNeuroReviewActive(false);
+      return;
+    }
+    if (!workspaceId || neuroLoading) return;
+    setNeuroLoading(true);
+    try {
+      const ids = await loadOpenNeurocommentDocumentIds(workspaceId);
+      setNeuroDocumentIds(ids);
+      setNeuroReviewActive(true);
+      setNeuroError(false);
+      dispatch({ type: "set-knowledge-search", query: "" });
+    } catch {
+      setNeuroError(true);
+    } finally {
+      setNeuroLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!revealDocumentId) return;
@@ -155,6 +219,27 @@ export function KnowledgeSidebar({
             variant="ghost"
           />
         </div>
+        {workspaceId ? (
+          <button
+            aria-label={
+              neuroError
+                ? "Не удалось загрузить нейрокомментарии. Повторить"
+                : "Подсветить статьи с открытыми нейрокомментариями"
+            }
+            aria-pressed={neuroReviewActive}
+            className="knowledge-neuro-toggle"
+            disabled={neuroLoading}
+            onClick={() => void toggleNeuroReview()}
+            title={
+              neuroError
+                ? "Не удалось обновить список нейрокомментариев"
+                : "Статьи с открытыми нейрокомментариями"
+            }
+            type="button"
+          >
+            n
+          </button>
+        ) : null}
         <IconButton
           className="knowledge-responsive-close"
           icon={<UiIcon name="close" />}
@@ -246,6 +331,7 @@ export function KnowledgeSidebar({
               draggingFolderPath={draggingFolderPath}
               onDraggingFolderPathChange={setDraggingFolderPath}
               openKnowledgeMenu={openKnowledgeMenu}
+              neuroDocumentIds={neuroReviewActive ? neuroDocumentIds : null}
               state={state}
               linkPickerSourceDocumentId={linkPickerSourceDocumentId}
               onPickLinkTarget={onPickLinkTarget}
@@ -306,6 +392,7 @@ function KnowledgeTreeNodeView({
   onKnowledgeMenuChange,
   onDropTargetChange,
   openKnowledgeMenu,
+  neuroDocumentIds,
   linkPickerSourceDocumentId,
   onPickLinkTarget,
 }: {
@@ -319,6 +406,7 @@ function KnowledgeTreeNodeView({
   onKnowledgeMenuChange: (target: KnowledgeMenuTarget) => void;
   onDropTargetChange: (target: KnowledgeDropTarget) => void;
   openKnowledgeMenu: KnowledgeMenuTarget;
+  neuroDocumentIds: Set<string> | null;
   linkPickerSourceDocumentId?: string | null;
   onPickLinkTarget?: (documentId: string) => void;
 }): React.JSX.Element {
@@ -327,7 +415,9 @@ function KnowledgeTreeNodeView({
   if (node.kind === "folder") {
     const expanded =
       state.knowledgeSearchQuery.trim().length > 0 ||
-      state.expandedFolderIds.includes(node.id);
+      state.expandedFolderIds.includes(node.id) ||
+      (neuroDocumentIds !== null &&
+        containsOpenNeurocomment(node, neuroDocumentIds));
     const editing = state.editingKnowledgeFolderId === node.id;
     const isPathSelected =
       state.knowledgeBreadcrumbHighlightVisible &&
@@ -503,6 +593,7 @@ function KnowledgeTreeNodeView({
                 draggingFolderPath={draggingFolderPath}
                 onDraggingFolderPathChange={onDraggingFolderPathChange}
                 openKnowledgeMenu={openKnowledgeMenu}
+                neuroDocumentIds={neuroDocumentIds}
                 state={state}
                 linkPickerSourceDocumentId={linkPickerSourceDocumentId}
                 onPickLinkTarget={onPickLinkTarget}
@@ -522,6 +613,7 @@ function KnowledgeTreeNodeView({
     "knowledge-action-row",
     "knowledge-document-row",
     documentIsActive ? "is-active" : "",
+    neuroDocumentIds?.has(node.document.id) ? "has-open-neurocomments" : "",
     documentPathIsSelected ? "is-path-selected" : "",
     linkPickerSourceDocumentId &&
     node.document.id !== linkPickerSourceDocumentId

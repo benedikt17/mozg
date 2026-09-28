@@ -293,7 +293,7 @@
   overflow-y: auto;
   display: grid;
   align-content: start;
-  gap: 8px;
+  gap: 64px;
   padding: 10px;
 }
 
