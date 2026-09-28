@@ -372,7 +372,6 @@ export type Database = {
           kind?: string
           prefix?: string
           proposal_action?: string
-          proposal_action?: string
           resolved_at?: string | null
           schema_version?: number
           selected_text: string
@@ -393,6 +392,7 @@ export type Database = {
           id?: string
           kind?: string
           prefix?: string
+          proposal_action?: string
           resolved_at?: string | null
           schema_version?: number
           selected_text?: string
