@@ -413,6 +413,53 @@ export type Database = {
           },
         ]
       }
+      knowledge_neuro_drafts: {
+        Row: {
+          created_at: string
+          created_by: string
+          documents: Json
+          folder_path: string[]
+          id: string
+          project_id: string
+          published_at: string | null
+          revision: number
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          documents: Json
+          folder_path: string[]
+          id?: string
+          project_id: string
+          published_at?: string | null
+          revision?: number
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          documents?: Json
+          folder_path?: string[]
+          id?: string
+          project_id?: string
+          published_at?: string | null
+          revision?: number
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_neuro_drafts_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mcp_oauth_codes: {
         Row: {
           code_challenge: string
@@ -1362,6 +1409,17 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      publish_knowledge_neuro_draft: {
+        Args: {
+          expected_revision: number
+          target_draft_id: string
+          target_user_id: string
+        }
+        Returns: {
+          revision: number
+          status: string
+        }[]
       }
       rename_canvas: {
         Args: { target_canvas_id: string; target_title: string }

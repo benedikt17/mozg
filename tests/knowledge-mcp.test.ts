@@ -116,6 +116,7 @@ describe("read-only knowledge MCP", () => {
         "create_knowledge_neurocomment",
         "list_knowledge_comments",
         "list_knowledge_documents",
+        "propose_knowledge_markdown_bundle",
         "read_knowledge_document",
         "search_knowledge_documents",
       ]);
@@ -123,6 +124,7 @@ describe("read-only knowledge MCP", () => {
       for (const name of [
         "list_knowledge_comments",
         "create_knowledge_neurocomment",
+        "propose_knowledge_markdown_bundle",
       ]) {
         const denied = await client.callTool({
           name,
@@ -130,6 +132,13 @@ describe("read-only knowledge MCP", () => {
             documentId: "first",
             ...(name === "create_knowledge_neurocomment"
               ? { selectedText: "Дракон живёт в горах", comment: "Проверка" }
+              : {}),
+            ...(name === "propose_knowledge_markdown_bundle"
+              ? {
+                  projectId: "one",
+                  folderPath: ["Стратегия"],
+                  documents: [{ title: "План", markdown: "# План" }],
+                }
               : {}),
           },
         });
