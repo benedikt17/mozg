@@ -341,7 +341,6 @@ export type Database = {
       }
       knowledge_annotations: {
         Row: {
-          proposal_action: string
           applied_at: string | null
           comment: string
           created_at: string
@@ -351,6 +350,7 @@ export type Database = {
           id: string
           kind: string
           prefix: string
+          proposal_action: string
           resolved_at: string | null
           schema_version: number
           selected_text: string
@@ -362,7 +362,6 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
-          proposal_action?: string
           applied_at?: string | null
           comment: string
           created_at?: string
@@ -372,6 +371,8 @@ export type Database = {
           id?: string
           kind?: string
           prefix?: string
+          proposal_action?: string
+          proposal_action?: string
           resolved_at?: string | null
           schema_version?: number
           selected_text: string
@@ -383,7 +384,6 @@ export type Database = {
           workspace_id: string
         }
         Update: {
-          proposal_action?: string
           applied_at?: string | null
           comment?: string
           created_at?: string
