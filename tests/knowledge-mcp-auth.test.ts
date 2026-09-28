@@ -79,9 +79,15 @@ describe("scoped Knowledge MCP authorization", () => {
         }),
       ),
     );
-    expect(await validWorkClient(CODEX_CLIENT_ID, CODEX_REDIRECT_URI)).toBe(true);
-    expect(await validWorkClient(CODEX_CLIENT_ID, WORK_REDIRECT_URI)).toBe(false);
-    expect(await validWorkClient(WORK_CLIENT_ID, CODEX_REDIRECT_URI)).toBe(false);
+    expect(await validWorkClient(CODEX_CLIENT_ID, CODEX_REDIRECT_URI)).toBe(
+      true,
+    );
+    expect(await validWorkClient(CODEX_CLIENT_ID, WORK_REDIRECT_URI)).toBe(
+      false,
+    );
+    expect(await validWorkClient(WORK_CLIENT_ID, CODEX_REDIRECT_URI)).toBe(
+      false,
+    );
     expect(
       await validWorkClient(WORK_CLIENT_ID, "https://attacker.test/callback"),
     ).toBe(false);
