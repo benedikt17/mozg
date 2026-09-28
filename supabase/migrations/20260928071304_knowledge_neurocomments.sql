@@ -123,7 +123,7 @@ begin
     array['documents', article_index::text],
     jsonb_set(article, '{content}', to_jsonb(string_to_array(updated_md, E'\n')))
   );
-  perform public.validate_desktop_snapshot_v3(3, changed_snapshot);
+  perform public.validate_desktop_snapshot_v3(3::smallint, changed_snapshot);
   update public.workspace_snapshots
     set snapshot = changed_snapshot, revision = current_snapshot.revision + 1
     where workspace_id = proposal.workspace_id;
