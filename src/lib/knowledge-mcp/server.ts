@@ -7,7 +7,11 @@ import {
   type KnowledgeCatalog,
 } from "./catalog";
 import type { KnowledgeLoadResult } from "./load";
-import { createNeurocomment, listOwnKnowledgeComments } from "./neurocomments";
+import {
+  createNeuroDraft,
+  createNeurocomment,
+  listOwnKnowledgeComments,
+} from "./neurocomments";
 import { getMcpAuthChallenge } from "./oauth";
 
 const readAuth = {
@@ -202,6 +206,69 @@ export function createKnowledgeMcpServer(
           content: [
             { type: "text" as const, text: "Neurocomment unavailable" },
           ],
+        };
+      }
+    },
+  );
+
+  server.registerTool(
+    "propose_knowledge_markdown_bundle",
+    {
+      description:
+        "Stage a proposed Knowledge folder and 1–10 Markdown documents for owner review. The owner can edit and choose files in MOZG; only an explicit Publish action adds them to the catalog. Existing documents remain unchanged. Requires the neurocomment write grant.",
+      inputSchema: {
+        projectId: z.string().min(1).max(250),
+        folderPath: z.array(z.string().trim().min(1).max(120)).min(1).max(8),
+        documents: z
+          .array(
+            z.object({
+              title: z.string().trim().min(1).max(250),
+              markdown: z.string().max(50_000),
+            }),
+          )
+          .min(1)
+          .max(10),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: false,
+      },
+      _meta: neuroAuth,
+    },
+    async ({ projectId, folderPath, documents }) => {
+      if (!options) return neurocommentGrantRequired();
+      if (
+        !snapshot.snapshot.projects.some((project) => project.id === projectId)
+      )
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: "Project unavailable" }],
+        };
+      try {
+        const created = await createNeuroDraft({
+          userId: options.neurocommentUserId,
+          workspaceId: snapshot.workspaceId,
+          projectId,
+          folderPath,
+          documents,
+          revision: snapshot.revision,
+        });
+        return created.kind === "created"
+          ? result({
+              ...metadata,
+              draftId: created.id,
+              status: "staged",
+              review: "Open Нейро‑MD in MOZG Knowledge",
+            })
+          : {
+              isError: true,
+              content: [{ type: "text" as const, text: created.kind }],
+            };
+      } catch {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: "Draft unavailable" }],
         };
       }
     },

@@ -16,6 +16,7 @@ import { IconButton } from "@/prototype/desktop-ui";
 import { getKnowledgeHistoryShortcutAction } from "./knowledge-content-history";
 import { useKnowledgeContentHistory } from "./knowledge-content-history-runtime";
 import { loadOpenNeurocommentDocumentIds } from "./knowledge-annotations";
+import { KnowledgeNeuroDrafts } from "./knowledge-neuro-drafts";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 
@@ -218,6 +219,12 @@ export function KnowledgeSidebar({
             title={treeCollapsed ? "Восстановить папки" : "Свернуть все папки"}
             variant="ghost"
           />
+          {workspaceId ? (
+            <KnowledgeNeuroDrafts
+              workspaceId={workspaceId}
+              projectId={state.activeProjectId}
+            />
+          ) : null}
         </div>
         {workspaceId ? (
           <button

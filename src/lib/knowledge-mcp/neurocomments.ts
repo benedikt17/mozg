@@ -100,3 +100,45 @@ export async function createNeurocomment(input: {
   if (error || !data) throw new Error("Cannot create neurocomment");
   return { kind: "created" as const, id: data.id };
 }
+
+export async function createNeuroDraft(input: {
+  userId: string;
+  workspaceId: string;
+  projectId: string;
+  folderPath: string[];
+  documents: { title: string; markdown: string }[];
+  revision: number;
+}) {
+  const db = admin();
+  const { data: membership, error: memberError } = await db
+    .from("workspace_members")
+    .select("role")
+    .eq("user_id", input.userId)
+    .eq("workspace_id", input.workspaceId)
+    .maybeSingle();
+  if (memberError || membership?.role !== "owner")
+    return { kind: "forbidden" as const };
+  const { data: latest, error: snapshotError } = await db
+    .from("workspace_snapshots")
+    .select("revision")
+    .eq("workspace_id", input.workspaceId)
+    .maybeSingle();
+  if (snapshotError || latest?.revision !== input.revision)
+    return { kind: "conflict" as const };
+  const { data, error } = await db
+    .from("knowledge_neuro_drafts")
+    .insert({
+      workspace_id: input.workspaceId,
+      created_by: input.userId,
+      project_id: input.projectId,
+      folder_path: input.folderPath,
+      documents: input.documents.map((document) => ({
+        ...document,
+        selected: true,
+      })),
+    })
+    .select("id")
+    .single();
+  if (error || !data) throw new Error("Cannot create Knowledge draft");
+  return { kind: "created" as const, id: data.id };
+}
