@@ -237,7 +237,7 @@ export function KnowledgeSidebar({
             }
             type="button"
           >
-            n
+            N
           </button>
         ) : null}
         <IconButton
