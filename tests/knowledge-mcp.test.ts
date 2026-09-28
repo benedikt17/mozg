@@ -1,6 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+vi.mock("server-only", () => ({}));
 import { createKnowledgeMcpServer } from "@/lib/knowledge-mcp/server";
 import type { DesktopDomainSnapshotV3 } from "@/prototype/persistence/desktop-snapshot-contracts";
 
@@ -43,6 +44,43 @@ function toolJson(result: Awaited<ReturnType<Client["callTool"]>>): unknown {
 }
 
 describe("read-only knowledge MCP", () => {
+  it("advertises neurocomment tools only after the expanded grant", async () => {
+    const server = createKnowledgeMcpServer(
+      {
+        workspaceId: "workspace",
+        workspaceName: "Workspace",
+        revision: 17,
+        updatedAt: "2026-09-27T00:00:00Z",
+        schemaVersion: 3,
+        snapshot: catalog,
+      },
+      { neurocommentUserId: "user" },
+    );
+    const client = new Client({ name: "test", version: "1.0.0" });
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    await Promise.all([
+      server.connect(serverTransport),
+      client.connect(clientTransport),
+    ]);
+    try {
+      const tools = await client.listTools();
+      expect(tools.tools.map((tool) => tool.name)).toContain(
+        "create_knowledge_neurocomment",
+      );
+      expect(tools.tools.map((tool) => tool.name)).toContain(
+        "list_knowledge_comments",
+      );
+      const missing = await client.callTool({
+        name: "list_knowledge_comments",
+        arguments: { documentId: "deleted" },
+      });
+      expect(missing.isError).toBe(true);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
   it("lists all active documents across projects, pages without gaps, and reads exact Markdown", async () => {
     const server = createKnowledgeMcpServer({
       workspaceId: "workspace",

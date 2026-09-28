@@ -7,6 +7,22 @@ import type { Database } from "@/lib/supabase/database.types";
 import { getMcpPublicUrl } from "./oauth";
 
 export const KNOWLEDGE_SCOPE = "knowledge:read";
+export const NEUROCOMMENT_SCOPE =
+  "knowledge:read knowledge:neurocomment:create";
+export function normalizeKnowledgeScope(scope: string): string | null {
+  const items = scope.trim().split(/\s+/u);
+  if (items.length === 1 && items[0] === KNOWLEDGE_SCOPE)
+    return KNOWLEDGE_SCOPE;
+  return items.length === 2 &&
+    new Set(items).size === 2 &&
+    items.includes(KNOWLEDGE_SCOPE) &&
+    items.includes("knowledge:neurocomment:create")
+    ? NEUROCOMMENT_SCOPE
+    : null;
+}
+export function validKnowledgeScope(scope: string): boolean {
+  return normalizeKnowledgeScope(scope) !== null;
+}
 export const WORK_CLIENT_ID = "https://chatgpt.com/oauth/client.json";
 export const WORK_REDIRECT_URI =
   "https://chatgpt.com/connector_platform_oauth_redirect";
@@ -81,7 +97,12 @@ export async function issueCode(options: {
   redirectUri: string;
   resource: string;
   challenge: string;
+  scope?: string;
 }): Promise<string> {
+  const requestedScope = normalizeKnowledgeScope(
+    options.scope ?? KNOWLEDGE_SCOPE,
+  );
+  if (!requestedScope) throw new Error("Unsupported MCP scope");
   const db = admin();
   const { data: grant, error: grantError } = await db
     .from("mcp_oauth_grants")
@@ -89,6 +110,7 @@ export async function issueCode(options: {
       user_id: options.userId,
       client_id: options.clientId,
       resource: options.resource,
+      scope: requestedScope,
     })
     .select("id")
     .single();
@@ -118,7 +140,7 @@ async function activeGrant(id: string): Promise<Grant | null> {
     .is("revoked_at", null)
     .gt("expires_at", new Date().toISOString())
     .maybeSingle();
-  return data?.scope === KNOWLEDGE_SCOPE && validResource(data.resource)
+  return data && validKnowledgeScope(data.scope) && validResource(data.resource)
     ? data
     : null;
 }
@@ -156,7 +178,7 @@ async function mintTokens(grant: Grant, includeRefresh: boolean) {
     access_token: accessToken,
     token_type: "Bearer" as const,
     expires_in: 900,
-    scope: KNOWLEDGE_SCOPE,
+    scope: grant.scope,
     ...(refreshToken ? { refresh_token: refreshToken } : {}),
   };
 }
@@ -167,6 +189,7 @@ export async function exchangeCode(options: {
   redirectUri: string;
   resource: string;
   verifier: string;
+  scope?: string;
 }) {
   const db = admin();
   const { data: code } = await db
@@ -180,6 +203,7 @@ export async function exchangeCode(options: {
   const grant = await activeGrant(code.grant_id);
   if (
     !grant ||
+    (options.scope && normalizeKnowledgeScope(options.scope) !== grant.scope) ||
     grant.client_id !== options.clientId ||
     grant.resource !== options.resource ||
     !matchesPkce(options.verifier, code.code_challenge)
@@ -200,6 +224,7 @@ export async function refreshTokens(options: {
   token: string;
   clientId: string;
   resource: string;
+  scope?: string;
 }) {
   const db = admin();
   const hash = hashSecret(options.token);
@@ -215,6 +240,7 @@ export async function refreshTokens(options: {
   const grant = await activeGrant(refresh.grant_id);
   if (
     !grant ||
+    (options.scope && normalizeKnowledgeScope(options.scope) !== grant.scope) ||
     grant.client_id !== options.clientId ||
     grant.resource !== options.resource
   )
@@ -230,7 +256,9 @@ export async function refreshTokens(options: {
   return mintTokens(grant, true);
 }
 
-export async function verifyMcpToken(token: string): Promise<string | null> {
+export async function verifyMcpAccess(
+  token: string,
+): Promise<{ userId: string; scope: string } | null> {
   if (!/^mozg_mcp_[A-Za-z0-9_-]{43}$/.test(token)) return null;
   const { data } = await admin()
     .from("mcp_oauth_tokens")
@@ -246,7 +274,13 @@ export async function verifyMcpToken(token: string): Promise<string | null> {
   const { data: auth, error } = await admin().auth.admin.getUserById(
     grant.user_id,
   );
-  return !error && auth.user ? grant.user_id : null;
+  return !error && auth.user
+    ? { userId: grant.user_id, scope: grant.scope }
+    : null;
+}
+
+export async function verifyMcpToken(token: string): Promise<string | null> {
+  return (await verifyMcpAccess(token))?.userId ?? null;
 }
 
 export async function revokeMcpGrant(

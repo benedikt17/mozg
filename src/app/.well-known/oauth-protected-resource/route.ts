@@ -10,7 +10,7 @@ export function GET(): Response {
     {
       resource,
       authorization_servers: [getMcpAuthorizationServer()],
-      scopes_supported: ["knowledge:read"],
+      scopes_supported: ["knowledge:read", "knowledge:neurocomment:create"],
     },
     {
       headers: { "Cache-Control": "no-store" },

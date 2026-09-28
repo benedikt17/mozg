@@ -1,6 +1,9 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { loadKnowledgeForUser } from "@/lib/knowledge-mcp/load";
-import { verifyMcpToken } from "@/lib/knowledge-mcp/scoped-auth";
+import {
+  NEUROCOMMENT_SCOPE,
+  verifyMcpAccess,
+} from "@/lib/knowledge-mcp/scoped-auth";
 import { createKnowledgeMcpServer } from "@/lib/knowledge-mcp/server";
 import { getMcpAuthChallenge } from "@/lib/knowledge-mcp/oauth";
 
@@ -14,15 +17,20 @@ export async function POST(request: Request): Promise<Response> {
     request.headers.get("authorization") ?? "",
   );
   if (!match) return unauthorized();
-  const userId = await verifyMcpToken(match[1]);
-  if (!userId) return unauthorized();
-  const loaded = await loadKnowledgeForUser(userId);
+  const access = await verifyMcpAccess(match[1]);
+  if (!access) return unauthorized();
+  const loaded = await loadKnowledgeForUser(access.userId);
   if (loaded.kind !== "ready") {
     console.error("Knowledge MCP read failed:", loaded.reason ?? "unknown");
     return new Response("Knowledge unavailable", { status: 503 });
   }
 
-  const server = createKnowledgeMcpServer(loaded.snapshot);
+  const server = createKnowledgeMcpServer(
+    loaded.snapshot,
+    access.scope === NEUROCOMMENT_SCOPE
+      ? { neurocommentUserId: access.userId }
+      : undefined,
+  );
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,

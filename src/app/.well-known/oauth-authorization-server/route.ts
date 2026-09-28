@@ -18,7 +18,7 @@ export function GET(): Response {
       response_types_supported: ["code"],
       grant_types_supported: ["authorization_code", "refresh_token"],
       code_challenge_methods_supported: ["S256"],
-      scopes_supported: ["knowledge:read"],
+      scopes_supported: ["knowledge:read", "knowledge:neurocomment:create"],
       authorization_response_iss_parameter_supported: true,
     },
     { headers: { "Cache-Control": "no-store" } },

@@ -7,6 +7,7 @@ import {
   type KnowledgeCatalog,
 } from "./catalog";
 import type { KnowledgeLoadResult } from "./load";
+import { createNeurocomment, listOwnKnowledgeComments } from "./neurocomments";
 
 type ReadySnapshot = Omit<
   Extract<KnowledgeLoadResult, { kind: "ready" }>["snapshot"],
@@ -19,7 +20,10 @@ function result(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value) }] };
 }
 
-export function createKnowledgeMcpServer(snapshot: ReadySnapshot): McpServer {
+export function createKnowledgeMcpServer(
+  snapshot: ReadySnapshot,
+  options?: { neurocommentUserId: string },
+): McpServer {
   const server = new McpServer({ name: "mozg-knowledge", version: "0.1.0" });
   const entries = knowledgeEntries(snapshot.snapshot);
   const metadata = {
@@ -42,6 +46,111 @@ export function createKnowledgeMcpServer(snapshot: ReadySnapshot): McpServer {
     ({ offset, limit }) =>
       result({ ...metadata, ...pageEntries(entries, offset, limit) }),
   );
+
+  if (options) {
+    server.registerTool(
+      "list_knowledge_comments",
+      {
+        description:
+          "Read the connected user's own HUMAN comments on an active Knowledge article. Use these as editorial context alongside the article Markdown. Requires the neurocomment grant.",
+        inputSchema: {
+          documentId: z.string().min(1).max(250),
+          offset: z.number().int().nonnegative().default(0),
+          limit: z.number().int().min(1).max(50).default(50),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+      },
+      async ({ documentId, offset, limit }) => {
+        if (!entries.some((entry) => entry.id === documentId))
+          return {
+            isError: true,
+            content: [{ type: "text" as const, text: "Document unavailable" }],
+          };
+        try {
+          return result({
+            ...metadata,
+            documentId,
+            ...(await listOwnKnowledgeComments(
+              options.neurocommentUserId,
+              snapshot.workspaceId,
+              documentId,
+              offset,
+              limit,
+            )),
+          });
+        } catch {
+          return {
+            isError: true,
+            content: [{ type: "text" as const, text: "Comments unavailable" }],
+          };
+        }
+      },
+    );
+
+    server.registerTool(
+      "create_knowledge_neurocomment",
+      {
+        description:
+          "Create a visually distinct AI comment anchored to ONE exact, unique quote from original article Markdown. Optional suggestedText is the exact replacement for that quote. This does not edit the article; the owner must click Внедрить in MOZG. Requires an explicit neurocomment grant.",
+        inputSchema: {
+          documentId: z.string().min(1).max(250),
+          selectedText: z
+            .string()
+            .min(1)
+            .max(5000)
+            .refine((value) => value.trim().length > 0),
+          comment: z
+            .string()
+            .min(1)
+            .max(5000)
+            .refine((value) => value.trim().length > 0),
+          suggestedText: z.string().max(5000).optional(),
+        },
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          openWorldHint: false,
+        },
+      },
+      async ({ documentId, selectedText, comment, suggestedText }) => {
+        const entry = entries.find((item) => item.id === documentId);
+        if (!entry)
+          return {
+            isError: true,
+            content: [{ type: "text" as const, text: "Document unavailable" }],
+          };
+        try {
+          const created = await createNeurocomment({
+            userId: options.neurocommentUserId,
+            workspaceId: snapshot.workspaceId,
+            documentId,
+            revision: snapshot.revision,
+            markdown: entry.markdown,
+            quote: selectedText,
+            comment,
+            suggestedText,
+          });
+          return created.kind === "created"
+            ? result({
+                ...metadata,
+                neurocommentId: created.id,
+                status: "created",
+              })
+            : {
+                isError: true,
+                content: [{ type: "text" as const, text: created.kind }],
+              };
+        } catch {
+          return {
+            isError: true,
+            content: [
+              { type: "text" as const, text: "Neurocomment unavailable" },
+            ],
+          };
+        }
+      },
+    );
+  }
 
   server.registerTool(
     "search_knowledge_documents",
