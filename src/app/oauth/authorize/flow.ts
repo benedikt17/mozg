@@ -1,5 +1,7 @@
 import {
   KNOWLEDGE_SCOPE,
+  validKnowledgeScope,
+  normalizeKnowledgeScope,
   validPkceChallenge,
   validResource,
   validWorkClient,
@@ -11,6 +13,7 @@ export type AuthorizationRequest = {
   resource: string;
   challenge: string;
   state: string;
+  scope: string;
 };
 
 export async function validateAuthorizationRequest(
@@ -24,12 +27,19 @@ export async function validateAuthorizationRequest(
   if (
     params.get("response_type") !== "code" ||
     params.get("code_challenge_method") !== "S256" ||
-    (params.get("scope") !== KNOWLEDGE_SCOPE && params.get("scope") !== null) ||
+    !validKnowledgeScope(params.get("scope") ?? KNOWLEDGE_SCOPE) ||
     !validResource(resource) ||
     !validPkceChallenge(challenge) ||
     state.length > 512 ||
     !(await validWorkClient(clientId, redirectUri))
   )
     return null;
-  return { clientId, redirectUri, resource, challenge, state };
+  return {
+    clientId,
+    redirectUri,
+    resource,
+    challenge,
+    state,
+    scope: normalizeKnowledgeScope(params.get("scope") ?? KNOWLEDGE_SCOPE)!,
+  };
 }

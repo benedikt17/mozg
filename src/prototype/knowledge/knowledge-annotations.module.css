@@ -1,9 +1,48 @@
-:global(::highlight(mozg-knowledge-annotations)) {
-  background: color-mix(in srgb, #ffcf4a 42%, transparent);
-  text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, #b77900 58%, transparent);
-  text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
+.neuroCard {
+  border-left: 3px solid #8063d4 !important;
+  background: #f7f4ff !important;
+}
+
+.neuroBadge {
+  color: #6543b2;
+  font-size: 11px;
+}
+
+.suggestion {
+  display: grid;
+  gap: 7px;
+  overflow-wrap: anywhere;
+  padding: 9px;
+  border-radius: 7px;
+  background: #eee8ff;
+  font-size: 12px;
+}
+
+.suggestion button {
+  justify-self: start;
+}
+
+.kindTabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #fff;
+  border-bottom: 1px solid #e2e0da;
+}
+
+.kindTabs button {
+  border: 1px solid #ddd9e8;
+  border-radius: 6px;
+  background: #fff;
+  padding: 5px 9px;
+  color: #4f4a59;
+  cursor: pointer;
+}
+
+.kindTabs button[aria-pressed="true"] {
+  border-color: #8063d4;
+  background: #f1ecff;
+  color: #493389;
 }
 
 .selectionAction,
@@ -89,8 +128,8 @@
   bottom: 16px;
   width: min(368px, calc(100vw - 32px));
   min-height: 0;
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid #d8d6cf;
   border-radius: 10px;
@@ -249,6 +288,7 @@
 }
 
 .list {
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
   display: grid;

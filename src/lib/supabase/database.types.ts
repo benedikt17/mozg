@@ -341,51 +341,63 @@ export type Database = {
       }
       knowledge_annotations: {
         Row: {
+          applied_at: string | null
           comment: string
           created_at: string
           created_by: string
           document_id: string
           end_offset: number
           id: string
+          kind: string
           prefix: string
           resolved_at: string | null
           schema_version: number
           selected_text: string
           start_offset: number
+          suggested_text: string | null
           suffix: string
           updated_at: string
+          source_revision: number | null
           workspace_id: string
         }
         Insert: {
+          applied_at?: string | null
           comment: string
           created_at?: string
           created_by?: string
           document_id: string
           end_offset: number
           id?: string
+          kind?: string
           prefix?: string
           resolved_at?: string | null
           schema_version?: number
           selected_text: string
           start_offset: number
+          suggested_text?: string | null
           suffix?: string
           updated_at?: string
+          source_revision?: number | null
           workspace_id: string
         }
         Update: {
+          applied_at?: string | null
           comment?: string
           created_at?: string
           created_by?: string
           document_id?: string
           end_offset?: number
           id?: string
+          kind?: string
           prefix?: string
           resolved_at?: string | null
           schema_version?: number
           selected_text?: string
           start_offset?: number
+          suggested_text?: string | null
           suffix?: string
           updated_at?: string
+          source_revision?: number | null
           workspace_id?: string
         }
         Relationships: [
@@ -823,6 +835,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      apply_knowledge_neurocomment: {
+        Args: { target_annotation_id: string; target_user_id: string }
+        Returns: { status: string; revision: number | null }[]
+      }
       assert_canvas_title: {
         Args: { target_title: string }
         Returns: undefined

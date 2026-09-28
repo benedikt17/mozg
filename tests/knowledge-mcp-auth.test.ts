@@ -8,6 +8,8 @@ import {
   CODEX_REDIRECT_URI,
   hashSecret,
   matchesPkce,
+  NEUROCOMMENT_SCOPE,
+  normalizeKnowledgeScope,
   newSecret,
   validPkceChallenge,
   validResource,
@@ -23,6 +25,16 @@ afterEach(() => {
 });
 
 describe("scoped Knowledge MCP authorization", () => {
+  it("keeps old grants read-only and requires an exact separate neurocomment scope", () => {
+    expect(normalizeKnowledgeScope("knowledge:read")).toBe("knowledge:read");
+    expect(
+      normalizeKnowledgeScope("knowledge:neurocomment:create knowledge:read"),
+    ).toBe(NEUROCOMMENT_SCOPE);
+    expect(normalizeKnowledgeScope("knowledge:neurocomment:create")).toBeNull();
+    expect(
+      normalizeKnowledgeScope("knowledge:read knowledge:files:write"),
+    ).toBeNull();
+  });
   it("never accepts an ordinary Supabase JWT as an MCP access token", async () => {
     expect(
       await verifyMcpToken(

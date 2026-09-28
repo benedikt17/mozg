@@ -1,6 +1,6 @@
 import {
   exchangeCode,
-  KNOWLEDGE_SCOPE,
+  validKnowledgeScope,
   redirectUriForClient,
   refreshTokens,
   validResource,
@@ -34,7 +34,7 @@ export async function POST(request: Request): Promise<Response> {
   const clientId = form.get("client_id") ?? "";
   const resource = form.get("resource") ?? "";
   if (!validResource(resource)) return errorResponse("invalid_target");
-  if (form.get("scope") && form.get("scope") !== KNOWLEDGE_SCOPE)
+  if (form.get("scope") && !validKnowledgeScope(form.get("scope")!))
     return errorResponse("invalid_scope");
   if (form.get("client_secret") || form.get("client_assertion"))
     return errorResponse("invalid_client", 401);
@@ -52,6 +52,7 @@ export async function POST(request: Request): Promise<Response> {
       resource,
       redirectUri: form.get("redirect_uri") ?? "",
       verifier,
+      scope: form.get("scope") ?? undefined,
     });
     return tokens
       ? Response.json(tokens, { headers: { "Cache-Control": "no-store" } })
@@ -63,7 +64,12 @@ export async function POST(request: Request): Promise<Response> {
       return errorResponse("invalid_client", 401);
     const token = form.get("refresh_token") ?? "";
     if (token.length > 256) return errorResponse("invalid_request");
-    const tokens = await refreshTokens({ token, clientId, resource });
+    const tokens = await refreshTokens({
+      token,
+      clientId,
+      resource,
+      scope: form.get("scope") ?? undefined,
+    });
     return tokens
       ? Response.json(tokens, { headers: { "Cache-Control": "no-store" } })
       : errorResponse("invalid_grant");

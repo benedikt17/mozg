@@ -22,6 +22,10 @@ export type KnowledgeAnnotation = {
   createdAt: string;
   updatedAt: string;
   resolvedAt: string | null;
+  kind?: "human" | "agent";
+  suggestedText?: string | null;
+  sourceRevision?: number | null;
+  appliedAt?: string | null;
 };
 
 export type KnowledgeAnnotationSelection = Pick<
@@ -50,6 +54,10 @@ type KnowledgeAnnotationRow = {
   suffix: string;
   updated_at: string;
   workspace_id: string;
+  kind: string;
+  suggested_text: string | null;
+  source_revision: number | null;
+  applied_at: string | null;
 };
 
 function encodePathSegment(value: string): string {
@@ -120,7 +128,27 @@ export function parseKnowledgeAnnotation(
   ) {
     return null;
   }
-  return candidate as KnowledgeAnnotation;
+  const kind = candidate.kind ?? "human";
+  if (
+    (kind !== "human" && kind !== "agent") ||
+    (kind === "agent" &&
+      (!isFiniteNonNegativeInteger(candidate.sourceRevision) ||
+        candidate.sourceRevision < 1)) ||
+    !(
+      candidate.suggestedText === undefined ||
+      candidate.suggestedText === null ||
+      (typeof candidate.suggestedText === "string" &&
+        candidate.suggestedText.length <= 20_000)
+    ) ||
+    !(
+      candidate.appliedAt === undefined ||
+      candidate.appliedAt === null ||
+      (typeof candidate.appliedAt === "string" &&
+        Number.isFinite(Date.parse(candidate.appliedAt)))
+    )
+  )
+    return null;
+  return { ...candidate, kind } as KnowledgeAnnotation;
 }
 
 export function createKnowledgeAnnotationSelection(
@@ -311,6 +339,10 @@ function rowToAnnotation(
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     resolvedAt: row.resolved_at,
+    kind: row.kind,
+    suggestedText: row.suggested_text,
+    sourceRevision: row.source_revision,
+    appliedAt: row.applied_at,
   });
 }
 
@@ -332,6 +364,10 @@ function annotationToRow(
     created_at: annotation.createdAt,
     updated_at: annotation.updatedAt,
     resolved_at: annotation.resolvedAt,
+    kind: annotation.kind ?? "human",
+    suggested_text: annotation.suggestedText ?? null,
+    source_revision: annotation.sourceRevision ?? null,
+    applied_at: annotation.appliedAt ?? null,
   };
 }
 
@@ -373,7 +409,7 @@ export async function loadKnowledgeAnnotations(
   const { data, error } = await client
     .from("knowledge_annotations")
     .select(
-      "id, workspace_id, document_id, created_by, schema_version, selected_text, start_offset, end_offset, prefix, suffix, comment, resolved_at, created_at, updated_at",
+      "id, workspace_id, document_id, created_by, schema_version, selected_text, start_offset, end_offset, prefix, suffix, comment, resolved_at, created_at, updated_at, kind, suggested_text, source_revision, applied_at",
     )
     .eq("workspace_id", workspaceId)
     .eq("document_id", documentId)

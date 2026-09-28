@@ -9,3 +9,18 @@ body {
   color: #171717;
   font-family: Arial, sans-serif;
 }
+
+::highlight(mozg-knowledge-annotations) {
+  background: color-mix(in srgb, #ffcf4a 42%, transparent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, #b77900 58%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+::highlight(mozg-knowledge-neurocomments) {
+  background: color-mix(in srgb, #a68cff 40%, transparent);
+  text-decoration: underline;
+  text-decoration-color: #8063d4;
+  text-underline-offset: 3px;
+}

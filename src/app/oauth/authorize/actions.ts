@@ -43,6 +43,7 @@ async function decide(form: FormData, allow: boolean): Promise<void> {
       redirectUri: request.redirectUri,
       resource: request.resource,
       challenge: request.challenge,
+      scope: request.scope,
     });
     target.searchParams.set("code", code);
   } else target.searchParams.set("error", "access_denied");

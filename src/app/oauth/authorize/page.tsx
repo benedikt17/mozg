@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getMcpPublicUrl } from "@/lib/knowledge-mcp/oauth";
+import { NEUROCOMMENT_SCOPE } from "@/lib/knowledge-mcp/scoped-auth";
 import { createClient } from "@/lib/supabase/server";
 import { approveMcpAccess, denyMcpAccess } from "./actions";
 import { validateAuthorizationRequest } from "./flow";
@@ -31,14 +32,31 @@ export default async function AuthorizePage({
     <main style={{ maxWidth: 600, margin: "8vh auto", padding: 24 }}>
       <h1>Подключить «МОЗГ» к нейронке</h1>
       <p>
-        Подключение сможет читать все доступные вам статьи раздела «Знания». Оно
-        не даёт права изменять документы, задачи или файлы.
+        Подключение сможет читать все доступные вам статьи раздела «Знания».
       </p>
+      {request.scope === NEUROCOMMENT_SCOPE ? (
+        <p>
+          Также оно сможет читать ваши комментарии к статьям и добавлять
+          отдельные нейрокомментарии. Изменение статьи возможно только после
+          вашего нажатия «Внедрить» в МОЗГЕ. Права менять статьи, задачи или
+          файлы агенту не выдаются.
+        </p>
+      ) : (
+        <p>
+          Оно не даёт права читать комментарии или изменять документы, задачи и
+          файлы.
+        </p>
+      )}
       <p>Аккаунт: {user.email}</p>
       <p>Клиент: ChatGPT Work</p>
       <div style={{ display: "flex", gap: 16 }}>
         {[
-          [approveMcpAccess, "Разрешить чтение"],
+          [
+            approveMcpAccess,
+            request.scope === NEUROCOMMENT_SCOPE
+              ? "Разрешить чтение и нейрокомментарии"
+              : "Разрешить чтение",
+          ],
           [denyMcpAccess, "Отказать"],
         ].map(([action, label]) => (
           <form

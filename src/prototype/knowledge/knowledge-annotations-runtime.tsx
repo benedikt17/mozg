@@ -14,6 +14,7 @@ import {
 } from "./knowledge-annotations";
 
 const HIGHLIGHT_NAME = "mozg-knowledge-annotations";
+const NEURO_HIGHLIGHT_NAME = "mozg-knowledge-neurocomments";
 
 type SelectionAction = {
   left: number;
@@ -118,18 +119,29 @@ function clearRegisteredHighlight(): void {
   const registry = (CSS as unknown as { highlights?: HighlightRegistryLike })
     .highlights;
   registry?.delete(HIGHLIGHT_NAME);
+  registry?.delete(NEURO_HIGHLIGHT_NAME);
 }
 
-function registerHighlight(ranges: Range[]): void {
+function registerHighlight(ranges: Range[], neuroRanges: Range[]): void {
   clearRegisteredHighlight();
-  if (ranges.length === 0 || typeof CSS === "undefined") return;
+  if (
+    (ranges.length === 0 && neuroRanges.length === 0) ||
+    typeof CSS === "undefined"
+  )
+    return;
   const registry = (CSS as unknown as { highlights?: HighlightRegistryLike })
     .highlights;
   const HighlightConstructor = (
     window as unknown as { Highlight?: HighlightConstructorLike }
   ).Highlight;
   if (!registry || !HighlightConstructor) return;
-  registry.set(HIGHLIGHT_NAME, new HighlightConstructor(...ranges));
+  if (ranges.length)
+    registry.set(HIGHLIGHT_NAME, new HighlightConstructor(...ranges));
+  if (neuroRanges.length)
+    registry.set(
+      NEURO_HIGHLIGHT_NAME,
+      new HighlightConstructor(...neuroRanges),
+    );
 }
 
 function setsEqual(left: Set<string>, right: Set<string>): boolean {
@@ -169,6 +181,7 @@ export function KnowledgeAnnotationsRuntime({
   const [error, setError] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [showResolved, setShowResolved] = useState(false);
+  const [commentKind, setCommentKind] = useState<"human" | "agent">("human");
   const [selectionAction, setSelectionAction] =
     useState<SelectionAction | null>(null);
   const [draftSelection, setDraftSelection] =
@@ -176,6 +189,7 @@ export function KnowledgeAnnotationsRuntime({
   const [commentDraft, setCommentDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [applyingId, setApplyingId] = useState<string | null>(null);
   const [orphanIds, setOrphanIds] = useState<Set<string>>(new Set());
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pageRef = useRef<HTMLElement | null>(null);
@@ -266,6 +280,24 @@ export function KnowledgeAnnotationsRuntime({
   }, [activeDocumentId, workspaceId]);
 
   useEffect(() => {
+    if (!panelOpen || !activeDocumentId || persistenceMode !== "cloud") return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      void loadKnowledgeAnnotations(workspaceId, activeDocumentId)
+        .then((result) => {
+          if (!cancelled) setAnnotations(result.annotations);
+        })
+        .catch(() => {
+          /* Keep the last available comments during a transient error. */
+        });
+    }, 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [activeDocumentId, panelOpen, persistenceMode, workspaceId]);
+
+  useEffect(() => {
     if (!isReading || !activeDocumentId) return;
 
     const captureSelection = (): void => {
@@ -346,14 +378,16 @@ export function KnowledgeAnnotationsRuntime({
     const root = activeReadingRoot();
     if (!root) return;
     const ranges: Range[] = [];
+    const neuroRanges: Range[] = [];
     const nextOrphans = new Set<string>();
     for (const annotation of annotations) {
       if (annotation.resolvedAt !== null) continue;
       const range = getAnnotationRange(root, annotation);
-      if (range) ranges.push(range);
+      if (range)
+        (annotation.kind === "agent" ? neuroRanges : ranges).push(range);
       else nextOrphans.add(annotation.id);
     }
-    registerHighlight(ranges);
+    registerHighlight(ranges, neuroRanges);
     const frame = window.requestAnimationFrame(() => {
       setOrphanIds((current) =>
         setsEqual(current, nextOrphans) ? current : nextOrphans,
@@ -374,23 +408,38 @@ export function KnowledgeAnnotationsRuntime({
       annotations.filter((annotation) => annotation.resolvedAt === null).length,
     [annotations],
   );
-  const resolvedCount = annotations.length - unresolvedCount;
+  const humanCount = annotations.filter(
+    (item) => item.kind !== "agent" && item.resolvedAt === null,
+  ).length;
+  const agentCount = annotations.filter(
+    (item) => item.kind === "agent" && item.resolvedAt === null,
+  ).length;
+  const resolvedCount = annotations.filter(
+    (item) =>
+      (item.kind === "agent" ? "agent" : "human") === commentKind &&
+      item.resolvedAt !== null,
+  ).length;
   const visibleAnnotations = useMemo(
     () =>
       annotations
+        .filter(
+          (annotation) =>
+            (annotation.kind === "agent" ? "agent" : "human") === commentKind,
+        )
         .filter((annotation) => showResolved || annotation.resolvedAt === null)
         .sort((left, right) => {
           if ((left.resolvedAt === null) !== (right.resolvedAt === null))
             return left.resolvedAt === null ? -1 : 1;
           return right.createdAt.localeCompare(left.createdAt);
         }),
-    [annotations, showResolved],
+    [annotations, commentKind, showResolved],
   );
 
   if (!activeDocumentId) return null;
 
   const beginComment = (): void => {
     if (!selectionAction) return;
+    setCommentKind("human");
     setDraftSelection(selectionAction.selection);
     setCommentDraft("");
     setPanelOpen(true);
@@ -431,7 +480,7 @@ export function KnowledgeAnnotationsRuntime({
   const toggleResolved = async (
     annotation: KnowledgeAnnotation,
   ): Promise<void> => {
-    if (updatingId) return;
+    if (updatingId || annotation.kind === "agent") return;
     const now = new Date().toISOString();
     const updated: KnowledgeAnnotation = {
       ...annotation,
@@ -449,6 +498,37 @@ export function KnowledgeAnnotationsRuntime({
       setError("Не удалось обновить комментарий.");
     } finally {
       setUpdatingId(null);
+    }
+  };
+
+  const applyNeurocomment = async (
+    annotation: KnowledgeAnnotation,
+  ): Promise<void> => {
+    if (
+      applyingId ||
+      annotation.kind !== "agent" ||
+      annotation.suggestedText == null
+    )
+      return;
+    setApplyingId(annotation.id);
+    setError(null);
+    try {
+      const response = await fetch("/api/knowledge-neurocomments/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ annotationId: annotation.id }),
+      });
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok)
+        throw new Error(body.error ?? "Не удалось внедрить правку.");
+      window.location.reload();
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Не удалось внедрить правку.",
+      );
+      setApplyingId(null);
     }
   };
 
@@ -502,7 +582,9 @@ export function KnowledgeAnnotationsRuntime({
           <header className={styles.panelHeader}>
             <div>
               <strong>Комментарии</strong>
-              <span>{unresolvedCount} открытых</span>
+              <span>
+                Мои: {humanCount} · Нейро: {agentCount}
+              </span>
             </div>
             <button
               aria-label="Закрыть комментарии"
@@ -560,21 +642,49 @@ export function KnowledgeAnnotationsRuntime({
 
           {error ? <div className={styles.error}>{error}</div> : null}
 
+          <div
+            className={styles.kindTabs}
+            role="group"
+            aria-label="Тип комментариев"
+          >
+            <button
+              type="button"
+              aria-pressed={commentKind === "human"}
+              onClick={() => setCommentKind("human")}
+            >
+              Мои ({humanCount})
+            </button>
+            <button
+              type="button"
+              aria-pressed={commentKind === "agent"}
+              onClick={() => setCommentKind("agent")}
+            >
+              Нейро ({agentCount})
+            </button>
+          </div>
+
           <div className={styles.list}>
             {loading ? (
               <div className={styles.empty}>Загружаю комментарии…</div>
             ) : visibleAnnotations.length === 0 && !draftSelection ? (
               <div className={styles.empty}>
-                Выделите фрагмент текста и добавьте комментарий.
+                {commentKind === "human"
+                  ? "Выделите фрагмент текста и добавьте комментарий."
+                  : "Нейрокомментариев пока нет."}
               </div>
             ) : (
               visibleAnnotations.map((annotation) => (
                 <article
-                  className={`${styles.commentCard} ${
+                  className={`${styles.commentCard} ${annotation.kind === "agent" ? styles.neuroCard : ""} ${
                     annotation.resolvedAt ? styles.resolved : ""
                   }`}
                   key={annotation.id}
                 >
+                  {annotation.kind === "agent" ? (
+                    <strong className={styles.neuroBadge}>
+                      Нейрокомментарий
+                    </strong>
+                  ) : null}
                   <button
                     className={styles.quoteButton}
                     disabled={
@@ -593,6 +703,36 @@ export function KnowledgeAnnotationsRuntime({
                     <span className={styles.orphan}>Фрагмент изменён</span>
                   ) : null}
                   <p>{annotation.comment}</p>
+                  {annotation.kind === "agent" &&
+                  annotation.suggestedText != null ? (
+                    <div className={styles.suggestion}>
+                      <div>
+                        <strong>Было:</strong> {annotation.selectedText}
+                      </div>
+                      <div>
+                        <strong>Станет:</strong>{" "}
+                        {annotation.suggestedText || "(удалить фрагмент)"}
+                      </div>
+                      {annotation.appliedAt ? (
+                        <span>Внедрено ✓</span>
+                      ) : annotation.resolvedAt === null ? (
+                        <button
+                          type="button"
+                          className={styles.primaryButton}
+                          disabled={
+                            applyingId !== null ||
+                            !isReading ||
+                            persistenceMode !== "cloud"
+                          }
+                          onClick={() => void applyNeurocomment(annotation)}
+                        >
+                          {applyingId === annotation.id
+                            ? "Внедряю…"
+                            : "Внедрить"}
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <footer>
                     <span>
                       {new Intl.DateTimeFormat("ru", {
@@ -602,13 +742,15 @@ export function KnowledgeAnnotationsRuntime({
                         minute: "2-digit",
                       }).format(new Date(annotation.createdAt))}
                     </span>
-                    <button
-                      disabled={updatingId === annotation.id}
-                      onClick={() => void toggleResolved(annotation)}
-                      type="button"
-                    >
-                      {annotation.resolvedAt ? "Вернуть" : "Решено ✓"}
-                    </button>
+                    {annotation.kind !== "agent" ? (
+                      <button
+                        disabled={updatingId === annotation.id}
+                        onClick={() => void toggleResolved(annotation)}
+                        type="button"
+                      >
+                        {annotation.resolvedAt ? "Вернуть" : "Решено ✓"}
+                      </button>
+                    ) : null}
                   </footer>
                 </article>
               ))
