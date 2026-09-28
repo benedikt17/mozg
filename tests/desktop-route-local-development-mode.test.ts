@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDesktopDomainSnapshot } from "@/prototype/persistence/domain-snapshot";
 import { initialDesktopPrototypeState } from "@/prototype/desktop-state";
+import { DesktopPrototypeShell } from "@/prototype/desktop-shell";
 
 const loadDesktopCloudSnapshot = vi.hoisted(() => vi.fn());
 const redirect = vi.hoisted(() => vi.fn());
@@ -38,15 +39,11 @@ describe("desktop routes in local development mode", () => {
     loadDesktopCloudSnapshot.mockResolvedValue({ kind: "ready", bootstrap });
 
     const page = await DesktopPrototypePage();
-    const [desktopShell, annotationsRuntime] = page.props.children;
 
     expect(loadDesktopCloudSnapshot).toHaveBeenCalledOnce();
-    expect(desktopShell.props).toMatchObject({
+    expect(page.props).toMatchObject({
       runtimeMode: "cloud",
       cloudBootstrap: bootstrap,
-    });
-    expect(annotationsRuntime.props).toMatchObject({
-      workspaceId: bootstrap.workspaceId,
     });
   });
 
@@ -54,13 +51,23 @@ describe("desktop routes in local development mode", () => {
     loadDesktopCloudSnapshot.mockResolvedValue({ kind: "ready", bootstrap });
 
     const page = await DesktopPrototypePage();
-    const [desktopShell, annotationsRuntime] = page.props.children;
 
     expect(loadDesktopCloudSnapshot).toHaveBeenCalledOnce();
-    expect(desktopShell.props).toMatchObject({
+    expect(page.props).toMatchObject({
       runtimeMode: "cloud",
       cloudBootstrap: bootstrap,
     });
+  });
+
+  it("mounts comments inside the desktop runtime so they can refresh the open article", () => {
+    const shell = DesktopPrototypeShell({
+      cloudBootstrap: bootstrap,
+      runtimeMode: "cloud",
+    });
+    const [desktopWorkspace, annotationsRuntime] =
+      shell.props.children.props.children;
+
+    expect(desktopWorkspace).toBeDefined();
     expect(annotationsRuntime.props).toMatchObject({
       workspaceId: bootstrap.workspaceId,
     });

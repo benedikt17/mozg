@@ -12,6 +12,7 @@ import {
   type KnowledgeAnnotationPersistenceMode,
   type KnowledgeAnnotationSelection,
 } from "./knowledge-annotations";
+import { useDesktopTaskRuntime } from "@/prototype/tasks/desktop-task-runtime";
 
 const HIGHLIGHT_NAME = "mozg-knowledge-annotations";
 const NEURO_HIGHLIGHT_NAME = "mozg-knowledge-neurocomments";
@@ -170,6 +171,7 @@ export function KnowledgeAnnotationsRuntime({
 }: {
   workspaceId: string;
 }): React.JSX.Element | null {
+  const { persistence } = useDesktopTaskRuntime();
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
   const [isReading, setIsReading] = useState(false);
   const [domEpoch, setDomEpoch] = useState(0);
@@ -190,6 +192,8 @@ export function KnowledgeAnnotationsRuntime({
   const [saving, setSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [applyingId, setApplyingId] = useState<string | null>(null);
+  const [needsRefresh, setNeedsRefresh] = useState(false);
+  const [refreshingArticle, setRefreshingArticle] = useState(false);
   const [orphanIds, setOrphanIds] = useState<Set<string>>(new Set());
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pageRef = useRef<HTMLElement | null>(null);
@@ -247,6 +251,7 @@ export function KnowledgeAnnotationsRuntime({
       setPanelOpen(false);
       setShowResolved(false);
       setError(null);
+      setNeedsRefresh(false);
 
       if (!activeDocumentId) {
         setAnnotations([]);
@@ -501,6 +506,32 @@ export function KnowledgeAnnotationsRuntime({
     }
   };
 
+  const refreshAppliedArticle = async (): Promise<void> => {
+    setRefreshingArticle(true);
+    try {
+      const result = await persistence.refreshFromSource();
+      if (result === "skipped") {
+        setNeedsRefresh(true);
+        setError("Правка внедрена, но статью пока не удалось обновить.");
+        return;
+      }
+      if (activeDocumentId) {
+        const loaded = await loadKnowledgeAnnotations(
+          workspaceId,
+          activeDocumentId,
+        );
+        setAnnotations(loaded.annotations);
+      }
+      setNeedsRefresh(false);
+      setError(null);
+    } catch {
+      setNeedsRefresh(true);
+      setError("Правка внедрена, но статью пока не удалось обновить.");
+    } finally {
+      setRefreshingArticle(false);
+    }
+  };
+
   const applyNeurocomment = async (
     annotation: KnowledgeAnnotation,
   ): Promise<void> => {
@@ -521,13 +552,22 @@ export function KnowledgeAnnotationsRuntime({
       const body = (await response.json()) as { error?: string };
       if (!response.ok)
         throw new Error(body.error ?? "Не удалось внедрить правку.");
-      window.location.reload();
+      const appliedAt = new Date().toISOString();
+      setAnnotations((current) =>
+        current.map((item) =>
+          item.id === annotation.id
+            ? { ...item, appliedAt, resolvedAt: appliedAt }
+            : item,
+        ),
+      );
+      await refreshAppliedArticle();
     } catch (failure) {
       setError(
         failure instanceof Error
           ? failure.message
           : "Не удалось внедрить правку.",
       );
+    } finally {
       setApplyingId(null);
     }
   };
@@ -640,7 +680,20 @@ export function KnowledgeAnnotationsRuntime({
             </section>
           ) : null}
 
-          {error ? <div className={styles.error}>{error}</div> : null}
+          {error ? (
+            <div className={styles.error}>
+              {error}
+              {needsRefresh ? (
+                <button
+                  disabled={refreshingArticle}
+                  onClick={() => void refreshAppliedArticle()}
+                  type="button"
+                >
+                  {refreshingArticle ? "Обновляю…" : "Обновить статью"}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
 
           <div
             className={styles.kindTabs}
