@@ -260,6 +260,53 @@ export function resolveKnowledgeAnnotationOffset(
   };
 }
 
+export function resolveAppliedKnowledgeAnnotationOffset(
+  text: string,
+  annotation: KnowledgeAnnotation,
+): { startOffset: number; endOffset: number } | null {
+  if (!annotation.appliedAt || annotation.suggestedText == null) return null;
+  if (annotation.suggestedText.length > 0) {
+    return resolveKnowledgeAnnotationOffset(text, {
+      ...annotation,
+      selectedText: annotation.suggestedText,
+      endOffset: annotation.startOffset + annotation.suggestedText.length,
+    });
+  }
+
+  // A deletion leaves no replacement to select. Locate the joined context instead.
+  const before = annotation.prefix.slice(-32);
+  const after = annotation.suffix.slice(0, 32);
+  const context = before + after;
+  if (!context) return null;
+  const startOffset = text.indexOf(context);
+  if (startOffset < 0) return null;
+  return { startOffset, endOffset: startOffset + context.length };
+}
+
+export async function loadOpenNeurocommentDocumentIds(
+  workspaceId: string,
+): Promise<Set<string>> {
+  const userId = await getAuthenticatedUserId();
+  const client = createClient();
+  const documentIds = new Set<string>();
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await client
+      .from("knowledge_annotations")
+      .select("document_id")
+      .eq("workspace_id", workspaceId)
+      .eq("created_by", userId)
+      .eq("kind", "agent")
+      .is("resolved_at", null)
+      .order("id")
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    for (const row of data ?? []) documentIds.add(row.document_id);
+    if ((data ?? []).length < pageSize) break;
+  }
+  return documentIds;
+}
+
 function sortAnnotations(
   annotations: KnowledgeAnnotation[],
 ): KnowledgeAnnotation[] {

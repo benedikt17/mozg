@@ -484,6 +484,7 @@ function SectionWorkspace({
         activeKnowledgeArticleLinkPicker?.sourceDocumentId ?? null,
       onCancelKnowledgeLinkPick: () => setKnowledgeArticleLinkPicker(null),
       onPickKnowledgeLinkTarget: pickKnowledgeArticleLinkTarget,
+      workspaceId,
     },
   );
   const overviewSourceTask = state.tasks.find(
@@ -651,6 +652,7 @@ function renderToolSidebar(
     linkPickerSourceDocumentId?: string | null;
     onCancelKnowledgeLinkPick?: () => void;
     onPickKnowledgeLinkTarget?: (documentId: string) => void;
+    workspaceId?: string;
   },
 ): React.JSX.Element | null {
   if (state.activeSection === "knowledge") {
@@ -662,6 +664,7 @@ function renderToolSidebar(
         linkPickerSourceDocumentId={options?.linkPickerSourceDocumentId}
         onCancelLinkPick={options?.onCancelKnowledgeLinkPick}
         onPickLinkTarget={options?.onPickKnowledgeLinkTarget}
+        workspaceId={options?.workspaceId}
       />
     );
   }

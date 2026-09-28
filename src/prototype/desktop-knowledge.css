@@ -146,6 +146,33 @@
     opacity: 0.42;
   }
 
+  .knowledge-neuro-toggle {
+    width: 36px;
+    height: 36px;
+    border: 1px solid #c7b8e9;
+    border-radius: 8px;
+    background: #f7f4ff;
+    color: #6543b2;
+    font:
+      700 25px/1 Georgia,
+      serif;
+    cursor: pointer;
+  }
+
+  .knowledge-neuro-toggle[aria-pressed="true"] {
+    background: #6543b2;
+    color: #fff;
+  }
+
+  .knowledge-neuro-toggle:focus-visible {
+    outline: 2px solid #6543b2;
+    outline-offset: 2px;
+  }
+
+  .knowledge-neuro-toggle:disabled {
+    opacity: 0.55;
+  }
+
   .ui-icon {
     width: 16px;
     height: 16px;
@@ -409,6 +436,16 @@
 
   .knowledge-document-row.is-active > .knowledge-tree-row {
     background: transparent;
+  }
+
+  .knowledge-document-row.has-open-neurocomments {
+    background: #eee8ff;
+    box-shadow: inset 3px 0 #8063d4;
+    color: #493389;
+  }
+
+  .knowledge-document-row.has-open-neurocomments:hover {
+    background: #e4dcfa;
   }
 
   .knowledge-document-row.is-path-selected {
