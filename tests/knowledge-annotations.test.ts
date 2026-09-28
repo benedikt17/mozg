@@ -65,6 +65,31 @@ describe("Knowledge annotation anchors", () => {
 });
 
 describe("Applied neurocomment navigation", () => {
+  it("finds text inserted after its anchor", () => {
+    const original = "Начало. Основа. Конец.";
+    const selectedText = "Основа.";
+    const startOffset = original.indexOf(selectedText);
+    const inserted = " Дополнение.";
+    const changed = original.replace(selectedText, selectedText + inserted);
+    expect(
+      resolveAppliedKnowledgeAnnotationOffset(
+        changed,
+        annotation({
+          selectedText,
+          startOffset,
+          endOffset: startOffset + selectedText.length,
+          prefix: "Начало. ",
+          suffix: " Конец.",
+          proposalAction: "insert_after",
+          suggestedText: inserted,
+          appliedAt: "2026-09-28T12:00:00.000Z",
+        }),
+      ),
+    ).toEqual({
+      startOffset: changed.indexOf(inserted),
+      endOffset: changed.indexOf(inserted) + inserted.length,
+    });
+  });
   it("locates the replacement after earlier edits shift its position", () => {
     const original =
       "В первой главе Настенька принимает решение и запускает путешествие.";

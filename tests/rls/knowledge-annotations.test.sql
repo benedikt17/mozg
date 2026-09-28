@@ -260,12 +260,12 @@ select results_eq(
 );
 insert into public.knowledge_annotations (
   id, workspace_id, document_id, created_by, selected_text,
-  start_offset, end_offset, comment, kind, suggested_text, source_revision
+  start_offset, end_offset, prefix, suffix, comment, kind, suggested_text, source_revision
 ) values (
   '72000000-0000-0000-0000-000000000004',
   current_setting('test.annotation_workspace_id')::uuid,
   'doc-ai', '71000000-0000-0000-0000-000000000001',
-  'The', 9, 12, 'Now stale', 'agent', 'A', 1
+  'The', 9, 12, E'# Header\n', ' old phrase stays.', 'Now stale', 'agent', 'A', 1
 );
 select results_eq(
   $$select status from public.apply_knowledge_neurocomment(
@@ -273,6 +273,45 @@ select results_eq(
     '72000000-0000-0000-0000-000000000004')$$,
   array['conflict'::text],
   'a changed snapshot rejects an old suggestion'
+);
+
+insert into public.knowledge_annotations (
+  id, workspace_id, document_id, created_by, selected_text,
+  start_offset, end_offset, comment, kind, suggested_text, source_revision, proposal_action
+) values (
+  '72000000-0000-0000-0000-000000000005',
+  current_setting('test.annotation_workspace_id')::uuid,
+  'doc-ai', '71000000-0000-0000-0000-000000000001',
+  'new phrase', 13, 23, 'Add clarification', 'agent', ' and detail', 2, 'insert_after'
+);
+select results_eq(
+  $$select status from public.apply_knowledge_neurocomment(
+    '71000000-0000-0000-0000-000000000001',
+    '72000000-0000-0000-0000-000000000005')$$,
+  array['applied'::text],
+  'owner accepts an insertion next to an exact anchor'
+);
+select is(
+  (select snapshot #>> '{documents,0,content,1}' from public.workspace_snapshots
+   where workspace_id = current_setting('test.annotation_workspace_id')::uuid),
+  'The new phrase and detail stays.',
+  'insertion preserves the anchored text'
+);
+insert into public.knowledge_annotations (
+  id, workspace_id, document_id, created_by, selected_text,
+  start_offset, end_offset, comment, kind, suggested_text, source_revision, proposal_action
+) values (
+  '72000000-0000-0000-0000-000000000006',
+  current_setting('test.annotation_workspace_id')::uuid,
+  'doc-ai', '71000000-0000-0000-0000-000000000001',
+  ' and detail', 23, 34, 'Remove clarification', 'agent', '', 3, 'delete'
+);
+select results_eq(
+  $$select status from public.apply_knowledge_neurocomment(
+    '71000000-0000-0000-0000-000000000001',
+    '72000000-0000-0000-0000-000000000006')$$,
+  array['applied'::text],
+  'owner accepts a deletion'
 );
 
 select * from finish();

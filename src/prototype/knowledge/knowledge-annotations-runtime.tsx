@@ -795,13 +795,47 @@ export function KnowledgeAnnotationsRuntime({
                   {annotation.kind === "agent" &&
                   annotation.suggestedText != null ? (
                     <div className={styles.suggestion}>
-                      <div>
-                        <strong>Было:</strong> {annotation.selectedText}
-                      </div>
-                      <div>
-                        <strong>Станет:</strong>{" "}
-                        {annotation.suggestedText || "(удалить фрагмент)"}
-                      </div>
+                      {(annotation.proposalAction ?? "replace") === "delete" ? (
+                        <div>
+                          <strong>Удалить:</strong>{" "}
+                          <del className={styles.removedText}>
+                            {annotation.selectedText}
+                          </del>
+                        </div>
+                      ) : (annotation.proposalAction ?? "replace").startsWith(
+                          "insert_",
+                        ) ? (
+                        <>
+                          <div>
+                            <strong>Ориентир:</strong> {annotation.selectedText}
+                          </div>
+                          <div>
+                            <strong>
+                              {annotation.proposalAction === "insert_before"
+                                ? "Добавить перед:"
+                                : "Добавить после:"}
+                            </strong>{" "}
+                            <ins className={styles.addedText}>
+                              {annotation.suggestedText}
+                            </ins>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div>
+                            <strong>Было:</strong>{" "}
+                            <del className={styles.removedText}>
+                              {annotation.selectedText}
+                            </del>
+                          </div>
+                          <div>
+                            <strong>Станет:</strong>{" "}
+                            <ins className={styles.addedText}>
+                              {annotation.suggestedText}
+                            </ins>
+                          </div>
+                        </>
+                      )}
                       {annotation.appliedAt ? (
                         <span>Внедрено ✓</span>
                       ) : annotation.resolvedAt === null ? (
@@ -816,8 +850,8 @@ export function KnowledgeAnnotationsRuntime({
                           onClick={() => void applyNeurocomment(annotation)}
                         >
                           {applyingId === annotation.id
-                            ? "Внедряю…"
-                            : "Внедрить"}
+                            ? "Принимаю…"
+                            : "Принять"}
                         </button>
                       ) : null}
                     </div>

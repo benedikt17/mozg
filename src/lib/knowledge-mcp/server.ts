@@ -125,7 +125,7 @@ export function createKnowledgeMcpServer(
     "create_knowledge_neurocomment",
     {
       description:
-        "Create a visually distinct AI comment anchored to ONE exact, unique quote from original article Markdown. Optional suggestedText is the exact replacement for that quote. This does not edit the article; the owner must click Внедрить in MOZG. Requires an explicit neurocomment grant.",
+        "Propose a comment or an edit anchored to ONE exact, unique quote from original article Markdown. operation=replace replaces the quote with suggestedText; delete removes it; insert_before/insert_after add suggestedText next to it. The article changes only after the owner clicks Принять in MOZG. Requires an explicit neurocomment grant.",
       inputSchema: {
         documentId: z.string().min(1).max(250),
         selectedText: z
@@ -139,6 +139,9 @@ export function createKnowledgeMcpServer(
           .max(5000)
           .refine((value) => value.trim().length > 0),
         suggestedText: z.string().max(5000).optional(),
+        operation: z
+          .enum(["replace", "delete", "insert_before", "insert_after"])
+          .default("replace"),
       },
       annotations: {
         readOnlyHint: false,
@@ -147,7 +150,23 @@ export function createKnowledgeMcpServer(
       },
       _meta: neuroAuth,
     },
-    async ({ documentId, selectedText, comment, suggestedText }) => {
+    async ({ documentId, selectedText, comment, suggestedText, operation }) => {
+      if (
+        operation !== "replace" &&
+        operation !== "delete" &&
+        !suggestedText?.length
+      )
+        return {
+          isError: true,
+          content: [
+            { type: "text" as const, text: "Insertion requires suggestedText" },
+          ],
+        };
+      if (operation === "replace" && suggestedText === "")
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: "Use delete operation" }],
+        };
       if (!options) return neurocommentGrantRequired();
       const entry = entries.find((item) => item.id === documentId);
       if (!entry)
@@ -164,7 +183,8 @@ export function createKnowledgeMcpServer(
           markdown: entry.markdown,
           quote: selectedText,
           comment,
-          suggestedText,
+          suggestedText: operation === "delete" ? "" : suggestedText,
+          operation,
         });
         return created.kind === "created"
           ? result({

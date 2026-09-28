@@ -60,6 +60,7 @@ export async function createNeurocomment(input: {
   quote: string;
   comment: string;
   suggestedText?: string;
+  operation?: "replace" | "delete" | "insert_before" | "insert_after";
 }) {
   const quote = input.quote;
   const anchor = exactQuoteAnchor(input.markdown, quote);
@@ -91,6 +92,7 @@ export async function createNeurocomment(input: {
       ...anchor,
       comment: input.comment,
       suggested_text: input.suggestedText ?? null,
+      proposal_action: input.operation ?? "replace",
       source_revision: input.revision,
     })
     .select("id")
