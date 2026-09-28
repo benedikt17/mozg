@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import {
+  CODEX_CLIENT_ID,
+  CODEX_REDIRECT_URI,
   hashSecret,
   matchesPkce,
   newSecret,
@@ -48,7 +50,7 @@ describe("scoped Knowledge MCP authorization", () => {
     expect(validPkceChallenge("short")).toBe(false);
   });
 
-  it("accepts only the configured MCP resource and the published Work callback", async () => {
+  it("accepts only the configured MCP resource and published ChatGPT callbacks", async () => {
     vi.stubEnv("MOZG_MCP_SCOPED_AUTH", "enabled");
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-only");
     vi.stubEnv("MOZG_MCP_PUBLIC_URL", "https://preview.example.test/api/mcp");
@@ -67,6 +69,19 @@ describe("scoped Knowledge MCP authorization", () => {
       ),
     );
     expect(await validWorkClient(WORK_CLIENT_ID, WORK_REDIRECT_URI)).toBe(true);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          client_id: CODEX_CLIENT_ID,
+          redirect_uris: [CODEX_REDIRECT_URI],
+          token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
+        }),
+      ),
+    );
+    expect(await validWorkClient(CODEX_CLIENT_ID, CODEX_REDIRECT_URI)).toBe(true);
+    expect(await validWorkClient(CODEX_CLIENT_ID, WORK_REDIRECT_URI)).toBe(false);
+    expect(await validWorkClient(WORK_CLIENT_ID, CODEX_REDIRECT_URI)).toBe(false);
     expect(
       await validWorkClient(WORK_CLIENT_ID, "https://attacker.test/callback"),
     ).toBe(false);

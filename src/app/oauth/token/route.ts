@@ -1,10 +1,10 @@
 import {
   exchangeCode,
   KNOWLEDGE_SCOPE,
+  redirectUriForClient,
   refreshTokens,
   validResource,
   validWorkClient,
-  WORK_REDIRECT_URI,
 } from "@/lib/knowledge-mcp/scoped-auth";
 import { getMcpPublicUrl } from "@/lib/knowledge-mcp/oauth";
 
@@ -58,7 +58,8 @@ export async function POST(request: Request): Promise<Response> {
       : errorResponse("invalid_grant");
   }
   if (kind === "refresh_token") {
-    if (!(await validWorkClient(clientId, WORK_REDIRECT_URI)))
+    const redirectUri = redirectUriForClient(clientId);
+    if (!redirectUri || !(await validWorkClient(clientId, redirectUri)))
       return errorResponse("invalid_client", 401);
     const token = form.get("refresh_token") ?? "";
     if (token.length > 256) return errorResponse("invalid_request");
