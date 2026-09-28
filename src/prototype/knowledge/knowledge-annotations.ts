@@ -24,6 +24,7 @@ export type KnowledgeAnnotation = {
   resolvedAt: string | null;
   kind?: "human" | "agent";
   suggestedText?: string | null;
+  proposalAction?: "replace" | "delete" | "insert_before" | "insert_after";
   sourceRevision?: number | null;
   appliedAt?: string | null;
 };
@@ -56,6 +57,7 @@ type KnowledgeAnnotationRow = {
   workspace_id: string;
   kind: string;
   suggested_text: string | null;
+  proposal_action: string;
   source_revision: number | null;
   applied_at: string | null;
 };
@@ -129,8 +131,11 @@ export function parseKnowledgeAnnotation(
     return null;
   }
   const kind = candidate.kind ?? "human";
+  const action = candidate.proposalAction ?? "replace";
   if (
     (kind !== "human" && kind !== "agent") ||
+    typeof action !== "string" ||
+    !["replace", "delete", "insert_before", "insert_after"].includes(action) ||
     (kind === "agent" &&
       (!isFiniteNonNegativeInteger(candidate.sourceRevision) ||
         candidate.sourceRevision < 1)) ||
@@ -148,7 +153,7 @@ export function parseKnowledgeAnnotation(
     )
   )
     return null;
-  return { ...candidate, kind } as KnowledgeAnnotation;
+  return { ...candidate, kind, proposalAction: action } as KnowledgeAnnotation;
 }
 
 export function createKnowledgeAnnotationSelection(
@@ -266,10 +271,16 @@ export function resolveAppliedKnowledgeAnnotationOffset(
 ): { startOffset: number; endOffset: number } | null {
   if (!annotation.appliedAt || annotation.suggestedText == null) return null;
   if (annotation.suggestedText.length > 0) {
+    const action = annotation.proposalAction ?? "replace";
+    const insertedAt =
+      action === "insert_after"
+        ? annotation.startOffset + annotation.selectedText.length
+        : annotation.startOffset;
     return resolveKnowledgeAnnotationOffset(text, {
       ...annotation,
       selectedText: annotation.suggestedText,
-      endOffset: annotation.startOffset + annotation.suggestedText.length,
+      startOffset: insertedAt,
+      endOffset: insertedAt + annotation.suggestedText.length,
     });
   }
 
@@ -388,6 +399,7 @@ function rowToAnnotation(
     resolvedAt: row.resolved_at,
     kind: row.kind,
     suggestedText: row.suggested_text,
+    proposalAction: row.proposal_action,
     sourceRevision: row.source_revision,
     appliedAt: row.applied_at,
   });
@@ -413,6 +425,7 @@ function annotationToRow(
     resolved_at: annotation.resolvedAt,
     kind: annotation.kind ?? "human",
     suggested_text: annotation.suggestedText ?? null,
+    proposal_action: annotation.proposalAction ?? "replace",
     source_revision: annotation.sourceRevision ?? null,
     applied_at: annotation.appliedAt ?? null,
   };
@@ -456,7 +469,7 @@ export async function loadKnowledgeAnnotations(
   const { data, error } = await client
     .from("knowledge_annotations")
     .select(
-      "id, workspace_id, document_id, created_by, schema_version, selected_text, start_offset, end_offset, prefix, suffix, comment, resolved_at, created_at, updated_at, kind, suggested_text, source_revision, applied_at",
+      "id, workspace_id, document_id, created_by, schema_version, selected_text, start_offset, end_offset, prefix, suffix, comment, resolved_at, created_at, updated_at, kind, suggested_text, proposal_action, source_revision, applied_at",
     )
     .eq("workspace_id", workspaceId)
     .eq("document_id", documentId)

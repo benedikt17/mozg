@@ -22,6 +22,18 @@
   justify-self: start;
 }
 
+.removedText {
+  color: #a23440;
+  background: #fce4e7;
+  text-decoration-color: #a23440;
+}
+
+.addedText {
+  color: #176447;
+  background: #dbf6e9;
+  text-decoration: none;
+}
+
 .kindTabs {
   display: flex;
   gap: 6px;
