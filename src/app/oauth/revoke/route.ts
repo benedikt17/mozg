@@ -1,8 +1,8 @@
 import { getMcpPublicUrl } from "@/lib/knowledge-mcp/oauth";
 import {
   revokeMcpGrant,
+  redirectUriForClient,
   validWorkClient,
-  WORK_REDIRECT_URI,
 } from "@/lib/knowledge-mcp/scoped-auth";
 
 export const runtime = "nodejs";
@@ -18,7 +18,8 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "invalid_request" }, { status: 400 });
   const form = new URLSearchParams(await request.text());
   const clientId = form.get("client_id") ?? "";
-  if (!(await validWorkClient(clientId, WORK_REDIRECT_URI)))
+  const redirectUri = redirectUriForClient(clientId);
+  if (!redirectUri || !(await validWorkClient(clientId, redirectUri)))
     return Response.json({ error: "invalid_client" }, { status: 401 });
   const token = form.get("token") ?? "";
   if (token.length > 256)

@@ -10,6 +10,14 @@ export const KNOWLEDGE_SCOPE = "knowledge:read";
 export const WORK_CLIENT_ID = "https://chatgpt.com/oauth/client.json";
 export const WORK_REDIRECT_URI =
   "https://chatgpt.com/connector_platform_oauth_redirect";
+export const CODEX_CLIENT_ID = "https://chatgpt.com/oauth/code/client.json";
+export const CODEX_REDIRECT_URI = "https://chatgpt.com/connector/oauth/code";
+
+export function redirectUriForClient(clientId: string): string | null {
+  if (clientId === WORK_CLIENT_ID) return WORK_REDIRECT_URI;
+  if (clientId === CODEX_CLIENT_ID) return CODEX_REDIRECT_URI;
+  return null;
+}
 
 function admin() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -45,10 +53,9 @@ export async function validWorkClient(
   clientId: string,
   redirectUri: string,
 ): Promise<boolean> {
-  if (clientId !== WORK_CLIENT_ID || redirectUri !== WORK_REDIRECT_URI)
-    return false;
+  if (redirectUriForClient(clientId) !== redirectUri) return false;
   try {
-    const response = await fetch(WORK_CLIENT_ID, {
+    const response = await fetch(clientId, {
       signal: AbortSignal.timeout(3000),
       cache: "no-store",
     });
@@ -57,9 +64,9 @@ export async function validWorkClient(
     if (!metadata || typeof metadata !== "object") return false;
     const client = metadata as Record<string, unknown>;
     return (
-      client.client_id === WORK_CLIENT_ID &&
+      client.client_id === clientId &&
       Array.isArray(client.redirect_uris) &&
-      client.redirect_uris.includes(WORK_REDIRECT_URI) &&
+      client.redirect_uris.includes(redirectUri) &&
       Array.isArray(client.token_endpoint_auth_methods_supported) &&
       client.token_endpoint_auth_methods_supported.includes("none")
     );
