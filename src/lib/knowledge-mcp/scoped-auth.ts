@@ -28,10 +28,14 @@ export const WORK_REDIRECT_URI =
   "https://chatgpt.com/connector_platform_oauth_redirect";
 export const CODEX_CLIENT_ID = "https://chatgpt.com/oauth/code/client.json";
 export const CODEX_REDIRECT_URI = "https://chatgpt.com/connector/oauth/code";
+export const CODEX_CLI_STABLE_CLIENT_ID =
+  "https://chatgpt.com/oauth/codex/client.json";
 const CODEX_CLI_CLIENT =
   /^https:\/\/chatgpt\.com\/oauth\/codex\/([A-Za-z0-9_-]{8,128})\/client\.json$/u;
 
 function codexCliRedirect(clientId: string): string | null {
+  if (clientId === CODEX_CLI_STABLE_CLIENT_ID)
+    return "http://127.0.0.1/callback";
   const callbackId = CODEX_CLI_CLIENT.exec(clientId)?.[1];
   return callbackId ? `http://127.0.0.1/callback/${callbackId}` : null;
 }
@@ -43,7 +47,7 @@ function portlessCodexRedirect(
   const registered = codexCliRedirect(clientId);
   if (!registered) return null;
   const match =
-    /^http:\/\/127\.0\.0\.1(?::([1-9][0-9]{0,4}))?(\/callback\/[A-Za-z0-9_-]{8,128})$/u.exec(
+    /^http:\/\/127\.0\.0\.1(?::([1-9][0-9]{0,4}))?(\/callback(?:\/[A-Za-z0-9_-]{8,128})?)$/u.exec(
       redirectUri,
     );
   if (!match || (match[1] && Number(match[1]) > 65535)) return null;
