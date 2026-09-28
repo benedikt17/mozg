@@ -28,11 +28,33 @@ export const WORK_REDIRECT_URI =
   "https://chatgpt.com/connector_platform_oauth_redirect";
 export const CODEX_CLIENT_ID = "https://chatgpt.com/oauth/code/client.json";
 export const CODEX_REDIRECT_URI = "https://chatgpt.com/connector/oauth/code";
+const CODEX_CLI_CLIENT =
+  /^https:\/\/chatgpt\.com\/oauth\/codex\/([A-Za-z0-9_-]{8,128})\/client\.json$/u;
+
+function codexCliRedirect(clientId: string): string | null {
+  const callbackId = CODEX_CLI_CLIENT.exec(clientId)?.[1];
+  return callbackId ? `http://127.0.0.1/callback/${callbackId}` : null;
+}
+
+function portlessCodexRedirect(
+  clientId: string,
+  redirectUri: string,
+): string | null {
+  const registered = codexCliRedirect(clientId);
+  if (!registered) return null;
+  const match =
+    /^http:\/\/127\.0\.0\.1(?::([1-9][0-9]{0,4}))?(\/callback\/[A-Za-z0-9_-]{8,128})$/u.exec(
+      redirectUri,
+    );
+  if (!match || (match[1] && Number(match[1]) > 65535)) return null;
+  const portless = `http://127.0.0.1${match[2]}`;
+  return portless === registered ? portless : null;
+}
 
 export function redirectUriForClient(clientId: string): string | null {
   if (clientId === WORK_CLIENT_ID) return WORK_REDIRECT_URI;
   if (clientId === CODEX_CLIENT_ID) return CODEX_REDIRECT_URI;
-  return null;
+  return codexCliRedirect(clientId);
 }
 
 function admin() {
@@ -69,11 +91,18 @@ export async function validWorkClient(
   clientId: string,
   redirectUri: string,
 ): Promise<boolean> {
-  if (redirectUriForClient(clientId) !== redirectUri) return false;
+  const registeredRedirect = redirectUriForClient(clientId);
+  if (
+    !registeredRedirect ||
+    (redirectUri !== registeredRedirect &&
+      portlessCodexRedirect(clientId, redirectUri) !== registeredRedirect)
+  )
+    return false;
   try {
     const response = await fetch(clientId, {
       signal: AbortSignal.timeout(3000),
       cache: "no-store",
+      redirect: "error",
     });
     if (!response.ok) return false;
     const metadata: unknown = await response.json();
@@ -82,7 +111,7 @@ export async function validWorkClient(
     return (
       client.client_id === clientId &&
       Array.isArray(client.redirect_uris) &&
-      client.redirect_uris.includes(redirectUri) &&
+      client.redirect_uris.includes(registeredRedirect) &&
       Array.isArray(client.token_endpoint_auth_methods_supported) &&
       client.token_endpoint_auth_methods_supported.includes("none")
     );

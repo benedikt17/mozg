@@ -110,4 +110,57 @@ describe("scoped Knowledge MCP authorization", () => {
       ),
     ).toBe(false);
   });
+
+  it("accepts Codex CLI's portless metadata callback with a variable loopback port", async () => {
+    const clientId = "https://chatgpt.com/oauth/codex/Abc_123-def/client.json";
+    const registered = "http://127.0.0.1/callback/Abc_123-def";
+    const fetchClient = vi.fn(async () =>
+      Response.json({
+        client_id: clientId,
+        redirect_uris: [registered],
+        token_endpoint_auth_methods_supported: ["none"],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchClient);
+
+    expect(await validWorkClient(clientId, registered)).toBe(true);
+    expect(
+      await validWorkClient(
+        clientId,
+        "http://127.0.0.1:49152/callback/Abc_123-def",
+      ),
+    ).toBe(true);
+    expect(fetchClient).toHaveBeenCalledWith(clientId, expect.any(Object));
+    expect(
+      await validWorkClient(
+        clientId,
+        "http://127.0.0.1:65536/callback/Abc_123-def",
+      ),
+    ).toBe(false);
+    expect(
+      await validWorkClient(
+        clientId,
+        "http://localhost:49152/callback/Abc_123-def",
+      ),
+    ).toBe(false);
+    expect(
+      await validWorkClient(
+        clientId,
+        "http://127.0.0.1:49152/callback/Other123",
+      ),
+    ).toBe(false);
+    expect(
+      await validWorkClient(
+        clientId,
+        "https://attacker.test/callback/Abc_123-def",
+      ),
+    ).toBe(false);
+    expect(
+      await validWorkClient(
+        "https://attacker.test/oauth/codex/Abc_123-def/client.json",
+        registered,
+      ),
+    ).toBe(false);
+    expect(fetchClient).toHaveBeenCalledTimes(2);
+  });
 });
