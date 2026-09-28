@@ -5,6 +5,7 @@ vi.mock("server-only", () => ({}));
 
 import {
   CODEX_CLIENT_ID,
+  CODEX_CLI_STABLE_CLIENT_ID,
   CODEX_REDIRECT_URI,
   hashSecret,
   matchesPkce,
@@ -18,6 +19,7 @@ import {
   WORK_CLIENT_ID,
   WORK_REDIRECT_URI,
 } from "@/lib/knowledge-mcp/scoped-auth";
+import { validateAuthorizationRequest } from "@/app/oauth/authorize/flow";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -162,5 +164,77 @@ describe("scoped Knowledge MCP authorization", () => {
       ),
     ).toBe(false);
     expect(fetchClient).toHaveBeenCalledTimes(2);
+  });
+
+  it("accepts Codex's stable published client with its portless callback", async () => {
+    const fetchClient = vi.fn(async () =>
+      Response.json({
+        client_id: CODEX_CLI_STABLE_CLIENT_ID,
+        redirect_uris: [
+          "http://127.0.0.1/callback",
+          "http://localhost/callback",
+        ],
+        token_endpoint_auth_methods_supported: ["none"],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchClient);
+    expect(
+      await validWorkClient(
+        CODEX_CLI_STABLE_CLIENT_ID,
+        "http://127.0.0.1:63183/callback",
+      ),
+    ).toBe(true);
+    expect(
+      await validWorkClient(
+        CODEX_CLI_STABLE_CLIENT_ID,
+        "http://127.0.0.1/callback",
+      ),
+    ).toBe(true);
+    expect(
+      await validWorkClient(
+        CODEX_CLI_STABLE_CLIENT_ID,
+        "http://127.0.0.1:63183/callback/other-id",
+      ),
+    ).toBe(false);
+    expect(
+      await validWorkClient(
+        CODEX_CLI_STABLE_CLIENT_ID,
+        "http://localhost:63183/callback",
+      ),
+    ).toBe(false);
+    expect(fetchClient).toHaveBeenCalledTimes(2);
+  });
+
+  it("accepts the actual Codex desktop authorization request shape", async () => {
+    vi.stubEnv("MOZG_MCP_SCOPED_AUTH", "enabled");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-only");
+    vi.stubEnv(
+      "MOZG_MCP_PUBLIC_URL",
+      "https://mozg-production.vercel.app/api/mcp",
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          client_id: CODEX_CLI_STABLE_CLIENT_ID,
+          redirect_uris: ["http://127.0.0.1/callback"],
+          token_endpoint_auth_methods_supported: ["none"],
+        }),
+      ),
+    );
+    const params = new URLSearchParams({
+      response_type: "code",
+      client_id: CODEX_CLI_STABLE_CLIENT_ID,
+      state: "64M6uo6EocAFJJeJjGPEcQ",
+      code_challenge: "gU3kodPj_f6nlC8BDaQeeHwmWF9cSXhCkB1ugYgpKxM",
+      code_challenge_method: "S256",
+      redirect_uri: "http://127.0.0.1:63183/callback",
+      scope: "knowledge:read knowledge:neurocomment:create",
+      resource: "https://mozg-production.vercel.app/api/mcp",
+    });
+    expect(await validateAuthorizationRequest(params)).toMatchObject({
+      clientId: CODEX_CLI_STABLE_CLIENT_ID,
+      scope: NEUROCOMMENT_SCOPE,
+    });
   });
 });
