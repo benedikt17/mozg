@@ -398,6 +398,106 @@ export type Database = {
           },
         ]
       }
+      mcp_oauth_codes: {
+        Row: {
+          code_challenge: string
+          code_hash: string
+          consumed_at: string | null
+          expires_at: string
+          grant_id: string
+          redirect_uri: string
+        }
+        Insert: {
+          code_challenge: string
+          code_hash: string
+          consumed_at?: string | null
+          expires_at: string
+          grant_id: string
+          redirect_uri: string
+        }
+        Update: {
+          code_challenge?: string
+          code_hash?: string
+          consumed_at?: string | null
+          expires_at?: string
+          grant_id?: string
+          redirect_uri?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mcp_oauth_codes_grant_id_fkey"
+            columns: ["grant_id"]
+            isOneToOne: false
+            referencedRelation: "mcp_oauth_grants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mcp_oauth_grants: {
+        Row: {
+          client_id: string
+          created_at: string
+          expires_at: string
+          id: string
+          resource: string
+          revoked_at: string | null
+          scope: string
+          user_id: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          resource: string
+          revoked_at?: string | null
+          scope?: string
+          user_id: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          resource?: string
+          revoked_at?: string | null
+          scope?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      mcp_oauth_tokens: {
+        Row: {
+          consumed_at: string | null
+          expires_at: string
+          grant_id: string
+          kind: string
+          token_hash: string
+        }
+        Insert: {
+          consumed_at?: string | null
+          expires_at: string
+          grant_id: string
+          kind: string
+          token_hash: string
+        }
+        Update: {
+          consumed_at?: string | null
+          expires_at?: string
+          grant_id?: string
+          kind?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mcp_oauth_tokens_grant_id_fkey"
+            columns: ["grant_id"]
+            isOneToOne: false
+            referencedRelation: "mcp_oauth_grants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notes: {
         Row: {
           archived_at: string | null
