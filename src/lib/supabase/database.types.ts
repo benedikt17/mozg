@@ -353,11 +353,11 @@ export type Database = {
           resolved_at: string | null
           schema_version: number
           selected_text: string
-          start_offset: number
-          suggested_text: string | null
-          suffix: string
-          updated_at: string
           source_revision: number | null
+          start_offset: number
+          suffix: string
+          suggested_text: string | null
+          updated_at: string
           workspace_id: string
         }
         Insert: {
@@ -373,11 +373,11 @@ export type Database = {
           resolved_at?: string | null
           schema_version?: number
           selected_text: string
-          start_offset: number
-          suggested_text?: string | null
-          suffix?: string
-          updated_at?: string
           source_revision?: number | null
+          start_offset: number
+          suffix?: string
+          suggested_text?: string | null
+          updated_at?: string
           workspace_id: string
         }
         Update: {
@@ -393,11 +393,11 @@ export type Database = {
           resolved_at?: string | null
           schema_version?: number
           selected_text?: string
-          start_offset?: number
-          suggested_text?: string | null
-          suffix?: string
-          updated_at?: string
           source_revision?: number | null
+          start_offset?: number
+          suffix?: string
+          suggested_text?: string | null
+          updated_at?: string
           workspace_id?: string
         }
         Relationships: [
@@ -837,7 +837,10 @@ export type Database = {
     Functions: {
       apply_knowledge_neurocomment: {
         Args: { target_annotation_id: string; target_user_id: string }
-        Returns: { status: string; revision: number | null }[]
+        Returns: {
+          revision: number
+          status: string
+        }[]
       }
       assert_canvas_title: {
         Args: { target_title: string }
