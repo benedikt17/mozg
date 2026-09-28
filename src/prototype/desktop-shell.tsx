@@ -19,6 +19,7 @@ import {
 import { OverviewSectionWorkspace } from "@/prototype/overview/overview-section-workspace";
 import { KnowledgeSidebar } from "@/prototype/knowledge/knowledge-sidebar";
 import { KnowledgeWorkspace } from "@/prototype/knowledge/knowledge-workspace";
+import { KnowledgeAnnotationsRuntime } from "@/prototype/knowledge/knowledge-annotations-runtime";
 import type { KnowledgeArticleLinkPickRequest } from "@/prototype/knowledge/markdown-source-editor";
 import {
   KnowledgeContentHistoryProvider,
@@ -71,6 +72,11 @@ export function DesktopPrototypeShell({
     >
       <KnowledgeContentHistoryProvider>
         <DesktopPrototypeShellContent runtimeMode={runtimeMode} />
+        {runtimeMode === "cloud" && cloudBootstrap ? (
+          <KnowledgeAnnotationsRuntime
+            workspaceId={cloudBootstrap.workspaceId}
+          />
+        ) : null}
       </KnowledgeContentHistoryProvider>
     </DesktopTaskRuntimeProvider>
   );
