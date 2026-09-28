@@ -44,7 +44,7 @@ function toolJson(result: Awaited<ReturnType<Client["callTool"]>>): unknown {
 }
 
 describe("read-only knowledge MCP", () => {
-  it("advertises neurocomment tools only after the expanded grant", async () => {
+  it("advertises neurocomment tools with their required scope", async () => {
     const server = createKnowledgeMcpServer(
       {
         workspaceId: "workspace",
@@ -71,6 +71,16 @@ describe("read-only knowledge MCP", () => {
       expect(tools.tools.map((tool) => tool.name)).toContain(
         "list_knowledge_comments",
       );
+      expect(
+        tools.tools.find(
+          (tool) => tool.name === "create_knowledge_neurocomment",
+        )?._meta?.securitySchemes,
+      ).toEqual([
+        {
+          type: "oauth2",
+          scopes: ["knowledge:read", "knowledge:neurocomment:create"],
+        },
+      ]);
       const missing = await client.callTool({
         name: "list_knowledge_comments",
         arguments: { documentId: "deleted" },
@@ -82,6 +92,9 @@ describe("read-only knowledge MCP", () => {
     }
   });
   it("lists all active documents across projects, pages without gaps, and reads exact Markdown", async () => {
+    vi.stubEnv("MOZG_MCP_SCOPED_AUTH", "enabled");
+    vi.stubEnv("MOZG_MCP_PUBLIC_URL", "https://mozg.example/api/mcp");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-only-key");
     const server = createKnowledgeMcpServer({
       workspaceId: "workspace",
       workspaceName: "Workspace",
@@ -100,10 +113,34 @@ describe("read-only knowledge MCP", () => {
     try {
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name).sort()).toEqual([
+        "create_knowledge_neurocomment",
+        "list_knowledge_comments",
         "list_knowledge_documents",
         "read_knowledge_document",
         "search_knowledge_documents",
       ]);
+
+      for (const name of [
+        "list_knowledge_comments",
+        "create_knowledge_neurocomment",
+      ]) {
+        const denied = await client.callTool({
+          name,
+          arguments: {
+            documentId: "first",
+            ...(name === "create_knowledge_neurocomment"
+              ? { selectedText: "Дракон живёт в горах", comment: "Проверка" }
+              : {}),
+          },
+        });
+        expect(denied.isError).toBe(true);
+        expect(denied.content).toMatchObject([
+          { type: "text", text: "Neurocomment permission required" },
+        ]);
+        expect(denied._meta?.["mcp/www_authenticate"]).toEqual([
+          expect.stringContaining('error="insufficient_scope"'),
+        ]);
+      }
 
       const first = toolJson(
         await client.callTool({
@@ -162,6 +199,7 @@ describe("read-only knowledge MCP", () => {
     } finally {
       await client.close();
       await server.close();
+      vi.unstubAllEnvs();
     }
   });
 
