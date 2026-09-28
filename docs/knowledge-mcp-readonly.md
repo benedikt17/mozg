@@ -30,12 +30,16 @@ cards is outside this checkpoint.
 
 ## Connection status
 
-The Preview login tests only the regular application. **Do not enable the
-Supabase OAuth Server or set `MOZG_MCP_PUBLIC_URL` yet.** The draft branch now
-includes the scoped OAuth implementation proposed in
-[ADR-0006](adr/0006-knowledge-mcp-scoped-authorization.md). Database and live
-OAuth connection tests are still required. Test first on an isolated Preview
-database with synthetic data. Then publish verified connection instructions.
+The draft PR has passed CI against an isolated local Supabase with synthetic
+data: OAuth login, token refresh/revocation, direct Supabase token rejection,
+and MCP document listing and reading. A separate cross-workspace denial test
+is being added. **Do not enable the Supabase OAuth Server.** The MCP flow uses
+its own scoped credentials as described in
+[ADR-0006](adr/0006-knowledge-mcp-scoped-authorization.md).
+
+The deployed Preview is protected by Vercel SSO and MCP is disabled there. An
+ordinary browser login to Preview does not connect an external MCP client.
+Live OAuth connection from Work to a public endpoint is still unverified.
 
 No OAuth server setting, environment variable, plugin installation, or
 Production data was changed by this code checkpoint. The draft PR creates an

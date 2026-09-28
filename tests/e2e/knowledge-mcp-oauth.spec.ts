@@ -3,6 +3,11 @@ import { randomBytes } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { parseDesktopCloudSnapshotRow } from "@/prototype/persistence/cloud-snapshot-bridge";
+import {
+  createDesktopDomainSnapshot,
+  DESKTOP_DOMAIN_SCHEMA_VERSION,
+} from "@/prototype/persistence/domain-snapshot";
+import { initialDesktopPrototypeState } from "@/prototype/desktop-state";
 import { E2E_USER_EMAIL, E2E_USER_PASSWORD } from "./test-user";
 
 test("Work OAuth issues an MCP-only credential, rotates it, and revokes it", async ({
@@ -169,6 +174,69 @@ test("Work OAuth issues an MCP-only credential, rotates it, and revokes it", asy
   expect(article.document.id).toBe(documents.items[0].id);
   expect(typeof article.document.markdown).toBe("string");
   expect(article.revision).toBe(documents.revision);
+
+  // A second user's private article must not appear in this grant's inventory,
+  // search results, or direct document reads.
+  const otherClient = createClient(
+    supabaseUrl,
+    process.env.E2E_SUPABASE_ANON_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+  const otherSignup = await otherClient.auth.signUp({
+    email: `mozg-mcp-isolation-${Date.now()}@example.test`,
+    password: E2E_USER_PASSWORD,
+  });
+  expect(otherSignup.error).toBeNull();
+  expect(otherSignup.data.user).toBeTruthy();
+  const otherMembership = await otherClient
+    .from("workspace_members")
+    .select("workspace_id")
+    .eq("user_id", otherSignup.data.user!.id)
+    .single();
+  expect(otherMembership.error).toBeNull();
+  expect(otherMembership.data!.workspace_id).not.toBe(workspaceId);
+  const privateId = `mcp-private-${Date.now()}`;
+  const otherSnapshot = createDesktopDomainSnapshot(
+    initialDesktopPrototypeState,
+  );
+  otherSnapshot.documents.push({
+    ...otherSnapshot.documents[0],
+    id: privateId,
+    title: "Private MCP boundary probe",
+    content: ["Private MCP boundary probe"],
+  });
+  const otherInitialization = await otherClient.rpc(
+    "initialize_workspace_snapshot",
+    {
+      target_workspace_id: otherMembership.data!.workspace_id,
+      target_schema_version: DESKTOP_DOMAIN_SCHEMA_VERSION,
+      target_snapshot: otherSnapshot,
+    },
+  );
+  expect(otherInitialization.error).toBeNull();
+  const afterOtherSignup = await mcp(tokens.access_token, "tools/call", {
+    name: "list_knowledge_documents",
+    arguments: { limit: 50 },
+  });
+  const ownInventory = JSON.parse(
+    (await afterOtherSignup.json()).result.content[0].text,
+  );
+  expect(
+    ownInventory.items.some((item: { id: string }) => item.id === privateId),
+  ).toBe(false);
+  const privateSearch = await mcp(tokens.access_token, "tools/call", {
+    name: "search_knowledge_documents",
+    arguments: { query: "Private MCP boundary probe" },
+  });
+  expect(
+    JSON.parse((await privateSearch.json()).result.content[0].text).total,
+  ).toBe(0);
+  const privateRead = await mcp(tokens.access_token, "tools/call", {
+    name: "read_knowledge_document",
+    arguments: { documentId: privateId },
+  });
+  expect((await privateRead.json()).result.isError).toBe(true);
+
   const rotated = await request.post("/oauth/token", {
     form: {
       grant_type: "refresh_token",
