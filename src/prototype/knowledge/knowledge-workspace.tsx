@@ -77,11 +77,11 @@ type KnowledgeWorkspaceProps = {
 export function KnowledgeWorkspace(
   props: KnowledgeWorkspaceProps,
 ): React.JSX.Element {
-  if (props.state.knowledgeWorkspaceView === "trash") {
-    return <KnowledgeTrashView state={props.state} dispatch={props.dispatch} />;
-  }
   if (props.neuroDrafts?.visible && props.neuroDrafts.selection) {
     return <KnowledgeNeuroDraftPreview controller={props.neuroDrafts} />;
+  }
+  if (props.state.knowledgeWorkspaceView === "trash") {
+    return <KnowledgeTrashView state={props.state} dispatch={props.dispatch} />;
   }
   return <KnowledgeDocumentWorkspace {...props} />;
 }

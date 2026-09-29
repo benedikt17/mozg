@@ -409,7 +409,10 @@ export function KnowledgeSidebar({
           ]
             .filter(Boolean)
             .join(" ")}
-          onClick={() => dispatch({ type: "open-knowledge-trash" })}
+          onClick={() => {
+            neuroDrafts?.select(null);
+            dispatch({ type: "open-knowledge-trash" });
+          }}
           type="button"
         >
           <UiIcon name="trash" />
