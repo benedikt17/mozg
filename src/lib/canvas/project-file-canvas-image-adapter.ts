@@ -1,5 +1,9 @@
 import type { ObjectUrlRegistry } from "@/lib/canvas/canvas-image-ingestion";
 import {
+  imageLoadOrder,
+  type CanvasImageViewportBounds,
+} from "@/lib/canvas/canvas-image-load-priority";
+import {
   canvasImageLegacyKindFromResolutionSource,
   type CanvasImageResolutionSource,
 } from "@/lib/canvas/canvas-image-variants";
@@ -53,6 +57,7 @@ export type RestoreProjectFileCanvasImageOptions = {
     }
   >;
   viewportZoom?: number;
+  viewportBounds?: CanvasImageViewportBounds;
   devicePixelRatio?: number;
   renderedCssSizes?: ReadonlyMap<string, { width: number; height: number }>;
   currentResolutionSources?: ReadonlyMap<string, CanvasImageResolutionSource>;
@@ -306,6 +311,7 @@ export async function restoreProjectFileCanvasImageNodes(
       node.kind === "image" && "fileId" in node,
   );
   const total = imageNodes.length;
+  const loadOrder = imageLoadOrder(imageNodes, options.viewportBounds);
   if (total === 0) {
     return {
       nodes: [],
@@ -329,8 +335,8 @@ export async function restoreProjectFileCanvasImageNodes(
   async function worker(): Promise<void> {
     while (true) {
       if (options.signal?.aborted) throw abortError();
-      const index = nextIndex++;
-      if (index >= total) return;
+      const index = loadOrder[nextIndex++];
+      if (index === undefined) return;
       const canonical = imageNodes[index]!;
       activeReads += 1;
       maxConcurrentFileReads = Math.max(maxConcurrentFileReads, activeReads);

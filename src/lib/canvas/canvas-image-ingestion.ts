@@ -87,6 +87,7 @@ export type CanvasImageIngestionOptions = {
   workspaceId?: string;
   decodeImageDimensions?: DecodeImageDimensions;
   idGenerator?: () => string;
+  onAccepted?: (image: AcceptedCanvasImage, index: number) => void;
 };
 
 export type ObjectUrlApi = {
@@ -125,8 +126,8 @@ function beginAssetOperationScope(
   repository: CanvasAssetRepository,
 ): CanvasAssetOperationScope {
   return (
-    repository as CanvasAssetScopeProvider
-  ).beginAssetScope?.() ?? repository;
+    (repository as CanvasAssetScopeProvider).beginAssetScope?.() ?? repository
+  );
 }
 
 function assetOperationScopeIsCurrent(
@@ -332,6 +333,7 @@ export async function ingestCanvasImageCandidates(
       rejected.push(rejection(candidate, "too-many-pixels"));
       continue;
     }
+    let acceptedImage: AcceptedCanvasImage | null = null;
     try {
       const record = await repository.storeImage(
         inputForRepository(candidate, dimensions, options),
@@ -341,7 +343,7 @@ export async function ingestCanvasImageCandidates(
         rejected.push(rejection(candidate, "repository-failure"));
         continue;
       }
-      accepted.push({
+      const image: AcceptedCanvasImage = {
         assetId: record.id,
         mimeType: record.mimeType,
         byteSize: record.byteSize,
@@ -349,10 +351,13 @@ export async function ingestCanvasImageCandidates(
         height: record.height,
         source: candidate.source,
         record,
-      });
+      };
+      accepted.push(image);
+      acceptedImage = image;
     } catch {
       rejected.push(rejection(candidate, "repository-failure"));
     }
+    if (acceptedImage) options.onAccepted?.(acceptedImage, accepted.length - 1);
   }
   return { accepted, rejected };
 }

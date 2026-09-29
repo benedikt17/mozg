@@ -661,6 +661,134 @@ describe("production-shaped local Canvas shell", () => {
     expect(repository.assetLoadCalls).toBe(0);
   });
 
+  it("replaces a cached original with a ready tier after image generation settles", async () => {
+    const repository = new MemoryCanvasRepository();
+    const { registry } = urlRegistry();
+    const tier: CanvasAssetVariantV2Metadata = {
+      workspaceId: WORKSPACE_A,
+      canvasId: "canvas-1",
+      assetId: "asset-1",
+      targetMaxEdge: 1024,
+      storagePath: "edge-1024.webp",
+      mimeType: "image/webp",
+      byteSize: 10,
+      pixelWidth: 1024,
+      pixelHeight: 576,
+      createdAt: "2026-08-03T10:00:00.000Z",
+    };
+    const ledger = createImageNetworkLedger();
+    const variantRepository = createNumericVariantRepository(
+      new Map([["asset-1", [tier]]]),
+      ledger,
+    );
+    const cachedOriginal = new Map([
+      [
+        `${WORKSPACE_A}/canvas-1/asset-1/original`,
+        {
+          objectUrl: "blob:original",
+          mimeType: "image/png",
+          intrinsicWidth: 4000,
+          intrinsicHeight: 2250,
+          source: "restored" as const,
+          resolutionSource: { type: "original" as const },
+        },
+      ],
+    ]);
+
+    const restored = await restoreCanvasImageNodes(
+      documentWithImage(),
+      {
+        assetRepository: repository,
+        variantRepository,
+        objectUrls: registry,
+        workspaceId: WORKSPACE_A,
+        canvasId: "canvas-1",
+      },
+      {
+        viewportZoom: 1,
+        devicePixelRatio: 1,
+        currentResolutionSources: new Map([
+          ["image-node-1", { type: "original" as const }],
+        ]),
+        cachedAssetPayloads: cachedOriginal,
+        allowDowngrade: true,
+      },
+    );
+
+    expect(restored.nodes[0]?.data.resolutionSource).toEqual({
+      type: "variant",
+      targetMaxEdge: 1024,
+    });
+    expect(restored.nodes[0]?.data.objectUrl).not.toBe("blob:original");
+    expect(ledger.derivativeRequests).toEqual([
+      { assetId: "asset-1", targetMaxEdge: 1024 },
+    ]);
+    expect(repository.assetLoadCalls).toBe(0);
+  });
+
+  it("restores visible images before distant images", async () => {
+    const repository = new MemoryCanvasRepository();
+    const document = parseCanvasDocumentV1({
+      schemaVersion: 1,
+      nodes: [
+        ...([10_000, 200, -5_000] as const).map((x, index) => ({
+          id: `node-${index}`,
+          kind: "image" as const,
+          assetId: `asset-${index}`,
+          position: { x, y: 100 },
+          size: { width: 300, height: 169 },
+          zIndex: index,
+          aspectRatioLocked: true,
+        })),
+      ],
+      edges: [],
+    });
+    const ledger = createImageNetworkLedger();
+    const tiers = new Map(
+      [0, 1, 2].map((index) => [
+        `asset-${index}`,
+        [
+          {
+            workspaceId: WORKSPACE_A,
+            canvasId: "canvas-1",
+            assetId: `asset-${index}`,
+            targetMaxEdge: 1024,
+            storagePath: `asset-${index}/edge-1024.webp`,
+            mimeType: "image/webp" as const,
+            byteSize: 10,
+            pixelWidth: 1024,
+            pixelHeight: 576,
+            createdAt: "2026-08-03T10:00:00.000Z",
+          },
+        ],
+      ]),
+    );
+    const emitted: string[] = [];
+    const result = await restoreCanvasImageNodes(
+      document,
+      {
+        assetRepository: repository,
+        variantRepository: createNumericVariantRepository(tiers, ledger),
+        objectUrls: urlRegistry().registry,
+        workspaceId: WORKSPACE_A,
+        canvasId: "canvas-1",
+      },
+      {
+        viewportBounds: { x: 0, y: 0, width: 800, height: 600 },
+        concurrency: 1,
+        onNode: (node) => emitted.push(node.id),
+      },
+    );
+
+    expect(emitted).toEqual(["node-1", "node-2", "node-0"]);
+    expect(result.nodes.map((node) => node.id)).toEqual([
+      "node-0",
+      "node-1",
+      "node-2",
+    ]);
+    expect(repository.assetLoadCalls).toBe(0);
+  });
+
   it("keeps a covering numeric derivative demand-driven during restore", async () => {
     const repository = new MemoryCanvasRepository();
     const { registry } = urlRegistry();
@@ -1706,6 +1834,41 @@ describe("production-shaped local Canvas shell", () => {
     expect(reread!.document.nodes[0]!.position.x).toBe(120);
     expect(JSON.stringify(reread!.document)).not.toContain("localStorage");
     expect(JSON.stringify(reread!.document)).not.toContain("objectUrl");
+  });
+
+  it("emits the first uploaded image while the next upload is still pending", async () => {
+    const repository = new MemoryCanvasRepository();
+    const store = repository.storeImage.bind(repository);
+    let releaseSecond!: () => void;
+    const secondUpload = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+    let uploads = 0;
+    vi.spyOn(repository, "storeImage").mockImplementation(async (input) => {
+      if (++uploads === 2) await secondUpload;
+      return store(input);
+    });
+    const first = new File(["first"], "first.png", { type: "image/png" });
+    const second = new File(["second"], "second.png", { type: "image/png" });
+    const onNode = vi.fn();
+    const pending = ingestCanvasImageTransferToNodes(
+      { files: [first, second] },
+      "drop",
+      { x: 10, y: 20 },
+      {
+        assetRepository: repository,
+        objectUrls: urlRegistry().registry,
+        workspaceId: WORKSPACE_A,
+        decodeImageDimensions: async () => ({ width: 640, height: 360 }),
+      },
+      onNode,
+    );
+
+    await vi.waitFor(() => expect(onNode).toHaveBeenCalledTimes(1));
+    expect(onNode.mock.calls[0]?.[0].position).toEqual({ x: 10, y: 20 });
+    releaseSecond();
+    expect((await pending).nodes).toHaveLength(2);
+    expect(onNode).toHaveBeenCalledTimes(2);
   });
 
   it("ingests a PNG through the shared service and persists only its assetId", async () => {
