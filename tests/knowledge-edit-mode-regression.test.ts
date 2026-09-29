@@ -40,8 +40,9 @@ describe("Knowledge edit mode regression", () => {
     expect(refCallback).not.toContain("activateContentScope");
     expect(refCallback).not.toContain("contentHistory");
     expect(refCallback).toContain("resizeTextarea(textarea)");
+    expect(editor).toContain("if (!onDraftMarkdownChange)");
     expect(editor).toContain(
-      "onFocus={() => contentHistory.activateContentScope(document.id)}",
+      "contentHistory.activateContentScope(document.id)",
     );
   });
 
@@ -54,7 +55,9 @@ describe("Knowledge edit mode regression", () => {
     expect(editor).toContain(
       "const { getSelection, version } = contentHistory;",
     );
-    expect(effect).toContain("const selection = getSelection(document.id)");
+    expect(effect).toContain(
+      "const selection = onDraftMarkdownChange ? null : getSelection(document.id)",
+    );
     expect(effect).toContain("getSelection,");
     expect(effect).toContain("version,");
     expect(effect).not.toContain("[contentHistory, document.id, markdown");

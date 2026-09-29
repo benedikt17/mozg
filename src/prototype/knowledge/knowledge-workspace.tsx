@@ -19,6 +19,10 @@ import {
   type KnowledgeArticleLinkPickRequest,
 } from "./markdown-source-editor";
 import { KnowledgeTrashView } from "./knowledge-trash-view";
+import {
+  KnowledgeNeuroDraftPreview,
+  type NeuroDraftsController,
+} from "./knowledge-neuro-drafts";
 import { getKnowledgeHistoryShortcutAction } from "./knowledge-content-history";
 import { useKnowledgeContentHistory } from "./knowledge-content-history-runtime";
 import { getKnowledgeInternalLinkNavigationActions } from "./knowledge-internal-link-navigation";
@@ -67,11 +71,15 @@ type KnowledgeWorkspaceProps = {
   onToggleTree?: () => void;
   treeOpen?: boolean;
   onBeginArticleLinkPick?: (request: KnowledgeArticleLinkPickRequest) => void;
+  neuroDrafts?: NeuroDraftsController;
 };
 
 export function KnowledgeWorkspace(
   props: KnowledgeWorkspaceProps,
 ): React.JSX.Element {
+  if (props.neuroDrafts?.visible && props.neuroDrafts.selection) {
+    return <KnowledgeNeuroDraftPreview controller={props.neuroDrafts} />;
+  }
   if (props.state.knowledgeWorkspaceView === "trash") {
     return <KnowledgeTrashView state={props.state} dispatch={props.dispatch} />;
   }

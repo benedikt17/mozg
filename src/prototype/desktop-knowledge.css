@@ -147,8 +147,8 @@
   }
 
   .knowledge-neuro-toggle {
-    width: 36px;
-    height: 36px;
+    width: 26px;
+    height: 26px;
     display: grid;
     place-items: center;
     border: 1px solid #c7b8e9;
@@ -157,9 +157,9 @@
     color: #6543b2;
     padding: 0;
     font-family: inherit;
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 600;
-    line-height: 18px;
+    line-height: 1;
     cursor: pointer;
   }
 
@@ -175,6 +175,17 @@
 
   .knowledge-neuro-toggle:disabled {
     opacity: 0.55;
+  }
+
+  .knowledge-neuro-refresh {
+    width: 26px;
+    height: 26px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #6543b2;
+    font-size: 18px;
+    cursor: pointer;
   }
 
   .ui-icon {

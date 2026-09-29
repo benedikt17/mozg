@@ -18,6 +18,10 @@ import {
 } from "@/prototype/desktop-state";
 import { OverviewSectionWorkspace } from "@/prototype/overview/overview-section-workspace";
 import { KnowledgeSidebar } from "@/prototype/knowledge/knowledge-sidebar";
+import {
+  useKnowledgeNeuroDrafts,
+  type NeuroDraftsController,
+} from "@/prototype/knowledge/knowledge-neuro-drafts";
 import { KnowledgeWorkspace } from "@/prototype/knowledge/knowledge-workspace";
 import { KnowledgeAnnotationsRuntime } from "@/prototype/knowledge/knowledge-annotations-runtime";
 import type { KnowledgeArticleLinkPickRequest } from "@/prototype/knowledge/markdown-source-editor";
@@ -432,6 +436,10 @@ function SectionWorkspace({
     useState(false);
   const [knowledgeArticleLinkPicker, setKnowledgeArticleLinkPicker] =
     useState<KnowledgeArticleLinkPickRequest | null>(null);
+  const neuroDrafts = useKnowledgeNeuroDrafts(
+    workspaceId,
+    state.activeProjectId,
+  );
   const knowledgeDispatch = knowledgeHistory.dispatchKnowledgeAction;
   const activeKnowledgeArticleLinkPicker =
     state.activeSection === "knowledge" &&
@@ -485,6 +493,7 @@ function SectionWorkspace({
       onCancelKnowledgeLinkPick: () => setKnowledgeArticleLinkPicker(null),
       onPickKnowledgeLinkTarget: pickKnowledgeArticleLinkTarget,
       workspaceId,
+      neuroDrafts,
     },
   );
   const overviewSourceTask = state.tasks.find(
@@ -582,6 +591,7 @@ function SectionWorkspace({
               },
               treeOpen: knowledgeTreeOverlayOpen || !knowledgeSidebarCollapsed,
               workspaceId,
+              neuroDrafts,
             },
           )}
         </section>
@@ -653,6 +663,7 @@ function renderToolSidebar(
     onCancelKnowledgeLinkPick?: () => void;
     onPickKnowledgeLinkTarget?: (documentId: string) => void;
     workspaceId?: string;
+    neuroDrafts?: NeuroDraftsController;
   },
 ): React.JSX.Element | null {
   if (state.activeSection === "knowledge") {
@@ -665,6 +676,7 @@ function renderToolSidebar(
         onCancelLinkPick={options?.onCancelKnowledgeLinkPick}
         onPickLinkTarget={options?.onPickKnowledgeLinkTarget}
         workspaceId={options?.workspaceId}
+        neuroDrafts={options?.neuroDrafts}
       />
     );
   }
@@ -689,6 +701,7 @@ function renderMainWorkspace(
     onToggleKnowledgeTree?: () => void;
     treeOpen?: boolean;
     workspaceId?: string;
+    neuroDrafts?: NeuroDraftsController;
   },
 ): React.JSX.Element {
   if (state.activeSection === "knowledge") {
@@ -701,6 +714,7 @@ function renderMainWorkspace(
         onOpenTree={options?.onOpenKnowledgeTree}
         onToggleTree={options?.onToggleKnowledgeTree}
         treeOpen={options?.treeOpen}
+        neuroDrafts={options?.neuroDrafts}
       />
     );
   }

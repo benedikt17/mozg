@@ -37,8 +37,9 @@ describe("Knowledge article action menu contract", () => {
   it("renders Trash as a fixed footer outside the scrollable tree", () => {
     expect(sidebarSource).toContain('className="knowledge-tree"');
     expect(sidebarSource).toContain('className="knowledge-sidebar-footer"');
+    expect(sidebarSource).toContain("neuroDrafts?.select(null);");
     expect(sidebarSource).toContain(
-      'onClick={() => dispatch({ type: "open-knowledge-trash" })}',
+      'dispatch({ type: "open-knowledge-trash" });',
     );
     expect(sidebarSource).not.toContain("knowledge-trash-section");
     expect(sidebarStyles).toContain(

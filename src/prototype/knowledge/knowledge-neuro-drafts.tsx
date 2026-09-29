@@ -1,77 +1,113 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
+import { IconButton } from "@/prototype/desktop-ui";
+import { UiIcon } from "@/prototype/desktop-icons";
 import { useDesktopTaskRuntime } from "@/prototype/tasks/desktop-task-runtime";
+import { MarkdownStringPreview } from "./markdown-document-preview";
+import { MarkdownSourceEditor } from "./markdown-source-editor";
 import styles from "./knowledge-neuro-drafts.module.css";
 
-type DraftDocument = { title: string; markdown: string; selected: boolean };
-type Draft = {
+export type NeuroDraftDocument = {
+  title: string;
+  markdown: string;
+  selected: boolean;
+};
+export type NeuroDraft = {
   id: string;
   workspace_id: string;
   project_id: string;
   folder_path: string[];
-  documents: DraftDocument[];
+  documents: NeuroDraftDocument[];
   revision: number;
   created_at: string;
 };
+export type NeuroDraftSelection = { draftId: string; index: number };
 
-export function KnowledgeNeuroDrafts({
-  workspaceId,
-  projectId,
-}: {
-  workspaceId: string;
-  projectId: string;
-}) {
+export function selectDraftDocumentForPublication(
+  documents: NeuroDraftDocument[],
+  selectedIndex: number,
+): NeuroDraftDocument[] {
+  return documents.map((document, index) => ({
+    ...document,
+    selected: index === selectedIndex,
+  }));
+}
+
+export function useKnowledgeNeuroDrafts(
+  workspaceId: string | undefined,
+  projectId: string,
+) {
   const { persistence } = useDesktopTaskRuntime();
-  const [open, setOpen] = useState(false);
-  const [drafts, setDrafts] = useState<Draft[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [visible, setVisible] = useState(false);
+  const [drafts, setDrafts] = useState<NeuroDraft[]>([]);
+  const [selection, setSelection] = useState<NeuroDraftSelection | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const active = drafts.find((draft) => draft.id === activeId);
 
-  const reload = async () => {
-    const result = await fetch("/api/knowledge-neuro-drafts", {
-      cache: "no-store",
-    });
-    const body = (await result.json()) as { drafts?: Draft[]; error?: string };
-    if (!result.ok)
-      throw new Error(body.error ?? "Не удалось загрузить черновики.");
-    const items = (body.drafts ?? []).filter(
-      (draft) =>
-        draft.workspace_id === workspaceId && draft.project_id === projectId,
-    );
-    setDrafts(items);
-    setActiveId((current) =>
-      items.some((item) => item.id === current)
-        ? current
-        : (items[0]?.id ?? null),
-    );
-  };
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    void Promise.resolve()
-      .then(() => reload())
-      .catch((failure) => {
-        if (!cancelled)
-          setError(
-            failure instanceof Error
-              ? failure.message
-              : "Не удалось загрузить черновики.",
-          );
+  const reload = useCallback(async () => {
+    if (!workspaceId) return;
+    setLoading(true);
+    try {
+      const result = await fetch("/api/knowledge-neuro-drafts", {
+        cache: "no-store",
       });
-    return () => {
-      cancelled = true;
-    };
-    // Fresh fetch when opening or changing project; local editing is never overwritten by a timer.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, workspaceId, projectId]);
+      const body = (await result.json()) as {
+        drafts?: NeuroDraft[];
+        error?: string;
+      };
+      if (!result.ok)
+        throw new Error(body.error ?? "Не удалось загрузить нейро‑MD.");
+      const items = (body.drafts ?? []).filter(
+        (draft) =>
+          draft.workspace_id === workspaceId && draft.project_id === projectId,
+      );
+      setDrafts(items);
+      setSelection((current) =>
+        current &&
+        items.some(
+          (draft) =>
+            draft.id === current.draftId && draft.documents[current.index],
+        )
+          ? current
+          : null,
+      );
+      setError(null);
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Не удалось загрузить нейро‑MD.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [workspaceId, projectId]);
 
-  const change = (edit: (draft: Draft) => Draft) => {
+  useEffect(() => {
+    if (!visible) return;
+    void Promise.resolve().then(reload);
+  }, [visible, reload]);
+
+  const toggle = () => {
+    setVisible((current) => !current);
+    setSelection(null);
+    setNotice(null);
+  };
+  const select = (value: NeuroDraftSelection | null) => {
+    setSelection(value);
+    setNotice(null);
+    setError(null);
+  };
+  const change = (edit: (draft: NeuroDraft) => NeuroDraft) => {
+    if (!selection) return;
     setDrafts((current) =>
-      current.map((draft) => (draft.id === activeId ? edit(draft) : draft)),
+      current.map((draft) =>
+        draft.id === selection.draftId ? edit(draft) : draft,
+      ),
     );
     setNotice(null);
   };
@@ -86,26 +122,30 @@ export function KnowledgeNeuroDrafts({
       error?: string;
     };
     if (!result.ok)
-      throw new Error(payload.error ?? "Не удалось обработать черновик.");
+      throw new Error(payload.error ?? "Не удалось обработать нейро‑MD.");
     return { revision: payload.revision ?? 0 };
   };
   const save = async (publish: boolean) => {
-    if (!active || busy) return;
+    const active = drafts.find((draft) => draft.id === selection?.draftId);
+    if (!active || !selection || busy) return;
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
+      const documents = publish
+        ? selectDraftDocumentForPublication(active.documents, selection.index)
+        : active.documents;
       const saved = await request({
         action: "save",
         id: active.id,
         revision: active.revision,
         folderPath: active.folder_path,
-        documents: active.documents,
+        documents,
       });
       setDrafts((current) =>
         current.map((draft) =>
           draft.id === active.id
-            ? { ...draft, revision: saved.revision }
+            ? { ...draft, revision: saved.revision, documents }
             : draft,
         ),
       );
@@ -122,183 +162,341 @@ export function KnowledgeNeuroDrafts({
       const refreshed = await persistence.refreshFromSource();
       setNotice(
         refreshed === "skipped"
-          ? "Опубликовано. Обновите данные знаний, чтобы увидеть документы."
-          : "Папка и выбранные документы опубликованы. Остальные остаются черновиками.",
+          ? "Опубликовано. Обновите данные знаний, чтобы увидеть статью."
+          : "Статья опубликована. Остальные нейро‑MD остались черновиками.",
       );
+      setSelection(null);
     } catch (failure) {
       setError(
         failure instanceof Error
           ? failure.message
-          : "Не удалось обработать черновик.",
+          : "Не удалось обработать нейро‑MD.",
       );
     } finally {
       setBusy(false);
     }
   };
 
+  return {
+    visible,
+    drafts,
+    selection,
+    busy,
+    loading,
+    error,
+    notice,
+    toggle,
+    select,
+    change,
+    reload,
+    save,
+  };
+}
+
+export type NeuroDraftsController = ReturnType<typeof useKnowledgeNeuroDrafts>;
+
+export function KnowledgeNeuroDraftsToggle({
+  controller,
+  onShow,
+}: {
+  controller: NeuroDraftsController;
+  onShow?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={styles.launch}
+      aria-pressed={controller.visible}
+      onClick={() => {
+        if (!controller.visible) onShow?.();
+        controller.toggle();
+      }}
+      title="Показать предложенные Markdown в дереве"
+    >
+      Нейро‑MD
+    </button>
+  );
+}
+
+export function KnowledgeNeuroDraftNodes({
+  controller,
+  path,
+  existingFolders,
+}: {
+  controller: NeuroDraftsController;
+  path: string[];
+  existingFolders: string[];
+}) {
+  const [collapsed, setCollapsed] = useState<string[]>([]);
+  if (!controller.visible) return null;
+  const pathMatches = (target: string[]) =>
+    path.every((part, index) => target[index] === part);
+  const direct = controller.drafts.filter(
+    (draft) =>
+      draft.folder_path.length === path.length &&
+      pathMatches(draft.folder_path),
+  );
+  const proposedFolders = Array.from(
+    new Set(
+      controller.drafts
+        .filter(
+          (draft) =>
+            draft.folder_path.length > path.length &&
+            pathMatches(draft.folder_path),
+        )
+        .map((draft) => draft.folder_path[path.length]!)
+        .filter((name) => !existingFolders.includes(name)),
+    ),
+  );
   return (
     <>
-      <button
-        type="button"
-        className={styles.launch}
-        onClick={() => {
-          setError(null);
-          setOpen(true);
-        }}
-        title="Нейро-черновики папок и MD-документов"
-      >
-        Нейро‑MD
-      </button>
-      {open ? (
-        <div className={styles.backdrop} role="presentation">
-          <section
-            className={styles.dialog}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Нейро-черновики Markdown"
+      {direct.flatMap((draft) =>
+        draft.documents.map((document, index) => (
+          <button
+            type="button"
+            key={`${draft.id}:${index}`}
+            className={[
+              styles.treeDocument,
+              controller.selection?.draftId === draft.id &&
+              controller.selection.index === index
+                ? styles.active
+                : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            style={{
+              paddingLeft: `calc(18px + ${path.length} * var(--sidebar-tree-indent))`,
+            }}
+            onClick={() => controller.select({ draftId: draft.id, index })}
+            title={`${draft.folder_path.join(" / ")} / ${document.title} · нейро‑MD`}
           >
-            <header className={styles.header}>
-              <h2>Нейро‑MD</h2>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                aria-label="Закрыть"
-              >
-                ×
-              </button>
-            </header>
-            <p>
-              Предложенные папки и документы. Изменения появятся в знаниях после
-              публикации.
-            </p>
+            <span className={styles.draftMark} aria-hidden="true">
+              ◆
+            </span>
+            <span className={styles.treeTitle}>{document.title}</span>
+          </button>
+        )),
+      )}
+      {proposedFolders.map((name) => {
+        const childPath = [...path, name];
+        const key = childPath.join("/");
+        const expanded = !collapsed.includes(key);
+        return (
+          <div key={key} className={styles.treeBranch}>
             <button
               type="button"
+              className={styles.treeFolder}
+              style={{
+                paddingLeft: `calc(8px + ${path.length} * var(--sidebar-tree-indent))`,
+              }}
+              aria-expanded={expanded}
               onClick={() =>
-                void reload().catch((failure) => setError(String(failure)))
+                setCollapsed((current) =>
+                  expanded
+                    ? [...current, key]
+                    : current.filter((item) => item !== key),
+                )
               }
-              disabled={busy}
+              title={`Предложенная папка: ${childPath.join(" / ")}`}
             >
-              Обновить список
+              <span aria-hidden="true">{expanded ? "⌄" : "›"}</span>
+              <span className={styles.treeTitle}>{name}</span>
+              <span className={styles.draftMark} aria-hidden="true">
+                ◆
+              </span>
             </button>
-            {drafts.length === 0 ? (
-              <p>Для этого проекта пока нет нейро-черновиков.</p>
-            ) : (
-              <nav className={styles.list} aria-label="Черновики">
-                {drafts.map((draft) => (
-                  <button
-                    key={draft.id}
-                    type="button"
-                    aria-pressed={activeId === draft.id}
-                    onClick={() => {
-                      setActiveId(draft.id);
-                      setError(null);
-                    }}
-                  >
-                    {draft.folder_path.join(" / ")} · {draft.documents.length}{" "}
-                    MD
-                  </button>
-                ))}
-              </nav>
-            )}
-            {active ? (
-              <div className={styles.form} key={active.id}>
-                <label>
-                  Папка (уровни через /)
-                  <input
-                    value={active.folder_path.join(" / ")}
-                    onChange={(event) =>
-                      change((draft) => ({
-                        ...draft,
-                        folder_path: event.target.value
-                          .split("/")
-                          .map((part) => part.trim()),
-                      }))
-                    }
-                  />
-                </label>
-                {active.documents.map((document, index) => (
-                  <div className={styles.file} key={index}>
-                    <label className={styles.select}>
-                      <input
-                        type="checkbox"
-                        checked={document.selected}
-                        onChange={(event) =>
-                          change((draft) => ({
-                            ...draft,
-                            documents: draft.documents.map((item, at) =>
-                              at === index
-                                ? { ...item, selected: event.target.checked }
-                                : item,
-                            ),
-                          }))
-                        }
-                      />
-                      Публиковать документ {index + 1}
-                    </label>
-                    <label>
-                      Название
-                      <input
-                        value={document.title}
-                        onChange={(event) =>
-                          change((draft) => ({
-                            ...draft,
-                            documents: draft.documents.map((item, at) =>
-                              at === index
-                                ? { ...item, title: event.target.value }
-                                : item,
-                            ),
-                          }))
-                        }
-                      />
-                    </label>
-                    <label>
-                      Markdown
-                      <textarea
-                        rows={12}
-                        value={document.markdown}
-                        onChange={(event) =>
-                          change((draft) => ({
-                            ...draft,
-                            documents: draft.documents.map((item, at) =>
-                              at === index
-                                ? { ...item, markdown: event.target.value }
-                                : item,
-                            ),
-                          }))
-                        }
-                      />
-                    </label>
-                  </div>
-                ))}
-                <div className={styles.actions}>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void save(false)}
-                  >
-                    Сохранить черновик
-                  </button>
-                  <button
-                    type="button"
-                    disabled={
-                      busy || !active.documents.some((item) => item.selected)
-                    }
-                    onClick={() => void save(true)}
-                  >
-                    Опубликовать выбранные
-                  </button>
-                </div>
-              </div>
+            {expanded ? (
+              <KnowledgeNeuroDraftNodes
+                controller={controller}
+                path={childPath}
+                existingFolders={[]}
+              />
             ) : null}
-            {error ? (
-              <p className={styles.error} role="alert">
-                {error}
-              </p>
-            ) : null}
-            {notice ? <p role="status">{notice}</p> : null}
-          </section>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+export function KnowledgeNeuroDraftPreview({
+  controller,
+}: {
+  controller: NeuroDraftsController;
+}) {
+  const active = controller.drafts.find(
+    (draft) => draft.id === controller.selection?.draftId,
+  );
+  const index = controller.selection?.index ?? -1;
+  const document = active?.documents[index];
+  if (!active || !document) return null;
+  return (
+    <KnowledgeNeuroDraftArticle
+      key={`${active.id}:${index}`}
+      controller={controller}
+      draft={active}
+      document={document}
+      index={index}
+    />
+  );
+}
+
+function KnowledgeNeuroDraftArticle({
+  controller,
+  draft,
+  document,
+  index,
+}: {
+  controller: NeuroDraftsController;
+  draft: NeuroDraft;
+  document: NeuroDraftDocument;
+  index: number;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const markdownDocument: PrototypeDocument = {
+    id: `neuro-md-${draft.id}-${index}`,
+    projectId: draft.project_id,
+    folder: draft.folder_path.at(-1) ?? "",
+    folderPath: draft.folder_path,
+    title: document.title,
+    excerpt: "",
+    content: document.markdown.split("\n"),
+    backlinks: [],
+  };
+  const hasLeadingHeading = /^\s*#{1,6}\s+/.test(document.markdown);
+  const leadingTitle = document.markdown.split("\n")[0]?.trim();
+  const matchingTitle = document.title.replace(/^\d+\s*[—–-]\s*/, "");
+  const bodyMarkdown =
+    leadingTitle === document.title || leadingTitle === matchingTitle
+      ? document.markdown.split("\n").slice(1).join("\n").trimStart()
+      : document.markdown;
+  const displayedMarkdown = hasLeadingHeading
+    ? document.markdown
+    : `# ${document.title}\n\n${bodyMarkdown}`;
+  return (
+    <div className={`document-workspace ${styles.workspace}`}>
+      <div className="document-tabs-row">
+        <div
+          className={styles.status}
+          role={controller.error ? "alert" : "status"}
+        >
+          {controller.error ?? controller.notice}
+        </div>
+        <div className="document-actions">
+          <IconButton
+            className="knowledge-edit-action"
+            active={editing}
+            icon={<UiIcon name={editing ? "eye" : "pencil"} />}
+            label={editing ? "Режим чтения" : "Редактировать Markdown"}
+            onClick={() => setEditing((current) => !current)}
+            title={editing ? "Режим чтения" : "Редактировать Markdown"}
+            variant="quiet"
+          />
+          <button
+            type="button"
+            className={styles.action}
+            onClick={() => void controller.save(false)}
+            disabled={controller.busy}
+          >
+            Сохранить
+          </button>
+          <button
+            type="button"
+            className={`${styles.action} ${styles.publish}`}
+            onClick={() => void controller.save(true)}
+            disabled={controller.busy}
+          >
+            Принять и опубликовать
+          </button>
+          <IconButton
+            icon={<UiIcon name="more" />}
+            label="Название и папка публикации"
+            onClick={() => setSettingsOpen((current) => !current)}
+            title="Название и папка публикации"
+            variant="quiet"
+          />
+          <IconButton
+            icon={<UiIcon name="close" />}
+            label="Закрыть нейро‑MD"
+            onClick={() => controller.select(null)}
+            title="Закрыть нейро‑MD"
+            variant="quiet"
+          />
+        </div>
+      </div>
+      {settingsOpen ? (
+        <div
+          className={styles.settingsPanel}
+          role="group"
+          aria-label="Название и папка публикации"
+        >
+          <strong>Название и папка публикации</strong>
+          <label>
+            Папка (уровни через /)
+            <input
+              value={draft.folder_path.join(" / ")}
+              onChange={(event) =>
+                controller.change((current) => ({
+                  ...current,
+                  folder_path: event.target.value
+                    .split("/")
+                    .map((part) => part.trim()),
+                }))
+              }
+            />
+          </label>
+          <label>
+            Название
+            <input
+              value={document.title}
+              onChange={(event) =>
+                controller.change((current) => ({
+                  ...current,
+                  documents: current.documents.map((item, at) =>
+                    at === index
+                      ? { ...item, title: event.target.value }
+                      : item,
+                  ),
+                }))
+              }
+            />
+          </label>
         </div>
       ) : null}
-    </>
+      <div className={`document-body ${editing ? "is-markdown-editing" : ""}`}>
+        <div className="document-breadcrumb-row">
+          Нейро‑MD / {draft.folder_path.join(" / ")} / {document.title}
+        </div>
+        <div className="document-editor-surface">
+          <article
+            className={`document-page ${editing ? "is-editing" : ""}`}
+            aria-label={document.title}
+          >
+            {editing ? (
+              <MarkdownSourceEditor
+                document={markdownDocument}
+                draftMarkdown={document.markdown}
+                onDraftMarkdownChange={(markdown) =>
+                  controller.change((current) => ({
+                    ...current,
+                    documents: current.documents.map((item, at) =>
+                      at === index ? { ...item, markdown } : item,
+                    ),
+                  }))
+                }
+              />
+            ) : (
+              <div className="document-page-inner">
+                <MarkdownStringPreview
+                  contentId={markdownDocument.id}
+                  markdown={displayedMarkdown}
+                />
+              </div>
+            )}
+          </article>
+        </div>
+      </div>
+    </div>
   );
 }
