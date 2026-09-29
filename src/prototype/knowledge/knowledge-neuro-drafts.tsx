@@ -1,8 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
+import { IconButton } from "@/prototype/desktop-ui";
+import { UiIcon } from "@/prototype/desktop-icons";
 import { useDesktopTaskRuntime } from "@/prototype/tasks/desktop-task-runtime";
 import { MarkdownStringPreview } from "./markdown-document-preview";
+import { MarkdownSourceEditor } from "./markdown-source-editor";
 import styles from "./knowledge-neuro-drafts.module.css";
 
 export type NeuroDraftDocument = {
@@ -327,96 +331,165 @@ export function KnowledgeNeuroDraftPreview({
   const document = active?.documents[index];
   if (!active || !document) return null;
   return (
-    <article className={styles.preview} aria-label="Просмотр нейро‑MD">
-      <header className={styles.previewHeader}>
-        <div>
-          <small>Нейро‑MD · {active.folder_path.join(" / ")}</small>
-          <h2>{document.title}</h2>
+    <KnowledgeNeuroDraftArticle
+      key={`${active.id}:${index}`}
+      controller={controller}
+      draft={active}
+      document={document}
+      index={index}
+    />
+  );
+}
+
+function KnowledgeNeuroDraftArticle({
+  controller,
+  draft,
+  document,
+  index,
+}: {
+  controller: NeuroDraftsController;
+  draft: NeuroDraft;
+  document: NeuroDraftDocument;
+  index: number;
+}) {
+  const [editing, setEditing] = useState(false);
+  const markdownDocument: PrototypeDocument = {
+    id: `neuro-md-${draft.id}-${index}`,
+    projectId: draft.project_id,
+    folder: draft.folder_path.at(-1) ?? "",
+    folderPath: draft.folder_path,
+    title: document.title,
+    excerpt: "",
+    content: document.markdown.split("\n"),
+    backlinks: [],
+  };
+  const hasLeadingHeading = /^\s*#{1,6}\s+/.test(document.markdown);
+  const leadingTitle = document.markdown.split("\n")[0]?.trim();
+  const matchingTitle = document.title.replace(/^\d+\s*[—–-]\s*/, "");
+  const bodyMarkdown =
+    leadingTitle === document.title || leadingTitle === matchingTitle
+      ? document.markdown.split("\n").slice(1).join("\n").trimStart()
+      : document.markdown;
+  const displayedMarkdown = hasLeadingHeading
+    ? document.markdown
+    : `# ${document.title}\n\n${bodyMarkdown}`;
+  return (
+    <div className={`document-workspace ${styles.workspace}`}>
+      <div className="document-tabs-row">
+        <div className={styles.draftTab} title={document.title}>
+          <span aria-hidden="true">◆</span> {document.title}
         </div>
-        <button
-          type="button"
-          onClick={() => controller.select(null)}
-          aria-label="Закрыть нейро‑MD"
-        >
-          ×
-        </button>
-      </header>
-      <div className={styles.previewActions}>
-        <button
-          type="button"
-          onClick={() => void controller.save(false)}
-          disabled={controller.busy}
-        >
-          Сохранить черновик
-        </button>
-        <button
-          type="button"
-          className={styles.publish}
-          onClick={() => void controller.save(true)}
-          disabled={controller.busy}
-        >
-          Принять и опубликовать
-        </button>
-      </div>
-      <details className={styles.settings}>
-        <summary>Название и папка публикации</summary>
-        <label>
-          Папка (уровни через /)
-          <input
-            value={active.folder_path.join(" / ")}
-            onChange={(event) =>
-              controller.change((draft) => ({
-                ...draft,
-                folder_path: event.target.value
-                  .split("/")
-                  .map((part) => part.trim()),
-              }))
-            }
+        <div className="document-actions">
+          <IconButton
+            className="knowledge-edit-action"
+            active={editing}
+            icon={<UiIcon name={editing ? "eye" : "pencil"} />}
+            label={editing ? "Режим чтения" : "Редактировать Markdown"}
+            onClick={() => setEditing((current) => !current)}
+            title={editing ? "Режим чтения" : "Редактировать Markdown"}
+            variant="quiet"
           />
-        </label>
-        <label>
-          Название
-          <input
-            value={document.title}
-            onChange={(event) =>
-              controller.change((draft) => ({
-                ...draft,
-                documents: draft.documents.map((item, at) =>
-                  at === index ? { ...item, title: event.target.value } : item,
-                ),
-              }))
-            }
+          <button
+            type="button"
+            className={styles.action}
+            onClick={() => void controller.save(false)}
+            disabled={controller.busy}
+          >
+            Сохранить
+          </button>
+          <button
+            type="button"
+            className={`${styles.action} ${styles.publish}`}
+            onClick={() => void controller.save(true)}
+            disabled={controller.busy}
+          >
+            Принять и опубликовать
+          </button>
+          <IconButton
+            icon={<UiIcon name="close" />}
+            label="Закрыть нейро‑MD"
+            onClick={() => controller.select(null)}
+            title="Закрыть нейро‑MD"
+            variant="quiet"
           />
-        </label>
-      </details>
-      {controller.error ? (
-        <p className={styles.error} role="alert">
-          {controller.error}
-        </p>
-      ) : null}
-      {controller.notice ? <p role="status">{controller.notice}</p> : null}
-      <div className={styles.markdownPreview}>
-        <MarkdownStringPreview
-          contentId={`neuro-md-${active.id}-${index}`}
-          markdown={document.markdown}
-        />
+        </div>
       </div>
-      <details className={styles.settings}>
-        <summary>Редактировать Markdown</summary>
-        <textarea
-          aria-label="Markdown нейро‑MD"
-          rows={18}
-          value={document.markdown}
-          onChange={(event) =>
-            controller.change((draft) => ({
-              ...draft,
-              documents: draft.documents.map((item, at) =>
-                at === index ? { ...item, markdown: event.target.value } : item,
-              ),
-            }))
-          }
-        />
-      </details>
-    </article>
+      <div className={styles.metadata}>
+        <details className={styles.settings}>
+          <summary>Название и папка публикации</summary>
+          <div className={styles.fields}>
+            <label>
+              Папка (уровни через /)
+              <input
+                value={draft.folder_path.join(" / ")}
+                onChange={(event) =>
+                  controller.change((current) => ({
+                    ...current,
+                    folder_path: event.target.value
+                      .split("/")
+                      .map((part) => part.trim()),
+                  }))
+                }
+              />
+            </label>
+            <label>
+              Название
+              <input
+                value={document.title}
+                onChange={(event) =>
+                  controller.change((current) => ({
+                    ...current,
+                    documents: current.documents.map((item, at) =>
+                      at === index
+                        ? { ...item, title: event.target.value }
+                        : item,
+                    ),
+                  }))
+                }
+              />
+            </label>
+          </div>
+        </details>
+        {controller.error ? (
+          <p className={styles.error} role="alert">
+            {controller.error}
+          </p>
+        ) : null}
+        {controller.notice ? <p role="status">{controller.notice}</p> : null}
+      </div>
+      <div className={`document-body ${editing ? "is-markdown-editing" : ""}`}>
+        <div className="document-breadcrumb-row">
+          Нейро‑MD / {draft.folder_path.join(" / ")} / {document.title}
+        </div>
+        <div className="document-editor-surface">
+          <article
+            className={`document-page ${editing ? "is-editing" : ""}`}
+            aria-label={document.title}
+          >
+            {editing ? (
+              <MarkdownSourceEditor
+                document={markdownDocument}
+                draftMarkdown={document.markdown}
+                onDraftMarkdownChange={(markdown) =>
+                  controller.change((current) => ({
+                    ...current,
+                    documents: current.documents.map((item, at) =>
+                      at === index ? { ...item, markdown } : item,
+                    ),
+                  }))
+                }
+              />
+            ) : (
+              <div className="document-page-inner">
+                <MarkdownStringPreview
+                  contentId={markdownDocument.id}
+                  markdown={displayedMarkdown}
+                />
+              </div>
+            )}
+          </article>
+        </div>
+      </div>
+    </div>
   );
 }

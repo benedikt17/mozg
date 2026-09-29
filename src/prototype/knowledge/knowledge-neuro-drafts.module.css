@@ -58,86 +58,71 @@
   flex: 0 0 auto;
   font-size: 9px;
 }
-.preview {
-  box-sizing: border-box;
-  height: 100%;
-  overflow: auto;
-  padding: 28px clamp(24px, 6vw, 96px) 64px;
-  color: var(--text);
+.workspace.workspace {
+  grid-template-rows: auto auto minmax(0, 1fr);
 }
-.previewHeader {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 18px;
+.draftTab {
+  min-width: 0;
+  align-self: center;
+  overflow: hidden;
+  padding: 0 12px;
+  color: #285b9c;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.previewHeader small {
-  color: #416fa7;
-}
-.previewHeader h2 {
-  margin: 8px 0 0;
-  font-size: 24px;
-  line-height: 1.25;
-}
-.previewHeader button {
-  align-self: flex-start;
-  border: 0;
-  background: transparent;
-  font-size: 24px;
-  cursor: pointer;
-}
-.previewActions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin: 18px 0;
-}
-.previewActions button {
-  border: 1px solid #8063d4;
+.action {
+  border: 1px solid #8db8eb;
   border-radius: 7px;
-  background: #eee8ff;
-  color: #493389;
-  padding: 8px 12px;
+  background: #eaf2ff;
+  color: #285b9c;
+  padding: 5px 9px;
+  font-size: 11px;
   cursor: pointer;
 }
-.previewActions .publish {
+.publish {
   background: #6543b2;
+  border-color: #6543b2;
   color: white;
 }
-.previewActions button:disabled {
+.action:disabled {
   opacity: 0.5;
   cursor: default;
 }
+.metadata {
+  min-width: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  padding: 5px 16px;
+  font-size: 12px;
+}
 .settings {
-  margin: 16px 0;
+  max-width: 880px;
+  margin-inline: auto;
 }
 .settings summary {
-  color: #493389;
+  color: #285b9c;
   cursor: pointer;
 }
-.settings label {
+.fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 10px 0;
+}
+.fields label {
   display: grid;
   gap: 5px;
-  margin-top: 12px;
 }
-.settings input,
-.settings textarea {
+.fields input {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   background: var(--surface);
   color: var(--text);
-  padding: 9px;
+  padding: 6px;
   font: inherit;
-}
-.settings textarea {
-  resize: vertical;
-}
-.markdownPreview {
-  max-width: 820px;
-  margin-top: 24px;
 }
 .error {
   color: #a23440;

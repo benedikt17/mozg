@@ -113,13 +113,18 @@ export function MarkdownSourceEditor({
   document,
   documents = [],
   onBeginArticleLinkPick,
+  draftMarkdown,
+  onDraftMarkdownChange,
 }: {
   document: PrototypeDocument;
   documents?: PrototypeDocument[];
   onBeginArticleLinkPick?: (request: KnowledgeArticleLinkPickRequest) => void;
+  draftMarkdown?: string;
+  onDraftMarkdownChange?: (markdown: string) => void;
 }): React.JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const markdown = document.content.join("\n");
+  const markdown = draftMarkdown ?? document.content.join("\n");
+  const draftHistory = useRef({ past: [] as string[], future: [] as string[] });
   const contentHistory = useKnowledgeContentHistory();
   const { getSelection, version } = contentHistory;
   const [dialog, setDialog] = useState<"external" | null>(null);
@@ -147,7 +152,7 @@ export function MarkdownSourceEditor({
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) resizeTextarea(textarea);
-    const selection = getSelection(document.id);
+    const selection = onDraftMarkdownChange ? null : getSelection(document.id);
     if (
       textarea &&
       selection !== null &&
@@ -156,7 +161,14 @@ export function MarkdownSourceEditor({
     ) {
       textarea.setSelectionRange(selection.start, selection.end);
     }
-  }, [getSelection, version, document.id, markdown, resizeTextarea]);
+  }, [
+    getSelection,
+    version,
+    document.id,
+    markdown,
+    resizeTextarea,
+    onDraftMarkdownChange,
+  ]);
 
   const updateMarkdown = (
     nextMarkdown: string,
@@ -167,12 +179,40 @@ export function MarkdownSourceEditor({
       coalesce?: boolean;
     } = {},
   ): void => {
+    if (onDraftMarkdownChange) {
+      if (nextMarkdown === markdown) return;
+      draftHistory.current.past.push(markdown);
+      draftHistory.current.future = [];
+      onDraftMarkdownChange(nextMarkdown);
+      return;
+    }
     contentHistory.commitMarkdown(document.id, nextMarkdown, {
       coalesce: options.coalesce,
       origin: options.origin ?? "programmatic",
       selectionEnd: options.selectionEnd,
       selectionStart: options.selectionStart,
     });
+  };
+
+  const undo = (): void => {
+    if (!onDraftMarkdownChange) {
+      contentHistory.undo(document.id);
+      return;
+    }
+    const previous = draftHistory.current.past.pop();
+    if (previous === undefined) return;
+    draftHistory.current.future.push(markdown);
+    onDraftMarkdownChange(previous);
+  };
+  const redo = (): void => {
+    if (!onDraftMarkdownChange) {
+      contentHistory.redo(document.id);
+      return;
+    }
+    const next = draftHistory.current.future.pop();
+    if (next === undefined) return;
+    draftHistory.current.past.push(markdown);
+    onDraftMarkdownChange(next);
   };
 
   const restoreSelection = (start: number, end = start): void => {
@@ -209,11 +249,11 @@ export function MarkdownSourceEditor({
 
   const applyAction = (action: MarkdownEditAction): void => {
     if (action === "undo") {
-      contentHistory.undo(document.id);
+      undo();
       return;
     }
     if (action === "redo") {
-      contentHistory.redo(document.id);
+      redo();
       return;
     }
     const textarea = textareaRef.current;
@@ -266,8 +306,7 @@ export function MarkdownSourceEditor({
         if (!target) return;
         const label = draft.label || target.title;
         const token = `[[doc:${target.id}|${label}]]`;
-        contentHistory.commitMarkdown(
-          document.id,
+        updateMarkdown(
           markdown.slice(0, draft.start) + token + markdown.slice(draft.end),
           {
             origin: "toolbar",
@@ -307,8 +346,8 @@ export function MarkdownSourceEditor({
     if (shortcut) {
       event.preventDefault();
       event.stopPropagation();
-      if (shortcut === "undo") contentHistory.undo(document.id);
-      else contentHistory.redo(document.id);
+      if (shortcut === "undo") undo();
+      else redo();
       return;
     }
     const lineStart =
@@ -418,6 +457,7 @@ export function MarkdownSourceEditor({
         <button
           aria-label="Ссылка на статью"
           className="markdown-toolbar-button"
+          disabled={!onBeginArticleLinkPick}
           onClick={openArticlePicker}
           onMouseDown={(event) => event.preventDefault()}
           title="Ссылка на статью"
@@ -500,7 +540,10 @@ export function MarkdownSourceEditor({
         <textarea
           aria-label={`Markdown: ${document.title}`}
           className="markdown-source-textarea"
-          onFocus={() => contentHistory.activateContentScope(document.id)}
+          onFocus={() => {
+            if (!onDraftMarkdownChange)
+              contentHistory.activateContentScope(document.id);
+          }}
           onChange={(event) => {
             resizeTextarea(event.currentTarget);
             const input = getInputOrigin(event);

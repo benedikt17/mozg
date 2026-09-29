@@ -94,7 +94,6 @@ function KnowledgeDocumentWorkspace({
   onToggleTree,
   treeOpen = true,
   onBeginArticleLinkPick,
-  neuroDrafts,
 }: KnowledgeWorkspaceProps): React.JSX.Element {
   const {
     primaryDocument: selectedDocument,
@@ -361,21 +360,6 @@ function KnowledgeDocumentWorkspace({
           </button>
         </div>
         <div className="document-actions">
-          {neuroDrafts?.visible && neuroDrafts.drafts.length > 0 ? (
-            <button
-              type="button"
-              className="knowledge-neuro-md-jump"
-              title="Открыть предложенный Markdown"
-              onClick={() => {
-                const first = neuroDrafts.drafts.find(
-                  (draft) => draft.documents.length > 0,
-                );
-                if (first) neuroDrafts.select({ draftId: first.id, index: 0 });
-              }}
-            >
-              Нейро‑MD
-            </button>
-          ) : null}
           <div className="knowledge-responsive-actions">
             <IconButton
               icon={<UiIcon name={treeOpen ? "panel-left" : "panel-right"} />}

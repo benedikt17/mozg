@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { selectDraftDocumentForPublication } from "@/prototype/knowledge/knowledge-neuro-drafts";
 
 describe("publishing one neuro-MD document", () => {
@@ -18,5 +20,23 @@ describe("publishing one neuro-MD document", () => {
       true,
       false,
     ]);
+  });
+
+  it("uses the normal document page and Markdown editor for drafts", () => {
+    const draft = readFileSync(
+      resolve(
+        process.cwd(),
+        "src/prototype/knowledge/knowledge-neuro-drafts.tsx",
+      ),
+      "utf8",
+    );
+    const workspace = readFileSync(
+      resolve(process.cwd(), "src/prototype/knowledge/knowledge-workspace.tsx"),
+      "utf8",
+    );
+    expect(draft).toContain('className="document-page-inner"');
+    expect(draft).toContain("<MarkdownSourceEditor");
+    expect(draft).toContain('className="knowledge-edit-action"');
+    expect(workspace).not.toContain("knowledge-neuro-md-jump");
   });
 });
