@@ -48,6 +48,10 @@ import {
 import type { CanvasTaskBridge } from "@/lib/canvas/canvas-task-bridge";
 import { CanvasImageLoadCache } from "@/lib/canvas/canvas-image-load-cache";
 import {
+  imageLoadOrder,
+  type CanvasImageViewportBounds,
+} from "@/lib/canvas/canvas-image-load-priority";
+import {
   CanvasImagePyramidScheduler,
   type CanvasImagePyramidJobResult,
 } from "@/lib/canvas/canvas-image-pyramid";
@@ -269,6 +273,7 @@ export type RestoreCanvasImageOptions = {
     >
   >;
   viewportZoom?: number;
+  viewportBounds?: CanvasImageViewportBounds;
   devicePixelRatio?: number;
   /** Measured screen-space sizes. When present, these already include zoom. */
   renderedCssSizes?: ReadonlyMap<string, { width: number; height: number }>;
@@ -1173,35 +1178,36 @@ export async function ingestCanvasImageTransferToNodes(
   source: CanvasImageInputSource,
   position: FlowPosition,
   dependencies: CanvasImageAdapterDependencies,
+  onNode?: (node: CanvasImageFlowNode, index: number) => void,
 ): Promise<{
   accepted: AcceptedCanvasImage[];
   rejected: number;
   nodes: CanvasImageFlowNode[];
 }> {
   const extracted = extractCanvasImageTransfer(payload, source);
+  const nodes: CanvasImageFlowNode[] = [];
   const result = await ingestCanvasImageCandidates(extracted.candidates, {
     repository: dependencies.assetRepository,
     workspaceId: dependencies.workspaceId,
     decodeImageDimensions: dependencies.decodeImageDimensions,
     idGenerator: dependencies.idGenerator,
-  });
-  const nodes: CanvasImageFlowNode[] = [];
-  for (const [index, accepted] of result.accepted.entries()) {
-    const record = accepted.record;
-    nodes.push(
-      createCanvasImageFlowNode({
+    onAccepted: (accepted, index) => {
+      const record = accepted.record;
+      const node = createCanvasImageFlowNode({
         record,
         objectUrl: dependencies.objectUrls.create(record.blob),
         position,
         source,
         index,
-      }),
-    );
-    scheduleCanvasImagePyramid(dependencies, {
-      assetId: record.id,
-      originalAsset: record,
-    });
-  }
+      });
+      nodes.push(node);
+      onNode?.(node, index);
+      scheduleCanvasImagePyramid(dependencies, {
+        assetId: record.id,
+        originalAsset: record,
+      });
+    },
+  });
   return { accepted: result.accepted, rejected: result.rejected.length, nodes };
 }
 
@@ -1214,6 +1220,7 @@ export async function restoreCanvasImageNodes(
     (node): node is Extract<CanvasImageNode, { assetId: string }> =>
       node.kind === "image" && "assetId" in node,
   );
+  const loadOrder = imageLoadOrder(imageNodes, options.viewportBounds);
   const concurrency = Math.max(
     1,
     Math.min(Math.floor(options.concurrency ?? 4), imageNodes.length || 1),
@@ -1287,8 +1294,8 @@ export async function restoreCanvasImageNodes(
   >();
   const worker = async (): Promise<void> => {
     while (true) {
-      const index = nextIndex++;
-      if (index >= imageNodes.length) return;
+      const index = loadOrder[nextIndex++];
+      if (index === undefined) return;
       if (options.signal?.aborted) {
         staleIgnored = true;
         return;

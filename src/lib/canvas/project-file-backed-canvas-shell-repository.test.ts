@@ -1,9 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   canonicalizeCanvasProjectFileRuntimeReferences,
+  createProjectFileBackedCanvasShellRepository,
   projectFileRuntimeAssetId,
 } from "@/lib/canvas/project-file-backed-canvas-shell-repository";
+import type { CloudCanvasShellRepository } from "@/lib/canvas/cloud-canvas-shell-adapter";
+import type { ProjectFileRepository } from "@/lib/files/project-file-repository";
+import type { ProjectFileImageVariantRepository } from "@/lib/files/project-file-image-variants";
 
 const FILE_ID = "63000000-0000-0000-0000-000000000001";
 
@@ -43,5 +47,35 @@ describe("Project File-backed direct Canvas uploads", () => {
       kind: "image",
       assetId: "legacy-asset",
     });
+  });
+
+  it("keeps legacy Canvas tier lookup batched alongside file-backed images", async () => {
+    const batch = vi.fn(async () => new Map([["legacy-asset", []]]));
+    const listImageVariants = vi.fn(async () => []);
+    const repository = createProjectFileBackedCanvasShellRepository({
+      repository: {
+        listVariantTiersForAssets: batch,
+      } as unknown as CloudCanvasShellRepository,
+      projectFileRepository: {} as ProjectFileRepository,
+      projectFileVariantRepository: {
+        listImageVariants,
+      } as unknown as ProjectFileImageVariantRepository,
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+    });
+
+    const catalogue = await repository.listVariantTiersForAssets({
+      workspaceId: "workspace-1",
+      canvasId: "canvas-1",
+      assetIds: ["legacy-asset", projectFileRuntimeAssetId(FILE_ID)],
+    });
+
+    expect(batch).toHaveBeenCalledOnce();
+    expect(batch).toHaveBeenCalledWith(
+      expect.objectContaining({ assetIds: ["legacy-asset"] }),
+    );
+    expect(listImageVariants).toHaveBeenCalledOnce();
+    expect(catalogue.has("legacy-asset")).toBe(true);
+    expect(catalogue.has(projectFileRuntimeAssetId(FILE_ID))).toBe(true);
   });
 });

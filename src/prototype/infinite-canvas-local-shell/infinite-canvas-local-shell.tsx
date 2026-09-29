@@ -53,6 +53,7 @@ import {
   attachCanvasImagePasteListener,
   createObjectUrlRegistry,
   eventTouchesEditingSurface,
+  extractCanvasImageTransfer,
   shouldPreventCanvasImagePaste,
   shouldPreventFileNavigation,
   transferHasSupportedImage,
@@ -465,6 +466,59 @@ function DecodedCanvasImage({
       data-canvas-image-node-id={nodeId}
       draggable={false}
     />
+  );
+}
+
+type PendingCanvasImage = {
+  id: string;
+  canvasId: string;
+  previewUrl: string | null;
+  count: number;
+  x: number;
+  y: number;
+};
+
+function nextPendingCanvasImageId(): string {
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+}
+
+function PendingCanvasImages({
+  images,
+  canvasId,
+}: {
+  images: readonly PendingCanvasImage[];
+  canvasId: string | null;
+}): React.JSX.Element {
+  return (
+    <div className={styles.pendingImages} aria-live="polite">
+      {images
+        .filter((image) => image.canvasId === canvasId)
+        .map((image) => (
+          <div
+            key={image.id}
+            className={styles.pendingImage}
+            style={{ left: image.x, top: image.y }}
+            role="status"
+            aria-label={
+              image.count > 1
+                ? `Загружается ${image.count} изображений`
+                : "Загружается изображение"
+            }
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {image.previewUrl ? <img src={image.previewUrl} alt="" /> : null}
+            <span className={styles.pendingImageGear} aria-hidden="true">
+              ⚙
+            </span>
+            {image.count > 1 ? (
+              <span className={styles.pendingImageCount}>{image.count}</span>
+            ) : null}
+          </div>
+        ))}
+    </div>
   );
 }
 
@@ -2535,6 +2589,7 @@ function InfiniteCanvasLocalShellSurface({
   const [restoreStats, setRestoreStats] =
     useState<RestoreStats>(EMPTY_RESTORE_STATS);
   const [dropActive, setDropActive] = useState(false);
+  const [pendingImages, setPendingImages] = useState<PendingCanvasImage[]>([]);
   const [clipboardNotice, setClipboardNotice] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState(copy.defaultTitle);
   const [renameTitle, setRenameTitle] = useState("");
@@ -3470,37 +3525,48 @@ function InfiniteCanvasLocalShellSurface({
           return copy;
         });
       };
-      const result = await restoreCanvasImageNodes(
-        nextState.document,
-        restoreDependencies,
-        {
-          signal,
-          concurrency: 4,
-          viewportZoom: nextState.viewport.zoom,
-          onNode: applyRestoredNode,
-        },
-      );
+      const bounds = wrapperRef.current?.getBoundingClientRect();
+      const zoom = nextState.viewport.zoom;
+      const viewportBounds =
+        bounds && bounds.width > 0 && bounds.height > 0 && zoom > 0
+          ? {
+              x: -nextState.viewport.x / zoom,
+              y: -nextState.viewport.y / zoom,
+              width: bounds.width / zoom,
+              height: bounds.height / zoom,
+            }
+          : undefined;
       const projectFileDependencies = nextState.canvasId
         ? projectFileImageDependenciesForCanvas(nextState.canvasId)
         : null;
-      const projectFileResult = projectFileDependencies
-        ? await restoreProjectFileCanvasImageNodes(
-            nextState.document,
-            projectFileDependencies,
-            {
-              signal,
-              concurrency: 4,
-              viewportZoom: nextState.viewport.zoom,
-              cachedAssetPayloads: variantPayloadsRef.current,
-              onNode: applyRestoredNode,
-            },
-          )
-        : {
-            nodes: [],
-            missingFileIds: [],
-            fileReadCount: 0,
-            maxConcurrentFileReads: 0,
-          };
+      const [result, projectFileResult] = await Promise.all([
+        restoreCanvasImageNodes(nextState.document, restoreDependencies, {
+          signal,
+          concurrency: 4,
+          viewportZoom: zoom,
+          viewportBounds,
+          onNode: applyRestoredNode,
+        }),
+        projectFileDependencies
+          ? restoreProjectFileCanvasImageNodes(
+              nextState.document,
+              projectFileDependencies,
+              {
+                signal,
+                concurrency: 4,
+                viewportZoom: zoom,
+                viewportBounds,
+                cachedAssetPayloads: variantPayloadsRef.current,
+                onNode: applyRestoredNode,
+              },
+            )
+          : Promise.resolve({
+              nodes: [],
+              missingFileIds: [],
+              fileReadCount: 0,
+              maxConcurrentFileReads: 0,
+            }),
+      ]);
       if (signal.aborted) return;
       setRestoreStats({
         reads: result.assetReadCount + projectFileResult.fileReadCount,
@@ -4658,21 +4724,55 @@ function InfiniteCanvasLocalShellSurface({
       client: FlowPosition | null,
     ) => {
       if (!shellState.canvasId) return;
+      const canvasId = shellState.canvasId;
       const position = client
         ? screenToFlowRef.current(client)
         : centerPosition();
+      const candidates = extractCanvasImageTransfer(payload, source).candidates;
+      const preview = candidates.find((candidate) =>
+        ["image/png", "image/jpeg", "image/webp"].includes(candidate.file.type),
+      );
+      const previewUrl = preview ? URL.createObjectURL(preview.file) : null;
+      const pendingId = nextPendingCanvasImageId();
+      if (previewUrl) {
+        const bounds = wrapperRef.current?.getBoundingClientRect();
+        setPendingImages((current) => [
+          ...current,
+          {
+            id: pendingId,
+            canvasId,
+            previewUrl,
+            count: candidates.length,
+            x: bounds
+              ? (client?.x ?? bounds.left + bounds.width / 2) - bounds.left
+              : 0,
+            y: bounds
+              ? (client?.y ?? bounds.top + bounds.height / 2) - bounds.top
+              : 0,
+          },
+        ]);
+      }
       try {
         const result = await ingestCanvasImageTransferToNodes(
           payload,
           source,
           position,
           adapterDependencies,
+          (node) => {
+            if (shellStateRef.current.canvasId !== canvasId) return;
+            controller.insertImageNodes([node]);
+            setNodes((current) => [...current, node]);
+            syncState();
+            scheduleSave();
+          },
         );
-        if (result.nodes.length === 0) return;
-        setNodes((current) => [...current, ...result.nodes]);
-        controller.insertImageNodes(result.nodes);
-        syncState();
-        scheduleSave();
+        if (result.nodes.length === 0 && result.rejected > 0) {
+          setShellState((current) => ({
+            ...current,
+            status: "error",
+            error: "Не удалось загрузить изображение.",
+          }));
+        }
       } catch (error: unknown) {
         setShellState((current) => ({
           ...current,
@@ -4680,6 +4780,13 @@ function InfiniteCanvasLocalShellSurface({
           error:
             error instanceof Error ? error.message : "Image ingestion failed.",
         }));
+      } finally {
+        if (previewUrl) {
+          setPendingImages((current) =>
+            current.filter((entry) => entry.id !== pendingId),
+          );
+          URL.revokeObjectURL(previewUrl);
+        }
       }
     },
     [
@@ -4720,6 +4827,28 @@ function InfiniteCanvasLocalShellSurface({
           : null,
       );
       const canonicalNodes = materialized.nodes;
+      const imageNodes = canonicalNodes.filter((node) => node.kind === "image");
+      const pendingId = nextPendingCanvasImageId();
+      if (imageNodes.length > 0) {
+        const bounds = wrapperRef.current?.getBoundingClientRect();
+        setPendingImages((current) => [
+          ...current,
+          {
+            id: pendingId,
+            canvasId,
+            previewUrl: null,
+            count: imageNodes.length,
+            x: bounds
+              ? (pointerRef.current?.x ?? bounds.left + bounds.width / 2) -
+                bounds.left
+              : 0,
+            y: bounds
+              ? (pointerRef.current?.y ?? bounds.top + bounds.height / 2) -
+                bounds.top
+              : 0,
+          },
+        ]);
+      }
 
       try {
         const runtimeNodes: CanvasFlowNode[] = [];
@@ -4797,9 +4926,6 @@ function InfiniteCanvasLocalShellSurface({
           }
         }
 
-        const imageNodes = canonicalNodes.filter(
-          (node) => node.kind === "image",
-        );
         const restoredImages =
           imageNodes.length === 0
             ? { nodes: [] }
@@ -4852,6 +4978,7 @@ function InfiniteCanvasLocalShellSurface({
           runtimeIds.has(node.id),
         );
         if (persistedNodes.length === 0) return;
+        if (shellStateRef.current.canvasId !== canvasId) return;
         const persistedEdges = materialized.edges.filter(
           (edge) =>
             runtimeIds.has(edge.sourceNodeId) &&
@@ -4893,6 +5020,12 @@ function InfiniteCanvasLocalShellSurface({
           error:
             error instanceof Error ? error.message : "Canvas paste failed.",
         }));
+      } finally {
+        if (imageNodes.length > 0) {
+          setPendingImages((current) =>
+            current.filter((entry) => entry.id !== pendingId),
+          );
+        }
       }
     },
     [
@@ -6530,6 +6663,10 @@ function InfiniteCanvasLocalShellSurface({
                 onPreview={previewGroupScale}
               />
             </ReactFlow>
+            <PendingCanvasImages
+              images={pendingImages}
+              canvasId={shellState.canvasId}
+            />
             {!viewportVisible ? (
               <div className={styles.canvasLoading} role="status">
                 Preparing canvas…
@@ -6963,6 +7100,10 @@ function InfiniteCanvasLocalShellSurface({
               onPreview={previewGroupScale}
             />
           </ReactFlow>
+          <PendingCanvasImages
+            images={pendingImages}
+            canvasId={shellState.canvasId}
+          />
           {!viewportVisible ? (
             <div className={styles.canvasLoading} role="status">
               Preparing canvas…

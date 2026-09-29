@@ -143,6 +143,67 @@
   position: absolute;
   inset: 0;
 }
+.pendingImages {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  pointer-events: none;
+  overflow: hidden;
+}
+.pendingImage {
+  position: absolute;
+  width: 152px;
+  height: 112px;
+  transform: translate(-50%, -50%);
+  border: 1px solid #b8c7c4;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 25px rgba(28, 25, 23, 0.18);
+}
+.pendingImage img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0.6;
+  border-radius: inherit;
+}
+.pendingImageGear {
+  position: absolute;
+  top: calc(50% - 20px);
+  left: calc(50% - 20px);
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #fff;
+  color: #0f766e;
+  font-size: 31px;
+  line-height: 1;
+  box-shadow: 0 2px 10px rgba(28, 25, 23, 0.22);
+  animation: pendingImageSpin 2s linear infinite;
+}
+.pendingImageCount {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: #fff;
+  color: #1c1917;
+  font-size: 11px;
+  font-weight: 700;
+}
+@keyframes pendingImageSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pendingImageGear {
+    animation: none;
+  }
+}
 .nodeFrame {
   position: relative;
   width: 100%;

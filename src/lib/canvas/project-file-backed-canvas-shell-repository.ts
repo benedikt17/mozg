@@ -21,7 +21,6 @@ import {
   prepareProjectFileBrowserUpload,
   projectFileBrowserResumeKey,
 } from "@/lib/files/project-file-browser-upload";
-import { generateAndStoreProjectFileImageVariantsBestEffort } from "@/lib/files/project-file-image-variant-generation";
 import type {
   ProjectFileImageVariantMetadata,
   ProjectFileImageVariantRecord,
@@ -255,11 +254,8 @@ export function createProjectFileBackedCanvasShellRepository(input: {
           mimeType: prepared.mimeType,
         }),
     });
-    await generateAndStoreProjectFileImageVariantsBestEffort({
-      repository: projectFileVariantRepository,
-      file: uploaded,
-      sourceBlob: prepared.blob,
-    });
+    // Canvas schedules its pyramid after the original is available. Keeping
+    // derivative generation off this upload path lets the image appear first.
     const record = canvasAssetRecord(uploaded, prepared.blob);
     if (!record)
       throw new Error("Uploaded Project File is not a Canvas image.");
@@ -483,20 +479,35 @@ export function createProjectFileBackedCanvasShellRepository(input: {
           variantInput: Parameters<
             CloudCanvasShellRepository["listVariantTiersForAssets"]
           >[0],
-        ) =>
-          new Map(
-            await Promise.all(
-              variantInput.assetIds.map(
+        ) => {
+          const fileAssetIds = variantInput.assetIds.filter((assetId) =>
+            projectFileIdFromRuntimeAssetId(assetId),
+          );
+          const canvasAssetIds = variantInput.assetIds.filter(
+            (assetId) => !projectFileIdFromRuntimeAssetId(assetId),
+          );
+          const [canvasTiers, fileTiers] = await Promise.all([
+            canvasAssetIds.length > 0
+              ? target.listVariantTiersForAssets({
+                  ...variantInput,
+                  assetIds: canvasAssetIds,
+                })
+              : Promise.resolve(new Map()),
+            Promise.all(
+              fileAssetIds.map(
                 async (assetId) =>
                   [
                     assetId,
-                    await (
-                      proxy.listVariantTiers as CloudCanvasShellRepository["listVariantTiers"]
-                    )({ ...variantInput, assetId }),
+                    (await listProjectFileTiers(
+                      assetId,
+                      variantInput.canvasId,
+                    )) ?? [],
                   ] as const,
               ),
             ),
-          );
+          ]);
+          return new Map([...canvasTiers, ...fileTiers]);
+        };
       }
       if (property === "loadVariantTier") {
         return async (
@@ -538,20 +549,35 @@ export function createProjectFileBackedCanvasShellRepository(input: {
           variantInput: Parameters<
             CloudCanvasShellRepository["listVariantsForAssets"]
           >[0],
-        ) =>
-          new Map(
-            await Promise.all(
-              variantInput.assetIds.map(
+        ) => {
+          const fileAssetIds = variantInput.assetIds.filter((assetId) =>
+            projectFileIdFromRuntimeAssetId(assetId),
+          );
+          const canvasAssetIds = variantInput.assetIds.filter(
+            (assetId) => !projectFileIdFromRuntimeAssetId(assetId),
+          );
+          const [canvasVariants, fileVariants] = await Promise.all([
+            canvasAssetIds.length > 0
+              ? target.listVariantsForAssets({
+                  ...variantInput,
+                  assetIds: canvasAssetIds,
+                })
+              : Promise.resolve(new Map()),
+            Promise.all(
+              fileAssetIds.map(
                 async (assetId) =>
                   [
                     assetId,
-                    await (
-                      proxy.listVariants as CloudCanvasShellRepository["listVariants"]
-                    )({ ...variantInput, assetId }),
+                    (await listProjectFileLegacyVariants(
+                      assetId,
+                      variantInput.canvasId,
+                    )) ?? [],
                   ] as const,
               ),
             ),
-          );
+          ]);
+          return new Map([...canvasVariants, ...fileVariants]);
+        };
       }
       if (property === "loadVariant") {
         return async (
