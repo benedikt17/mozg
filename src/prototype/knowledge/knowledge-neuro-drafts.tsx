@@ -353,6 +353,7 @@ function KnowledgeNeuroDraftArticle({
   index: number;
 }) {
   const [editing, setEditing] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const markdownDocument: PrototypeDocument = {
     id: `neuro-md-${draft.id}-${index}`,
     projectId: draft.project_id,
@@ -376,8 +377,11 @@ function KnowledgeNeuroDraftArticle({
   return (
     <div className={`document-workspace ${styles.workspace}`}>
       <div className="document-tabs-row">
-        <div className={styles.draftTab} title={document.title}>
-          <span aria-hidden="true">◆</span> {document.title}
+        <div
+          className={styles.status}
+          role={controller.error ? "alert" : "status"}
+        >
+          {controller.error ?? controller.notice}
         </div>
         <div className="document-actions">
           <IconButton
@@ -406,6 +410,13 @@ function KnowledgeNeuroDraftArticle({
             Принять и опубликовать
           </button>
           <IconButton
+            icon={<UiIcon name="more" />}
+            label="Название и папка публикации"
+            onClick={() => setSettingsOpen((current) => !current)}
+            title="Название и папка публикации"
+            variant="quiet"
+          />
+          <IconButton
             icon={<UiIcon name="close" />}
             label="Закрыть нейро‑MD"
             onClick={() => controller.select(null)}
@@ -414,49 +425,45 @@ function KnowledgeNeuroDraftArticle({
           />
         </div>
       </div>
-      <div className={styles.metadata}>
-        <details className={styles.settings}>
-          <summary>Название и папка публикации</summary>
-          <div className={styles.fields}>
-            <label>
-              Папка (уровни через /)
-              <input
-                value={draft.folder_path.join(" / ")}
-                onChange={(event) =>
-                  controller.change((current) => ({
-                    ...current,
-                    folder_path: event.target.value
-                      .split("/")
-                      .map((part) => part.trim()),
-                  }))
-                }
-              />
-            </label>
-            <label>
-              Название
-              <input
-                value={document.title}
-                onChange={(event) =>
-                  controller.change((current) => ({
-                    ...current,
-                    documents: current.documents.map((item, at) =>
-                      at === index
-                        ? { ...item, title: event.target.value }
-                        : item,
-                    ),
-                  }))
-                }
-              />
-            </label>
-          </div>
-        </details>
-        {controller.error ? (
-          <p className={styles.error} role="alert">
-            {controller.error}
-          </p>
-        ) : null}
-        {controller.notice ? <p role="status">{controller.notice}</p> : null}
-      </div>
+      {settingsOpen ? (
+        <div
+          className={styles.settingsPanel}
+          role="group"
+          aria-label="Название и папка публикации"
+        >
+          <strong>Название и папка публикации</strong>
+          <label>
+            Папка (уровни через /)
+            <input
+              value={draft.folder_path.join(" / ")}
+              onChange={(event) =>
+                controller.change((current) => ({
+                  ...current,
+                  folder_path: event.target.value
+                    .split("/")
+                    .map((part) => part.trim()),
+                }))
+              }
+            />
+          </label>
+          <label>
+            Название
+            <input
+              value={document.title}
+              onChange={(event) =>
+                controller.change((current) => ({
+                  ...current,
+                  documents: current.documents.map((item, at) =>
+                    at === index
+                      ? { ...item, title: event.target.value }
+                      : item,
+                  ),
+                }))
+              }
+            />
+          </label>
+        </div>
+      ) : null}
       <div className={`document-body ${editing ? "is-markdown-editing" : ""}`}>
         <div className="document-breadcrumb-row">
           Нейро‑MD / {draft.folder_path.join(" / ")} / {document.title}

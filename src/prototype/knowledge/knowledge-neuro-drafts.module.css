@@ -59,17 +59,20 @@
   font-size: 9px;
 }
 .workspace.workspace {
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
 }
-.draftTab {
+.status {
   min-width: 0;
   align-self: center;
   overflow: hidden;
   padding: 0 12px;
-  color: #285b9c;
+  color: #456b9b;
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.status[role="alert"] {
+  color: #a23440;
 }
 .action {
   border: 1px solid #8db8eb;
@@ -89,32 +92,26 @@
   opacity: 0.5;
   cursor: default;
 }
-.metadata {
-  min-width: 0;
-  border-bottom: 1px solid var(--border);
+.settingsPanel {
+  position: absolute;
+  z-index: 20;
+  top: 42px;
+  right: 14px;
+  width: min(420px, calc(100% - 28px));
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
   background: var(--surface);
-  padding: 5px 16px;
+  box-shadow: 0 12px 32px #18233b24;
+  padding: 16px;
   font-size: 12px;
 }
-.settings {
-  max-width: 880px;
-  margin-inline: auto;
-}
-.settings summary {
-  color: #285b9c;
-  cursor: pointer;
-}
-.fields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  padding: 10px 0;
-}
-.fields label {
+.settingsPanel label {
   display: grid;
   gap: 5px;
 }
-.fields input {
+.settingsPanel input {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid var(--border-strong);
@@ -123,7 +120,4 @@
   color: var(--text);
   padding: 6px;
   font: inherit;
-}
-.error {
-  color: #a23440;
 }

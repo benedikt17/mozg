@@ -37,6 +37,9 @@ describe("publishing one neuro-MD document", () => {
     expect(draft).toContain('className="document-page-inner"');
     expect(draft).toContain("<MarkdownSourceEditor");
     expect(draft).toContain('className="knowledge-edit-action"');
+    expect(draft).toContain("styles.settingsPanel");
+    expect(draft).not.toContain("styles.draftTab");
+    expect(draft).not.toContain("styles.metadata");
     expect(workspace).not.toContain("knowledge-neuro-md-jump");
   });
 });
