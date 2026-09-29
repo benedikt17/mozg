@@ -661,6 +661,71 @@ describe("production-shaped local Canvas shell", () => {
     expect(repository.assetLoadCalls).toBe(0);
   });
 
+  it("replaces a cached original with a ready tier after image generation settles", async () => {
+    const repository = new MemoryCanvasRepository();
+    const { registry } = urlRegistry();
+    const tier: CanvasAssetVariantV2Metadata = {
+      workspaceId: WORKSPACE_A,
+      canvasId: "canvas-1",
+      assetId: "asset-1",
+      targetMaxEdge: 1024,
+      storagePath: "edge-1024.webp",
+      mimeType: "image/webp",
+      byteSize: 10,
+      pixelWidth: 1024,
+      pixelHeight: 576,
+      createdAt: "2026-08-03T10:00:00.000Z",
+    };
+    const ledger = createImageNetworkLedger();
+    const variantRepository = createNumericVariantRepository(
+      new Map([["asset-1", [tier]]]),
+      ledger,
+    );
+    const cachedOriginal = new Map([
+      [
+        `${WORKSPACE_A}/canvas-1/asset-1/original`,
+        {
+          objectUrl: "blob:original",
+          mimeType: "image/png",
+          intrinsicWidth: 4000,
+          intrinsicHeight: 2250,
+          source: "restored" as const,
+          resolutionSource: { type: "original" as const },
+        },
+      ],
+    ]);
+
+    const restored = await restoreCanvasImageNodes(
+      documentWithImage(),
+      {
+        assetRepository: repository,
+        variantRepository,
+        objectUrls: registry,
+        workspaceId: WORKSPACE_A,
+        canvasId: "canvas-1",
+      },
+      {
+        viewportZoom: 1,
+        devicePixelRatio: 1,
+        currentResolutionSources: new Map([
+          ["image-node-1", { type: "original" as const }],
+        ]),
+        cachedAssetPayloads: cachedOriginal,
+        allowDowngrade: true,
+      },
+    );
+
+    expect(restored.nodes[0]?.data.resolutionSource).toEqual({
+      type: "variant",
+      targetMaxEdge: 1024,
+    });
+    expect(restored.nodes[0]?.data.objectUrl).not.toBe("blob:original");
+    expect(ledger.derivativeRequests).toEqual([
+      { assetId: "asset-1", targetMaxEdge: 1024 },
+    ]);
+    expect(repository.assetLoadCalls).toBe(0);
+  });
+
   it("keeps a covering numeric derivative demand-driven during restore", async () => {
     const repository = new MemoryCanvasRepository();
     const { registry } = urlRegistry();

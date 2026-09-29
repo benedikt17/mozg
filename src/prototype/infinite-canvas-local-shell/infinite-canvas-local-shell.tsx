@@ -2763,7 +2763,7 @@ function InfiniteCanvasLocalShellSurface({
         if (result.stored.length === 0) return;
         refreshImageVariantsRef.current(
           shellStateRef.current.viewport.zoom,
-          false,
+          true,
         );
       },
       onVariantError: (error: unknown) => {
@@ -3333,6 +3333,14 @@ function InfiniteCanvasLocalShellSurface({
         controller.setRuntimeEdges(edgesRef.current);
         syncState();
         scheduleSave();
+        if (duplicate.kind === "image") {
+          window.requestAnimationFrame(() => {
+            refreshImageVariantsRef.current(
+              shellStateRef.current.viewport.zoom,
+              true,
+            );
+          });
+        }
         return;
       }
 
@@ -3791,7 +3799,7 @@ function InfiniteCanvasLocalShellSurface({
       hydratingRef.current = false;
       setRestoreStats(EMPTY_RESTORE_STATS);
       setLoadingLifecycle("ready");
-      scheduleImageVariantRefresh(state.viewport.zoom, false);
+      scheduleImageVariantRefresh(state.viewport.zoom, true);
     },
     [scheduleImageVariantRefresh],
   );
@@ -4872,6 +4880,12 @@ function InfiniteCanvasLocalShellSurface({
         setEdges((current) => [...current, ...runtimeEdges]);
         syncState();
         scheduleSave();
+        if (imageNodes.length > 0) {
+          scheduleImageVariantRefresh(
+            shellStateRef.current.viewport.zoom,
+            true,
+          );
+        }
       } catch (error: unknown) {
         setShellState((current) => ({
           ...current,
@@ -4888,6 +4902,7 @@ function InfiniteCanvasLocalShellSurface({
       handleEdgeUpdate,
       handleTaskNodeContentHeightChange,
       projectFileImageDependenciesForCanvas,
+      scheduleImageVariantRefresh,
       scheduleSave,
       setNodes,
       setEdges,
