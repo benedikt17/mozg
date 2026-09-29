@@ -16,7 +16,11 @@ import { IconButton } from "@/prototype/desktop-ui";
 import { getKnowledgeHistoryShortcutAction } from "./knowledge-content-history";
 import { useKnowledgeContentHistory } from "./knowledge-content-history-runtime";
 import { loadOpenNeurocommentDocumentIds } from "./knowledge-annotations";
-import { KnowledgeNeuroDrafts } from "./knowledge-neuro-drafts";
+import {
+  KnowledgeNeuroDraftNodes,
+  KnowledgeNeuroDraftsToggle,
+  type NeuroDraftsController,
+} from "./knowledge-neuro-drafts";
 
 type Dispatch = React.Dispatch<DesktopPrototypeAction>;
 
@@ -48,6 +52,7 @@ export function KnowledgeSidebar({
   onCancelLinkPick,
   onPickLinkTarget,
   workspaceId,
+  neuroDrafts,
 }: {
   state: DesktopPrototypeState;
   dispatch: Dispatch;
@@ -56,6 +61,7 @@ export function KnowledgeSidebar({
   onCancelLinkPick?: () => void;
   onPickLinkTarget?: (documentId: string) => void;
   workspaceId?: string;
+  neuroDrafts?: NeuroDraftsController;
 }): React.JSX.Element {
   const contentHistory = useKnowledgeContentHistory();
   const tree = getKnowledgeTree(state);
@@ -75,6 +81,9 @@ export function KnowledgeSidebar({
   );
   const [neuroLoading, setNeuroLoading] = useState(false);
   const [neuroError, setNeuroError] = useState(false);
+  const [closedNeuroFolders, setClosedNeuroFolders] = useState<Set<string>>(
+    () => new Set(),
+  );
   const treeCollapsed = state.knowledgeExpandedBeforeCollapse !== null;
   const linkPickerActive = Boolean(linkPickerSourceDocumentId);
 
@@ -219,11 +228,26 @@ export function KnowledgeSidebar({
             title={treeCollapsed ? "Восстановить папки" : "Свернуть все папки"}
             variant="ghost"
           />
-          {workspaceId ? (
-            <KnowledgeNeuroDrafts
-              workspaceId={workspaceId}
-              projectId={state.activeProjectId}
-            />
+          {neuroDrafts && workspaceId ? (
+            <>
+              <KnowledgeNeuroDraftsToggle
+                controller={neuroDrafts}
+                onShow={() =>
+                  dispatch({ type: "set-knowledge-search", query: "" })
+                }
+              />
+              {neuroDrafts.visible ? (
+                <button
+                  type="button"
+                  className="knowledge-neuro-refresh"
+                  onClick={() => void neuroDrafts.reload()}
+                  title="Обновить нейро‑MD"
+                  aria-label="Обновить нейро‑MD"
+                >
+                  ↻
+                </button>
+              ) : null}
+            </>
           ) : null}
         </div>
         {workspaceId ? (
@@ -325,6 +349,12 @@ export function KnowledgeSidebar({
         >
           Переместить папку на верхний уровень
         </div>
+        {neuroDrafts?.visible && neuroDrafts.error ? (
+          <p role="alert">{neuroDrafts.error}</p>
+        ) : null}
+        {neuroDrafts?.visible && neuroDrafts.loading ? (
+          <p role="status">Загрузка нейро‑MD…</p>
+        ) : null}
         {tree.length > 0 ? (
           tree.map((node) => (
             <KnowledgeTreeNodeView
@@ -339,14 +369,33 @@ export function KnowledgeSidebar({
               onDraggingFolderPathChange={setDraggingFolderPath}
               openKnowledgeMenu={openKnowledgeMenu}
               neuroDocumentIds={neuroReviewActive ? neuroDocumentIds : null}
+              neuroDrafts={neuroDrafts}
+              closedNeuroFolders={closedNeuroFolders}
+              onToggleNeuroFolder={(id) =>
+                setClosedNeuroFolders((current) => {
+                  const next = new Set(current);
+                  if (next.has(id)) next.delete(id);
+                  else next.add(id);
+                  return next;
+                })
+              }
               state={state}
               linkPickerSourceDocumentId={linkPickerSourceDocumentId}
               onPickLinkTarget={onPickLinkTarget}
             />
           ))
-        ) : (
+        ) : neuroDrafts?.visible && neuroDrafts.drafts.length > 0 ? null : (
           <p className="empty-state">Ничего не найдено.</p>
         )}
+        {neuroDrafts ? (
+          <KnowledgeNeuroDraftNodes
+            controller={neuroDrafts}
+            path={[]}
+            existingFolders={tree
+              .filter((node) => node.kind === "folder")
+              .map((node) => node.title)}
+          />
+        ) : null}
       </nav>
       <footer className="knowledge-sidebar-footer">
         <button
@@ -400,6 +449,9 @@ function KnowledgeTreeNodeView({
   onDropTargetChange,
   openKnowledgeMenu,
   neuroDocumentIds,
+  neuroDrafts,
+  closedNeuroFolders,
+  onToggleNeuroFolder,
   linkPickerSourceDocumentId,
   onPickLinkTarget,
 }: {
@@ -414,17 +466,28 @@ function KnowledgeTreeNodeView({
   onDropTargetChange: (target: KnowledgeDropTarget) => void;
   openKnowledgeMenu: KnowledgeMenuTarget;
   neuroDocumentIds: Set<string> | null;
+  neuroDrafts?: NeuroDraftsController;
+  closedNeuroFolders: Set<string>;
+  onToggleNeuroFolder: (id: string) => void;
   linkPickerSourceDocumentId?: string | null;
   onPickLinkTarget?: (documentId: string) => void;
 }): React.JSX.Element {
   const depth = Math.max(node.path.length - 1, 0);
 
   if (node.kind === "folder") {
-    const expanded =
-      state.knowledgeSearchQuery.trim().length > 0 ||
-      state.expandedFolderIds.includes(node.id) ||
-      (neuroDocumentIds !== null &&
-        containsOpenNeurocomment(node, neuroDocumentIds));
+    const containsNeuroDraft =
+      neuroDrafts?.visible === true &&
+      neuroDrafts.drafts.some(
+        (draft) =>
+          draft.folder_path.length >= node.path.length &&
+          knowledgePathStartsWith(draft.folder_path, node.path),
+      );
+    const expanded = containsNeuroDraft
+      ? !closedNeuroFolders.has(node.id)
+      : state.knowledgeSearchQuery.trim().length > 0 ||
+        state.expandedFolderIds.includes(node.id) ||
+        (neuroDocumentIds !== null &&
+          containsOpenNeurocomment(node, neuroDocumentIds));
     const editing = state.editingKnowledgeFolderId === node.id;
     const isPathSelected =
       state.knowledgeBreadcrumbHighlightVisible &&
@@ -496,6 +559,10 @@ function KnowledgeTreeNodeView({
       });
     };
     const toggleFolder = (): void => {
+      if (containsNeuroDraft) {
+        onToggleNeuroFolder(node.id);
+        return;
+      }
       dispatch({
         type: "toggle-knowledge-folder",
         folderId: node.id,
@@ -601,11 +668,23 @@ function KnowledgeTreeNodeView({
                 onDraggingFolderPathChange={onDraggingFolderPathChange}
                 openKnowledgeMenu={openKnowledgeMenu}
                 neuroDocumentIds={neuroDocumentIds}
+                neuroDrafts={neuroDrafts}
+                closedNeuroFolders={closedNeuroFolders}
+                onToggleNeuroFolder={onToggleNeuroFolder}
                 state={state}
                 linkPickerSourceDocumentId={linkPickerSourceDocumentId}
                 onPickLinkTarget={onPickLinkTarget}
               />
             ))}
+            {neuroDrafts ? (
+              <KnowledgeNeuroDraftNodes
+                controller={neuroDrafts}
+                path={node.path}
+                existingFolders={node.children
+                  .filter((child) => child.kind === "folder")
+                  .map((child) => child.title)}
+              />
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -707,6 +786,7 @@ function KnowledgeTreeNodeView({
             type: "open-knowledge-document-in-active-pane",
             documentId: node.document.id,
           });
+          neuroDrafts?.select(null);
         }}
         type="button"
       >

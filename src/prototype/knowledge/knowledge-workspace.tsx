@@ -19,6 +19,10 @@ import {
   type KnowledgeArticleLinkPickRequest,
 } from "./markdown-source-editor";
 import { KnowledgeTrashView } from "./knowledge-trash-view";
+import {
+  KnowledgeNeuroDraftPreview,
+  type NeuroDraftsController,
+} from "./knowledge-neuro-drafts";
 import { getKnowledgeHistoryShortcutAction } from "./knowledge-content-history";
 import { useKnowledgeContentHistory } from "./knowledge-content-history-runtime";
 import { getKnowledgeInternalLinkNavigationActions } from "./knowledge-internal-link-navigation";
@@ -67,6 +71,7 @@ type KnowledgeWorkspaceProps = {
   onToggleTree?: () => void;
   treeOpen?: boolean;
   onBeginArticleLinkPick?: (request: KnowledgeArticleLinkPickRequest) => void;
+  neuroDrafts?: NeuroDraftsController;
 };
 
 export function KnowledgeWorkspace(
@@ -74,6 +79,9 @@ export function KnowledgeWorkspace(
 ): React.JSX.Element {
   if (props.state.knowledgeWorkspaceView === "trash") {
     return <KnowledgeTrashView state={props.state} dispatch={props.dispatch} />;
+  }
+  if (props.neuroDrafts?.visible && props.neuroDrafts.selection) {
+    return <KnowledgeNeuroDraftPreview controller={props.neuroDrafts} />;
   }
   return <KnowledgeDocumentWorkspace {...props} />;
 }
@@ -86,6 +94,7 @@ function KnowledgeDocumentWorkspace({
   onToggleTree,
   treeOpen = true,
   onBeginArticleLinkPick,
+  neuroDrafts,
 }: KnowledgeWorkspaceProps): React.JSX.Element {
   const {
     primaryDocument: selectedDocument,
@@ -352,6 +361,21 @@ function KnowledgeDocumentWorkspace({
           </button>
         </div>
         <div className="document-actions">
+          {neuroDrafts?.visible && neuroDrafts.drafts.length > 0 ? (
+            <button
+              type="button"
+              className="knowledge-neuro-md-jump"
+              title="Открыть предложенный Markdown"
+              onClick={() => {
+                const first = neuroDrafts.drafts.find(
+                  (draft) => draft.documents.length > 0,
+                );
+                if (first) neuroDrafts.select({ draftId: first.id, index: 0 });
+              }}
+            >
+              Нейро‑MD
+            </button>
+          ) : null}
           <div className="knowledge-responsive-actions">
             <IconButton
               icon={<UiIcon name={treeOpen ? "panel-left" : "panel-right"} />}
