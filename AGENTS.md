@@ -59,6 +59,32 @@ PR не должен содержать:
 
 Допустимы только минимальные сопутствующие изменения, без которых задача не может быть завершена.
 
+### 3.1 Production baseline и происхождение релиза
+
+- Принятый контрольный пункт `baseline/production-2026-09-01-c123579`
+  указывает на Production commit `c12357969498ec3b24fe2e3733095a47c255576e`
+  и никогда не перемещается и не удаляется.
+- Новая задача начинается только после `git fetch origin
+  refactor/prototype-state-root`; отдельная ветка и worktree создаются от
+  актуального `origin/refactor/prototype-state-root`, а не от ранее открытой
+  feature-ветки, локального HEAD или исторического baseline.
+- Любой feature-кандидат обязан содержать текущий Production HEAD в своей
+  истории. Несовпадение означает `STOP / NO-GO`: сначала перенос изменений на
+  актуальную основу, затем повтор всех применимых проверок.
+- Обычный Production-релиз выполняется только fast-forward обновлением ветки
+  `refactor/prototype-state-root` после принятого Preview. Force-push, silent
+  merge commit, прямой `vercel --prod` и продвижение Preview через `vercel
+  promote` запрещены. Rollback допускается только как отдельно подтверждённое
+  аварийное действие с точным deployment ID.
+- Vercel Production deployment обязан содержать Git provenance:
+  `githubCommitRef = refactor/prototype-state-root` и точный
+  `githubCommitSha`. Deployment без этих полей не считается допустимым
+  Production-релизом.
+- Перед завершением релиза повторно сверяются Production branch SHA, Vercel
+  deployment SHA, статус `READY`, Production smoke и runtime errors.
+- Git baseline защищает код, но не данные. Изменения БД требуют отдельного
+  backup/restore checkpoint и database gates из разделов 4–5.
+
 ## 4. Миграции и база данных
 
 - Схема БД меняется только через Supabase CLI.
