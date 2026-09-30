@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { REVEAL_MARKDOWN_RANGE } from "./knowledge-annotation-ranges";
 import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
 import type {
   List,
@@ -54,6 +55,49 @@ type DocumentCollapseState = {
   documentId: string;
   collapsed: Set<number>;
 };
+
+function codeSourceAttributes(
+  node: Extract<RootContent | PhrasingContent, { type: "code" | "inlineCode" }>,
+  markdown: string,
+): {
+  "data-markdown-start": number | undefined;
+  "data-markdown-end": number | undefined;
+} {
+  const start = node.position?.start.offset;
+  const end = node.position?.end.offset;
+  if (start === undefined || end === undefined)
+    return { "data-markdown-start": start, "data-markdown-end": end };
+  const source = markdown.slice(start, end);
+  const skip =
+    node.type === "inlineCode"
+      ? (source.match(/^`+/)?.[0].length ?? 0)
+      : /^ {0,3}(?:`{3,}|~{3,})/.test(source)
+        ? source.indexOf("\n") + 1
+        : 0;
+  const valueAt = source.indexOf(node.value, skip);
+  return valueAt < 0
+    ? { "data-markdown-start": start, "data-markdown-end": end }
+    : {
+        "data-markdown-start": start + valueAt,
+        "data-markdown-end": start + valueAt + node.value.length,
+      };
+}
+
+function sourceText(
+  node: PhrasingContent,
+  value: string,
+  key: string,
+): React.JSX.Element {
+  return (
+    <span
+      data-markdown-start={node.position?.start.offset}
+      data-markdown-end={node.position?.end.offset}
+      key={key}
+    >
+      {value}
+    </span>
+  );
+}
 
 export function parseNestedListItem(line: string): NestedListItem | null {
   const match = /^( *)(- \[([ xX])\]|- |• |\d+\. )(.*)$/.exec(line);
@@ -266,6 +310,47 @@ function MarkdownContentPreview({
   };
   const markdown = lines.join("\n");
   const structure = analyzeMarkdownStructure(markdown);
+  useEffect(() => {
+    const reveal = (event: Event): void => {
+      const detail = (
+        event as CustomEvent<{
+          documentId: string;
+          startOffset: number;
+          endOffset: number;
+        }>
+      ).detail;
+      if (detail?.documentId !== contentId) return;
+      const ancestors = new Set<number>();
+      const visit = (node: RootContent | ListItem): void => {
+        if (
+          node.type === "listItem" &&
+          (node.position?.start.offset ?? Infinity) <= detail.startOffset &&
+          (node.position?.end.offset ?? -1) >= detail.endOffset
+        ) {
+          ancestors.add((node.position?.start.line ?? 1) - 1);
+        }
+        if ("children" in node) {
+          for (const child of node.children) {
+            if (
+              child.type === "list" ||
+              child.type === "listItem" ||
+              child.type === "blockquote"
+            )
+              visit(child);
+          }
+        }
+      };
+      for (const node of structure.document.children) visit(node);
+      setCollapseState((current) => ({
+        documentId: contentId,
+        collapsed: new Set(
+          [...current.collapsed].filter((line) => !ancestors.has(line)),
+        ),
+      }));
+    };
+    window.addEventListener(REVEAL_MARKDOWN_RANGE, reveal);
+    return () => window.removeEventListener(REVEAL_MARKDOWN_RANGE, reveal);
+  }, [contentId, structure]);
   const hiddenLeadingTitle =
     hideLeadingTitle &&
     structure.headings.some(
@@ -331,7 +416,11 @@ function renderMarkdownBlock(
             </span>
             <span className="markdown-task-checkbox-slot" aria-hidden="true" />
             <span className="markdown-task-content">
-              • {renderLegacyInlineMarkdown(legacyBullet.text, context.onInternalLink)}
+              •{" "}
+              {renderLegacyInlineMarkdown(
+                legacyBullet.text,
+                context.onInternalLink,
+              )}
             </span>
           </p>
         );
@@ -385,19 +474,16 @@ function renderMarkdownBlock(
     case "code":
       return (
         <pre className="document-code-block" key={key}>
-          <code>{node.value}</code>
+          <code {...codeSourceAttributes(node, context.markdown)}>
+            {node.value}
+          </code>
         </pre>
       );
     case "blockquote":
       return (
         <blockquote key={key}>
           {node.children.map((child, index) =>
-            renderMarkdownBlock(
-              child,
-              context,
-              depth,
-              `${key}-quote-${index}`,
-            ),
+            renderMarkdownBlock(child, context, depth, `${key}-quote-${index}`),
           )}
         </blockquote>
       );
@@ -406,7 +492,15 @@ function renderMarkdownBlock(
     case "table":
       return <MarkdownTable context={context} key={key} table={node} />;
     case "html":
-      return <p key={key}>{node.value}</p>;
+      return (
+        <p
+          data-markdown-start={node.position?.start.offset}
+          data-markdown-end={node.position?.end.offset}
+          key={key}
+        >
+          {node.value}
+        </p>
+      );
     case "definition":
       return null;
     default: {
@@ -468,11 +562,7 @@ function renderMarkdownListItem(
       : "• ";
   const content =
     firstParagraph?.type === "paragraph"
-      ? renderMdastInline(
-          firstParagraph.children,
-          context,
-          `${key}-paragraph`,
-        )
+      ? renderMdastInline(firstParagraph.children, context, `${key}-paragraph`)
       : null;
 
   return (
@@ -520,10 +610,7 @@ function renderMarkdownListItem(
               />
             </span>
           ) : (
-            <span
-              className="markdown-task-checkbox-slot"
-              aria-hidden="true"
-            />
+            <span className="markdown-task-checkbox-slot" aria-hidden="true" />
           )}
           <span
             className={
@@ -663,12 +750,10 @@ function renderMdastInline(
     const key = `${keyPrefix}-${index}`;
     switch (node.type) {
       case "text":
-        return node.value;
+        return sourceText(node, node.value, key);
       case "emphasis":
         return (
-          <em key={key}>
-            {renderMdastInline(node.children, context, key)}
-          </em>
+          <em key={key}>{renderMdastInline(node.children, context, key)}</em>
         );
       case "strong":
         return (
@@ -681,13 +766,19 @@ function renderMdastInline(
           <del key={key}>{renderMdastInline(node.children, context, key)}</del>
         );
       case "inlineCode":
-        return <code key={key}>{node.value}</code>;
+        return (
+          <code {...codeSourceAttributes(node, context.markdown)} key={key}>
+            {node.value}
+          </code>
+        );
       case "break":
         return <br key={key} />;
       case "wikiLink": {
         const internal = parseInternalLinkToken(node.raw);
         return internal ? (
           <button
+            data-markdown-start={node.position?.start.offset}
+            data-markdown-end={node.position?.end.offset}
             className="document-internal-link"
             key={key}
             onClick={() => context.onInternalLink?.(internal.documentId)}
@@ -696,7 +787,7 @@ function renderMdastInline(
             {internal.label}
           </button>
         ) : (
-          node.raw
+          sourceText(node, node.raw, key)
         );
       }
       case "link":
@@ -711,25 +802,35 @@ function renderMdastInline(
             {renderMdastInline(node.children, context, key)}
           </a>
         ) : (
-          `[${getPhrasingText(node.children)}](${node.url}${node.title ? ` "${node.title}"` : ""})`
+          sourceText(
+            node,
+            `[${getPhrasingText(node.children)}](${node.url}${node.title ? ` "${node.title}"` : ""})`,
+            key,
+          )
         );
       case "image":
-        return `![${node.alt ?? ""}](${node.url}${node.title ? ` "${node.title}"` : ""})`;
+        return sourceText(
+          node,
+          `![${node.alt ?? ""}](${node.url}${node.title ? ` "${node.title}"` : ""})`,
+          key,
+        );
       case "linkReference":
-        return formatLinkReference(node);
+        return sourceText(node, formatLinkReference(node), key);
       case "imageReference":
-        return formatImageReference(node);
+        return sourceText(node, formatImageReference(node), key);
       case "html":
-        return node.value;
+        return sourceText(node, node.value, key);
       default:
-        if ("value" in node && typeof node.value === "string") return node.value;
+        if ("value" in node && typeof node.value === "string")
+          return node.value;
         if ("children" in node && Array.isArray(node.children))
           return renderMdastInline(
             node.children as PhrasingContent[],
             context,
             key,
           );
-        if ("label" in node && typeof node.label === "string") return node.label;
+        if ("label" in node && typeof node.label === "string")
+          return node.label;
         return node.type;
     }
   });

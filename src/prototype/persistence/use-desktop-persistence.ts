@@ -22,7 +22,9 @@ import type { DesktopPrototypeState } from "@/prototype/state/types";
 
 export type UseDesktopPersistenceResult = {
   lifecycle: DesktopPersistenceLifecycle;
-  refreshFromSource: () => Promise<DesktopPersistenceRefreshResult>;
+  refreshFromSource: (
+    minimumRevision?: number,
+  ) => Promise<DesktopPersistenceRefreshResult>;
   retryLoad: () => void;
   retrySave: () => void;
   keepLocalChanges: () => Promise<void>;
@@ -156,15 +158,18 @@ export function useDesktopPersistence(
     runtime.current?.observeSnapshot(snapshot);
   }, [enabled, snapshot]);
 
-  const refreshFromSource = useCallback(() => {
-    if (!enabled) {
-      return Promise.resolve<DesktopPersistenceRefreshResult>("skipped");
-    }
-    return (
-      runtime.current?.refreshFromSource() ??
-      Promise.resolve<DesktopPersistenceRefreshResult>("skipped")
-    );
-  }, [enabled]);
+  const refreshFromSource = useCallback(
+    (minimumRevision?: number) => {
+      if (!enabled) {
+        return Promise.resolve<DesktopPersistenceRefreshResult>("skipped");
+      }
+      return (
+        runtime.current?.refreshFromSource(minimumRevision) ??
+        Promise.resolve<DesktopPersistenceRefreshResult>("skipped")
+      );
+    },
+    [enabled],
+  );
   const retryLoad = useCallback(() => {
     if (!enabled) return;
     void runtime.current?.retryLoad();

@@ -1,5 +1,6 @@
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import { isSameOriginRequest } from "@/lib/auth/same-origin-request";
 import { getPublicEnv } from "@/lib/env";
 import type { Database } from "@/lib/supabase/database.types";
 import { createClient } from "@/lib/supabase/server";
@@ -18,8 +19,7 @@ function result(body: unknown, status: number): Response {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin)
+  if (!isSameOriginRequest(request))
     return result({ error: "Недопустимый источник запроса." }, 403);
   if (Number(request.headers.get("content-length") ?? 0) > 512)
     return result({ error: "Некорректный запрос." }, 400);

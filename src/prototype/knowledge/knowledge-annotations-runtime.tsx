@@ -14,6 +14,11 @@ import {
   type KnowledgeAnnotationSelection,
 } from "./knowledge-annotations";
 import { useDesktopTaskRuntime } from "@/prototype/tasks/desktop-task-runtime";
+import {
+  agentRangeInReadingRoot,
+  resolveAgentSourceRange,
+  REVEAL_MARKDOWN_RANGE,
+} from "./knowledge-annotation-ranges";
 
 const HIGHLIGHT_NAME = "mozg-knowledge-annotations";
 const NEURO_HIGHLIGHT_NAME = "mozg-knowledge-neurocomments";
@@ -159,7 +164,10 @@ function compactQuote(value: string): string {
 function getAnnotationRange(
   root: HTMLElement,
   annotation: KnowledgeAnnotation,
+  markdown: string,
 ): Range | null {
+  if (annotation.kind === "agent")
+    return agentRangeInReadingRoot(root, markdown, annotation);
   const text = root.textContent ?? "";
   const resolved = resolveKnowledgeAnnotationOffset(text, annotation);
   return resolved
@@ -172,7 +180,7 @@ export function KnowledgeAnnotationsRuntime({
 }: {
   workspaceId: string;
 }): React.JSX.Element | null {
-  const { persistence } = useDesktopTaskRuntime();
+  const { persistence, state } = useDesktopTaskRuntime();
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
   const [isReading, setIsReading] = useState(false);
   const [domEpoch, setDomEpoch] = useState(0);
@@ -199,6 +207,11 @@ export function KnowledgeAnnotationsRuntime({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pageRef = useRef<HTMLElement | null>(null);
   const pageSignatureRef = useRef("");
+  const appliedRevisionRef = useRef(0);
+  const activeMarkdown =
+    state.documents
+      .find((document) => document.id === activeDocumentId)
+      ?.content.join("\n") ?? "";
 
   useEffect(() => {
     const root = window.document.body;
@@ -388,7 +401,7 @@ export function KnowledgeAnnotationsRuntime({
     const nextOrphans = new Set<string>();
     for (const annotation of annotations) {
       if (annotation.resolvedAt !== null) continue;
-      const range = getAnnotationRange(root, annotation);
+      const range = getAnnotationRange(root, annotation, activeMarkdown);
       if (range)
         (annotation.kind === "agent" ? neuroRanges : ranges).push(range);
       else nextOrphans.add(annotation.id);
@@ -403,7 +416,7 @@ export function KnowledgeAnnotationsRuntime({
       window.cancelAnimationFrame(frame);
       clearRegisteredHighlight();
     };
-  }, [activeDocumentId, annotations, domEpoch, isReading]);
+  }, [activeDocumentId, activeMarkdown, annotations, domEpoch, isReading]);
 
   useEffect(() => {
     if (panelOpen && draftSelection) textareaRef.current?.focus();
@@ -510,18 +523,24 @@ export function KnowledgeAnnotationsRuntime({
   const refreshAppliedArticle = async (): Promise<void> => {
     setRefreshingArticle(true);
     try {
-      const result = await persistence.refreshFromSource();
+      const result = await persistence.refreshFromSource(
+        appliedRevisionRef.current,
+      );
       if (result === "skipped") {
         setNeedsRefresh(true);
         setError("Правка внедрена, но статью пока не удалось обновить.");
         return;
       }
-      if (activeDocumentId) {
+      if (
+        activeDocumentId &&
+        activeKnowledgePage()?.dataset.documentId === activeDocumentId
+      ) {
         const loaded = await loadKnowledgeAnnotations(
           workspaceId,
           activeDocumentId,
         );
-        setAnnotations(loaded.annotations);
+        if (activeKnowledgePage()?.dataset.documentId === activeDocumentId)
+          setAnnotations(loaded.annotations);
       }
       setNeedsRefresh(false);
       setError(null);
@@ -545,14 +564,32 @@ export function KnowledgeAnnotationsRuntime({
     setApplyingId(annotation.id);
     setError(null);
     try {
+      // Finish queued local saves and adopt remote edits before the server writes
+      // the proposal. A post-apply flush must not try to save an older snapshot.
+      const preflight = await persistence.refreshFromSource();
+      if (preflight === "skipped")
+        throw new Error(
+          "Сначала дождитесь сохранения статьи или разрешите конфликт сохранения, затем примите правку.",
+        );
       const response = await fetch("/api/knowledge-neurocomments/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ annotationId: annotation.id }),
       });
-      const body = (await response.json()) as { error?: string };
+      const body = (await response.json()) as {
+        error?: string;
+        revision?: number;
+      };
       if (!response.ok)
         throw new Error(body.error ?? "Не удалось внедрить правку.");
+      if (!Number.isSafeInteger(body.revision) || (body.revision ?? 0) < 1)
+        throw new Error(
+          "Не удалось подтвердить версию внедрённой правки. Обновите статью.",
+        );
+      appliedRevisionRef.current = Math.max(
+        appliedRevisionRef.current,
+        body.revision!,
+      );
       const appliedAt = new Date().toISOString();
       setAnnotations((current) =>
         current.map((item) =>
@@ -573,21 +610,71 @@ export function KnowledgeAnnotationsRuntime({
     }
   };
 
-  const scrollToAnnotation = (annotation: KnowledgeAnnotation): void => {
+  const navigateToAnnotation = async (
+    annotation: KnowledgeAnnotation,
+    applied = false,
+  ): Promise<void> => {
     const root = activeReadingRoot();
     if (!root) return;
-    const range = getAnnotationRange(root, annotation);
-    if (!range) return;
+    if (annotation.kind === "agent") {
+      const sourceRange = resolveAgentSourceRange(
+        activeMarkdown,
+        annotation,
+        applied,
+      );
+      if (sourceRange) {
+        window.dispatchEvent(
+          new CustomEvent(REVEAL_MARKDOWN_RANGE, {
+            detail: { documentId: annotation.documentId, ...sourceRange },
+          }),
+        );
+        await new Promise<void>((resolve) =>
+          window.requestAnimationFrame(() =>
+            window.requestAnimationFrame(() => resolve()),
+          ),
+        );
+      }
+    }
+    // The user may have switched panes while a collapsed branch was opening.
+    if (activeKnowledgePage()?.dataset.documentId !== annotation.documentId)
+      return;
+    const readingRoot = activeReadingRoot();
+    if (!readingRoot) return;
+    const range =
+      annotation.kind === "agent"
+        ? agentRangeInReadingRoot(
+            readingRoot,
+            activeMarkdown,
+            annotation,
+            applied,
+          )
+        : getAnnotationRange(readingRoot, annotation, activeMarkdown);
+    if (!range) {
+      setError(
+        applied
+          ? "Не удалось найти внедрённый фрагмент в текущем тексте."
+          : "Цитата отсутствует в текущем тексте статьи. Предложение нужно проверить заново.",
+      );
+      return;
+    }
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
     const element =
       range.startContainer instanceof Element
         ? range.startContainer
         : range.startContainer.parentElement;
     element?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setError(null);
   };
 
   const selectAppliedText = (annotation: KnowledgeAnnotation): void => {
     const root = activeReadingRoot();
     if (!root || !annotation.appliedAt) return;
+    if (annotation.kind === "agent") {
+      void navigateToAnnotation(annotation, true);
+      return;
+    }
     const resolved = resolveAppliedKnowledgeAnnotationOffset(
       root.textContent ?? "",
       annotation,
@@ -770,13 +857,12 @@ export function KnowledgeAnnotationsRuntime({
                     disabled={
                       (annotation.resolvedAt !== null &&
                         !annotation.appliedAt) ||
-                      (!annotation.appliedAt && orphanIds.has(annotation.id)) ||
                       !isReading
                     }
                     onClick={() =>
                       annotation.appliedAt
                         ? selectAppliedText(annotation)
-                        : scrollToAnnotation(annotation)
+                        : void navigateToAnnotation(annotation)
                     }
                     title={
                       annotation.appliedAt
@@ -789,7 +875,9 @@ export function KnowledgeAnnotationsRuntime({
                   </button>
                   {orphanIds.has(annotation.id) &&
                   annotation.resolvedAt === null ? (
-                    <span className={styles.orphan}>Фрагмент изменён</span>
+                    <span className={styles.orphan}>
+                      Фрагмент не виден — нажмите цитату для перехода
+                    </span>
                   ) : null}
                   <p>{annotation.comment}</p>
                   {annotation.kind === "agent" &&

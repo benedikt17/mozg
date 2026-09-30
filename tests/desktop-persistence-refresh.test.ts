@@ -93,6 +93,49 @@ function createRuntime(
 }
 
 describe("DesktopPersistenceRuntime live refresh", () => {
+  it("does not report success when the accepted server revision has not arrived", async () => {
+    const adapter = new LiveRefreshAdapter();
+    const runtime = createRuntime(adapter);
+    await runtime.start();
+    expect(await runtime.refreshFromSource(10)).toBe("skipped");
+    expect(runtime.lifecycle).toMatchObject({ status: "ready", revision: 9 });
+    adapter.revision = 10;
+    adapter.snapshot = withTaskTitle(adapter.snapshot, "Accepted edit");
+    expect(await runtime.refreshFromSource(10)).toBe("refreshed");
+  });
+
+  it("reads again when a pre-acceptance refresh is already in flight", async () => {
+    const adapter = new LiveRefreshAdapter();
+    const runtime = createRuntime(adapter);
+    await runtime.start();
+    let release!: (result: DesktopPersistenceLoadResult) => void;
+    let started!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const normalRead = adapter.loadLatestWorkspace.bind(adapter);
+    adapter.loadLatestWorkspace = () => {
+      adapter.loadLatestWorkspace = normalRead;
+      started();
+      return new Promise((resolve) => {
+        release = resolve;
+      });
+    };
+    const oldRead = runtime.refreshFromSource();
+    await reading;
+    adapter.revision = 10;
+    adapter.snapshot = withTaskTitle(adapter.snapshot, "Accepted edit");
+    const afterAccept = runtime.refreshFromSource(10);
+    release({
+      kind: "loaded",
+      snapshot: baseSnapshot(),
+      revision: 9,
+      savedAt: "old",
+    });
+    await oldRead;
+    expect(await afterAccept).toBe("refreshed");
+    expect(runtime.lifecycle).toMatchObject({ status: "ready", revision: 10 });
+  });
   it("adopts a newer server snapshot before the next local save", async () => {
     const adapter = new LiveRefreshAdapter();
     const refreshed: DesktopDomainSnapshot[] = [];
