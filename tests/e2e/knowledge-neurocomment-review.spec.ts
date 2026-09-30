@@ -157,7 +157,8 @@ test("accepts neighboring proposals and navigates formatted and collapsed Markdo
     await card(proposal.comment)
       .getByRole("button", { name: "Принять", exact: true })
       .click();
-    expect((await response).status()).toBe(200);
+    const accepted = await response;
+    expect(accepted.status(), await accepted.text()).toBe(200);
     await expect(reading).toBeVisible();
     await expect(reading).toContainText("Новая структура template.json.");
     await expect(reading).toContainText("Сохранён второй абзац.");
