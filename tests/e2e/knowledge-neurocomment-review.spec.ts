@@ -133,7 +133,10 @@ test("accepts neighboring proposals and navigates formatted and collapsed Markdo
     name: "Комментарии к статье",
     exact: true,
   });
-  await panel.getByRole("tab", { name: /Нейро/ }).click();
+  await panel
+    .getByRole("group", { name: "Тип комментариев", exact: true })
+    .getByRole("button", { name: "Нейро (3)", exact: true })
+    .click();
   const card = (comment: string) =>
     panel.locator("article").filter({ hasText: comment });
   const first = card(proposals[0]!.comment);
