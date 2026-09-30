@@ -34,6 +34,32 @@ function documentWith(
 }
 
 describe("Knowledge canonical MDAST Reading", () => {
+  it("preserves Enter in text without changing source coordinates or paragraph boundaries", () => {
+    const markdown = "**Кто:** Яга\n**Желание:** Покой\n\nДругой абзац";
+    const html = renderWithSourceMetadata(
+      <MarkdownStringPreview contentId="newlines" markdown={markdown} />,
+    );
+
+    expect(html).toContain('style="white-space:pre-line"');
+    expect(html).toContain(" Яга\n</span>");
+    expect(html.match(/<p>/g)).toHaveLength(2);
+    expect(html).toContain('data-markdown-start="8" data-markdown-end="13"');
+    expect(html).not.toContain("<br");
+  });
+
+  it("keeps explicit Markdown breaks and code rendering distinct from soft newlines", () => {
+    const html = renderToStaticMarkup(
+      <MarkdownStringPreview
+        contentId="breaks-and-code"
+        markdown={"Первая  \nВторая\n\n```txt\nстрока 1\nстрока 2\n```"}
+      />,
+    );
+
+    expect(html).toContain("Первая<br/>Вторая");
+    expect(html).toContain("<code>строка 1\nстрока 2</code>");
+    expect(html).not.toContain("white-space:pre-line");
+  });
+
   it("renders canonical block and inline Markdown semantics", () => {
     const html = renderToStaticMarkup(
       <MarkdownStringPreview
