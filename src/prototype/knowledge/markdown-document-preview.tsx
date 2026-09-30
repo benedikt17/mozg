@@ -93,6 +93,11 @@ function sourceText(
       data-markdown-start={node.position?.start.offset}
       data-markdown-end={node.position?.end.offset}
       key={key}
+      style={
+        node.type === "text" && value.includes("\n")
+          ? { whiteSpace: "pre-line" }
+          : undefined
+      }
     >
       {value}
     </span>
