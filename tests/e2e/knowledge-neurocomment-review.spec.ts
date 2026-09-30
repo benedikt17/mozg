@@ -171,7 +171,7 @@ test("accepts neighboring proposals and navigates formatted and collapsed Markdo
     .toContain("Сохранён второй абзац.");
 
   await reading
-    .getByRole("button", { name: "Свернуть ветку", exact: true })
+    .getByRole("button", { name: "Свернуть вложенный список", exact: true })
     .click();
   await expect(reading.getByText("Дочерняя", { exact: false })).toHaveCount(0);
   await card(proposals[2]!.comment)
