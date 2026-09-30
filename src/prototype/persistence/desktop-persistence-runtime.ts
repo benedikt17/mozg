@@ -275,12 +275,22 @@ export class DesktopPersistenceRuntime {
     return this.beginSave();
   }
 
-  refreshFromSource(): Promise<DesktopPersistenceRefreshResult> {
+  refreshFromSource(
+    minimumRevision = 0,
+  ): Promise<DesktopPersistenceRefreshResult> {
     if (this.disposed) return Promise.resolve("skipped");
-    if (this.refreshPromise !== undefined) return this.refreshPromise;
-    const refresh = this.performRefreshFromSource().finally(() => {
-      if (this.refreshPromise === refresh) this.refreshPromise = undefined;
-    });
+    if (this.refreshPromise !== undefined) {
+      return this.refreshPromise.then((result) =>
+        (this.revision ?? 0) < minimumRevision
+          ? this.refreshFromSource(minimumRevision)
+          : result,
+      );
+    }
+    const refresh = this.performRefreshFromSource(minimumRevision).finally(
+      () => {
+        if (this.refreshPromise === refresh) this.refreshPromise = undefined;
+      },
+    );
     this.refreshPromise = refresh;
     return refresh;
   }
@@ -315,7 +325,9 @@ export class DesktopPersistenceRuntime {
     void finalSave.finally(() => this.adapter.close());
   }
 
-  private async performRefreshFromSource(): Promise<DesktopPersistenceRefreshResult> {
+  private async performRefreshFromSource(
+    minimumRevision: number,
+  ): Promise<DesktopPersistenceRefreshResult> {
     await this.flush();
     if (
       this.disposed ||
@@ -353,7 +365,10 @@ export class DesktopPersistenceRuntime {
     ) {
       return "skipped";
     }
-    if (loaded.kind !== "loaded" || loaded.revision <= baselineRevision) {
+    if (loaded.kind !== "loaded" || loaded.revision < minimumRevision) {
+      return "skipped";
+    }
+    if (loaded.revision <= baselineRevision) {
       return "unchanged";
     }
 

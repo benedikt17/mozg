@@ -1,11 +1,22 @@
 import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToStaticMarkup as renderWithSourceMetadata } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
 import {
   MarkdownDocumentPreview,
   MarkdownStringPreview,
 } from "@/prototype/knowledge/markdown-document-preview";
+
+// Source spans carry navigation coordinates; the existing assertions below
+// still check the same Markdown semantics after removing only that metadata.
+function renderToStaticMarkup(node: React.ReactNode): string {
+  return renderWithSourceMetadata(node)
+    .replace(
+      /<span data-markdown-start="\d+" data-markdown-end="\d+">([^<]*)<\/span>/g,
+      "$1",
+    )
+    .replace(/ data-markdown-(?:start|end)="\d+"/g, "");
+}
 
 function documentWith(
   content: string[],
@@ -48,7 +59,9 @@ describe("Knowledge canonical MDAST Reading", () => {
     expect(html).toContain("<strong>жирным</strong>");
     expect(html).toContain("<em>курсивом</em>");
     expect(html).toContain("<del>удалённым</del>");
-    expect(html).toContain("<blockquote><p>Цитата с <code>кодом</code></p></blockquote>");
+    expect(html).toContain(
+      "<blockquote><p>Цитата с <code>кодом</code></p></blockquote>",
+    );
     expect(html).toContain(
       '<pre class="document-code-block"><code>not | a | table</code></pre>',
     );

@@ -1,5 +1,5 @@
 import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToStaticMarkup as renderWithSourceMetadata } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { PrototypeDocument } from "@/prototype/desktop-mock-data";
 import {
@@ -7,6 +7,17 @@ import {
   getDocumentHeadings,
 } from "@/prototype/knowledge/markdown-document-preview";
 import { getDocumentTitle } from "@/prototype/state/knowledge-state";
+
+// Source spans carry navigation coordinates; the existing assertions below
+// still check the same Markdown semantics after removing only that metadata.
+function renderToStaticMarkup(node: React.ReactNode): string {
+  return renderWithSourceMetadata(node)
+    .replace(
+      /<span data-markdown-start="\d+" data-markdown-end="\d+">([^<]*)<\/span>/g,
+      "$1",
+    )
+    .replace(/ data-markdown-(?:start|end)="\d+"/g, "");
+}
 
 function documentWith(content: string[]): PrototypeDocument {
   return {

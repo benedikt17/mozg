@@ -314,5 +314,86 @@ select results_eq(
   'owner accepts a deletion'
 );
 
+
+-- All proposals are authored against one source revision. Accepting a nearby
+-- edit must not invalidate its neighbors, including proposals created before
+-- this migration (which only have applied_at as their acceptance boundary).
+update public.workspace_snapshots
+set snapshot = jsonb_set(snapshot, '{documents}', (snapshot -> 'documents') ||
+  '[{"id":"doc-neighbors","projectId":"project-a","folder":"","folderPath":[],"title":"Neighbors","excerpt":"","content":["# Nearby","Alpha.","","Beta.","","Gamma."],"backlinks":[]}]'::jsonb),
+  revision = revision + 1
+where workspace_id = current_setting('test.annotation_workspace_id')::uuid;
+
+insert into public.knowledge_annotations (
+  id, workspace_id, document_id, created_by, selected_text, start_offset,
+  end_offset, prefix, suffix, comment, kind, suggested_text,
+  source_revision, proposal_action, created_at
+)
+select v.id::uuid, w.workspace_id, 'doc-neighbors',
+  '71000000-0000-0000-0000-000000000001'::uuid,
+  v.quote, v.start_offset, v.start_offset + length(v.quote), v.prefix, v.suffix,
+  'Neighbor proposal', 'agent', v.suggestion, w.revision, v.action,
+  now() - interval '1 minute'
+from public.workspace_snapshots w cross join (values
+  ('72000000-0000-0000-0000-000000000010', 'Alpha.', 9, E'# Nearby\n', E'\n\nBeta.\n\nGamma.', E'\n\nNew **one**.', 'insert_after'),
+  ('72000000-0000-0000-0000-000000000011', 'Beta.', 17, E'# Nearby\nAlpha.\n\n', E'\n\nGamma.', '**Beta updated**.', 'replace'),
+  ('72000000-0000-0000-0000-000000000012', 'Gamma.', 24, E'# Nearby\nAlpha.\n\nBeta.\n\n', '', '', 'delete')
+) v(id, quote, start_offset, prefix, suffix, suggestion, action)
+where w.workspace_id = current_setting('test.annotation_workspace_id')::uuid;
+
+select results_eq(
+  $$select status from public.apply_knowledge_neurocomment(
+    '71000000-0000-0000-0000-000000000001',
+    '72000000-0000-0000-0000-000000000011')$$,
+  array['applied'::text], 'accept the middle replacement first'
+);
+select results_eq(
+  $$select status from public.apply_knowledge_neurocomment(
+    '71000000-0000-0000-0000-000000000001',
+    '72000000-0000-0000-0000-000000000010')$$,
+  array['applied'::text], 'accept insertion despite the accepted replacement in its suffix'
+);
+select results_eq(
+  $$select status from public.apply_knowledge_neurocomment(
+    '71000000-0000-0000-0000-000000000001',
+    '72000000-0000-0000-0000-000000000012')$$,
+  array['applied'::text], 'accept deletion despite both accepted changes in its prefix'
+);
+select is(
+  (select string_agg(l.value, E'\n' order by l.ordinality)
+   from public.workspace_snapshots w,
+     lateral jsonb_array_elements(w.snapshot -> 'documents') d,
+     lateral jsonb_array_elements_text(d -> 'content') with ordinality l
+   where w.workspace_id = current_setting('test.annotation_workspace_id')::uuid
+     and d ->> 'id' = 'doc-neighbors'),
+  E'# Nearby\nAlpha.\n\nNew **one**.\n\n**Beta updated**.\n\n',
+  'all accepted operations survive in the final Markdown'
+);
+
+insert into public.knowledge_annotations (
+  id, workspace_id, document_id, created_by, selected_text, start_offset,
+  end_offset, prefix, suffix, comment, kind, suggested_text, source_revision
+)
+select '72000000-0000-0000-0000-000000000013', workspace_id, 'doc-neighbors',
+  '71000000-0000-0000-0000-000000000001', 'Alpha.', 9, 15, E'# Nearby\n',
+  E'\n\nNew **one**.', 'Manual-context conflict', 'agent', 'Changed.', revision
+from public.workspace_snapshots
+where workspace_id = current_setting('test.annotation_workspace_id')::uuid;
+update public.workspace_snapshots
+set snapshot = jsonb_set(snapshot, '{documents,1,content,0}', '"# Manually changed"'),
+  revision = revision + 1
+where workspace_id = current_setting('test.annotation_workspace_id')::uuid;
+select results_eq(
+  $$select status from public.apply_knowledge_neurocomment(
+    '71000000-0000-0000-0000-000000000001',
+    '72000000-0000-0000-0000-000000000013')$$,
+  array['conflict'::text], 'manual context changes remain conflicts'
+);
+select is(
+  (select applied_at from public.knowledge_annotations
+   where id = '72000000-0000-0000-0000-000000000013'),
+  null::timestamptz, 'a conflicting proposal is not marked applied'
+);
+
 select * from finish();
 rollback;
